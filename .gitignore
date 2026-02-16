@@ -1,0 +1,19 @@
+# Ignore Mac system files
+.DS_Store
+
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore Virtual Environments
+.env
+venv/
+env/
+
+# CRITICAL: Ignore Model Weights and Outputs
+*.safetensors
+*.bin
+*.pth
+output/
+blueprint.png
