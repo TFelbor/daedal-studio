@@ -17,7 +17,7 @@ class Visualizer:
         self.pipe.to("mps")
         print("Model loaded successfully.")
 
-    def generate_blueprint(self, prompt, output_path="blueprint.png"):
+    def generate_blueprint(self, prompt, output_path="inputs/blueprint.png"):
         print(f"Generating: '{prompt}'...")
         start = time.time()
 

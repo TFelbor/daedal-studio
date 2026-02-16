@@ -1,19 +1,28 @@
-# Ignore Mac system files
-.DS_Store
-
-# Ignore Python cache
+# Ignore Python Cache
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 
 # Ignore Virtual Environments
-.env
 venv/
+.venv/
 env/
 
-# CRITICAL: Ignore Model Weights and Outputs
+# Ignore Mac System Files
+.DS_Store
+
+# CRITICAL: Ignore Large Model Weights (We download these on setup)
+pythonsrc/models/
+*.ckpt
 *.safetensors
 *.bin
 *.pth
-output/
-blueprint.png
+
+# Ignore Outputs (We only want code in the repo, not test artifacts)
+outputs/*
+!outputs/.gitkeep
+inputs/*
+!inputs/.gitkeep
+
+# Ignore IDE settings
+.vscode/
+.idea/
