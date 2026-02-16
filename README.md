@@ -4,58 +4,64 @@
 ![Platform](https://img.shields.io/badge/Platform-macOS_Silicon-gray)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
-**p2p-mesh** is the generative engine for the Prompt2Print platform. It is responsible for the "Toymaker" workflow: converting natural language prompts into 3D-printable meshes.
 
-> **Current State:** Phase 1 (Visualizer) - Operational.
-> This module currently generates high-fidelity 2D isometric blueprints using a quantized Flux.2 model running locally on Apple Silicon.
+**p2p-mesh** is the generative engine for the Prompt2Print platform. It is responsible for the "Toymaker" workflow: converting natural language prompts into 3D-printable meshes through a vertically integrated local pipeline.
+
+> **Current State:** Phase 2 (Sculptor) - Operational.
+> The module now supports full 2D-to-3D reconstruction, generating smoothed, watertight meshes directly on Apple Silicon.
 
 ## 🏗 Architecture
-This Proof of Concept (PoC) is built for **Local Inference** to ensure data privacy and zero marginal cost.
 
-* **Model:** `Flux.2-Klein-4B` (Quantized `bfloat16`)
-* **Library:** Hugging Face `Diffusers` + `Accelerate`
-* **Hardware Acceleration:** Metal Performance Shaders (MPS) for macOS.
+This Proof of Concept (PoC) is built for **Local Inference** to ensure data privacy and zero marginal cost for the user.
+
+* **Phase 1 (Visualizer):** `Flux.2-Klein-4B` (Quantized `bfloat16`) generates high-fidelity clay renders.
+* **Phase 2 (Sculptor):** TripoSR (Large Reconstruction Model) transforms renders into 3D geometry.
+* **Post-Processing:** Trimesh-based Taubin smoothing and voxel sub-division for print-ready topology.
+* **Hardware Acceleration:** Metal Performance Shaders (MPS) with custom CPU-fallback patches for M4 compatibility.
 
 ## 💻 Tested Environment
-This codebase is optimized for and tested on the following hardware:
+
 * **Machine:** MacBook Air M4
-* **Memory:** 32GB Unified Memory
-* **OS:** macOS Sequoia (or later)
-* **Python:** 3.10+
+* **Memory:** 32GB Unified Memory (M4 Unified Architecture)
+* **Python:** 3.10 (Conda/Miniforge)
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-Ensure you have `miniforge` installed for package management.
+
+Install core dependencies and build the geometry kernel from source to satisfy the M4's C++ requirements.
 
 ```bash
-# Create the environment
-conda create -n p2p-mesh python=3.10
+# Activate environment
 conda activate p2p-mesh
 
-# Install dependencies
-pip install torch torchvision torchaudio
-pip install diffusers transformers accelerate sentencepiece protobuf
+# Install Core Dependencies
+pip install -r requirements.txt
+
+# M4 EXCEPTION: Build geometry kernel from source
+pip install git+https://github.com/tatsy/torchmcubes.git
 
 ```
 
-### 2. Run the Visualizer
+### 2. Generate the Pipeline
 
-The visualizer generates a 2D reference image ("Blueprint") that will later be used for 3D reconstruction.
+The workflow is split into two modules to maintain a "Connected Factory" logic.
 
 ```bash
-pythonsrc/visualizer.py
+# Step 1: Generate the 3D-readable concept
+python pythonsrc/visualizer.py
+
+# Step 2: Sculpt the 3D mesh from the concept
+python pythonsrc/sculptor.py
 
 ```
-
-*Note: The first run will download approx. 12GB of model weights to your local cache.*
 
 ## 🛣️ Roadmap
 
 * [x] **Phase 1: Visualizer** (Text-to-Image Blueprinting)
-* [ ] **Phase 2: Sculptor** (Image-to-3D Inference via TripoSR/InstantMesh)
-* [ ] **Phase 3: Engineer** (Mesh Repair & Watertightness Check)
-* [ ] **Phase 4: Operator** (G-Code Slicing & Printer Export)
+* [x] **Phase 2: Sculptor** (Neural 3D Reconstruction & Smoothing)
+* [ ] **Phase 3: Engineer** (Automated Mesh Repair & Scaling)
+* [ ] **Phase 4: Operator** (G-Code Slicing & Direct Printer Export)
 
 ## 📄 License
 
