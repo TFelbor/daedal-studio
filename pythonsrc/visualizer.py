@@ -1,48 +1,98 @@
+"""
+visualizer.py — Phase 1: Text-to-image blueprint generation.
+
+Usage:
+    python pythonsrc/visualizer.py [--prompt TEXT] [--output PATH] [--steps N] [--verbose]
+"""
+
+import logging
 import time
+from pathlib import Path
+
 import torch
 from diffusers import DiffusionPipeline
 
-class Visualizer:
-    def __init__(self, model_id="black-forest-labs/FLUX.2-klein-4B"):
-        print(f"Loading {model_id}...")
+logger = logging.getLogger("p2p.visualizer")
 
-        # 1. Load using the Generic Auto-Loader
-        # Now that you updated, 'DiffusionPipeline' will successfully find 'Flux2KleinPipeline'
-        self.pipe = DiffusionPipeline.from_pretrained(
-            model_id,
-            torch_dtype=torch.bfloat16
+
+def _setup_logging(verbose: bool = False) -> None:
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        format="[%(levelname)s] %(name)s — %(message)s",
+        level=level,
+    )
+
+
+class Visualizer:
+    """Generates a clay-render blueprint image from a natural language prompt."""
+
+    MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
+
+    def __init__(self, model_id: str = MODEL_ID) -> None:
+        logger.info("Loading %s…", model_id)
+        self.pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        self.pipe.to("mps")
+        logger.info("Model loaded on MPS.")
+
+    def generate_blueprint(
+        self,
+        prompt: str,
+        output_path: str | Path = "inputs/blueprint.png",
+        num_inference_steps: int = 4,
+        guidance_scale: float = 3.5,
+    ) -> Path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Inject clay-render keywords to bias TripoSR's Shape-from-Shading
+        engineered_prompt = (
+            f"3d blender render of {prompt}, "
+            "neutral background, high fidelity, 8k, soft studio lighting, "
+            "solid object, thick solid geometry, smooth curves, clay material"
         )
 
-        # 2. Optimize for Mac M4
-        self.pipe.to("mps")
-        print("Model loaded successfully.")
+        logger.info("Generating blueprint for: '%s'", engineered_prompt)
+        start = time.time()
 
-    def generate_blueprint(self, prompt, output_path="inputs/blueprint.png"):
-            # CTO UPDATE: We inject "Clay Render" keywords to force 3D-readable shading.
-            # This helps TripoSR see depth (Shape-from-Shading).
-            engineered_prompt = (
-                f"3d blender render of {prompt}, "
-                "neutral background, high fidelity, 8k, soft studio lighting, "
-                "solid object, thick solid geometry, smooth curves, clay material"
-            )
+        image = self.pipe(
+            prompt=engineered_prompt,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            height=1024,
+            width=1024,
+            generator=torch.Generator("mps").manual_seed(int(time.time())),
+        ).images[0]
 
-            print(f"Generating: '{engineered_prompt}'...")
-            start = time.time()
+        image.save(str(output_path))
+        elapsed = time.time() - start
+        logger.info("Blueprint saved to %s (%.2fs)", output_path, elapsed)
+        return output_path
 
-            image = self.pipe(
-                prompt=engineered_prompt,
-                num_inference_steps=4,
-                guidance_scale=3.5,
-                height=1024,
-                width=1024,
-                generator=torch.Generator("mps").manual_seed(int(time.time()))
-            ).images[0]
 
-            image.save(output_path)
-            print(f"Saved to {output_path} ({time.time() - start:.2f}s)")
-            return output_path
-
+# ── CLI ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="p2p-mesh Phase 1 — Visualizer")
+    parser.add_argument("--prompt", "-p", help="Text prompt (interactive if omitted)")
+    parser.add_argument(
+        "--output",
+        default="inputs/blueprint.png",
+        help="Output image path (default: inputs/blueprint.png)",
+    )
+    parser.add_argument("--steps", type=int, default=4, help="Diffusion inference steps (default: 4)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
+
+    _setup_logging(args.verbose)
+
+    if args.prompt:
+        user_prompt = args.prompt
+    else:
+        print("\n -------------------------------------------------------------------")
+        print("              === ENTER PROMPT BELOW ===")
+        print(" -------------------------------------------------------------------")
+        user_prompt = input()
+
     viz = Visualizer()
-    viz.generate_blueprint(
-        prompt="futuristic robot dinosaur")
+    viz.generate_blueprint(prompt=user_prompt, output_path=args.output, num_inference_steps=args.steps)

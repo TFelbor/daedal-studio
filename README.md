@@ -7,8 +7,8 @@
 
 **p2p-mesh** is the generative engine for the Prompt2Print platform. It is responsible for the "Toymaker" workflow: converting natural language prompts into 3D-printable meshes through a vertically integrated local pipeline.
 
-> **Current State:** Phase 2 (Sculptor) - Operational.
-> The module now supports full 2D-to-3D reconstruction, generating smoothed, watertight meshes directly on Apple Silicon.
+> **Current State:** Phase 3 (Engineer) - Operational.
+> The module now supports automated mesh repair, scaling, orientation, and hollowing.
 
 ## 🏗 Architecture
 
@@ -60,7 +60,7 @@ python pythonsrc/sculptor.py
 
 * [x] **Phase 1: Visualizer** (Text-to-Image Blueprinting)
 * [x] **Phase 2: Sculptor** (Neural 3D Reconstruction & Smoothing)
-* [ ] **Phase 3: Engineer** (Automated Mesh Repair & Scaling)
+* [x] **Phase 3: Engineer** (Automated Mesh Repair & Scaling)
 * [ ] **Phase 4: Operator** (G-Code Slicing & Direct Printer Export)
 
 ## 📄 License
