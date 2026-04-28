@@ -96,12 +96,15 @@ class OctoPrintOperator:
         start: bool = False,
     ) -> dict[str, Any]:
         """
-        Upload a mesh file to OctoPrint.
+        Upload a **G-code** file to OctoPrint.
 
         Parameters
         ----------
         file_path:
-            Local path to the ``.obj`` / ``.stl`` / ``.gcode`` file.
+            Local path to the ``.gcode`` file produced by the slicer.
+            Any other extension (e.g. ``.obj``, ``.stl``) is **rejected**
+            with a :class:`ValueError` to prevent silently uploading an
+            un-sliced mesh.
         location:
             Storage location on OctoPrint: ``"local"`` (disk) or ``"sdcard"``.
         select:
@@ -114,8 +117,26 @@ class OctoPrintOperator:
         dict
             OctoPrint API response containing ``refs.resource`` (the file URL)
             which can be passed to :meth:`select_file` or :meth:`start_print`.
+
+        Raises
+        ------
+        ValueError
+            If *file_path* does not have a ``.gcode`` extension.
+        FileNotFoundError
+            If *file_path* does not exist on disk.
         """
         file_path = Path(file_path)
+
+        # ── Extension guard — OctoPrint only accepts .gcode ───────────────
+        suffix = file_path.suffix.lower()
+        if suffix != ".gcode":
+            raise ValueError(
+                f"OctoPrint only accepts .gcode files. "
+                f"Received a '{suffix}' file: {file_path}\n"
+                "Run the slicer (Phase 3.5 / CuraSlicer) first to convert "
+                "the mesh to G-code before uploading."
+            )
+
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -175,7 +196,58 @@ class OctoPrintOperator:
         logger.info("File selected%s.", " and print started" if start else "")
 
     def start_print(self) -> None:
-        """Issue a start command to the current job."""
+        """
+        Issue a start command to the current job.
+
+        Raises
+        ------
+        RuntimeError
+            If the printer is not in the ``Operational`` state (e.g. it is
+            already printing, offline, or in an error state).
+        """
+        # ── Pre-flight: confirm printer is Operational ───────────────────
+        try:
+            printer_state = self.get_printer_state()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not retrieve printer state before starting print: {exc}"
+            ) from exc
+
+        # OctoPrint returns state.text for a human-readable description and
+        # state.flags.printing / ready / etc. for machine-readable flags.
+        state_text: str = (
+            printer_state.get("state", {}).get("text", "Unknown")
+        )
+        flags: dict = printer_state.get("state", {}).get("flags", {})
+
+        is_ready = flags.get("ready", False)
+        is_printing = flags.get("printing", False)
+        is_error = flags.get("error", False)
+        is_closedOrError = flags.get("closedOrError", False)
+
+        logger.debug(
+            "Printer state before start_print: text='%s' flags=%s",
+            state_text,
+            flags,
+        )
+
+        if is_printing:
+            raise RuntimeError(
+                f"Cannot start a new print: printer is already printing "
+                f"(state: '{state_text}'). Cancel or wait for the current job to finish."
+            )
+        if is_error or is_closedOrError:
+            raise RuntimeError(
+                f"Cannot start print: printer is in an error or disconnected state "
+                f"(state: '{state_text}'). Check the OctoPrint UI and resolve the issue first."
+            )
+        if not is_ready:
+            raise RuntimeError(
+                f"Cannot start print: printer is not Operational "
+                f"(state: '{state_text}'). Expected 'Operational' but got '{state_text}'."
+            )
+
+        logger.info("Printer is Operational ✔  Issuing start command…")
         self._post("job", json={"command": "start"})
         logger.info("Print started.")
 

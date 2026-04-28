@@ -1,18 +1,29 @@
 """
 pipeline.py — Unified Prompt2Print entrypoint.
 
-Chains Phases 1→2→3 in a single command:
+Chains Phases 1→2→3→3.5→4 in a single command:
 
     python pythonsrc/pipeline.py "a ceramic vase with geometric patterns"
     python pythonsrc/pipeline.py "a miniature chess knight" --target-mm 80 --hollow
     python pythonsrc/pipeline.py --skip-visualizer --blueprint inputs/blueprint.png
     python pythonsrc/pipeline.py --skip-sculptor   --mesh outputs/test_mesh.obj
 
-Phase 4 (Operator) is triggered with --print / --octoprint-url:
+Phase 4 (Operator) is triggered with --print / --octoprint-url.
+Phase 3.5 (Slicer) converts the engineered .obj → .gcode before upload:
 
     python pythonsrc/pipeline.py "a chess knight" --print \\
-        --octoprint-url http://octopi.local --octoprint-key MY_API_KEY --start-print
+        --octoprint-url http://octopi.local --octoprint-key MY_API_KEY --start-print \\
+        --profile pythonsrc/profiles/ender3.json
 """
+
+# ── MPS fallback — MUST be set before any torch import ────────────────────────
+# Several MPS ops (e.g. upsample_bicubic2d used by TripoSR's ViT image
+# tokeniser) are not yet implemented on Apple Silicon. This flag makes PyTorch
+# silently fall back to CPU for those ops. It must be in the environment
+# *before* `import torch` is first executed in this process — hence it lives
+# here at the very top, ahead of all other imports.
+import os
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import argparse
 import logging
@@ -42,6 +53,7 @@ def run(args: argparse.Namespace) -> None:
     blueprint_path = Path(args.blueprint) if args.blueprint else inputs_dir / "blueprint.png"
     raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
     final_mesh_path = outputs_dir / "engineered_mesh.obj"
+    gcode_path = outputs_dir / "engineered_mesh.gcode"
 
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
     if not args.skip_visualizer:
@@ -93,6 +105,26 @@ def run(args: argparse.Namespace) -> None:
         wall_thickness=args.wall,
     )
 
+    # ── Phase 3.5: Slicer ─────────────────────────────────────────────────────
+    if args.print:
+        # Slicing is only needed when we are going to send to OctoPrint.
+        # If the user is just generating a mesh, skip this expensive step.
+        logger.info("=== Phase 3.5: Slicer ===")
+        from slicer import CuraSlicer, SlicerError
+
+        try:
+            slicer = CuraSlicer(
+                cura_engine=args.cura_engine,
+                profile=args.profile,
+            )
+            gcode_path = slicer.slice(
+                input_path=final_mesh_path,
+                output_path=gcode_path,
+            )
+        except SlicerError as exc:
+            logger.error("Slicing failed — cannot proceed to Phase 4: %s", exc)
+            sys.exit(1)
+
     # ── Phase 4: Operator (optional) ──────────────────────────────────────────
     if args.print:
         logger.info("=== Phase 4: Operator ===")
@@ -102,14 +134,16 @@ def run(args: argparse.Namespace) -> None:
             base_url=args.octoprint_url,
             api_key=args.octoprint_key,
         )
-        upload_result = op.upload_file(final_mesh_path)
+        upload_result = op.upload_file(gcode_path)
         logger.info("Upload result: %s", upload_result)
 
         if args.start_print:
-            job_result = op.start_print(upload_result["refs"]["resource"])
-            logger.info("Print job started: %s", job_result)
+            op.start_print()
+            logger.info("Print job started.")
 
-    logger.info("Pipeline complete ✓  Output: %s", final_mesh_path)
+    logger.info("Pipeline complete ✓  Mesh: %s", final_mesh_path)
+    if args.print:
+        logger.info("                     G-code: %s", gcode_path)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -147,9 +181,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p3.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     p3.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness for hollowing in mm")
 
+    # Phase 3.5 options
+    p35 = parser.add_argument_group("Phase 3.5 — Slicer (CuraEngine)")
+    p35.add_argument(
+        "--profile",
+        metavar="PATH",
+        default=None,
+        help="Printer profile JSON for CuraEngine (default: built-in Ender-3 settings)",
+    )
+    p35.add_argument(
+        "--cura-engine",
+        metavar="BIN",
+        default="CuraEngine",
+        help="CuraEngine binary name or full path (default: 'CuraEngine' on PATH)",
+    )
+
     # Phase 4 options
     p4 = parser.add_argument_group("Phase 4 — Operator (OctoPrint)")
-    p4.add_argument("--print", dest="print", action="store_true", help="Upload final mesh to OctoPrint")
+    p4.add_argument("--print", dest="print", action="store_true", help="Slice and upload final mesh to OctoPrint")
     p4.add_argument("--octoprint-url", default="http://octopi.local", metavar="URL", help="OctoPrint base URL")
     p4.add_argument("--octoprint-key", metavar="KEY", help="OctoPrint API key")
     p4.add_argument("--start-print", action="store_true", help="Automatically start the print job after upload")

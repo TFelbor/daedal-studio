@@ -130,14 +130,21 @@ class P2PSculptor:
         logger.debug("After smoothing — faces: %d", len(main_mesh.faces))
 
         # ── Decimation ────────────────────────────────────────────────────────
-        # Reduce polygon count for faster downstream processing.
-        # target_faces is tunable; 5 000 is sufficient for 0.2 mm FDM printing.
+        # Requires the optional `fast-simplification` package.
+        # If absent the mesh is exported at full resolution — functional but slower
+        # in the Engineer step. Install with: pip install fast-simplification
         if len(main_mesh.faces) > target_faces:
             logger.info(
                 "Decimating %d → %d faces…", len(main_mesh.faces), target_faces
             )
-            main_mesh = main_mesh.simplify_quadric_decimation(target_faces)
-            logger.debug("After decimation — faces: %d", len(main_mesh.faces))
+            try:
+                main_mesh = main_mesh.simplify_quadric_decimation(face_count=target_faces)
+                logger.debug("After decimation — faces: %d", len(main_mesh.faces))
+            except (ImportError, ModuleNotFoundError):
+                logger.warning(
+                    "fast-simplification not installed — skipping decimation. "
+                    "Run: pip install fast-simplification"
+                )
 
         main_mesh.export(str(output_path))
         logger.info("Final mesh saved to: %s  (faces: %d)", output_path, len(main_mesh.faces))

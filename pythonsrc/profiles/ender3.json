@@ -1,0 +1,22 @@
+{
+  "machine_name": "Ender 3",
+  "machine_width": 220,
+  "machine_depth": 220,
+  "machine_height": 250,
+  "machine_heated_bed": true,
+  "layer_height": 0.2,
+  "wall_line_count": 3,
+  "top_layers": 4,
+  "bottom_layers": 4,
+  "infill_sparse_density": 15,
+  "infill_pattern": "grid",
+  "material_print_temperature": 210,
+  "material_bed_temperature": 60,
+  "speed_print": 50,
+  "speed_travel": 150,
+  "retraction_enable": true,
+  "retraction_amount": 6,
+  "retraction_speed": 45,
+  "support_enable": false,
+  "adhesion_type": "skirt"
+}

@@ -1,0 +1,22 @@
+{
+  "machine_name": "Anycubic Mega S",
+  "machine_width": 210,
+  "machine_depth": 210,
+  "machine_height": 205,
+  "machine_heated_bed": true,
+  "layer_height": 0.2,
+  "wall_line_count": 3,
+  "top_layers": 4,
+  "bottom_layers": 4,
+  "infill_sparse_density": 15,
+  "infill_pattern": "grid",
+  "material_print_temperature": 200,
+  "material_bed_temperature": 55,
+  "speed_print": 50,
+  "speed_travel": 120,
+  "retraction_enable": true,
+  "retraction_amount": 5,
+  "retraction_speed": 40,
+  "support_enable": false,
+  "adhesion_type": "skirt"
+}
