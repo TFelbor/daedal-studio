@@ -112,8 +112,8 @@ Pass any custom profile with `--profile path/to/profile.json`. The JSON schema m
 * [x] **Phase 1: Visualizer** — Text-to-Image Blueprinting
 * [x] **Phase 2: Sculptor** — Neural 3D Reconstruction & Smoothing
 * [x] **Phase 3: Engineer** — Automated Mesh Repair, Scaling & Hollowing
-* [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
-* [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job monitoring
+* [ ] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
+* [ ] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job monitoring
 * [ ] **Phase 5: Monitor** — Real-time print telemetry & failure detection
 
 ## 📄 License
