@@ -12,7 +12,7 @@ Phase 4 (Operator) is triggered with --print / --octoprint-url.
 Phase 3.5 (Slicer) converts the engineered .obj → .gcode before upload:
 
     python pythonsrc/pipeline.py "a chess knight" --print \\
-        --octoprint-url http://octopi.local --octoprint-key MY_API_KEY --start-print \\
+        --octoprint-url http://localhost:5001 --octoprint-key MY_API_KEY --start-print \\
         --profile pythonsrc/profiles/ender3.json
 """
 
@@ -29,6 +29,8 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+
+from config import CURA_ENGINE_PATH
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.pipeline")
@@ -134,12 +136,21 @@ def run(args: argparse.Namespace) -> None:
             base_url=args.octoprint_url,
             api_key=args.octoprint_key,
         )
-        upload_result = op.upload_file(gcode_path)
-        logger.info("Upload result: %s", upload_result)
+
+        # Ensure printer is connected and operational before upload
+        logger.info("Checking printer state…")
+        op.ensure_operational(auto_connect_port="VIRTUAL")
+
+        upload_result = op.upload_file(
+            gcode_path,
+            select=True,   # select the file so OctoPrint knows what to print
+            start=False,   # we control start separately for pre-flight logging
+        )
+        logger.info("Upload complete — file selected in OctoPrint.")
 
         if args.start_print:
+            logger.info("Starting print job…")
             op.start_print()
-            logger.info("Print job started.")
 
     logger.info("Pipeline complete ✓  Mesh: %s", final_mesh_path)
     if args.print:
@@ -192,14 +203,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p35.add_argument(
         "--cura-engine",
         metavar="BIN",
-        default="CuraEngine",
-        help="CuraEngine binary name or full path (default: 'CuraEngine' on PATH)",
+        default=CURA_ENGINE_PATH,
+        help="CuraEngine binary name or full path",
     )
 
     # Phase 4 options
     p4 = parser.add_argument_group("Phase 4 — Operator (OctoPrint)")
     p4.add_argument("--print", dest="print", action="store_true", help="Slice and upload final mesh to OctoPrint")
-    p4.add_argument("--octoprint-url", default="http://octopi.local", metavar="URL", help="OctoPrint base URL")
+    p4.add_argument("--octoprint-url", default="http://localhost:5001", metavar="URL", help="OctoPrint base URL")
     p4.add_argument("--octoprint-key", metavar="KEY", help="OctoPrint API key")
     p4.add_argument("--start-print", action="store_true", help="Automatically start the print job after upload")
 

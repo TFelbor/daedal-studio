@@ -2,25 +2,25 @@
 slicer.py — Phase 3.5: CuraEngine slicing wrapper.
 
 Converts a print-ready .obj mesh into a .gcode file suitable for OctoPrint
-by calling the CuraEngine CLI as a subprocess and overriding parameters.
+by calling the CuraEngine CLI as a subprocess with bundled definition files.
 
 Usage (standalone):
     python pythonsrc/slicer.py \\
         --input outputs/engineered_mesh.obj \\
         --output outputs/engineered_mesh.gcode \\
-        --profile pythonsrc/profiles/anycubic_mega.json \\
-        --engine "/Applications/UltiMaker Cura.app/Contents/Frameworks/CuraEngine"
+        --engine CuraEngine
 """
 
 from __future__ import annotations
 
-import json
+import argparse
 import logging
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+
+from config import CURA_ENGINE_PATH
 
 logger = logging.getLogger("p2p.slicer")
 
@@ -33,30 +33,6 @@ def _setup_logging(verbose: bool = False) -> None:
     )
 
 
-# ── Default Printer Profile ───────────────────────────────────────────────────
-# Minimal viable FFF settings. Overridden by custom JSON profile.
-_DEFAULT_PROFILE: dict[str, Any] = {
-    "machine_name": "Ender 3",
-    "machine_extruder_count": 1,
-    "machine_nozzle_size": 0.4,
-    "layer_height": 0.2,
-    "wall_line_count": 3,
-    "top_layers": 4,
-    "bottom_layers": 4,
-    "infill_sparse_density": 15,
-    "infill_pattern": "grid",
-    "material_print_temperature": 210,
-    "material_bed_temperature": 60,
-    "speed_print": 50,
-    "speed_travel": 150,
-    "retraction_enable": True,
-    "retraction_amount": 6,
-    "retraction_speed": 45,
-    "support_enable": False,
-    "adhesion_type": "skirt",
-}
-
-
 class SlicerError(RuntimeError):
     """Raised when CuraEngine fails, is missing, or is misconfigured."""
     pass
@@ -65,44 +41,41 @@ class SlicerError(RuntimeError):
 # ── CuraSlicer ────────────────────────────────────────────────────────────────
 class CuraSlicer:
     """
-    Subprocess wrapper around the CuraEngine CLI using parameter injection.
+    Subprocess wrapper around the CuraEngine CLI using bundled definition files.
 
     Parameters
     ----------
     cura_engine:
         Path to the CuraEngine binary.
     profile:
-        Path to a JSON file containing key-value pairs of Cura settings.
+        Path to a .def.json printer definition file. If None, the bundled
+        Ender 3 definition is used.
     """
+
+    DEFINITIONS_DIR = Path(__file__).parent / "profiles" / "definitions"
 
     def __init__(
         self,
-        cura_engine: str = "CuraEngine",
-        profile: str | Path | dict[str, Any] | None = None,
+        cura_engine: str = CURA_ENGINE_PATH,
+        profile: str | Path | None = None,
     ) -> None:
         self.cura_engine = cura_engine
-        self._profile: dict[str, Any] = self._load_profile(profile)
+        self.profile_path: Path | None = self._load_profile(profile)
         self._check_cura_available()
-        self.base_def = self._find_base_definition()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     @staticmethod
     def _load_profile(
-        profile: str | Path | dict[str, Any] | None,
-    ) -> dict[str, Any]:
+        profile: str | Path | None,
+    ) -> Path | None:
+        """Store the custom .def.json path, if one was provided."""
         if profile is None:
-            return dict(_DEFAULT_PROFILE)
-        if isinstance(profile, dict):
-            return dict(profile)
-        
+            return None
         path = Path(profile)
         if not path.exists():
-            raise FileNotFoundError(f"Printer profile not found: {path}")
-        
-        with path.open() as fh:
-            data = json.load(fh)
-        logger.debug("Loaded printer profile from '%s'.", path)
-        return data
+            raise FileNotFoundError(f"Printer definition not found: {path}")
+        logger.debug("Using custom printer definition from '%s'.", path)
+        return path
 
     def _check_cura_available(self) -> None:
         if shutil.which(self.cura_engine) is None and not Path(self.cura_engine).exists():
@@ -111,25 +84,28 @@ class CuraSlicer:
                 "Ensure it is installed and the path is correct."
             )
 
-    def _find_base_definition(self) -> str:
+    def _resolve_definitions(self) -> list[str]:
         """
-        Locates the core fdmprinter.def.json required by CuraEngine.
-        This includes specific fallbacks for the macOS GUI app structure.
+        Return the ordered list of -j definition file paths for CuraEngine.
+
+        Always includes fdmprinter.def.json as the base.  The second entry
+        is either a user-supplied .def.json or the bundled ender3_base.
         """
-        base_paths = [
-            "/Applications/UltiMaker Cura.app/Contents/Resources/share/cura/resources/definitions/fdmprinter.def.json",
-            "/Applications/UltiMaker Cura.app/Contents/Resources/definitions/fdmprinter.def.json",
+        base_def = self.DEFINITIONS_DIR / "fdmprinter.def.json"
+        if not base_def.exists():
+            raise SlicerError(
+                f"Bundled base definition not found at: {base_def}\n"
+                "Ensure fdmprinter.def.json is present in "
+                f"{self.DEFINITIONS_DIR}."
+            )
+
+        if self.profile_path is not None and self.profile_path.suffix == ".json" and self.profile_path.name.endswith(".def.json"):
+            return [str(base_def), str(self.profile_path)]
+
+        return [
+            str(base_def),
+            str(self.DEFINITIONS_DIR / "ender3_base.def.json"),
         ]
-        
-        for p in base_paths:
-            if Path(p).exists():
-                logger.debug("Found base definition at: %s", p)
-                return p
-                
-        raise SlicerError(
-            "Could not locate fdmprinter.def.json inside the UltiMaker Cura app bundle. "
-            "CuraEngine requires this base schema to function."
-        )
 
     # ── Public API ────────────────────────────────────────────────────────────
     def slice(
@@ -140,7 +116,7 @@ class CuraSlicer:
         extra_args: list[str] | None = None,
     ) -> Path:
         """
-        Slice a mesh into G-Code using dynamic setting injection.
+        Slice a mesh into G-Code using bundled definition files.
 
         Parameters
         ----------
@@ -168,19 +144,12 @@ class CuraSlicer:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        cmd: list[str] = [
-            self.cura_engine,
-            "slice",
-            "-j", self.base_def,
-            "-o", str(output_path),
-        ]
+        definition_paths = self._resolve_definitions()
 
-        # Inject parameters directly to bypass JSON schema rigidness
-        for key, value in self._profile.items():
-            val_str = str(value).lower() if isinstance(value, bool) else str(value)
-            cmd.extend(["-s", f"{key}={val_str}"])
-
-        cmd.extend(["-l", str(input_path)])
+        cmd: list[str] = [self.cura_engine, "slice", "-d", str(self.DEFINITIONS_DIR)]
+        for def_path in definition_paths:
+            cmd += ["-j", def_path]
+        cmd += ["-o", str(output_path), "-l", str(input_path)]
 
         if extra_args:
             cmd.extend(extra_args)
@@ -195,9 +164,11 @@ class CuraSlicer:
 
         if result.returncode != 0:
             stderr_snippet = result.stderr[-1000:] if result.stderr else "(no stderr)"
+            stdout_snippet = result.stdout[-1000:] if result.stdout else "(no stdout)"
             raise SlicerError(
                 f"CuraEngine exited with code {result.returncode}.\n"
-                f"Stderr (last 1000 chars):\n{stderr_snippet}"
+                f"Stderr (last 1000 chars):\n{stderr_snippet}\n"
+                f"Stdout (last 1000 chars):\n{stdout_snippet}"
             )
 
         if not output_path.exists():
@@ -215,8 +186,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input", "-i", required=True, metavar="PATH", help=".obj file to slice")
     parser.add_argument("--output", "-o", required=True, metavar="PATH", help=".gcode output path")
-    parser.add_argument("--profile", "-p", metavar="PATH", help="Printer profile JSON")
-    parser.add_argument("--engine", default="CuraEngine", metavar="BIN", help="CuraEngine binary path")
+    parser.add_argument(
+        "--profile", "-p", metavar="PATH",
+        help="Path to a .def.json printer definition file (default: bundled Ender 3)",
+    )
+    parser.add_argument("--engine", default=CURA_ENGINE_PATH, metavar="BIN", help="CuraEngine binary path")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     return parser
 

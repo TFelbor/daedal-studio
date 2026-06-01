@@ -5,8 +5,8 @@ Uploads a print-ready mesh file to an OctoPrint instance and optionally
 starts the print job. Can also poll for job status.
 
 Usage:
-    python pythonsrc/operator_phase.py --file outputs/engineered_mesh.obj \\
-        --url http://octopi.local --key MY_API_KEY [--start] [--watch] [--dry-run]
+    python pythonsrc/operator_phase.py --file outputs/engineered_mesh.gcode \\
+        --url http://localhost:5001 --key MY_API_KEY [--start] [--watch] [--dry-run]
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class OctoPrintOperator:
     Parameters
     ----------
     base_url:
-        Base URL of the OctoPrint instance, e.g. ``http://octopi.local``
+        Base URL of the OctoPrint instance, e.g. ``http://localhost:5001``
         or ``http://192.168.1.50``.  Trailing slashes are stripped.
     api_key:
         OctoPrint Application API Key (Settings → API).
@@ -78,6 +78,44 @@ class OctoPrintOperator:
         """Return OctoPrint version info (also used as a connectivity check)."""
         return self._get("version")
 
+    def connectivity_check(self) -> dict[str, Any]:
+        """
+        Verify OctoPrint is reachable and the API key is valid.
+
+        Hits ``GET /api/version`` and returns the JSON response on success.
+
+        Raises
+        ------
+        RuntimeError
+            With a diagnostic message distinguishing between:
+            - Connection refused (server not running)
+            - 403 Forbidden (API key wrong or access control misconfigured)
+            - Any other unexpected error
+        """
+        try:
+            return self.get_version()
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(
+                f"Connection refused — cannot reach OctoPrint at {self.base_url}. "
+                "Is the OctoPrint server running? Check the URL and port."
+            )
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 403:
+                raise RuntimeError(
+                    f"403 Forbidden — OctoPrint at {self.base_url} rejected the API key. "
+                    "Verify the X-Api-Key value matches the key shown in "
+                    "OctoPrint Settings → API → Global API Key. "
+                    "Also check that access control is not blocking programmatic access."
+                ) from exc
+            raise RuntimeError(
+                f"Unexpected HTTP error from OctoPrint at {self.base_url}: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(
+                f"Unexpected error while contacting OctoPrint at {self.base_url}: {exc}"
+            ) from exc
+
     def get_printer_state(self) -> dict[str, Any]:
         """Return current printer state (temperature, operational status, etc.)."""
         return self._get("printer")
@@ -85,6 +123,134 @@ class OctoPrintOperator:
     def get_connection(self) -> dict[str, Any]:
         """Return serial connection state."""
         return self._get("connection")
+
+    def connect(
+        self,
+        port: str = "VIRTUAL",
+        baudrate: int = 250000,
+        *,
+        printer_profile: str = "_default",
+        save: bool = False,
+        autoconnect: bool = False,
+    ) -> None:
+        """
+        Issue a connect command to OctoPrint's serial layer.
+
+        For local virtual printer testing, use port="VIRTUAL".
+        For a real printer, set port to the serial device path
+        (e.g. "/dev/ttyUSB0" on Linux, "/dev/cu.usbserial-*" on macOS).
+
+        Raises
+        ------
+        RuntimeError
+            If OctoPrint returns a non-2xx response.
+        """
+        payload = {
+            "command": "connect",
+            "port": port,
+            "baudrate": baudrate,
+            "printerProfile": printer_profile,
+            "save": save,
+            "autoconnect": autoconnect,
+        }
+        logger.info("Connecting printer on port '%s'…", port)
+        self._post("connection", json=payload)
+        logger.info("Connect command sent.")
+
+    def force_virtual_connect(self, *, timeout: int = 20) -> None:
+        """
+        Enable the virtual printer plugin, connect to the VIRTUAL port,
+        and poll until the printer reaches Operational state.
+
+        Parameters
+        ----------
+        timeout:
+            Maximum seconds to wait for the printer to become Operational.
+
+        Raises
+        ------
+        RuntimeError
+            If the printer does not reach Operational within *timeout*.
+        """
+        import time as _time
+
+        # Step 1: ensure the virtual printer plugin is enabled
+        logger.info("Enabling virtual printer plugin…")
+        try:
+            self._post(
+                "settings",
+                json={"plugins": {"virtual_printer": {"enabled": True}}},
+            )
+        except requests.exceptions.HTTPError:
+            logger.warning("Could not enable virtual printer plugin via API — may already be enabled.")
+
+        # Step 2: issue the connect command
+        logger.info("Forcing connection to VIRTUAL port…")
+        self.connect(port="VIRTUAL", baudrate=250000)
+
+        # Step 3: poll until operational
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            _time.sleep(2)
+            try:
+                state = self.get_printer_state()
+                flags = state.get("state", {}).get("flags", {})
+                if flags.get("operational") or flags.get("ready"):
+                    logger.info("Virtual printer is Operational ✔")
+                    return
+                logger.debug("Printer state: %s — waiting…", state.get("state", {}).get("text", "?"))
+            except requests.exceptions.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 409:
+                    logger.debug("Printer still connecting (409)… retrying.")
+                else:
+                    raise
+
+        raise RuntimeError(
+            f"Virtual printer did not reach Operational state within {timeout}s. "
+            "Check OctoPrint logs and ensure the Virtual Printer plugin is installed and enabled."
+        )
+
+    def ensure_operational(self, *, auto_connect_port: str = "VIRTUAL", timeout: int = 20) -> None:
+        """
+        Check printer state and auto-connect if not yet connected.
+
+        Polls up to *timeout* seconds for the printer to reach Operational.
+        When the port is ``"VIRTUAL"``, uses :meth:`force_virtual_connect`
+        which also enables the virtual printer plugin.
+
+        Raises
+        ------
+        RuntimeError
+            If the printer does not reach Operational within the timeout.
+        """
+        import time as _time
+        deadline = _time.time() + timeout
+
+        while _time.time() < deadline:
+            try:
+                state = self.get_printer_state()
+                flags = state.get("state", {}).get("flags", {})
+                if flags.get("operational") or flags.get("ready"):
+                    logger.info("Printer is Operational ✔")
+                    return
+            except requests.exceptions.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 409:
+                    # 409 = printer not connected — try to connect
+                    if auto_connect_port == "VIRTUAL":
+                        logger.info("Printer not connected — forcing virtual connect…")
+                        self.force_virtual_connect(timeout=max(1, int(deadline - _time.time())))
+                        return  # force_virtual_connect already verified Operational
+                    else:
+                        logger.info("Printer not connected — issuing connect on port '%s'…", auto_connect_port)
+                        self.connect(port=auto_connect_port)
+                else:
+                    raise
+            _time.sleep(2)
+
+        raise RuntimeError(
+            f"Printer did not reach Operational state within {timeout}s. "
+            "Check OctoPrint logs and virtual printer plugin status."
+        )
 
     # ── File Management ───────────────────────────────────────────────────────
     def upload_file(
@@ -184,7 +350,7 @@ class OctoPrintOperator:
             If True, start the print immediately after selecting.
         """
         # Extract location/filename from the resource URL
-        # URL shape: http://octopi.local/api/files/local/myfile.obj
+        # URL shape: http://localhost:5001/api/files/local/myfile.gcode
         parts = file_resource_url.rstrip("/").split("/api/files/")
         if len(parts) < 2:
             raise ValueError(f"Cannot parse file resource URL: {file_resource_url}")
@@ -302,14 +468,22 @@ def _build_parser() -> argparse.ArgumentParser:
         description="p2p-mesh Phase 4 — Operator (OctoPrint)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--file", "-f", required=False, metavar="PATH", help="Mesh file to upload")
-    parser.add_argument("--url", default="http://octopi.local", metavar="URL", help="OctoPrint base URL")
+    parser.add_argument("--file", "-f", required=False, metavar="PATH",
+                        help="G-code file to upload (.gcode only — run slicer first)")
+    parser.add_argument("--url", default="http://localhost:5001", metavar="URL", help="OctoPrint base URL")
     parser.add_argument("--key", metavar="KEY", help="OctoPrint API key (or set OCTOPRINT_API_KEY env var)")
     parser.add_argument("--location", default="local", choices=["local", "sdcard"], help="Storage location")
     parser.add_argument("--start", action="store_true", help="Start print immediately after upload")
     parser.add_argument("--watch", action="store_true", help="Watch and report print progress")
     parser.add_argument("--status", action="store_true", help="Only print current job status and exit")
     parser.add_argument("--dry-run", action="store_true", help="Validate connectivity but do not upload or print")
+    parser.add_argument(
+        "--connect-port",
+        default="VIRTUAL",
+        metavar="PORT",
+        help="Serial port for printer connection (default: VIRTUAL for local testing). "
+             "Use /dev/ttyUSB0 or similar for a real printer.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     return parser
 
@@ -358,6 +532,9 @@ if __name__ == "__main__":
         status = op.get_job_status()
         logger.info("Job status: %s", status)
         sys.exit(0)
+
+    # ── Ensure printer is connected ────────────────────────────────────────────
+    op.ensure_operational(auto_connect_port=args.connect_port)
 
     # ── Upload ────────────────────────────────────────────────────────────────
     if not args.file:

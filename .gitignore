@@ -1,28 +1,46 @@
-# Ignore Python Cache
-__pycache__/
-*.pyc
+# Personal config — contains secrets and machine-specific paths
+pythonsrc/config.py
 
-# Ignore Virtual Environments
-venv/
-.venv/
-env/
+# Pipeline outputs — not part of source
+outputs/
+inputs/
 
-# Ignore Mac System Files
-.DS_Store
-
-# CRITICAL: Ignore Large Model Weights (We download these on setup)
+# ML model weights — too large for git
 pythonsrc/models/
 *.ckpt
 *.safetensors
 *.bin
+*.pt
 *.pth
 
-# Ignore Outputs (We only want code in the repo, not test artifacts)
-outputs/*
-!outputs/.gitkeep
-inputs/*
-!inputs/.gitkeep
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
 
-# Ignore IDE settings
+# Conda / virtual environments
+env/
+venv/
+.env
+conda-env/
+*.conda
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Logs and reports
+*.log
+outputs/*.txt
+outputs/*.md
+
+# IDE
 .vscode/
 .idea/
+*.swp

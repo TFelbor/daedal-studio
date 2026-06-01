@@ -1,0 +1,35 @@
+{
+  "name": "Creality Ender 3",
+  "version": 2,
+  "metadata": {
+    "type": "machine",
+    "author": "p2p-mesh",
+    "manufacturer": "Creality",
+    "visible": true,
+    "platform": "creality_ender3_platform.stl"
+  },
+  "inherits": "fdmprinter",
+  "overrides": {
+    "machine_name": { "default_value": "Creality Ender 3" },
+    "machine_buildvolume_depth": { "default_value": 220 },
+    "machine_buildvolume_width": { "default_value": 220 },
+    "machine_buildvolume_height": { "default_value": 250 },
+    "machine_center_is_zero": { "default_value": false },
+    "machine_nozzle_size": { "default_value": 0.4 },
+    "machine_nozzle_tip_outer_diameter": { "default_value": 1.05 },
+    "machine_extruder_count": { "default_value": 1 },
+    "machine_heated_bed": { "default_value": true },
+    "layer_height": { "default_value": 0.2 },
+    "wall_line_count": { "default_value": 3 },
+    "infill_sparse_density": { "default_value": 15 },
+    "material_print_temperature": { "default_value": 210 },
+    "material_bed_temperature": { "default_value": 60 },
+    "speed_print": { "default_value": 50 },
+    "retraction_enable": { "default_value": true },
+    "retraction_amount": { "default_value": 6 },
+    "roofing_layer_count": { "default_value": 0 },
+    "flooring_layer_count": { "default_value": 0 },
+    "material_shrinkage_percentage_xy": { "default_value": 100 },
+    "material_shrinkage_percentage_z": { "default_value": 100 }
+  }
+}

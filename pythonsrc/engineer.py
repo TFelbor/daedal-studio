@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pymeshfix  # MeshFix algorithm — Attene 2010; version 0.18.1
 import trimesh
 import trimesh.repair
 import trimesh.util
@@ -38,20 +39,89 @@ class Engineer:
     # ── Repair ────────────────────────────────────────────────────────────────
     def repair_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
-        Remove degeneracies and attempt to close the mesh.
+        Repair mesh topology using pymeshfix (MeshFix algorithm, Attene 2010).
 
+        Handles self-intersections, non-manifold edges, and topological holes
+        that trimesh's built-in repair cannot fix. Falls back to trimesh-only
+        repair if pymeshfix raises an exception.
+
+        pymeshfix version: 0.18.1
+        """
+        before_faces = len(mesh.faces)
+        before_watertight = mesh.is_watertight
+        logger.debug(
+            "Before repair — watertight: %s, faces: %d",
+            before_watertight,
+            before_faces,
+        )
+
+        try:
+            # ── Pre-clean: remove degeneracies before passing to pymeshfix ────
+            # pymeshfix performs better on pre-cleaned input.
+            pre = mesh.copy()
+
+            # Remove degenerate faces (trimesh 4.x API)
+            valid_mask = pre.nondegenerate_faces()
+            pre.update_faces(valid_mask)
+
+            # Remove duplicate faces via np.unique on sorted face rows
+            sorted_faces = np.sort(pre.faces, axis=1)
+            _, unique_idx = np.unique(sorted_faces, axis=0, return_index=True)
+            pre.update_faces(unique_idx)
+
+            # Remove unreferenced vertices
+            pre.remove_unreferenced_vertices()
+
+            # ── pymeshfix repair (MeshFix algorithm) ──────────────────────────
+            # Note: pymeshfix 0.18.1 repair() takes no verbose kwarg;
+            # repaired arrays are available as .points and .faces.
+            meshfix = pymeshfix.MeshFix(pre.vertices, pre.faces)
+            meshfix.repair()
+            clean_vertices, clean_faces = meshfix.points, meshfix.faces
+
+            # ── Reconstruct trimesh from repaired arrays ───────────────────────
+            repaired = trimesh.Trimesh(
+                vertices=clean_vertices,
+                faces=clean_faces,
+                process=False,
+            )
+
+            # ── Final winding-consistency pass ────────────────────────────────
+            trimesh.repair.fix_normals(repaired, multibody=True)
+
+            after_faces = len(repaired.faces)
+            after_watertight = repaired.is_watertight
+            improved = (not before_watertight and after_watertight) or (before_watertight and after_watertight)
+            logger.debug(
+                "After pymeshfix repair — watertight: %s, faces: %d (improved: %s)",
+                after_watertight,
+                after_faces,
+                improved,
+            )
+            return repaired
+
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "pymeshfix repair failed (%s) — falling back to trimesh-only repair.",
+                exc,
+            )
+            return self._repair_mesh_fallback(mesh)
+
+    def _repair_mesh_fallback(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """
+        Original trimesh-only repair logic, preserved as a fallback.
+
+        Called automatically when pymeshfix raises an exception.
         Compatible with trimesh 4.x, where remove_degenerate_faces /
         remove_duplicate_faces are no longer instance methods.
         """
         repaired = mesh.copy()
 
         # ── Remove degenerate faces (trimesh 4.x API) ──────────────────────
-        # nondegenerate_faces() returns a boolean mask of valid faces.
         valid_mask = repaired.nondegenerate_faces()
         repaired.update_faces(valid_mask)
 
         # ── Remove duplicate faces ─────────────────────────────────────────
-        # np.unique on sorted face rows gives us the indices of unique faces.
         sorted_faces = np.sort(repaired.faces, axis=1)
         _, unique_idx = np.unique(sorted_faces, axis=0, return_index=True)
         repaired.update_faces(unique_idx)
@@ -65,7 +135,7 @@ class Engineer:
         trimesh.repair.fill_holes(repaired)
 
         logger.debug(
-            "After repair — watertight: %s, faces: %d",
+            "After fallback repair — watertight: %s, faces: %d",
             repaired.is_watertight,
             len(repaired.faces),
         )
@@ -183,6 +253,7 @@ class Engineer:
             "volume_mm3": round(mesh.volume, 2) if mesh.is_volume else 0,
             "bounds": mesh.bounds.tolist() if mesh.bounds is not None else None,
             "extent_mm": (mesh.bounds[1] - mesh.bounds[0]).tolist() if mesh.bounds is not None else None,
+            "euler_number": mesh.euler_number if hasattr(mesh, "euler_number") else None,
         }
 
     # ── Main process ──────────────────────────────────────────────────────────
