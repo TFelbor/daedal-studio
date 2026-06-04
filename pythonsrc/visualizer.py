@@ -6,6 +6,7 @@ Usage:
 """
 
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -23,22 +24,42 @@ def _setup_logging(verbose: bool = False) -> None:
     )
 
 
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
+
+
 class Visualizer:
     """Generates a clay-render blueprint image from a natural language prompt."""
 
     MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
 
     def __init__(self, model_id: str = MODEL_ID) -> None:
-        logger.info("Loading %s…", model_id)
-        self.pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        self.pipe.to("mps")
-        logger.info("Model loaded on MPS.")
+        self._device = get_device()
+
+        # Read HuggingFace token from environment for gated model access
+        token = os.environ.get("HF_TOKEN")
+
+        logger.info("Loading %s on device: %s…", model_id, self._device)
+        self.pipe = DiffusionPipeline.from_pretrained(
+            model_id,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            token=token,
+        )
+
+        self.pipe.to(self._device)
+        logger.info("Model loaded on %s.", self._device)
 
     def generate_blueprint(
         self,
         prompt: str,
         output_path: str | Path = "inputs/blueprint.png",
-        num_inference_steps: int = 4,
+        num_inference_steps: int = 2,
         guidance_scale: float = 3.5,
     ) -> Path:
         output_path = Path(output_path)
@@ -54,13 +75,15 @@ class Visualizer:
         logger.info("Generating blueprint for: '%s'", engineered_prompt)
         start = time.time()
 
+        # Always use CPU generator — Generator("mps") and Generator("cuda") can
+        # cause issues, and the seed is only for reproducibility, not computation.
         image = self.pipe(
             prompt=engineered_prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
             height=1024,
             width=1024,
-            generator=torch.Generator("mps").manual_seed(int(time.time())),
+            generator=torch.Generator("cpu").manual_seed(int(time.time())),
         ).images[0]
 
         image.save(str(output_path))
@@ -80,7 +103,7 @@ if __name__ == "__main__":
         default="inputs/blueprint.png",
         help="Output image path (default: inputs/blueprint.png)",
     )
-    parser.add_argument("--steps", type=int, default=4, help="Diffusion inference steps (default: 4)")
+    parser.add_argument("--steps", type=int, default=2, help="Diffusion inference steps (default: 2)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
