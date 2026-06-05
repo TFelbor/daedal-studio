@@ -14,7 +14,7 @@ OUTPUT="inputs/blueprint.png"
 echo "[p2p] Running Phase 1 natively on Mac (MPS accelerated)..."
 python pythonsrc/pipeline.py "$PROMPT" \
     --verbose \
-    --output-blueprint "$OUTPUT"
+    --blueprint "$OUTPUT"
 
 echo "[p2p] Blueprint saved to: $OUTPUT"
 echo "[p2p] Now run Phases 2-5 in Docker:"
