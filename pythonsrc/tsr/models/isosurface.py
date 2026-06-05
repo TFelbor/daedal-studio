@@ -3,7 +3,28 @@ from typing import Callable, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-from torchmcubes import marching_cubes
+try:
+    from torchmcubes import marching_cubes
+except ImportError:
+    # Fallback: use mcubes pure Python implementation
+    try:
+        import mcubes
+        def marching_cubes(volume, threshold):
+            import numpy as np
+            import torch
+            verts, faces = mcubes.marching_cubes(
+                volume.cpu().numpy(), threshold
+            )
+            return (
+                torch.from_numpy(verts.astype(np.float32)),
+                torch.from_numpy(faces.astype(np.int64))
+            )
+    except ImportError:
+        raise ImportError(
+            "Neither torchmcubes nor PyMCubes is installed. "
+            "Run: pip install git+https://github.com/tatsy/torchmcubes.git "
+            "or: pip install PyMCubes"
+        )
 
 
 class IsosurfaceHelper(nn.Module):

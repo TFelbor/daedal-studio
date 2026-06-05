@@ -8,6 +8,7 @@ Usage:
 import logging
 import os
 from pathlib import Path
+from config import INPUTS_DIR, OUTPUTS_DIR
 
 # Force CPU fallback for M4 Mac compatibility before importing torch
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -48,11 +49,22 @@ class P2PSculptor:
     """Wraps TripoSR to reconstruct a 3-D mesh from a single concept image."""
 
     def __init__(self, model_dir: str | Path | None = None) -> None:
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        # Safe device detection: CUDA → MPS → CPU (with hasattr guard for Linux)
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = "cpu"
         logger.info("Initialising Sculptor on device: %s", self.device)
 
         if model_dir is None:
-            model_dir = Path(__file__).parent / "models" / "TripoSR"
+            # Prefer env var (set by Docker volumes) over local path
+            env_path = os.environ.get("TRIPOSR_MODEL_PATH")
+            if env_path and Path(env_path).is_dir() and any(Path(env_path).iterdir()):
+                model_dir = Path(env_path)
+            else:
+                model_dir = "stabilityai/TripoSR"
 
         self.model = TSR.from_pretrained(
             str(model_dir),
@@ -106,7 +118,7 @@ class P2PSculptor:
             meshes = self.model.extract_mesh(
                 scene_codes,
                 has_vertex_color=False,
-                resolution=256,
+                resolution=128,
                 threshold=45.0,
             )
 
@@ -158,12 +170,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="p2p-mesh Phase 2 — Sculptor")
     parser.add_argument(
         "--blueprint",
-        default="inputs/blueprint.png",
+        default=os.path.join(INPUTS_DIR, "blueprint.png"),
         help="Path to the input blueprint image (default: inputs/blueprint.png)",
     )
     parser.add_argument(
         "--output",
-        default="outputs/test_mesh.obj",
+        default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"),
         help="Path for the output mesh (default: outputs/test_mesh.obj)",
     )
     parser.add_argument(

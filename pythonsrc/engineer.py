@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from config import OUTPUTS_DIR
 
 import numpy as np
 import pymeshfix  # MeshFix algorithm — Attene 2010; version 0.18.1
@@ -298,8 +299,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="p2p-mesh Phase 3 — Engineer")
-    parser.add_argument("input", nargs="?", default="outputs/test_mesh.obj", help="Input .obj path")
-    parser.add_argument("output", nargs="?", default="outputs/engineered_mesh.obj", help="Output .obj path")
+    parser.add_argument("input", nargs="?", default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"), help="Input .obj path")
+    parser.add_argument("output", nargs="?", default=os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"), help="Output .obj path")
     parser.add_argument("target_mm", nargs="?", type=float, default=50.0, help="Target longest dimension in mm")
     parser.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     parser.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness in mm (default: 1.2)")

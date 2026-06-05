@@ -5,8 +5,8 @@ Chains Phases 1→2→3→4→5 in a single command:
 
     python pythonsrc/pipeline.py "a ceramic vase with geometric patterns"
     python pythonsrc/pipeline.py "a miniature chess knight" --target-mm 80 --hollow
-    python pythonsrc/pipeline.py --skip-visualizer --blueprint inputs/blueprint.png
-    python pythonsrc/pipeline.py --skip-sculptor   --mesh outputs/test_mesh.obj
+    python pythonsrc/pipeline.py --skip-visualizer --blueprint /app/inputs/blueprint.png
+    python pythonsrc/pipeline.py --skip-sculptor   --mesh /app/outputs/test_mesh.obj
 
 Phase 5 (Operator) is triggered with --print / --octoprint-url.
 Phase 4 (Slicer) converts the engineered .obj → .gcode before upload:
@@ -32,7 +32,7 @@ import time
 import traceback
 from pathlib import Path
 
-from config import CURA_ENGINE_PATH
+from config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.pipeline")
@@ -87,16 +87,13 @@ def _setup_logging(verbose: bool) -> None:
 def run(args: argparse.Namespace) -> None:
     pipeline_start = time.time()
 
-    workspace = Path(args.workspace)
-    inputs_dir = workspace / "inputs"
-    outputs_dir = workspace / "outputs"
-    inputs_dir.mkdir(parents=True, exist_ok=True)
-    outputs_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(INPUTS_DIR, exist_ok=True)
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
-    blueprint_path = Path(args.blueprint) if args.blueprint else inputs_dir / "blueprint.png"
-    raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
-    final_mesh_path = outputs_dir / "engineered_mesh.stl"
-    gcode_path = outputs_dir / "engineered_mesh.gcode"
+    blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
+    raw_mesh_path = Path(args.mesh) if args.mesh else Path(os.path.join(OUTPUTS_DIR, "raw_mesh.obj"))
+    final_mesh_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.stl"))
+    gcode_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.gcode"))
 
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
     if not args.skip_visualizer:

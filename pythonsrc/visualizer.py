@@ -13,6 +13,8 @@ from pathlib import Path
 import torch
 from diffusers import DiffusionPipeline
 
+from config import INPUTS_DIR
+
 logger = logging.getLogger("p2p.visualizer")
 
 
@@ -61,7 +63,7 @@ class Visualizer:
     def generate_blueprint(
         self,
         prompt: str,
-        output_path: str | Path = "inputs/blueprint.png",
+        output_path: str | Path = os.path.join(INPUTS_DIR, "blueprint.png"),
         num_inference_steps: int = 2,
         guidance_scale: float = 3.5,
     ) -> Path:
@@ -103,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", "-p", help="Text prompt (interactive if omitted)")
     parser.add_argument(
         "--output",
-        default="inputs/blueprint.png",
+        default=os.path.join(INPUTS_DIR, "blueprint.png"),
         help="Output image path (default: inputs/blueprint.png)",
     )
     parser.add_argument("--steps", type=int, default=2, help="Diffusion inference steps (default: 2)")

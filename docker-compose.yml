@@ -1,0 +1,196 @@
+# ────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Primary development interface for p2p-mesh pipeline.
+#
+# Usage:
+#   cp .env.template .env          # fill in OCTOPRINT_API_KEY
+#   docker compose build           # build all images
+#   docker compose run --rm pipeline-runner \
+#       python pythonsrc/pipeline.py "a ceramic vase" \
+#       --print --start-print --verbose
+#
+# For GPU support (NVIDIA only):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+#
+# NOTE: All images are pinned to linux/amd64 because curaengine is only
+# available as an amd64 apt package. On Apple Silicon, Docker Desktop
+# transparently emulates amd64 via Rosetta 2.
+#
+# See README-docker.md for the full command reference.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+services:
+
+  # ── Phase 1: Visualizer (FLUX text-to-image) ─────────────────────────────
+  phase1-visualizer:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/phase1.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-phase1-visualizer:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FLUX_MODEL_PATH: /models/flux
+      HF_HOME: /models/hf_cache
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
+      PYTORCH_ENABLE_MPS_FALLBACK: "1"
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+      - p2p-models-flux:/models/flux
+      - p2p-models-cache:/models/hf_cache
+    profiles:
+      - phase1
+      - all
+
+  # ── Phase 2: Sculptor (TripoSR 2D→3D) ────────────────────────────────────
+  phase2-sculptor:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/phase2.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-phase2-sculptor:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TRIPOSR_MODEL_PATH: /models/triposr
+      U2NET_HOME: /models/u2net
+      HF_HOME: /models/hf_cache
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
+      PYTORCH_ENABLE_MPS_FALLBACK: "1"
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+      - p2p-models-triposr:/models/triposr
+      - p2p-models-u2net:/models/u2net
+      - p2p-models-cache:/models/hf_cache
+    profiles:
+      - phase2
+      - all
+
+  # ── Phase 3: Engineer (pymeshfix + trimesh, repair + scale) ──────────────
+  phase3-engineer:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/phase3.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-phase3-engineer:latest
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+    profiles:
+      - phase3
+      - all
+
+  # ── Phase 4: Slicer (CuraEngine) ─────────────────────────────────────────
+  phase4-slicer:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/phase4.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-phase4-slicer:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CURA_ENGINE_PATH: CuraEngine
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+    profiles:
+      - phase4
+      - all
+
+  # ── Phase 5: Operator (OctoPrint REST client) ─────────────────────────────
+  phase5-operator:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/phase5.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-phase5-operator:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Use host.docker.internal on macOS/Windows when OctoPrint runs on host.
+      # On Linux (native Docker), use the host's LAN IP or host-gateway.
+      OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+    profiles:
+      - phase5
+      - all
+
+  # ── Pipeline Runner (orchestrator — chains all phases) ────────────────────
+  # This is the primary entry point for end-to-end runs.
+  # It does NOT depend_on the phase services above (they are separate images
+  # for independent rebuilds). The pipeline-runner image contains all deps.
+  pipeline-runner:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/pipeline.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: p2p-mesh-pipeline:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FLUX_MODEL_PATH: /models/flux
+      TRIPOSR_MODEL_PATH: /models/triposr
+      U2NET_HOME: /models/u2net
+      HF_HOME: /models/hf_cache
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
+      PYTORCH_ENABLE_MPS_FALLBACK: "1"
+      CURA_ENGINE_PATH: CuraEngine
+      # On macOS/Windows, OctoPrint on the host is reached via host.docker.internal.
+      # Override in .env if your OctoPrint is at a different address.
+      OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
+    volumes:
+      - ./inputs:/app/inputs
+      - ./outputs:/app/outputs
+      - p2p-models-flux:/models/flux
+      - p2p-models-triposr:/models/triposr
+      - p2p-models-u2net:/models/u2net
+      - p2p-models-cache:/models/hf_cache
+    # Add extra_hosts so the container can reach OctoPrint on the host machine.
+    # This is needed on Linux; on macOS/Windows it works automatically.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+# Volumes persist across container restarts and docker compose down (unless --volumes).
+# Delete a model volume to force a fresh download:
+#   docker volume rm p2p-models-flux
+volumes:
+  # AI model weights — survive image rebuilds (see .gitignore: *.ckpt, *.safetensors)
+  p2p-models-flux:
+    name: p2p-models-flux
+  p2p-models-triposr:
+    name: p2p-models-triposr
+  p2p-models-u2net:
+    name: p2p-models-u2net
+  # Shared HuggingFace cache — avoids re-downloading tokenisers / configs
+  p2p-models-cache:
+    name: p2p-models-hf-cache

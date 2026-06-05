@@ -1,0 +1,46 @@
+# ────────────────────────────────────────────────────────────────────────────
+# docker-compose.gpu.yml — GPU override for NVIDIA-enabled hosts.
+#
+# This is a Compose override file. Merge with the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#       run --rm pipeline-runner "a ceramic vase" --print --start-print
+#
+# Requirements:
+#   - NVIDIA GPU driver installed on the host
+#   - NVIDIA Container Toolkit (nvidia-docker2) installed:
+#       https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   - CUDA-capable GPU (compute capability ≥ 6.0 recommended for FLUX/TripoSR)
+#
+# Notes:
+#   - Only phases 1 and 2 (visualizer + sculptor) are GPU-heavy.
+#     Phases 3–5 run fine on CPU and are not overridden here.
+#   - The pipeline-runner image also gets GPU access for full end-to-end runs.
+# ────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Phase 1: Visualizer — GPU enabled ─────────────────────────────────────
+  phase1-visualizer:
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      CUDA_VISIBLE_DEVICES: "0"
+      # Disable MPS fallback when a real CUDA GPU is available
+      PYTORCH_ENABLE_MPS_FALLBACK: "0"
+
+  # ── Phase 2: Sculptor — GPU enabled ───────────────────────────────────────
+  phase2-sculptor:
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      CUDA_VISIBLE_DEVICES: "0"
+      PYTORCH_ENABLE_MPS_FALLBACK: "0"
+
+  # ── Pipeline Runner — GPU enabled ─────────────────────────────────────────
+  pipeline-runner:
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      CUDA_VISIBLE_DEVICES: "0"
+      PYTORCH_ENABLE_MPS_FALLBACK: "0"

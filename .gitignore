@@ -27,9 +27,15 @@ build/
 # Conda / virtual environments
 env/
 venv/
-.env
 conda-env/
 *.conda
+
+# Docker secrets — .env.template is safe to commit, .env is NOT
+.env
+# (but NOT .env.template — that is intentionally committed)
+
+# Docker build cache and temp artifacts
+.dockerignore.tmp
 
 # macOS
 .DS_Store

@@ -29,6 +29,7 @@
     "retraction_amount": { "default_value": 6 },
     "roofing_layer_count": { "default_value": 0 },
     "flooring_layer_count": { "default_value": 0 },
+    "material_shrinkage_percentage": { "default_value": 100 },
     "material_shrinkage_percentage_xy": { "default_value": 100 },
     "material_shrinkage_percentage_z": { "default_value": 100 }
   }

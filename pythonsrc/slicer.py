@@ -146,7 +146,7 @@ class CuraSlicer:
 
         definition_paths = self._resolve_definitions()
 
-        cmd: list[str] = [self.cura_engine, "slice", "-d", str(self.DEFINITIONS_DIR)]
+        cmd: list[str] = [self.cura_engine, "slice"]
         for def_path in definition_paths:
             cmd += ["-j", def_path]
         cmd += ["-o", str(output_path), "-l", str(input_path)]
@@ -157,8 +157,18 @@ class CuraSlicer:
         logger.info("Slicing '%s' → '%s'…", input_path.name, output_path.name)
         logger.debug("Execution command length: %d parts", len(cmd))
 
+        # CuraEngine requires this env var to find fdmprinter.def.json
+        import os
+        env = os.environ.copy()
+        env["CURA_ENGINE_SEARCH_PATH"] = str(self.DEFINITIONS_DIR)
+
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
         except Exception as exc:
             raise SlicerError(f"Failed to execute CuraEngine subprocess: {exc}") from exc
 
