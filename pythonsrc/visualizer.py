@@ -26,11 +26,14 @@ def _setup_logging(verbose: bool = False) -> None:
 
 def get_device():
     if torch.cuda.is_available():
-        return "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and \
+         torch.backends.mps.is_available():
+        device = "mps"
     else:
-        return "cpu"
+        device = "cpu"
+    print(f"[P2P] Phase 1 device: {device}")
+    return device
 
 
 class Visualizer:
