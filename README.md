@@ -100,16 +100,46 @@ CuraEngine uses the bundled `fdmprinter.def.json` (base) + `ender3_base.def.json
 
 ## 🛣️ Roadmap
 
+## 🛣️ Roadmap
+
+### ✅ Completed — Proof of Concept
+
 - [x] **Phase 1: Visualizer** — Text-to-image blueprinting (FLUX.2-klein-4B, MPS acceleration)
 - [x] **Phase 2: Sculptor** — Neural 3D reconstruction & Taubin smoothing (TripoSR)
 - [x] **Phase 3: Engineer** — Automated mesh repair, scaling & orientation (pymeshfix)
 - [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
 - [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job control
-- [x] **Dockerization** — Containerize the full pipeline for cloud deployment (Ubuntu 22.04 target, CuraEngine via apt)
-- [ ] **Phase 5: Monitor** — Real-time print telemetry and failure detection
-- [ ] **Web UI** — Minimal FastAPI + frontend for non-CLI usage
-- [ ] **Multi-printer profile registry** — Plugin-style printer profile management
-- [ ] **Physical printer validation** — Real hardware end-to-end test (USB serial connection)
+- [x] **Dockerization** — Full pipeline containerization (Ubuntu 22.04, CuraEngine via apt)
+
+---
+
+### 🔨 In Progress — MVP Foundation
+
+- [ ] **API Layer** — FastAPI async job server with SQLite-backed job queue, UUID tracking, and status/download endpoints
+- [ ] **Klipper/Moonraker integration** — WebSocket client for real-time state subscription; Moonraker REST operator to replace/extend OctoPrint operator
+- [ ] **Telemetry schema v1** — Structured failure-event data model (Z-height, temp deviation, extrusion delta, G-code line, timestamp) defined before UI work begins
+- [ ] **Telemetry collector** — Background WebSocket consumer writing structured telemetry to SQLite; per-job event log
+
+---
+
+### 📋 Planned — MVP
+
+- [ ] **Web UI** — React SPA (Vite) served by FastAPI; job submission, phase progress, preview of blueprint and mesh, print status
+- [ ] **Printer setup wizard** — Onboarding flow: printer firmware detection, profile selection, connection test, first-print walkthrough
+- [ ] **Multi-printer profile registry** — Plugin-style profile management supporting Klipper, OctoPrint, and static printer definitions; community-importable
+- [ ] **Slicer abstraction layer** — Pluggable slicer backend (CuraEngine, PrusaSlicer CLI, OrcaSlicer CLI) selectable per printer profile
+- [ ] **Bambu Labs adapter** — MQTT-based operator for Bambu X1/P1 series (proprietary protocol); highest-volume new printer segment
+- [ ] **Phase 5: Monitor** — Real-time failure detection using collected telemetry signatures; alert + optional pause-on-anomaly via Klipper pause API
+
+---
+
+### 🔭 Future
+
+- [ ] **Local agent (Rust)** — Lightweight native bridge for mDNS printer discovery and direct G-code streaming; complements web UI without requiring full desktop app
+- [ ] **Physical printer validation** — End-to-end hardware test suite across Ender 3, Bambu X1C, and Prusa MK4
+- [ ] **Dataset pipeline** — Labeled failure-event export tooling; basis for supervised failure-prediction model
+- [ ] **Model quality gate** — Automated TripoSR output scoring (mesh validity, printability heuristics) before job proceeds to slicing
+- [ ] **User accounts + multi-tenant** — Auth layer (OAuth2/JWT), per-user job history, telemetry namespacing for B2B SaaS deployment
 
 ---
 
