@@ -1,0 +1,183 @@
+import asyncio
+import logging
+import os
+import uuid
+from collections import deque
+from datetime import datetime, timezone
+from typing import Optional, Dict, List
+
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import TelemetrySample, FailureEvent
+from pythonsrc.operators.base import BasePrinterOperator
+
+logger = logging.getLogger(__name__)
+
+class AnomalyDetector:
+    """
+    Detector that consumes TelemetrySample objects from a queue and applies
+    rule-based anomaly detection.
+    
+    Firmware applicability:
+    - Rule 1 (Thermal runaway): Klipper + OctoPrint
+    - Rule 2 (Extrusion stall): Klipper only (requires gcode_line)
+    - Rule 3 (Layer shift): Klipper + OctoPrint
+    - Rule 4 (Bed adhesion): Klipper + OctoPrint
+    """
+
+    def __init__(self, queue: asyncio.Queue, db: TelemetryDB, operator: Optional[BasePrinterOperator]):
+        self.queue = queue
+        self.db = db
+        self.operator = operator
+        self._history: Dict[str, deque] = {}
+        self._state_cache: Dict[str, dict] = {}
+        # Keep track of already triggered events for a job to prevent spamming
+        self._triggered: Dict[str, set] = {}
+
+    async def _get_state_and_progress(self, job_id: str) -> tuple[str, float]:
+        """Fetch current state and progress, with caching to avoid spamming."""
+        cache = self._state_cache.setdefault(job_id, {"time": 0, "state": "printing", "progress": 0.0, "prev_state": "printing"})
+        now = asyncio.get_event_loop().time()
+        
+        # Determine state from DB outcome first
+        job = self.db.get_job(job_id)
+        if job:
+            if job.outcome == "failure":
+                cache["state"] = "error"
+            elif job.outcome == "cancelled":
+                cache["state"] = "cancelled"
+            elif job.outcome == "success":
+                cache["state"] = "success"
+
+        # Update from operator every 2 seconds
+        if now - cache["time"] > 2.0 and self.operator:
+            cache["time"] = now
+            try:
+                from pythonsrc.operators.moonraker_operator import MoonrakerOperator
+                from pythonsrc.operators.octoprint_operator import OctoPrintOperator
+                
+                if isinstance(self.operator, MoonrakerOperator):
+                    st = await asyncio.to_thread(self.operator.get_printer_state)
+                    state_text = st.get("state", "").lower()
+                    if state_text in ("printing", "error", "cancelled", "complete"):
+                        if state_text == "complete":
+                            cache["state"] = "success"
+                        else:
+                            cache["state"] = state_text
+                    cache["progress"] = st.get("progress", 0.0) * 100.0
+                elif isinstance(self.operator, OctoPrintOperator):
+                    st = await asyncio.to_thread(self.operator.get_printer_state)
+                    flags = st.get("state", {}).get("flags", {})
+                    if flags.get("error") or flags.get("closedOrError"):
+                        cache["state"] = "error"
+                    
+                    job_st = await asyncio.to_thread(self.operator.get_job_status)
+                    cache["progress"] = job_st.get("progress", {}).get("completion", 0.0) or 0.0
+            except Exception as e:
+                logger.debug(f"Failed to fetch operator state: {e}")
+                
+        return cache["state"], cache["progress"]
+
+    def _trigger_failure(self, job_id: str, sample: TelemetrySample, failure_type: str, history: List[TelemetrySample]) -> None:
+        """Helper to create and insert a FailureEvent, and optionally pause."""
+        triggered_set = self._triggered.setdefault(job_id, set())
+        if failure_type in triggered_set:
+            return  # Already triggered this type of failure for this job
+
+        logger.warning(f"Anomaly detected! Job {job_id}, Type: {failure_type}")
+        
+        event = FailureEvent(
+            event_id=str(uuid.uuid4()),
+            job_id=job_id,
+            detected_at=datetime.now(timezone.utc),
+            gcode_line=sample.gcode_line,
+            z_height_mm=sample.z_height_mm,
+            failure_type=failure_type,  # type: ignore
+            source="automated",
+            notes=f"Triggered by rule {failure_type}",
+            snapshot=[s.to_dict() for s in history]
+        )
+        self.db.insert_failure_event(event)
+        triggered_set.add(failure_type)
+        
+        # Check environment var for pause
+        if os.environ.get("PAUSE_ON_FAILURE", "false").lower() == "true":
+            if self.operator:
+                logger.info(f"PAUSE_ON_FAILURE is true. Pausing print {job_id}...")
+                try:
+                    # using to_thread since pause_print is sync
+                    asyncio.create_task(asyncio.to_thread(self.operator.pause_print))
+                except Exception as e:
+                    logger.error(f"Failed to pause print: {e}")
+
+    async def run(self) -> None:
+        """Consume the queue and evaluate rules until cancelled."""
+        try:
+            while True:
+                sample: TelemetrySample = await self.queue.get()
+                job_id = sample.job_id
+                
+                if job_id not in self._history:
+                    self._history[job_id] = deque(maxlen=20)
+                
+                history = self._history[job_id]
+                history.append(sample)
+                
+                await self._evaluate_rules(job_id, list(history))
+                self.queue.task_done()
+        except asyncio.CancelledError:
+            pass
+
+    async def _evaluate_rules(self, job_id: str, history: List[TelemetrySample]) -> None:
+        if not history:
+            return
+            
+        current = history[-1]
+        state, progress = await self._get_state_and_progress(job_id)
+        
+        # Rule 1: Thermal runaway
+        # Condition: hotend_target > 150°C AND hotend_actual < (hotend_target - 25°C) for 5 consecutive samples
+        if len(history) >= 5:
+            thermal_runaway = True
+            for s in history[-5:]:
+                if s.hotend_target_c is None or s.hotend_actual_c is None:
+                    thermal_runaway = False
+                    break
+                if s.hotend_target_c <= 150 or s.hotend_actual_c >= (s.hotend_target_c - 25):
+                    thermal_runaway = False
+                    break
+            if thermal_runaway:
+                self._trigger_failure(job_id, current, "thermal_runaway", history[-5:])
+
+        # Rule 2: Extrusion stall (clog proxy)
+        # Condition: print progress > 5% AND gcode_line not incrementing across 10 consecutive samples while state = "printing"
+        if len(history) >= 10 and state == "printing" and progress > 5.0:
+            clog = True
+            first_line = history[-10].gcode_line
+            if first_line is None:
+                clog = False
+            else:
+                for s in history[-10:]:
+                    if s.gcode_line is None or s.gcode_line != first_line:
+                        clog = False
+                        break
+            if clog:
+                self._trigger_failure(job_id, current, "clog", history[-10:])
+
+        # Rule 3: Layer shift (Z regression)
+        # Condition: z_height_mm decreases by > 0.5mm between consecutive samples
+        if len(history) >= 2:
+            prev = history[-2]
+            if prev.z_height_mm is not None and current.z_height_mm is not None:
+                if (prev.z_height_mm - current.z_height_mm) > 0.5:
+                    self._trigger_failure(job_id, current, "layer_shift", history[-2:])
+
+        # Rule 4: Bed adhesion (early Z + low progress)
+        # Condition: z_height_mm < 1.0mm AND print progress < 10% AND state transitions from "printing" to "error" or "cancelled"
+        cache = self._state_cache.get(job_id, {})
+        prev_state = cache.get("prev_state", "printing")
+        if current.z_height_mm is not None and current.z_height_mm < 1.0 and progress < 10.0:
+            if prev_state == "printing" and state in ("error", "cancelled"):
+                self._trigger_failure(job_id, current, "adhesion", history[-1:])
+                
+        # Update prev_state
+        cache["prev_state"] = state

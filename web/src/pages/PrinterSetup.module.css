@@ -1,0 +1,38 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.iconWrapper {
+  background-color: #f0f0f0;
+  color: var(--text-secondary);
+  padding: 1.5rem;
+  border-radius: 50%;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0 0 1rem 0;
+}
+
+.description {
+  color: var(--text-secondary);
+  max-width: 500px;
+  line-height: 1.6;
+}

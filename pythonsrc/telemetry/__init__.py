@@ -1,0 +1,1 @@
+"""Telemetry schema module."""

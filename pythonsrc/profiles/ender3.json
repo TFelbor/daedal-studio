@@ -1,4 +1,7 @@
 {
+  "firmware": "octoprint",
+  "base_url": "http://localhost:5001",
+  "api_key": null,
   "machine_name": "Ender 3",
   "machine_width": 220,
   "machine_depth": 220,
