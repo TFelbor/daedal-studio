@@ -15,7 +15,7 @@ COPY server/ ./server/
 COPY --from=web-builder /app/dist ./web/dist
 
 # If pipeline.py relies on config.py we'll bootstrap it just in case, but let's stick to the minimal.
-COPY docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
 RUN chmod +x /usr/local/bin/p2p-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/p2p-entrypoint"]

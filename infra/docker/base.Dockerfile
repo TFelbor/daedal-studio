@@ -9,7 +9,7 @@
 #   - WORKDIR /app with pythonsrc copied in
 #
 # Usage (standalone build):
-#   docker build -f docker/base.Dockerfile -t p2p-base .
+#   docker build -f infra/docker/base.Dockerfile -t p2p-base .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM --platform=linux/amd64 ubuntu:22.04
@@ -70,7 +70,7 @@ COPY pythonsrc/ ./pythonsrc/
 COPY requirements.txt ./requirements.txt
 
 # ── Entrypoint script ───────────────────────────────────────────────────────────────
-COPY docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
 RUN chmod +x /usr/local/bin/p2p-entrypoint
 
 # ── Create I/O directories ────────────────────────────────────────────────────

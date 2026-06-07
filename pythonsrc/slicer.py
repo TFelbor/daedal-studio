@@ -6,8 +6,8 @@ by calling the CuraEngine CLI as a subprocess with bundled definition files.
 
 Usage (standalone):
     python pythonsrc/slicer.py \\
-        --input outputs/engineered_mesh.obj \\
-        --output outputs/engineered_mesh.gcode \\
+        --input data/outputs/engineered_mesh.obj \\
+        --output data/outputs/engineered_mesh.gcode \\
         --engine CuraEngine
 """
 

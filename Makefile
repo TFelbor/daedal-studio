@@ -64,11 +64,11 @@ pipeline-gpu:
 
 # Run default test suite (unit + mocked integration, no real printer)
 test:
-	pytest tests/ -v
+	python -m pytest tests/ -v
 
 # Run slow tests (requires real/simulated printers)
 test-slow:
-	pytest tests/ -v -m "slow and real_printer"
+	python -m pytest tests/ -v -m "slow and real_printer"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 

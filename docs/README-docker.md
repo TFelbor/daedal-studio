@@ -42,21 +42,24 @@ Docker on Mac will use CPU and take approximately 84 minutes.
 
 The recommended workflow on Mac:
 
-# Step 1 — Run Phase 1 natively (MPS accelerated, ~30 seconds)
-./run_phase1_native.sh "a ceramic vase"
+    # Step 1 — Run Phase 1 natively (MPS accelerated, ~30 seconds)
+    bash infra/scripts/run_phase1_native.sh "a ceramic vase"
+    # Or via Makefile:
+    make phase1-native PROMPT="a ceramic vase"
 
-# Step 2 — Run Phases 2-5 in Docker (~5 minutes)
-docker compose run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --skip-visualizer --blueprint /app/inputs/blueprint.png \
-    --print --start-print --verbose
+    # Step 2 — Run Phases 2-5 in Docker (~5 minutes)
+    docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
+        python pythonsrc/pipeline.py "a ceramic vase" \
+        --skip-visualizer --blueprint /app/inputs/blueprint.png \
+        --print --start-print --verbose
 
 On a Linux server with an NVIDIA GPU, the full pipeline can run
 inside Docker using the GPU override:
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
-    run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --print --start-print --verbose
+
+    docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
+        run --rm pipeline-runner \
+        python pythonsrc/pipeline.py "a ceramic vase" \
+        --print --start-print --verbose
 
 ---
 
@@ -64,19 +67,24 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
 
 ```
 p2p-mesh/
-├── docker/
-│   ├── base.Dockerfile          ← shared Python 3.10 + system libs layer
-│   ├── phase1.Dockerfile        ← FLUX.2-klein-4B (text-to-image)
-│   ├── phase2.Dockerfile        ← TripoSR (2D → 3D reconstruction)
-│   ├── phase3.Dockerfile        ← pymeshfix + trimesh (repair + scale)
-│   ├── phase4.Dockerfile        ← CuraEngine apt install (.obj → .gcode)
-│   ├── phase5.Dockerfile        ← requests only (OctoPrint REST client)
-│   ├── pipeline.Dockerfile      ← all-in-one runner (chains phases 1–5)
-│   └── entrypoint.sh            ← bootstraps config.py from template
-├── docker-compose.yml           ← primary dev interface
-├── docker-compose.gpu.yml       ← NVIDIA GPU override (compose merge)
-├── .env.template                ← copy to .env and fill in your values
-└── README-docker.md             ← this file
+├── infra/
+│   ├── docker/
+│   │   ├── base.Dockerfile          ← shared Python 3.10 + system libs layer
+│   │   ├── phase1.Dockerfile        ← FLUX.2-klein-4B (text-to-image)
+│   │   ├── phase2.Dockerfile        ← TripoSR (2D → 3D reconstruction)
+│   │   ├── phase3.Dockerfile        ← pymeshfix + trimesh (repair + scale)
+│   │   ├── phase4.Dockerfile        ← CuraEngine apt install (.obj → .gcode)
+│   │   ├── phase5.Dockerfile        ← requests only (OctoPrint REST client)
+│   │   ├── pipeline.Dockerfile      ← all-in-one runner (chains phases 1–5)
+│   │   └── entrypoint.sh            ← bootstraps config.py from template
+│   ├── docker-compose.yml           ← primary dev interface
+│   ├── docker-compose.gpu.yml       ← NVIDIA GPU override (compose merge)
+│   └── scripts/
+│       └── run_phase1_native.sh     ← Phase 1 native runner (macOS MPS)
+├── .env.template                    ← copy to .env and fill in your values
+├── Makefile                         ← convenience targets (build, up, test, etc.)
+└── docs/
+    └── README-docker.md             ← this file
 ```
 
 **Build order for standalone phase images:**
@@ -102,25 +110,27 @@ cp .env.template .env
 The individual phase images all `FROM p2p-base:latest`. Build it once:
 
 ```bash
-docker build -f docker/base.Dockerfile -t p2p-base:latest .
+docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
 ```
 
 ### Step 3 — Build all service images
 
 ```bash
-docker compose build
+docker compose -f infra/docker-compose.yml build
+# Or via Makefile:
+make build
 ```
 
 ### Step 4 — Run the full pipeline
 
 ```bash
-docker compose run --rm pipeline-runner \
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
     python pythonsrc/pipeline.py "a ceramic vase" \
     --print --start-print --verbose
 ```
 
 > **macOS / Windows note:** OctoPrint on the host machine is accessed via
-> `host.docker.internal`. This is pre-configured in `docker-compose.yml`.
+> `host.docker.internal`. This is pre-configured in `infra/docker-compose.yml`.
 > Linux users: set `OCTOPRINT_URL=http://YOUR_HOST_IP:5001` in `.env`.
 
 ---
@@ -132,7 +142,7 @@ Use skip flags to fast-iterate on a specific phase without re-running expensive 
 ### Skip Phase 1 — reuse an existing blueprint image
 
 ```bash
-docker compose run --rm pipeline-runner \
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
     python pythonsrc/pipeline.py "prompt" \
     --skip-visualizer --blueprint /app/inputs/blueprint.png \
     --print --start-print
@@ -141,7 +151,7 @@ docker compose run --rm pipeline-runner \
 ### Skip Phases 1 and 2 — start from an existing mesh
 
 ```bash
-docker compose run --rm pipeline-runner \
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
     python pythonsrc/pipeline.py \
     --skip-visualizer --skip-sculptor \
     --mesh /app/outputs/raw_mesh.obj \
@@ -151,7 +161,7 @@ docker compose run --rm pipeline-runner \
 ### Mesh-only run (no printing — stop after Phase 3)
 
 ```bash
-docker compose run --rm pipeline-runner \
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
     python pythonsrc/pipeline.py "a sphere" \
     --skip-visualizer --mesh /app/outputs/raw_mesh.obj
 ```
@@ -177,9 +187,11 @@ acceleration for Phases 1 (FLUX) and 2 (TripoSR):
 ### Run with GPU
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
     run --rm pipeline-runner \
     python pythonsrc/pipeline.py "a sphere" --print --start-print
+# Or via Makefile:
+make pipeline-gpu PROMPT="a sphere"
 ```
 
 The GPU override file sets `runtime: nvidia` and `CUDA_VISIBLE_DEVICES=0`
@@ -221,8 +233,8 @@ Build and run a single phase for development and testing:
 
 ```bash
 # Build standalone phase image
-docker build -f docker/base.Dockerfile -t p2p-base:latest .
-docker build -f docker/phase1.Dockerfile -t p2p-phase1-visualizer:latest .
+docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
+docker build -f infra/docker/phase1.Dockerfile -t p2p-phase1-visualizer:latest .
 
 # Run
 docker run --rm \
@@ -238,7 +250,7 @@ docker run --rm \
 ### Phase 2 — Sculptor (2D → 3D)
 
 ```bash
-docker build -f docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .
+docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .
 
 docker run --rm \
     -v p2p-models-triposr:/models/triposr \
@@ -253,7 +265,7 @@ docker run --rm \
 ### Phase 3 — Engineer (mesh repair + scale)
 
 ```bash
-docker build -f docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
+docker build -f infra/docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
 
 docker run --rm \
     -v p2p-outputs:/app/outputs \
@@ -266,7 +278,7 @@ docker run --rm \
 ### Phase 4 — Slicer (CuraEngine)
 
 ```bash
-docker build -f docker/phase4.Dockerfile -t p2p-phase4-slicer:latest .
+docker build -f infra/docker/phase4.Dockerfile -t p2p-phase4-slicer:latest .
 
 docker run --rm \
     -v p2p-outputs:/app/outputs \
@@ -278,7 +290,7 @@ docker run --rm \
 ### Phase 5 — Operator (OctoPrint)
 
 ```bash
-docker build -f docker/phase5.Dockerfile -t p2p-phase5-operator:latest .
+docker build -f infra/docker/phase5.Dockerfile -t p2p-phase5-operator:latest .
 
 docker run --rm \
     -v p2p-outputs:/app/outputs \
@@ -296,12 +308,13 @@ docker run --rm \
 ## 8. Volume Reference
 
 | Volume Name | Mount Point | Contents |
-|-------------|------------|---------|
+|-------------|------------|---------| 
 | `p2p-models-flux` | `/models/flux` | FLUX.2-klein-4B weights (downloaded on first run) |
 | `p2p-models-triposr` | `/models/triposr` | TripoSR weights |
 | `p2p-models-hf-cache` | `/models/hf_cache` | HuggingFace hub cache (tokenisers, configs) |
 | `p2p-inputs` | `/app/inputs` | Blueprint images (input to pipeline) |
 | `p2p-outputs` | `/app/outputs` | Meshes, G-code (output from pipeline) |
+| `p2p-telemetry` | `/app/telemetry` | SQLite telemetry database (persists between restarts) |
 
 ### Managing volumes
 
@@ -323,9 +336,9 @@ docker volume rm p2p-models-flux p2p-models-triposr p2p-inputs p2p-outputs
 
 To swap TripoSR for a new 3D reconstruction model:
 
-1. Edit `docker/phase2.Dockerfile` — update the pip installs and model path.
+1. Edit `infra/docker/phase2.Dockerfile` — update the pip installs and model path.
 2. Delete the old volume: `docker volume rm p2p-models-triposr`
-3. Rebuild: `docker build -f docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .`
+3. Rebuild: `docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .`
 4. The pipeline-runner image also needs rebuilding if you changed phase2's Python deps.
 
 ---
@@ -356,27 +369,27 @@ One of the core design goals is **swap-ability**: changing one phase should not 
 
 ```bash
 # Rebuild the individual phase image
-docker compose build phase3-engineer
+docker compose -f infra/docker-compose.yml build phase3-engineer
 
 # Or rebuild standalone
-docker build -f docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
+docker build -f infra/docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
 ```
 
 ### Rebuild the pipeline runner after changing phase deps
 
 ```bash
-docker compose build pipeline-runner
+docker compose -f infra/docker-compose.yml build pipeline-runner
 
 # Or standalone
-docker build -f docker/pipeline.Dockerfile -t p2p-mesh-pipeline:latest .
+docker build -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline:latest .
 ```
 
 ### Rebuild base (affects all phases)
 
 ```bash
-docker build -f docker/base.Dockerfile -t p2p-base:latest .
+docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
 # Then rebuild all phases
-docker compose build
+docker compose -f infra/docker-compose.yml build
 ```
 
 ---
@@ -391,7 +404,7 @@ docker compose build
 
 ```bash
 # Manually copy inside the container
-docker compose run --rm pipeline-runner \
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
     cp pythonsrc/config.template.py pythonsrc/config.py
 ```
 
@@ -407,7 +420,7 @@ Or mount a pre-filled `config.py`:
 
 **Fix:**
 
-1. Verify the package installed: `docker compose run --rm phase4-slicer which CuraEngine`
+1. Verify the package installed: `docker compose -f infra/docker-compose.yml run --rm phase4-slicer which CuraEngine`
 2. If missing, try the lowercase variant: `CURA_ENGINE_PATH=curaengine`
 3. Check `apt-get install curaengine` output in the build log.
 

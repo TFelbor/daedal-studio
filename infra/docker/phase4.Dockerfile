@@ -10,7 +10,7 @@
 # CURA_ENGINE_PATH env var overrides this at runtime if needed.
 #
 # Build (standalone):
-#   docker build -f docker/phase4.Dockerfile -t p2p-phase4-slicer .
+#   docker build -f infra/docker/phase4.Dockerfile -t p2p-phase4-slicer .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM p2p-base:latest AS phase4-slicer

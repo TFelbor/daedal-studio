@@ -44,7 +44,8 @@ pythonsrc/models/
 *.pt
 *.pth
 
-# Pipeline I/O (these are runtime artifacts, not source)
+# Pipeline I/O (runtime artifacts — stored in data/ and mounted as volumes)
+data/
 inputs/
 outputs/
 pythonsrc/inputs/
@@ -62,3 +63,7 @@ pythonsrc/outputs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Node.js (web frontend build artifacts only — source needed for multi-stage build)
+web/node_modules/
+web/dist/

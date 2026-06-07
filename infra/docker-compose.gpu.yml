@@ -3,14 +3,14 @@
 #
 # This is a Compose override file. Merge with the base compose file:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
 #       run --rm pipeline-runner "a ceramic vase" --print --start-print
 #
 # Requirements:
 #   - NVIDIA GPU driver installed on the host
 #   - NVIDIA Container Toolkit (nvidia-docker2) installed:
 #       https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-#   - CUDA-capable GPU (compute capability ≥ 6.0 recommended for FLUX/TripoSR)
+#   - CUDA-capable GPU (compute capability >= 6.0 recommended for FLUX/TripoSR)
 #
 # Notes:
 #   - Only phases 1 and 2 (visualizer + sculptor) are GPU-heavy.

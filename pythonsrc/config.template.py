@@ -82,5 +82,6 @@ TRIPOSR_MODEL_PATH: str = os.environ.get(
 # Always relative to repo root (/app in Docker)
 # Override via environment variables for custom deployments
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INPUTS_DIR  = os.environ.get("P2P_INPUTS_DIR",  os.path.join(BASE_DIR, "inputs"))
-OUTPUTS_DIR = os.environ.get("P2P_OUTPUTS_DIR", os.path.join(BASE_DIR, "outputs"))
+INPUTS_DIR  = os.environ.get("P2P_INPUTS_DIR",  os.path.join(BASE_DIR, "data", "inputs"))
+OUTPUTS_DIR = os.environ.get("P2P_OUTPUTS_DIR", os.path.join(BASE_DIR, "data", "outputs"))
+

@@ -171,12 +171,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--blueprint",
         default=os.path.join(INPUTS_DIR, "blueprint.png"),
-        help="Path to the input blueprint image (default: inputs/blueprint.png)",
+        help="Path to the input blueprint image (default: data/inputs/blueprint.png)",
     )
     parser.add_argument(
         "--output",
         default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"),
-        help="Path for the output mesh (default: outputs/test_mesh.obj)",
+        help="Path for the output mesh (default: data/outputs/test_mesh.obj)",
     )
     parser.add_argument(
         "--faces",

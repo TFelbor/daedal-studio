@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
 import styles from './PrinterSetup.module.css';

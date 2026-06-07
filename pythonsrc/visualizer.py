@@ -106,7 +106,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         default=os.path.join(INPUTS_DIR, "blueprint.png"),
-        help="Output image path (default: inputs/blueprint.png)",
+        help="Output image path (default: data/inputs/blueprint.png)",
     )
     parser.add_argument("--steps", type=int, default=2, help="Diffusion inference steps (default: 2)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")

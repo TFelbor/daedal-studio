@@ -8,7 +8,7 @@
 #     /models/flux and downloaded on first run.
 #
 # Build (standalone):
-#   docker build -f docker/phase1.Dockerfile -t p2p-phase1-visualizer .
+#   docker build -f infra/docker/phase1.Dockerfile -t p2p-phase1-visualizer .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM p2p-base:latest AS phase1-visualizer

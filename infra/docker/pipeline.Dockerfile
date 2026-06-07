@@ -14,7 +14,7 @@
 #     and this pipeline.Dockerfile; the others stay untouched.
 #
 # Build (standalone):
-#   docker build -f docker/pipeline.Dockerfile -t p2p-mesh-pipeline .
+#   docker build -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM p2p-base:latest AS pipeline-runner
@@ -100,7 +100,7 @@ RUN pip install --no-cache-dir \
 # Bootstraps config.py from config.template.py on first run (config.py is
 # gitignored and not present on a clean image build).
 COPY pythonsrc/ ./pythonsrc/
-COPY docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
 RUN chmod +x /usr/local/bin/p2p-entrypoint
 
 # ── Entry point ───────────────────────────────────────────────────────────────

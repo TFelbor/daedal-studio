@@ -10,7 +10,7 @@
 # No GPU needed — all mesh processing is CPU-bound.
 #
 # Build (standalone):
-#   docker build -f docker/phase3.Dockerfile -t p2p-phase3-engineer .
+#   docker build -f infra/docker/phase3.Dockerfile -t p2p-phase3-engineer .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM p2p-base:latest AS phase3-engineer

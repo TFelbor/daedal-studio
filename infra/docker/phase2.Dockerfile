@@ -12,7 +12,7 @@
 # /models/triposr and expected to be pre-populated or downloaded on first run.
 #
 # Build (standalone):
-#   docker build -f docker/phase2.Dockerfile -t p2p-phase2-sculptor .
+#   docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM p2p-base:latest AS phase2-sculptor

@@ -8,17 +8,17 @@ without requiring Phases 1 (Visualizer) or 2 (Sculptor) to have run.
 Usage:
     # With a pre-sliced .gcode file:
     python pythonsrc/test_integration.py \
-        --gcode outputs/engineered_mesh.gcode \
+        --gcode data/outputs/engineered_mesh.gcode \
         --key MY_OCTOPRINT_API_KEY
 
     # Slice a .obj first, then upload:
     python pythonsrc/test_integration.py \
-        --slice-input outputs/engineered_mesh.obj \
+        --slice-input data/outputs/engineered_mesh.obj \
         --key MY_OCTOPRINT_API_KEY
 
     # Upload and start printing:
     python pythonsrc/test_integration.py \
-        --gcode outputs/engineered_mesh.gcode \
+        --gcode data/outputs/engineered_mesh.gcode \
         --key MY_OCTOPRINT_API_KEY --start
 """
 
@@ -112,7 +112,7 @@ def main() -> None:
         # ── Step 2: Connect to OctoPrint ─────────────────────────────────
         logger.info("━━━ Step 2: Connecting to OctoPrint at %s ━━━", OCTOPRINT_URL)
 
-        from operator_phase import OctoPrintOperator
+        from pythonsrc.operators import OctoPrintOperator
 
         op = OctoPrintOperator(base_url=OCTOPRINT_URL, api_key=args.key)
 

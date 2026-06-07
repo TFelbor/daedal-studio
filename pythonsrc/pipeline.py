@@ -26,10 +26,12 @@ import os
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import argparse
+import json
 import logging
 import sys
 import time
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
@@ -46,6 +48,29 @@ _PHASE_NAMES = {
     5: "Operator",
 }
 
+CURRENT_JOB_ID = None
+
+def _write_status(phase_num: int, status: str, error: str = None) -> None:
+    if not CURRENT_JOB_ID:
+        return
+    log_dir = Path.home() / ".p2p-mesh" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    status_file = log_dir / f"{CURRENT_JOB_ID}.status"
+    
+    name = _PHASE_NAMES.get(phase_num, "unknown").lower()
+    record = {
+        "phase": phase_num,
+        "name": name,
+        "status": status,
+        "ts": datetime.now(timezone.utc).isoformat()
+    }
+    if error is not None:
+        record["error"] = error
+        
+    with open(status_file, "a") as f:
+        f.write(json.dumps(record) + "\n")
+        f.flush()
+
 
 def _phase_start(phase_num: int) -> float:
     """Print a phase start banner and return the start timestamp."""
@@ -61,6 +86,7 @@ def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> Non
     out_info = f" (output: {output_path})" if output_path else ""
     print(f"[P2P] ═══ PHASE {phase_num} PASS  ✓{out_info} ═══", flush=True)
     print(f"[P2P] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
+    _write_status(phase_num, "complete")
 
 
 def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
@@ -72,6 +98,7 @@ def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
     print(f"[P2P] ERROR: {exc}", flush=True)
     print(f"[P2P] TRACEBACK:", flush=True)
     traceback.print_exc()
+    _write_status(phase_num, "error", str(exc))
     sys.exit(1)
 
 
@@ -110,7 +137,7 @@ def run(args: argparse.Namespace) -> None:
                 "[P2P]     MPS (Apple Silicon GPU) is NOT accessible from inside\n"
                 "[P2P]     a Docker container. This will run on CPU and take ~84min.\n"
                 "[P2P]     RECOMMENDED: Run Phase 1 natively on Mac instead:\n"
-                "[P2P]       ./run_phase1_native.sh \"your prompt\"\n"
+                "[P2P]       bash infra/scripts/run_phase1_native.sh \"your prompt\"\n"
                 "[P2P]     Then use --skip-visualizer for the Docker run.\n"
             )
 
@@ -193,27 +220,40 @@ def run(args: argparse.Namespace) -> None:
     if args.print:
         t0 = _phase_start(5)
         try:
-            from operator_phase import OctoPrintOperator
+            from pythonsrc.operators import PrinterFactory
 
-            op = OctoPrintOperator(
-                base_url=args.octoprint_url,
-                api_key=args.octoprint_key,
+            # Load profile for printer settings
+            profile_path = args.profile or "pythonsrc/profiles/ender3.json"
+            with open(profile_path, "r") as f:
+                profile_data = json.load(f)
+            
+            firmware = profile_data.get("firmware", "octoprint")
+            base_url = profile_data.get("base_url", "http://localhost:5001")
+            # CLI args override profile
+            if args.octoprint_url != "http://localhost:5001":
+                base_url = args.octoprint_url
+            api_key = args.octoprint_key if args.octoprint_key else profile_data.get("api_key")
+
+            op = PrinterFactory.create(
+                firmware=firmware,
+                base_url=base_url,
+                api_key=api_key,
             )
 
             # Ensure printer is connected and operational before upload
-            logger.info("Checking printer state…")
-            op.ensure_operational(auto_connect_port="VIRTUAL")
+            logger.info(f"Connecting to {firmware} printer…")
+            op.connect()
 
-            upload_result = op.upload_file(
-                gcode_path,
-                select=True,   # select the file so OctoPrint knows what to print
-                start=False,   # we control start separately for pre-flight logging
+            logger.info("Uploading G-code…")
+            op.upload_file(
+                str(gcode_path),
+                gcode_path.name
             )
-            logger.info("Upload complete — file selected in OctoPrint.")
+            logger.info(f"Upload complete — file available on {firmware}.")
 
             if args.start_print:
                 logger.info("Starting print job…")
-                op.start_print()
+                op.start_print(gcode_path.name)
 
             _phase_pass(5, t0, str(gcode_path))
         except Exception as exc:
@@ -250,9 +290,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Paths
     paths = parser.add_argument_group("paths")
-    paths.add_argument("--workspace", default=".", metavar="DIR", help="Project root (inputs/ and outputs/ live here)")
+    paths.add_argument("--workspace", default=".", metavar="DIR", help="Project root (data/inputs/ and data/outputs/ live here)")
     paths.add_argument("--blueprint", metavar="PATH", help="Override blueprint image path")
     paths.add_argument("--mesh", metavar="PATH", help="Override raw mesh path")
+    
+    # Telemetry
+    telemetry = parser.add_argument_group("telemetry")
+    telemetry.add_argument("--job-id", metavar="ID", help="Telemetry Job ID for status reporting")
 
     # Phase 1 options
     p1 = parser.add_argument_group("Phase 1 — Visualizer")
@@ -298,5 +342,7 @@ def _build_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = _build_parser()
     args = parser.parse_args()
+    if args.job_id:
+        CURRENT_JOB_ID = args.job_id
     _setup_logging(args.verbose)
     run(args)

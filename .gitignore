@@ -1,7 +1,10 @@
 # Personal config — contains secrets and machine-specific paths
 pythonsrc/config.py
 
-# Pipeline outputs — not part of source
+# Runtime data — gitignored, not part of source
+data/inputs/
+data/outputs/
+# Legacy paths (kept for backward compatibility during transition)
 outputs/
 inputs/
 
@@ -23,6 +26,7 @@ __pycache__/
 dist/
 build/
 .eggs/
+.pytest_cache/
 
 # Conda / virtual environments
 env/
@@ -43,10 +47,22 @@ conda-env/
 
 # Logs and reports
 *.log
+*.db
 outputs/*.txt
 outputs/*.md
+data/outputs/*.txt
+data/outputs/*.md
 
 # IDE
 .vscode/
 .idea/
 *.swp
+
+# Web frontend build artifacts
+web/node_modules/
+web/dist/
+
+# Docusaurus (docs-site)
+docs-site/node_modules/
+docs-site/.docusaurus/
+docs-site/build/
