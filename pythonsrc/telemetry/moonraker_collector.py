@@ -1,3 +1,5 @@
+"""Telemetry collection from Moonraker WebSockets."""
+
 import asyncio
 import json
 import logging
@@ -12,7 +14,20 @@ from pythonsrc.telemetry.schema import TelemetrySample
 logger = logging.getLogger(__name__)
 
 class MoonrakerCollector:
+    """Collects telemetry data from a Moonraker-based 3D printer via WebSocket.
+
+    This class connects to a Moonraker instance using WebSockets, subscribes
+    to status updates, parses the incoming JSON-RPC messages, and writes
+    telemetry samples to the database.
+    """
     def __init__(self, ws_url: str, job_id: str, db: TelemetryDB):
+        """Initialize the Moonraker collector.
+
+        Args:
+            ws_url: The WebSocket URL for Moonraker.
+            job_id: The job identifier.
+            db: The telemetry database.
+        """
         self.ws_url = ws_url
         self.job_id = job_id
         self.db = db
@@ -22,14 +37,22 @@ class MoonrakerCollector:
         self._task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
-        """Connect and begin collecting telemetry."""
+        """Connect to the WebSocket and begin collecting telemetry.
+
+        Initializes the connection task and sets up the event loop for
+        listening to printer status updates. Does nothing if already started.
+        """
         if self._task is not None:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
-        """Graceful disconnect, flush pending writes."""
+        """Gracefully disconnect the WebSocket and flush pending writes.
+
+        Signals the collection loop to stop and waits for the connection
+        task to cancel cleanly.
+        """
         self._stop_event.set()
         if self._task is not None:
             self._task.cancel()

@@ -1,6 +1,6 @@
-"""
-operators/octoprint_operator.py — Phase 4: OctoPrint REST API integration.
+"""Phase 4: OctoPrint REST API integration.
 
+operators/octoprint_operator.py — Phase 4: OctoPrint REST API integration.
 Uploads a print-ready mesh file to an OctoPrint instance and optionally
 starts the print job. Can also poll for job status.
 
@@ -36,23 +36,25 @@ def _setup_logging(verbose: bool = False) -> None:
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
 
 class OctoPrintOperator(BasePrinterOperator):
-    """
-    Thin wrapper around the OctoPrint REST API.
+    """Thin wrapper around the OctoPrint REST API.
 
     Reference: https://docs.octoprint.org/en/master/api/
 
-    Parameters
-    ----------
-    base_url:
-        Base URL of the OctoPrint instance, e.g. ``http://localhost:5001``
-        or ``http://192.168.1.50``.  Trailing slashes are stripped.
-    api_key:
-        OctoPrint Application API Key (Settings → API).
-    timeout:
-        HTTP request timeout in seconds.
+    Args:
+        base_url: Base URL of the OctoPrint instance, e.g. ``http://localhost:5001``
+            or ``http://192.168.1.50``. Trailing slashes are stripped.
+        api_key: OctoPrint Application API Key (Settings → API).
+        timeout: HTTP request timeout in seconds.
     """
 
     def __init__(self, base_url: str, api_key: str, *, timeout: int = 30) -> None:
+        """Initialize the OctoPrint operator.
+
+        Args:
+            base_url: Base URL of the OctoPrint instance.
+            api_key: OctoPrint Application API Key.
+            timeout: HTTP request timeout in seconds.
+        """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
@@ -61,14 +63,40 @@ class OctoPrintOperator(BasePrinterOperator):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     def _url(self, endpoint: str) -> str:
+        """Construct a full API URL for a given endpoint.
+
+        Args:
+            endpoint: The API endpoint path.
+
+        Returns:
+            The complete URL string.
+        """
         return f"{self.base_url}/api/{endpoint.lstrip('/')}"
 
     def _get(self, endpoint: str, **kwargs) -> dict[str, Any]:
+        """Perform a GET request to the OctoPrint API.
+
+        Args:
+            endpoint: The API endpoint path.
+            **kwargs: Additional keyword arguments for requests.get.
+
+        Returns:
+            The parsed JSON response dictionary.
+        """
         resp = self._session.get(self._url(endpoint), timeout=self.timeout, **kwargs)
         resp.raise_for_status()
         return resp.json()
 
     def _post(self, endpoint: str, **kwargs) -> dict[str, Any] | None:
+        """Perform a POST request to the OctoPrint API.
+
+        Args:
+            endpoint: The API endpoint path.
+            **kwargs: Additional keyword arguments for requests.post.
+
+        Returns:
+            The parsed JSON response dictionary, or None if there is no content.
+        """
         resp = self._session.post(self._url(endpoint), timeout=self.timeout, **kwargs)
         resp.raise_for_status()
         # 204 No Content is valid for some actions (e.g. cancel)
@@ -78,22 +106,26 @@ class OctoPrintOperator(BasePrinterOperator):
 
     # ── Connection & Status ───────────────────────────────────────────────────
     def get_version(self) -> dict[str, Any]:
-        """Return OctoPrint version info (also used as a connectivity check)."""
+        """Return OctoPrint version info (also used as a connectivity check).
+
+        Returns:
+            A dictionary containing server and API version information.
+        """
         return self._get("version")
 
     def connectivity_check(self) -> dict[str, Any]:
-        """
-        Verify OctoPrint is reachable and the API key is valid.
+        """Verify OctoPrint is reachable and the API key is valid.
 
         Hits ``GET /api/version`` and returns the JSON response on success.
 
-        Raises
-        ------
-        RuntimeError
-            With a diagnostic message distinguishing between:
-            - Connection refused (server not running)
-            - 403 Forbidden (API key wrong or access control misconfigured)
-            - Any other unexpected error
+        Returns:
+            A dictionary containing the version information on success.
+
+        Raises:
+            RuntimeError: With a diagnostic message distinguishing between:
+                - Connection refused (server not running)
+                - 403 Forbidden (API key wrong or access control misconfigured)
+                - Any other unexpected error
         """
         try:
             return self.get_version()
@@ -120,14 +152,30 @@ class OctoPrintOperator(BasePrinterOperator):
             ) from exc
 
     def get_printer_state(self) -> dict[str, Any]:
-        """Return current printer state (temperature, operational status, etc.)."""
+        """Return current printer state (temperature, operational status, etc.).
+
+        Returns:
+            A dictionary containing current printer state.
+        """
         return self._get("printer")
 
     def get_connection(self) -> dict[str, Any]:
-        """Return serial connection state."""
+        """Return serial connection state.
+
+        Returns:
+            A dictionary describing the current serial connection.
+        """
         return self._get("connection")
 
     def connect(self) -> bool:
+        """Connect to the printer using auto-connection logic.
+
+        Returns:
+            True if successful.
+
+        Raises:
+            PrinterConnectionError: If the printer is unreachable or cannot become operational.
+        """
         try:
             self.ensure_operational(auto_connect_port="VIRTUAL", timeout=20)
             return True
@@ -143,17 +191,21 @@ class OctoPrintOperator(BasePrinterOperator):
         save: bool = False,
         autoconnect: bool = False,
     ) -> None:
-        """
-        Issue a connect command to OctoPrint's serial layer.
+        """Issue a connect command to OctoPrint's serial layer.
 
         For local virtual printer testing, use port="VIRTUAL".
         For a real printer, set port to the serial device path
         (e.g. "/dev/ttyUSB0" on Linux, "/dev/cu.usbserial-*" on macOS).
 
-        Raises
-        ------
-        RuntimeError
-            If OctoPrint returns a non-2xx response.
+        Args:
+            port: Serial port name or path.
+            baudrate: Connection baudrate.
+            printer_profile: Target printer profile name.
+            save: Whether to save settings.
+            autoconnect: Whether to automatically connect on startup.
+
+        Raises:
+            RuntimeError: If OctoPrint returns a non-2xx response.
         """
         payload = {
             "command": "connect",
@@ -168,19 +220,15 @@ class OctoPrintOperator(BasePrinterOperator):
         logger.info("Connect command sent.")
 
     def force_virtual_connect(self, *, timeout: int = 20) -> None:
-        """
-        Enable the virtual printer plugin, connect to the VIRTUAL port,
-        and poll until the printer reaches Operational state.
+        """Enable the virtual printer plugin and connect to the VIRTUAL port.
 
-        Parameters
-        ----------
-        timeout:
-            Maximum seconds to wait for the printer to become Operational.
+        Connects and polls until the printer reaches Operational state.
 
-        Raises
-        ------
-        RuntimeError
-            If the printer does not reach Operational within *timeout*.
+        Args:
+            timeout: Maximum seconds to wait for the printer to become Operational.
+
+        Raises:
+            RuntimeError: If the printer does not reach Operational within timeout.
         """
         import time as _time
 
@@ -221,17 +269,18 @@ class OctoPrintOperator(BasePrinterOperator):
         )
 
     def ensure_operational(self, *, auto_connect_port: str = "VIRTUAL", timeout: int = 20) -> None:
-        """
-        Check printer state and auto-connect if not yet connected.
+        """Check printer state and auto-connect if not yet connected.
 
-        Polls up to *timeout* seconds for the printer to reach Operational.
-        When the port is ``"VIRTUAL"``, uses :meth:`force_virtual_connect`
+        Polls up to timeout seconds for the printer to reach Operational.
+        When the port is ``"VIRTUAL"``, uses force_virtual_connect
         which also enables the virtual printer plugin.
 
-        Raises
-        ------
-        RuntimeError
-            If the printer does not reach Operational within the timeout.
+        Args:
+            auto_connect_port: Port to use for automatic connection.
+            timeout: Maximum seconds to wait.
+
+        Raises:
+            RuntimeError: If the printer does not reach Operational within the timeout.
         """
         import time as _time
         deadline = _time.time() + timeout
@@ -264,35 +313,18 @@ class OctoPrintOperator(BasePrinterOperator):
 
     # ── File Management ───────────────────────────────────────────────────────
     def upload_file(self, local_path: str, remote_name: str) -> bool:
-        """
-        Upload a **G-code** file to OctoPrint.
+        """Upload a G-code file to OctoPrint.
 
-        Parameters
-        ----------
-        file_path:
-            Local path to the ``.gcode`` file produced by the slicer.
-            Any other extension (e.g. ``.obj``, ``.stl``) is **rejected**
-            with a :class:`ValueError` to prevent silently uploading an
-            un-sliced mesh.
-        location:
-            Storage location on OctoPrint: ``"local"`` (disk) or ``"sdcard"``.
-        select:
-            If True, select the file for printing after upload.
-        start:
-            If True, start printing immediately after upload.
+        Args:
+            local_path: Local path to the ``.gcode`` file produced by the slicer.
+            remote_name: The name the file will have on the OctoPrint server.
 
-        Returns
-        -------
-        dict
-            OctoPrint API response containing ``refs.resource`` (the file URL)
-            which can be passed to :meth:`select_file` or :meth:`start_print`.
+        Returns:
+            True if the upload was successful.
 
-        Raises
-        ------
-        ValueError
-            If *file_path* does not have a ``.gcode`` extension.
-        FileNotFoundError
-            If *file_path* does not exist on disk.
+        Raises:
+            ValueError: If the file does not have a ``.gcode`` extension.
+            FileNotFoundError: If the file does not exist on disk.
         """
         file_path = Path(local_path)
 
@@ -328,11 +360,23 @@ class OctoPrintOperator(BasePrinterOperator):
         return True
 
     def list_files(self, location: str = "local") -> dict[str, Any]:
-        """List files stored on OctoPrint."""
+        """List files stored on OctoPrint.
+
+        Args:
+            location: The storage location ("local" or "sdcard").
+
+        Returns:
+            A dictionary containing the list of files.
+        """
         return self._get(f"files/{location}")
 
     def delete_file(self, location: str, filename: str) -> None:
-        """Delete a file from OctoPrint storage."""
+        """Delete a file from OctoPrint storage.
+
+        Args:
+            location: The storage location ("local" or "sdcard").
+            filename: The name of the file to delete.
+        """
         resp = self._session.delete(
             self._url(f"files/{location}/{filename}"),
             timeout=self.timeout,
@@ -342,15 +386,14 @@ class OctoPrintOperator(BasePrinterOperator):
 
     # ── Job Control ───────────────────────────────────────────────────────────
     def select_file(self, file_resource_url: str, *, start: bool = False) -> None:
-        """
-        Select a previously uploaded file for printing.
+        """Select a previously uploaded file for printing.
 
-        Parameters
-        ----------
-        file_resource_url:
-            The ``refs.resource`` URL returned by :meth:`upload_file`.
-        start:
-            If True, start the print immediately after selecting.
+        Args:
+            file_resource_url: The ``refs.resource`` URL of the file.
+            start: If True, start the print immediately after selecting.
+
+        Raises:
+            ValueError: If the URL format cannot be parsed.
         """
         # Extract location/filename from the resource URL
         # URL shape: http://localhost:5001/api/files/local/myfile.gcode
@@ -365,14 +408,16 @@ class OctoPrintOperator(BasePrinterOperator):
         logger.info("File selected%s.", " and print started" if start else "")
 
     def start_print(self, filename: str) -> bool:
-        """
-        Issue a start command to the current job.
+        """Issue a start command to the current job.
 
-        Raises
-        ------
-        RuntimeError
-            If the printer is not in the ``Operational`` state (e.g. it is
-            already printing, offline, or in an error state).
+        Args:
+            filename: The name of the file to print (informational in this implementation).
+
+        Returns:
+            True if the print was successfully started.
+
+        Raises:
+            RuntimeError: If the printer is not in the ``Operational`` state.
         """
         # ── Pre-flight: confirm printer is Operational ───────────────────
         try:
@@ -422,35 +467,49 @@ class OctoPrintOperator(BasePrinterOperator):
         return True
 
     def pause_print(self) -> bool:
-        """Pause or resume the current print (action: 'pause' | 'resume' | 'toggle')."""
+        """Pause the current print.
+
+        Returns:
+            True if the print was paused successfully.
+        """
         self._post("job", json={"command": "pause", "action": "pause"})
         logger.info("Print paused.")
         return True
 
     def resume_print(self) -> bool:
+        """Resume a paused print.
+
+        Returns:
+            True if the print was resumed successfully.
+        """
         self._post("job", json={"command": "pause", "action": "resume"})
         logger.info("Print resumed.")
         return True
 
     def cancel_print(self) -> bool:
-        """Cancel the current print job."""
+        """Cancel the current print job.
+
+        Returns:
+            True if the print was cancelled successfully.
+        """
         self._post("job", json={"command": "cancel"})
         logger.info("Print cancelled.")
         return True
 
     # ── Job Status ────────────────────────────────────────────────────────────
     def get_job_status(self) -> dict[str, Any]:
-        """Return current job information (progress, file, time estimates)."""
+        """Return current job information (progress, file, time estimates).
+
+        Returns:
+            A dictionary containing job status details.
+        """
         return self._get("job")
 
     def watch_job(self, poll_interval: int = 10) -> None:
-        """
-        Block and poll the job status until the print completes or an error occurs.
+        """Block and poll the job status until the print completes or an error occurs.
 
-        Parameters
-        ----------
-        poll_interval:
-            Seconds between status polls.
+        Args:
+            poll_interval: Seconds between status polls.
         """
         logger.info("Watching print job (polling every %ds)…", poll_interval)
         while True:
@@ -475,6 +534,11 @@ class OctoPrintOperator(BasePrinterOperator):
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for the CLI.
+
+    Returns:
+        The configured ArgumentParser instance.
+    """
     parser = argparse.ArgumentParser(
         description="p2p-mesh Phase 4 — Operator (OctoPrint)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

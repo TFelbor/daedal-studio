@@ -1,3 +1,8 @@
+"""FastAPI application for P2P Mesh Pipeline orchestration.
+
+This module defines the REST API for creating, monitoring, and retrieving
+results from the 3D printing pipeline, as well as managing telemetry.
+"""
 import asyncio
 import json
 import logging
@@ -20,6 +25,7 @@ from pythonsrc.telemetry.db import TelemetryDB, _str_to_dt
 from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,7 @@ app = FastAPI(title="P2P Mesh API", version="1.0.0")
 active_collectors = {}
 
 class JobRequest(BaseModel):
+    """Pydantic model representing a new print job request."""
     prompt: str
     printer_id: str
     profile: str
@@ -38,10 +45,12 @@ class JobRequest(BaseModel):
     start_print: bool
 
 class JobResponse(BaseModel):
+    """Pydantic model representing the immediate response to a job creation."""
     job_id: str
     status: str
 
 class JobStatusResponse(BaseModel):
+    """Pydantic model representing the detailed status of a print job."""
     job_id: str
     status: str
     prompt: str
@@ -53,47 +62,108 @@ class JobStatusResponse(BaseModel):
 
 @app.on_event("startup")
 def startup_event():
+    """Handle application startup events.
+
+    Initializes the database schema and logs the execution strategy.
+    """
+    strategy = get_execution_strategy()
+    logger.info(f"Detected execution strategy: {strategy}")
     db = TelemetryDB()
     db.init_schema()
     db.close()
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    """Handle application shutdown events.
+
+    Gracefully stops all active telemetry collectors.
+    """
     for collector in active_collectors.values():
         await collector.stop()
     active_collectors.clear()
 
 async def _run_pipeline(job_id: str, request: JobRequest):
-    log_dir = Path.home() / ".p2p-mesh" / "logs"
+    log_dir_env = os.environ.get("P2P_LOGS_DIR")
+    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{job_id}.log"
     
-    cmd = [sys.executable, "pythonsrc/pipeline.py", request.prompt, "--job-id", job_id]
+    strategy = get_execution_strategy()
+    
+    pipeline_args = ["--job-id", job_id]
     if request.profile:
-        cmd.extend(["--profile", request.profile])
-    if request.skip_visualizer:
-        cmd.append("--skip-visualizer")
+        pipeline_args.extend(["--profile", request.profile])
     if request.skip_sculptor:
-        cmd.append("--skip-sculptor")
-    if request.blueprint_path:
-        cmd.extend(["--blueprint", request.blueprint_path])
+        pipeline_args.append("--skip-sculptor")
     if request.print:
-        cmd.append("--print")
+        pipeline_args.append("--print")
     if request.start_print:
-        cmd.append("--start-print")
+        pipeline_args.append("--start-print")
         
+    inputs_dir = os.path.join(os.path.dirname(__file__), "..", "data", "inputs")
+    blueprint_path = os.path.join(inputs_dir, "blueprint.png")
+    
     try:
         with open(log_file, "w") as f:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=f,
-                stderr=f,
-                cwd=os.path.join(os.path.dirname(__file__), "..")
-            )
-            await process.wait()
+            if strategy == "mps_native":
+                if not request.skip_visualizer and not request.blueprint_path:
+                    phase1_cmd = get_phase1_command(request.prompt, blueprint_path)
+                    
+                    if os.path.exists(blueprint_path):
+                        os.remove(blueprint_path)
+                        
+                    env = os.environ.copy()
+                    env["OUTPUT_PATH"] = blueprint_path
+                    process1 = await asyncio.create_subprocess_exec(
+                        *phase1_cmd,
+                        stdout=f,
+                        stderr=f,
+                        cwd=os.path.join(os.path.dirname(__file__), ".."),
+                        env=env
+                    )
+                    await process1.wait()
+                    if process1.returncode != 0:
+                        raise Exception(f"Phase 1 failed with code {process1.returncode}")
+                        
+                    if not os.path.exists(blueprint_path):
+                        raise Exception("Phase 1 completed but blueprint.png not found")
+                        
+                b_path = request.blueprint_path or "/app/data/inputs/blueprint.png"
+                cmd = [
+                    "docker", "compose", "-f", "infra/docker-compose.yml",
+                    "run", "--rm", "pipeline-runner",
+                    "python", "pythonsrc/pipeline.py", request.prompt,
+                    "--skip-visualizer", "--blueprint", b_path
+                ] + pipeline_args
+                
+                process2 = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=f,
+                    stderr=f,
+                    cwd=os.path.join(os.path.dirname(__file__), "..")
+                )
+                await process2.wait()
+                returncode = process2.returncode
+            else:
+                cmd = get_phase1_command(request.prompt, blueprint_path)
+                cmd.extend(pipeline_args)
+                
+                if request.skip_visualizer:
+                    cmd.append("--skip-visualizer")
+                if request.blueprint_path:
+                    cmd.extend(["--blueprint", request.blueprint_path])
+                    
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=f,
+                    stderr=f,
+                    cwd=os.path.join(os.path.dirname(__file__), "..")
+                )
+                await process.wait()
+                returncode = process.returncode
             
             db = TelemetryDB()
-            outcome = "success" if process.returncode == 0 else "failure"
+            outcome = "success" if returncode == 0 else "failure"
             db.update_job_outcome(job_id, outcome, datetime.now(timezone.utc))
             db.close()
     except Exception as e:
@@ -109,14 +179,17 @@ async def _run_pipeline(job_id: str, request: JobRequest):
 
 @app.post("/jobs", status_code=status.HTTP_202_ACCEPTED, response_model=JobResponse)
 async def create_job(request: JobRequest):
-    """
-    Create a new print job.
+    """Create a new print job.
 
     Validates the job request, generates a unique job ID, inserts a new 'queued' 
     PrintJob record into the TelemetryDB, and launches the pipeline subprocess 
     in the background.
 
-    Returns the job ID and 'queued' status immediately.
+    Args:
+        request: The job configuration parameters.
+
+    Returns:
+        A JobResponse containing the job ID and 'queued' status immediately.
     """
     job_id = str(uuid.uuid4())
     
@@ -174,11 +247,17 @@ async def create_job(request: JobRequest):
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
 async def get_job(job_id: str):
-    """
-    Retrieve the status and details of a specific print job.
+    """Retrieve the status and details of a specific print job.
 
-    Returns job metadata including started/completed timestamps, current status,
-    and a tail of the last 20 lines from the job's execution log.
+    Args:
+        job_id: The unique identifier of the print job.
+
+    Returns:
+        JobStatusResponse containing metadata, timestamps, status,
+        and a tail of the execution log.
+
+    Raises:
+        HTTPException: If the job is not found in the database.
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
@@ -187,7 +266,8 @@ async def get_job(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    log_dir = Path.home() / ".p2p-mesh" / "logs"
+    log_dir_env = os.environ.get("P2P_LOGS_DIR")
+    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
     log_file = log_dir / f"{job_id}.log"
     status_file = log_dir / f"{job_id}.status"
     
@@ -225,11 +305,16 @@ async def get_job(job_id: str):
 
 @app.get("/jobs/{job_id}/download")
 async def download_job_output(job_id: str):
-    """
-    Download the final .gcode output file for a completed print job.
+    """Download the final .gcode output file for a completed print job.
 
-    Returns a 404 error if the job is not complete, failed, or the file 
-    is not found.
+    Args:
+        job_id: The unique identifier of the print job.
+
+    Returns:
+        A FileResponse streaming the generated .gcode file.
+
+    Raises:
+        HTTPException: If the job is not complete, failed, or the file is missing.
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
@@ -251,11 +336,11 @@ async def download_job_output(job_id: str):
 
 @app.get("/jobs")
 async def list_jobs():
-    """
-    List all print jobs.
+    """List all print jobs.
 
-    Returns a list of all print jobs (up to the most recent 50), including
-    their status, timestamps, and job metadata.
+    Returns:
+        A list of up to 50 recent print jobs including their status,
+        timestamps, and metadata.
     """
     db = TelemetryDB()
     cursor = db.conn.cursor()
@@ -280,27 +365,53 @@ async def list_jobs():
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint.
+    """Health check endpoint.
 
-    Returns a simple OK status and the current API version to verify 
-    that the server is running.
+    Returns:
+        A dictionary with the API status, version, and execution strategy.
     """
-    return {"status": "ok", "version": app.version}
+    strategy = get_execution_strategy()
+    return {"status": "ok", "version": app.version, "execution_strategy": strategy}
 
 @app.get("/jobs/{job_id}/telemetry")
 async def get_job_telemetry(job_id: str) -> List[Dict[str, Any]]:
+    """Retrieve telemetry samples for a specific print job.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A list of up to 100 recent telemetry samples as dictionaries.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
     db = TelemetryDB()
+    job = db.get_job(job_id)
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
     samples = db.get_samples(job_id, limit=100)
     db.close()
     return [s.to_dict() for s in samples]
 
 class FailureRequest(BaseModel):
+    """Pydantic model representing a manual failure event report."""
     failure_type: str
     notes: Optional[str] = None
 
 @app.post("/jobs/{job_id}/failure")
 async def create_failure_event(job_id: str, request: FailureRequest) -> Dict[str, Any]:
+    """Manually flag a print job as failed.
+
+    Args:
+        job_id: The unique identifier of the job.
+        request: The failure details and notes.
+
+    Returns:
+        A dictionary representation of the recorded FailureEvent.
+    """
     db = TelemetryDB()
     samples = db.get_samples(job_id, limit=50)
     
@@ -323,8 +434,16 @@ async def create_failure_event(job_id: str, request: FailureRequest) -> Dict[str
 # --- Serve SPA ---
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
-    """
-    Catch-all route to serve the React SPA and its static assets.
+    """Catch-all route to serve the React SPA and its static assets.
+
+    Args:
+        full_path: The requested path.
+
+    Returns:
+        A FileResponse containing the requested asset or index.html.
+
+    Raises:
+        HTTPException: If the frontend is not built or found.
     """
     dist_dir = os.path.join(os.path.dirname(__file__), "..", "web", "dist")
     file_path = os.path.join(dist_dir, full_path)

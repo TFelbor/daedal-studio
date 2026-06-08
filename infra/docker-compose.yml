@@ -164,12 +164,15 @@ services:
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
       PYTORCH_ENABLE_MPS_FALLBACK: "1"
       CURA_ENGINE_PATH: CuraEngine
+      P2P_LOGS_DIR: /app/data/logs
       # On macOS/Windows, OctoPrint on the host is reached via host.docker.internal.
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
     volumes:
       - ../data/inputs:/app/data/inputs
       - ../data/outputs:/app/data/outputs
+      - ../data/logs:/app/data/logs
+      - ../pythonsrc:/app/pythonsrc
       - p2p-models-flux:/models/flux
       - p2p-models-triposr:/models/triposr
       - p2p-models-u2net:/models/u2net
@@ -191,9 +194,11 @@ services:
     volumes:
       - ../data/inputs:/app/data/inputs
       - ../data/outputs:/app/data/outputs
+      - ../data/logs:/app/data/logs
       - p2p-telemetry:/app/telemetry
     environment:
       - TELEMETRY_DB_PATH=/app/telemetry/telemetry.db
+      - P2P_LOGS_DIR=/app/data/logs
     depends_on:
       - pipeline-runner
     command: uvicorn server.app:app --host 0.0.0.0 --port 8000

@@ -1,3 +1,8 @@
+"""Data schemas for telemetry and job tracking.
+
+This module provides data structures to define print jobs, telemetry samples,
+and failure events, including JSON serialization methods.
+"""
 from __future__ import annotations
 import dataclasses
 from datetime import datetime
@@ -34,8 +39,22 @@ class PrintJob:
     outcome: Literal["success", "failure", "cancelled", "unknown"]
     """The final outcome of the print job."""
 
+    def __post_init__(self):
+        """Validate the instantiated PrintJob fields.
+
+        Raises:
+            ValueError: If the outcome field is not a valid predefined state.
+        """
+        valid_outcomes = {"success", "failure", "cancelled", "unknown"}
+        if self.outcome not in valid_outcomes:
+            raise ValueError(f"Invalid outcome: {self.outcome}")
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the PrintJob to a JSON-serializable dictionary."""
+        """Convert the PrintJob to a JSON-serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary representation of the PrintJob.
+        """
         d = dataclasses.asdict(self)
         d['started_at'] = self.started_at.isoformat()
         if self.completed_at:
@@ -44,18 +63,30 @@ class PrintJob:
 
     @classmethod
     def from_dict(cls: Type[PrintJob], data: Dict[str, Any]) -> PrintJob:
-        """Create a PrintJob instance from a dictionary."""
-        d = data.copy()
-        if d.get('started_at'):
+        """Create a PrintJob instance from a dictionary.
+
+        Args:
+            data: A dictionary containing PrintJob properties.
+
+        Returns:
+            PrintJob: An initialized PrintJob object.
+        """
+        d = {}
+        for f in dataclasses.fields(cls):
+            if f.name in data:
+                d[f.name] = data[f.name]
+            else:
+                d[f.name] = None
+                
+        if d.get('started_at') and isinstance(d['started_at'], str):
             s = d['started_at']
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['started_at'] = datetime.fromisoformat(s)
-        if d.get('completed_at'):
+        if d.get('completed_at') and isinstance(d['completed_at'], str):
             c = d['completed_at']
             if c.endswith('Z'): c = c[:-1] + '+00:00'
             d['completed_at'] = datetime.fromisoformat(c)
         return cls(**d)
-
 @dataclasses.dataclass
 class TelemetrySample:
     """Represents a single telemetry sample from a print job."""
@@ -94,21 +125,37 @@ class TelemetrySample:
     """The part cooling fan speed percentage."""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the TelemetrySample to a JSON-serializable dictionary."""
+        """Convert the TelemetrySample to a JSON-serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary representation of the TelemetrySample.
+        """
         d = dataclasses.asdict(self)
         d['sampled_at'] = self.sampled_at.isoformat()
         return d
 
     @classmethod
     def from_dict(cls: Type[TelemetrySample], data: Dict[str, Any]) -> TelemetrySample:
-        """Create a TelemetrySample instance from a dictionary."""
-        d = data.copy()
-        if d.get('sampled_at'):
+        """Create a TelemetrySample instance from a dictionary.
+
+        Args:
+            data: A dictionary containing TelemetrySample properties.
+
+        Returns:
+            TelemetrySample: An initialized TelemetrySample object.
+        """
+        d = {}
+        for f in dataclasses.fields(cls):
+            if f.name in data:
+                d[f.name] = data[f.name]
+            else:
+                d[f.name] = None
+                
+        if d.get('sampled_at') and isinstance(d['sampled_at'], str):
             s = d['sampled_at']
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['sampled_at'] = datetime.fromisoformat(s)
         return cls(**d)
-
 @dataclasses.dataclass
 class FailureEvent:
     """Represents a failure event detected during a print job."""
@@ -141,16 +188,33 @@ class FailureEvent:
     """The last N TelemetrySample records serialized as JSON."""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the FailureEvent to a JSON-serializable dictionary."""
+        """Convert the FailureEvent to a JSON-serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary representation of the FailureEvent.
+        """
         d = dataclasses.asdict(self)
         d['detected_at'] = self.detected_at.isoformat()
         return d
 
     @classmethod
     def from_dict(cls: Type[FailureEvent], data: Dict[str, Any]) -> FailureEvent:
-        """Create a FailureEvent instance from a dictionary."""
-        d = data.copy()
-        if d.get('detected_at'):
+        """Create a FailureEvent instance from a dictionary.
+
+        Args:
+            data: A dictionary containing FailureEvent properties.
+
+        Returns:
+            FailureEvent: An initialized FailureEvent object.
+        """
+        d = {}
+        for f in dataclasses.fields(cls):
+            if f.name in data:
+                d[f.name] = data[f.name]
+            else:
+                d[f.name] = None
+                
+        if d.get('detected_at') and isinstance(d['detected_at'], str):
             s = d['detected_at']
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['detected_at'] = datetime.fromisoformat(s)

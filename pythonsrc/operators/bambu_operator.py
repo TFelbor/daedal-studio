@@ -1,3 +1,5 @@
+"""Bambu Lab MQTT printer operator implementation."""
+
 import logging
 import ssl
 import time
@@ -8,16 +10,28 @@ from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
 logger = logging.getLogger(__name__)
 
 class BambuOperator(BasePrinterOperator):
+    """Printer operator for Bambu Lab 3D printers via MQTT."""
+
     def __init__(self, base_url: str, api_key: str | None = None):
-        """
-        :param base_url: The IP address or hostname of the Bambu printer.
-        :param api_key: The LAN Access Code.
+        """Initialize the Bambu operator.
+
+        Args:
+            base_url: The IP address or hostname of the Bambu printer.
+            api_key: The LAN Access Code.
         """
         self.base_url = base_url
         self.api_key = api_key
         self.client = None
 
     def connect(self) -> bool:
+        """Connect to the printer using MQTT.
+
+        Returns:
+            True if the connection was successful.
+
+        Raises:
+            PrinterConnectionError: If connection fails.
+        """
         logger.info(f"Attempting MQTT handshake with Bambu printer at {self.base_url}")
         self.client = mqtt.Client()
         self.client.tls_set(tls_version=ssl.PROTOCOL_TLS, cert_reqs=ssl.CERT_NONE)
@@ -40,19 +54,56 @@ class BambuOperator(BasePrinterOperator):
             raise PrinterConnectionError(f"Bambu MQTT connection failed: {e}")
 
     def upload_file(self, local_path: str, remote_name: str) -> bool:
+        """Upload a file to the printer.
+
+        Args:
+            local_path: Local path to the file.
+            remote_name: Target name on the printer.
+
+        Returns:
+            True if successful.
+        """
         raise NotImplementedError("Bambu full print support in development")
 
     def start_print(self, filename: str) -> bool:
+        """Start printing a file.
+
+        Args:
+            filename: The name of the file to print.
+
+        Returns:
+            True if successful.
+        """
         raise NotImplementedError("Bambu full print support in development")
 
     def cancel_print(self) -> bool:
+        """Cancel the current print job.
+
+        Returns:
+            True if successful.
+        """
         raise NotImplementedError("Bambu full print support in development")
 
     def pause_print(self) -> bool:
+        """Pause the current print job.
+
+        Returns:
+            True if successful.
+        """
         raise NotImplementedError("Bambu full print support in development")
 
     def resume_print(self) -> bool:
+        """Resume a paused print job.
+
+        Returns:
+            True if successful.
+        """
         raise NotImplementedError("Bambu full print support in development")
 
     def get_printer_state(self) -> dict:
+        """Get the current state of the printer.
+
+        Returns:
+            Dictionary with printer state details.
+        """
         raise NotImplementedError("Bambu full print support in development")

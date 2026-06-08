@@ -110,3 +110,52 @@ def test_failure_event_serialization():
     
     event_restored = FailureEvent.from_dict(json.loads(json_str))
     assert event == event_restored
+
+def test_print_job_invalid_outcome():
+    with pytest.raises(ValueError):
+        PrintJob(
+            job_id="123e", prompt="A", printer_id="p1", printer_firmware="klipper",
+            slicer="Cura", profile_name="Standard", started_at=datetime.now(timezone.utc),
+            completed_at=None, outcome="invalid_value"
+        )
+
+def test_from_dict_missing_optional_field():
+    d = {
+        "job_id": "123e4567",
+        "prompt": "Test",
+        "printer_id": "p1",
+        "printer_firmware": "klipper",
+        "slicer": "Cura",
+        "profile_name": "Standard",
+        "started_at": "2023-01-01T12:00:00+00:00",
+        "outcome": "unknown"
+        # completed_at is missing
+    }
+    job = PrintJob.from_dict(d)
+    assert job.completed_at is None
+
+def test_from_dict_unknown_extra_key():
+    d = {
+        "job_id": "123e4567",
+        "prompt": "Test",
+        "printer_id": "p1",
+        "printer_firmware": "klipper",
+        "slicer": "Cura",
+        "profile_name": "Standard",
+        "started_at": "2023-01-01T12:00:00+00:00",
+        "completed_at": None,
+        "outcome": "unknown",
+        "some_extra_key_that_should_be_ignored": 123
+    }
+    job = PrintJob.from_dict(d)
+    assert not hasattr(job, "some_extra_key_that_should_be_ignored")
+
+def test_failure_event_empty_snapshot():
+    event = FailureEvent(
+        event_id="id", job_id="job", detected_at=datetime.now(timezone.utc),
+        gcode_line=None, z_height_mm=None, failure_type="clog",
+        source="manual", notes=None, snapshot={}
+    )
+    d = event.to_dict()
+    restored = FailureEvent.from_dict(json.loads(json.dumps(d)))
+    assert restored.snapshot == {}

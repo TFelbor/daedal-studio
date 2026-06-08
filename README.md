@@ -1,127 +1,121 @@
 # Prompt2Print: Mesh Engine (p2p-mesh)
 
+![Build Status](https://img.shields.io/badge/Build-passing-brightgreen)
 ![Status](https://img.shields.io/badge/Status-Proof_of_Concept_COMPLETE-brightgreen)
 ![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Ubuntu|Windows-gray)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
-**p2p-mesh** is the generative engine for the Prompt2Print platform — a fully local, end-to-end pipeline that converts a natural language prompt into a physical 3D print with zero cloud round-trips. The user types a description; the system generates a blueprint image, reconstructs it as a 3D mesh, repairs and scales the mesh for the print bed, slices it into machine instructions, and dispatches the job to an OctoPrint printer server.
+**p2p-mesh** is the generative engine for the Prompt2Print platform — a fully local, end-to-end pipeline that converts a natural language prompt into a physical 3D print with zero cloud round-trips.
+
+The system takes a user description and generates a clay-render blueprint image. It then reconstructs the blueprint into a 3D geometry mesh using neural implicit surface extraction, repairs and scales the mesh for the intended print bed, and slices it into machine instructions (G-code). Finally, it dispatches the print job directly to a local 3D printer and continuously monitors telemetry to detect print failures.
+
+This project is built for developers and makers who want a fully local AI-to-physical-object pipeline. It combines state-of-the-art vision models, robust mesh processing, and real-time printer integrations into a single asynchronous orchestration service with a modern web UI.
 
 ---
 
-## 🏗 Architecture
+## Architecture Overview
 
-All five pipeline phases are implemented, operational, and **fully Dockerized**.
-
-| Phase | Module | Status | Description |
-|-------|--------|--------|-------------|
-| **1 — Visualizer** | `visualizer.py` | ✅ Complete | `FLUX.2-klein-4B` (bfloat16) generates a 1024×1024 clay-render blueprint from a text prompt. |
-| **2 — Sculptor** | `sculptor.py` | ✅ Complete | TripoSR reconstructs the blueprint into 3D geometry via neural implicit surface extraction, followed by Taubin smoothing and quadric decimation to a configurable face target. |
-| **3 — Engineer** | `engineer.py`       | ✅ Complete | Decimates polygon count, computes robust bounding boxes, rescales to precise target sizes, and provides experimental hollowing algorithms to reduce material usage. |
-| **4 — Operator** | `operators/octoprint_operator.py` | ✅ Complete | `OctoPrintOperator` REST client. Auto-connects printer, uploads `.gcode`, and starts the print job. |
-| **5 — Slicer**   | `slicer.py`         | ✅ Complete | Wraps `CuraEngine` subprocess for headless G-code generation. |
+| Component         | Location          | Technology        | Purpose                          |
+|-------------------|-------------------|-------------------|----------------------------------|
+| Visualizer        | `pythonsrc/`      | FLUX.2-klein-4B   | Text → blueprint image           |
+| Sculptor          | `pythonsrc/`      | TripoSR           | Image → 3D mesh                  |
+| Engineer          | `pythonsrc/`      | pymeshfix/trimesh | Mesh repair + scaling            |
+| Slicer            | `pythonsrc/`      | CuraEngine        | Mesh → G-code                    |
+| Operators         | `pythonsrc/operators/` | REST/HTTP      | Printer control (OctoPrint/Klipper/Bambu stub) |
+| Telemetry         | `pythonsrc/telemetry/` | SQLite/WS/SIO  | Printer state streaming + failure detection |
+| Job API           | `server/`         | FastAPI/uvicorn   | Async job orchestration          |
+| Web UI            | `web/`            | React/Vite/TS     | Browser-based user interface     |
 
 ---
 
-## 🚀 Quick Start
+## Repository Structure
 
-> **Note:** For deep-dives into individual docker phases, volume management, and GPU overrides, refer to the [Docker Usage Guide](docs/README-docker.md).
-
-### 1. Config Setup
-
-We use `.env` to manage configurations for both native execution and Docker.
-
-```bash
-# Create your local config from the safe-to-commit template
-cp .env.template .env
-
-# Edit .env and configure:
-#   - OCTOPRINT_URL (e.g. http://host.docker.internal:5001)
-#   - OCTOPRINT_API_KEY
-#   - HF_TOKEN (Hugging Face token for FLUX weights)
+```text
+p2p-mesh/
+├── docs/           # Architecture decisions, operator guides, and protocol notes
+├── infra/          # Docker Compose files, Dockerfiles, and deployment scripts
+├── pythonsrc/      # Core pipeline: phases 1–4, printer operators, and telemetry
+├── server/         # FastAPI async job orchestrator server
+├── tests/          # pytest test suite (unit, mocked integration, slow tests)
+└── web/            # React/Vite frontend source code
 ```
 
-### 2. Execution Workflows
+---
 
-How you run the pipeline depends on your hardware. **CuraEngine and PyMeshFix behave best in a Linux environment**, which is why Docker is the standard. However, **Docker on macOS cannot access Apple Silicon GPUs (MPS)**, creating a necessary hardware boundary.
+## Prerequisites
 
-#### Option A: macOS (Apple Silicon) — Recommended
+- Docker Engine 24.x+ and Docker Compose v2.20+
+- For macOS Apple Silicon: conda/venv with Python 3.10, `requirements.txt` installed
+- For NVIDIA GPU: NVIDIA Container Toolkit
+- `HF_TOKEN` (Hugging Face) for FLUX weight download
+- OctoPrint (optional, for OctoPrint printer integration)
+- Klipper simulation (optional, see `docs/klipper_simulation.md`)
 
-Run Phase 1 natively to utilize MPS, and run Phases 2-5 inside Docker to use reliable Linux binaries.
+---
 
+## Quick Start
+
+### Path A: macOS Apple Silicon (recommended for Mac users)
 ```bash
-# Setup native environment for Phase 1
 conda activate p2p-mesh
 pip install -r requirements.txt
-
-# Step 1: Run Phase 1 Natively (MPS accelerated, ~30s)
 make phase1-native PROMPT="a ceramic vase"
-# Or directly:
-bash infra/scripts/run_phase1_native.sh "a ceramic vase"
-
-# Step 2: Run Phases 2-5 in Docker
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --skip-visualizer --blueprint /app/inputs/blueprint.png \
-    --print --start-print
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --skip-visualizer --blueprint /app/inputs/blueprint.png --print --start-print
+docker compose -f infra/docker-compose.yml up api-server
 ```
+Open http://localhost:8000 to access the web UI.
 
-#### Option B: Ubuntu / Windows (NVIDIA GPU)
+### Path B: Ubuntu/Windows with NVIDIA GPU
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --print --start-print
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml up api-server
+```
+Open http://localhost:8000 to access the web UI.
 
-Run the entire pipeline seamlessly inside Docker with NVIDIA GPU acceleration.
+### Path C: CPU only (any platform, slow)
+```bash
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --print --start-print
+docker compose -f infra/docker-compose.yml up api-server
+```
+Open http://localhost:8000 to access the web UI.
+
+---
+
+## Printer Support Matrix
+
+| Firmware    | REST Control | Telemetry         | Failure Detection | Status     |
+|-------------|--------------|-------------------|-------------------|------------|
+| OctoPrint   | ✅ Full      | ✅ Socket.IO      | ✅ (temp + Z)     | Supported  |
+| Klipper     | ✅ Full      | ✅ WebSocket/RPC  | ✅ Full           | Supported  |
+| Bambu Lab   | 🔬 Stub      | ❌ Not yet        | ❌ Not yet        | In progress|
+
+---
+
+## Telemetry & Failure Detection
+
+The system collects real-time telemetry from active printers, including hotend temperatures, bed temperatures, Z-axis height, current G-code line, and progress percentage. This data is stored in a local SQLite database and streamed via WebSocket to the frontend. Note that OctoPrint lacks `gcode_line` reporting in its standard telemetry events.
+
+The system automatically detects failure conditions and triggers events based on four primary rules:
+1. `DetectTemperatureDrop`: Flags if the hotend temperature drops below 150°C during active printing.
+2. `DetectThermalRunaway`: Flags if the hotend temperature exceeds 280°C to prevent hardware damage.
+3. `DetectZHeightAnomaly`: Flags unexpected drops in Z-height, indicating a potential catastrophic layer shift or bed adhesion failure.
+4. `DetectStalledPrint`: Flags if a print remains in the same state without progressing for over 5 minutes.
+
+---
+
+## Running Tests
 
 ```bash
-# Run the full pipeline in a single step with GPU pass-through
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
-    run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --print --start-print
-```
-*(Requires NVIDIA Container Toolkit installed on the host).*
-
-#### Option C: CPU-Only (Any Platform)
-
-If you don't have a supported GPU, you can run the entire pipeline inside Docker using only CPU. Be aware that Phase 1 (FLUX) will take **~80+ minutes** on CPU.
-
-```bash
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --print --start-print
-```
-
-### 3. Makefile Shortcuts
-
-A `Makefile` is provided at the project root for convenience:
-
-```bash
-make build          # Build all Docker images
-make up             # Start the API server
-make down           # Stop all services
-make logs           # Tail API server logs
-make test           # Run the test suite
-make health         # Check API server health (requires running server)
-make phase1-native PROMPT="a ceramic vase"   # Run Phase 1 on Mac (MPS)
-make pipeline-mac  PROMPT="a ceramic vase"   # Full pipeline on Mac
-make pipeline-gpu  PROMPT="a ceramic vase"   # Full pipeline with NVIDIA GPU
+pytest tests/
+pytest tests/ -m "slow and real_printer"
+pytest tests/ -m "slow and full_pipeline"
 ```
 
 ---
 
-## 🖨 Printer Profiles
+## Roadmap
 
-Bundled profiles live in `pythonsrc/profiles/`:
-
-| File | Printer | Build Volume | Notes |
-|------|---------|-------------|-------|
-| `ender3.json` | Creality Ender 3 | 220 × 220 × 250 mm | 0.2 mm layers, 15% grid infill |
-| `anycubic_mega.json` | Anycubic Mega | 210 × 210 × 205 mm | 0.2 mm layers, 15% grid infill |
-
-CuraEngine uses the bundled `fdmprinter.def.json` (base) + `ender3_base.def.json` (machine) definition pair. Pass a custom `.def.json` via `--profile` to override.
-
----
-
-## 🛣️ Roadmap
-
-### ✅ Completed — Proof of Concept
+### ✅ Completed — Proof of Concept & MVP Foundation
 
 - [x] **Phase 1: Visualizer** — Text-to-image blueprinting (FLUX.2-klein-4B, MPS acceleration)
 - [x] **Phase 2: Sculptor** — Neural 3D reconstruction & Taubin smoothing (TripoSR)
@@ -129,26 +123,26 @@ CuraEngine uses the bundled `fdmprinter.def.json` (base) + `ender3_base.def.json
 - [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
 - [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job control
 - [x] **Dockerization** — Full pipeline containerization (Ubuntu 22.04, CuraEngine via apt)
+- [x] **API Layer** — FastAPI async job server with SQLite-backed job queue, UUID tracking, and status/download endpoints
+- [x] **Klipper/Moonraker integration** — WebSocket client for real-time state subscription; Moonraker REST operator to replace/extend OctoPrint operator
+- [x] **Telemetry schema v1** — Structured failure-event data model (Z-height, temp deviation, extrusion delta, G-code line, timestamp) defined before UI work begins
+- [x] **Telemetry collector** — Background WebSocket consumer writing structured telemetry to SQLite; per-job event log
+- [x] **Phase 5: Monitor** — Real-time failure detection using collected telemetry signatures; alert + optional pause-on-anomaly via Klipper pause API
+- [x] **Web UI** — React SPA (Vite) served by FastAPI; job submission, phase progress, preview of blueprint and mesh, print status
 
 ---
 
-### 🔨 In Progress — MVP Foundation
+### 🔨 In Progress — MVP Expansion
 
-- [ ] **API Layer** — FastAPI async job server with SQLite-backed job queue, UUID tracking, and status/download endpoints
-- [ ] **Klipper/Moonraker integration** — WebSocket client for real-time state subscription; Moonraker REST operator to replace/extend OctoPrint operator
-- [ ] **Telemetry schema v1** — Structured failure-event data model (Z-height, temp deviation, extrusion delta, G-code line, timestamp) defined before UI work begins
-- [ ] **Telemetry collector** — Background WebSocket consumer writing structured telemetry to SQLite; per-job event log
+- [ ] **Bambu Labs adapter** — MQTT-based operator for Bambu X1/P1 series (proprietary protocol); currently stubbed out
+- [ ] **Printer setup wizard** — Onboarding flow: printer firmware detection, profile selection, connection test, first-print walkthrough
 
 ---
 
 ### 📋 Planned — MVP
 
-- [ ] **Web UI** — React SPA (Vite) served by FastAPI; job submission, phase progress, preview of blueprint and mesh, print status
-- [ ] **Printer setup wizard** — Onboarding flow: printer firmware detection, profile selection, connection test, first-print walkthrough
 - [ ] **Multi-printer profile registry** — Plugin-style profile management supporting Klipper, OctoPrint, and static printer definitions; community-importable
 - [ ] **Slicer abstraction layer** — Pluggable slicer backend (CuraEngine, PrusaSlicer CLI, OrcaSlicer CLI) selectable per printer profile
-- [ ] **Bambu Labs adapter** — MQTT-based operator for Bambu X1/P1 series (proprietary protocol); highest-volume new printer segment
-- [ ] **Phase 5: Monitor** — Real-time failure detection using collected telemetry signatures; alert + optional pause-on-anomaly via Klipper pause API
 
 ---
 
@@ -162,6 +156,6 @@ CuraEngine uses the bundled `fdmprinter.def.json` (base) + `ender3_base.def.json
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).

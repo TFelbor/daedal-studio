@@ -20,7 +20,7 @@ def mock_db():
     return db
 
 def make_sample(job_id="job_1", z_height_mm=1.0, gcode_line=100, 
-                hotend_actual=200, hotend_target=200):
+                hotend_actual=200, hotend_target=200, extrusion_factor_pct=100.0):
     return TelemetrySample(
         job_id=job_id,
         sampled_at=datetime.now(timezone.utc),
@@ -31,7 +31,7 @@ def make_sample(job_id="job_1", z_height_mm=1.0, gcode_line=100,
         bed_actual_c=60,
         bed_target_c=60,
         print_speed_pct=100,
-        extrusion_factor_pct=100,
+        extrusion_factor_pct=extrusion_factor_pct,
         fan_speed_pct=100
     )
 
@@ -220,3 +220,106 @@ async def test_pause_on_failure(mock_db):
     
     assert mock_db.insert_failure_event.call_count == 1
     assert mock_op.pause_print.call_count >= 1
+
+@pytest.mark.asyncio
+async def test_empty_db_does_not_crash(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    
+    mock_db.get_job.return_value = None
+    
+    # Send a sample for a non-existent job
+    await queue.put(make_sample(job_id="non_existent"))
+    
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    
+    assert mock_db.insert_failure_event.call_count == 0
+
+@pytest.mark.asyncio
+async def test_db_less_than_10_samples(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    
+    # 5 samples -> no clogged detection (requires 10)
+    detector._state_cache["job_1"] = {"time": 0, "state": "printing", "progress": 10.0, "prev_state": "printing"}
+    for i in range(5):
+        s = make_sample(gcode_line=500)
+        await queue.put(s)
+        
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    
+    assert mock_db.insert_failure_event.call_count == 0
+
+@pytest.mark.asyncio
+async def test_massive_layer_shift(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    
+    await queue.put(make_sample(z_height_mm=10.0))
+    # Sudden drop by 5mm (Z goes down)
+    await queue.put(make_sample(z_height_mm=5.0))
+    
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    
+    assert mock_db.insert_failure_event.call_count == 1
+    event = mock_db.insert_failure_event.call_args[0][0]
+    assert event.failure_type == "layer_shift"
+
+@pytest.mark.asyncio
+async def test_very_slow_extrusion(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    
+    # Rule might be: if extrusion_factor_pct < 15 or 50?
+    # I need to check the actual rule in AnomalyDetector for slow extrusion.
+    # Currently AnomalyDetector rules are: thermal_runaway, clog (gcode_line stuck), layer_shift (Z drop), adhesion.
+    # The prompt explicitly asks to add "Very slow extrusion (extrusion_factor drops to 10%) -> detected".
+    # I should add the test and also I might need to update AnomalyDetector to support it.
+    await queue.put(make_sample(extrusion_factor_pct=10.0))
+    await queue.put(make_sample(extrusion_factor_pct=10.0))
+    await queue.put(make_sample(extrusion_factor_pct=10.0))
+    await queue.put(make_sample(extrusion_factor_pct=10.0))
+    await queue.put(make_sample(extrusion_factor_pct=10.0))
+    
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    
+    assert mock_db.insert_failure_event.call_count >= 1
+    event = mock_db.insert_failure_event.call_args[0][0]
+    assert event.failure_type == "extrusion_issue"
+
+@pytest.mark.asyncio
+async def test_multiple_jobs_isolation(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    
+    # Job 1 is printing normally
+    await queue.put(make_sample(job_id="job_1", hotend_target=200, hotend_actual=200))
+    await queue.put(make_sample(job_id="job_1", hotend_target=200, hotend_actual=200))
+    await queue.put(make_sample(job_id="job_1", hotend_target=200, hotend_actual=200))
+    await queue.put(make_sample(job_id="job_1", hotend_target=200, hotend_actual=200))
+    await queue.put(make_sample(job_id="job_1", hotend_target=200, hotend_actual=200))
+    
+    # Job 2 is suffering thermal runaway
+    await queue.put(make_sample(job_id="job_2", hotend_target=200, hotend_actual=170))
+    await queue.put(make_sample(job_id="job_2", hotend_target=200, hotend_actual=170))
+    await queue.put(make_sample(job_id="job_2", hotend_target=200, hotend_actual=170))
+    await queue.put(make_sample(job_id="job_2", hotend_target=200, hotend_actual=170))
+    await queue.put(make_sample(job_id="job_2", hotend_target=200, hotend_actual=170))
+    
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    
+    assert mock_db.insert_failure_event.call_count == 1
+    event = mock_db.insert_failure_event.call_args[0][0]
+    assert event.job_id == "job_2"
+    assert event.failure_type == "thermal_runaway"
+    assert isinstance(event, FailureEvent)

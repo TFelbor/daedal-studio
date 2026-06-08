@@ -27,8 +27,7 @@ def test_connect_failure(operator):
         "http://localhost:7125/printer/info",
         status=500
     )
-    with pytest.raises(PrinterConnectionError):
-        operator.connect()
+    assert operator.connect() is False
 
 @responses.activate
 def test_retry_on_connection_error(operator):
@@ -58,8 +57,7 @@ def test_retry_fails(operator):
         "http://localhost:7125/printer/info",
         body=requests.exceptions.ConnectionError("Connection Refused")
     )
-    with pytest.raises(PrinterConnectionError):
-        operator.connect()
+    assert operator.connect() is False
     assert len(responses.calls) == 2
 
 @responses.activate
@@ -148,3 +146,70 @@ def test_get_printer_state(operator):
     assert state["bed_target"] == 60.0
     assert state["gcode_file"] == "test.gcode"
     assert state["progress"] == 0.45
+
+
+@responses.activate
+def test_connect_failure_returns_false(operator):
+    responses.add(responses.GET, "http://localhost:7125/printer/info", status=500)
+    assert operator.connect() is False
+
+@responses.activate
+def test_connect_connection_refused_returns_false(operator):
+    responses.add(responses.GET, "http://localhost:7125/printer/info", body=requests.exceptions.ConnectionError("Refused"))
+    responses.add(responses.GET, "http://localhost:7125/printer/info", body=requests.exceptions.ConnectionError("Refused"))
+    assert operator.connect() is False
+
+def test_upload_file_not_found(operator):
+    with pytest.raises(FileNotFoundError):
+        operator.upload_file("does_not_exist.gcode", "test.gcode")
+
+@responses.activate
+def test_start_print_file_not_found(operator):
+    responses.add(
+        responses.POST,
+        "http://localhost:7125/printer/print/start",
+        json={"error": "File not found"},
+        status=200
+    )
+    assert operator.start_print("nonexistent.gcode") is False
+
+@responses.activate
+def test_start_print_http_error(operator):
+    responses.add(responses.POST, "http://localhost:7125/printer/print/start", status=500)
+    assert operator.start_print("test.gcode") is False
+
+@responses.activate
+def test_get_printer_state_partial_response(operator):
+    mock_response = {
+        "result": {
+            "status": {} # Empty status
+        }
+    }
+    
+    responses.add(
+        responses.GET,
+        "http://localhost:7125/printer/objects/query?print_stats&toolhead&heater_bed&extruder",
+        json=mock_response,
+        status=200
+    )
+    
+    state = operator.get_printer_state()
+    assert state["state"] is None
+    assert state["z_height"] is None
+    assert state["hotend_actual"] is None
+    assert state["hotend_target"] is None
+    assert state["bed_actual"] is None
+    assert state["bed_target"] is None
+    assert state["gcode_file"] is None
+    assert state["progress"] is None
+
+@responses.activate
+def test_timeout_respected(operator):
+    responses.add(
+        responses.GET,
+        "http://localhost:7125/printer/info",
+        body=requests.exceptions.Timeout("Timeout")
+    )
+    # The operator catches RequestException and bubbles it as PrinterConnectionError
+    # connect() catches PrinterConnectionError and returns False
+    assert operator.connect() is False

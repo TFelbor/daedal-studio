@@ -52,8 +52,11 @@ CURRENT_JOB_ID = None
 
 def _write_status(phase_num: int, status: str, error: str = None) -> None:
     if not CURRENT_JOB_ID:
+        print(f"DEBUG: CURRENT_JOB_ID is None! sys.argv={sys.argv}")
         return
-    log_dir = Path.home() / ".p2p-mesh" / "logs"
+        return
+    log_dir_env = os.environ.get("P2P_LOGS_DIR")
+    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     status_file = log_dir / f"{CURRENT_JOB_ID}.status"
     
@@ -342,6 +345,7 @@ def _build_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = _build_parser()
     args = parser.parse_args()
+    
     if args.job_id:
         CURRENT_JOB_ID = args.job_id
     _setup_logging(args.verbose)

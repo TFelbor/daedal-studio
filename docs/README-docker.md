@@ -1,467 +1,265 @@
 # Prompt2Print — Docker Usage Guide
 
-This guide explains how to build and run the **p2p-mesh pipeline** using Docker.
-The pipeline is split into six services (one per phase), allowing any single
-phase to be rebuilt or swapped without touching the others.
-
----
-
-## Table of Contents
-
-1. [Prerequisites](#1-prerequisites)
-2. [Project Structure](#2-project-structure)
-3. [Quickstart (Compose)](#3-quickstart-compose)
-4. [Skip Phases — Reuse Existing Outputs](#4-skip-phases--reuse-existing-outputs)
-5. [GPU Override (NVIDIA)](#5-gpu-override-nvidia)
-6. [Raw `docker run` (No Compose)](#6-raw-docker-run-no-compose)
-7. [Running Individual Phase Images](#7-running-individual-phase-images)
-8. [Volume Reference](#8-volume-reference)
-9. [Environment Variable Reference](#9-environment-variable-reference)
-10. [Rebuilding a Single Phase](#10-rebuilding-a-single-phase)
-11. [Troubleshooting](#11-troubleshooting)
+This guide explains how to build, run, and troubleshoot the **p2p-mesh pipeline** using Docker. This document is written for system operators, DevOps engineers, and developers running the system locally.
 
 ---
 
 ## 1. Prerequisites
 
-| Requirement | Version |
-|-------------|---------|
-| Docker Engine | 24.x or later |
-| Docker Compose plugin | v2.20 or later (`docker compose` not `docker-compose`) |
-| NVIDIA Container Toolkit | *(GPU only)* Latest |
-| Disk space | ≥ 30 GB (FLUX + TripoSR weights) |
-| RAM | ≥ 16 GB recommended (≥ 8 GB minimum for CPU-only run) |
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Docker Engine | 24.x or later | Core container runtime |
+| Docker Compose plugin | v2.20 or later | Must be `docker compose` (not `docker-compose`) |
+| NVIDIA Container Toolkit | Latest | Optional. Required for GPU pass-through on Ubuntu/Windows |
+| Disk space | ≥ 30 GB | Models (FLUX + TripoSR weights) and images |
+| RAM | ≥ 16 GB | Minimum 8 GB for CPU-only runs |
 
 ---
 
-## ⚠️ Apple Silicon Mac: Run Phase 1 Outside Docker
+## 2. Service Overview
 
-Docker on macOS runs inside a Linux VM and cannot access the Apple
-Silicon GPU (MPS). Running Phase 1 (FLUX image generation) inside
-Docker on Mac will use CPU and take approximately 84 minutes.
+The system is decomposed into highly modular services, allowing independent builds and scaling:
 
-The recommended workflow on Mac:
-
-    # Step 1 — Run Phase 1 natively (MPS accelerated, ~30 seconds)
-    bash infra/scripts/run_phase1_native.sh "a ceramic vase"
-    # Or via Makefile:
-    make phase1-native PROMPT="a ceramic vase"
-
-    # Step 2 — Run Phases 2-5 in Docker (~5 minutes)
-    docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-        python pythonsrc/pipeline.py "a ceramic vase" \
-        --skip-visualizer --blueprint /app/inputs/blueprint.png \
-        --print --start-print --verbose
-
-On a Linux server with an NVIDIA GPU, the full pipeline can run
-inside Docker using the GPU override:
-
-    docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
-        run --rm pipeline-runner \
-        python pythonsrc/pipeline.py "a ceramic vase" \
-        --print --start-print --verbose
+| Service          | Image / Dockerfile          | Port  | Purpose                          |
+|------------------|-----------------------------|-------|----------------------------------|
+| pipeline-runner  | `infra/docker/pipeline.Dockerfile` | —     | Runs all 5 pipeline phases       |
+| phase1-visualizer| `infra/docker/phase1.Dockerfile`   | —     | FLUX text-to-image (standalone)  |
+| phase2-sculptor  | `infra/docker/phase2.Dockerfile`   | —     | TripoSR reconstruction           |
+| phase3-engineer  | `infra/docker/phase3.Dockerfile`   | —     | Mesh repair + scaling            |
+| phase4-slicer    | `infra/docker/phase4.Dockerfile`   | —     | CuraEngine slicing               |
+| phase5-operator  | `infra/docker/phase5.Dockerfile`   | —     | OctoPrint/Klipper job dispatch   |
+| api-server       | `infra/docker/server.Dockerfile`   | 8000  | FastAPI job orchestrator + UI    |
+| web (build)      | `infra/docker/web.Dockerfile`      | —     | Builds React SPA into api-server |
 
 ---
 
-## 2. Project Structure
+## 3. Volume Reference
 
-```
-p2p-mesh/
-├── infra/
-│   ├── docker/
-│   │   ├── base.Dockerfile          ← shared Python 3.10 + system libs layer
-│   │   ├── phase1.Dockerfile        ← FLUX.2-klein-4B (text-to-image)
-│   │   ├── phase2.Dockerfile        ← TripoSR (2D → 3D reconstruction)
-│   │   ├── phase3.Dockerfile        ← pymeshfix + trimesh (repair + scale)
-│   │   ├── phase4.Dockerfile        ← CuraEngine apt install (.obj → .gcode)
-│   │   ├── phase5.Dockerfile        ← requests only (OctoPrint REST client)
-│   │   ├── pipeline.Dockerfile      ← all-in-one runner (chains phases 1–5)
-│   │   └── entrypoint.sh            ← bootstraps config.py from template
-│   ├── docker-compose.yml           ← primary dev interface
-│   ├── docker-compose.gpu.yml       ← NVIDIA GPU override (compose merge)
-│   └── scripts/
-│       └── run_phase1_native.sh     ← Phase 1 native runner (macOS MPS)
-├── .env.template                    ← copy to .env and fill in your values
-├── Makefile                         ← convenience targets (build, up, test, etc.)
-└── docs/
-    └── README-docker.md             ← this file
-```
+Persistent storage ensures weights don't re-download and outputs aren't lost across restarts.
 
-**Build order for standalone phase images:**
-
-```
-base → phase1, phase2, phase3, phase4, phase5 (independent)
-base → pipeline (all deps merged)
-```
+| Volume Name          | Mount Point          | Contents                                    |
+|----------------------|----------------------|---------------------------------------------|
+| p2p-models-flux      | `/models/flux`       | FLUX.2-klein-4B weights (~16 GB)            |
+| p2p-models-triposr   | `/models/triposr`    | TripoSR weights                             |
+| p2p-models-hf-cache  | `/models/hf_cache`   | HuggingFace hub cache                       |
+| p2p-inputs           | `/app/inputs`        | Blueprint images (pipeline input)           |
+| p2p-outputs          | `/app/outputs`       | Meshes, G-code (pipeline output)            |
+| p2p-telemetry        | `/app/telemetry`     | SQLite telemetry DB (job history, samples)  |
 
 ---
 
-## 3. Quickstart (Compose)
+## 4. Environment Variable Reference
 
-### Step 1 — Configure environment
+These variables configure the `.env` file at the repository root.
+
+| Variable | Default Value | Required? | Description |
+|----------|---------------|-----------|-------------|
+| `HF_TOKEN` | `""` | Yes | HuggingFace token for FLUX weights download |
+| `OCTOPRINT_URL` | `http://host.docker.internal:5001` | Yes | OctoPrint API endpoint |
+| `OCTOPRINT_API_KEY` | `""` | Yes | OctoPrint application key |
+| `CURA_ENGINE_PATH` | `CuraEngine` | No | Path to binary inside the container |
+| `FLUX_MODEL_PATH` | `/models/flux` | No | Path to cached FLUX weights |
+| `TRIPOSR_MODEL_PATH` | `/models/triposr` | No | Path to cached TripoSR weights |
+| `PYTORCH_ENABLE_MPS_FALLBACK` | `1` | No | CPU fallback for macOS MPS operations |
+| `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
+| `TRANSFORMERS_CACHE` | `/models/hf_cache` | No | Alias for HF_HOME |
+| `TELEMETRY_DB_PATH` | `/app/telemetry/telemetry.db` | No | Path to the SQLite DB storing telemetry |
+| `PAUSE_ON_FAILURE` | `false` | No | Automatically pause printer on anomaly |
+
+---
+
+## 5. Quickstart (Compose)
+
+Build and run the full stack (API server + React frontend) rapidly:
 
 ```bash
 cp .env.template .env
-# Open .env and set OCTOPRINT_API_KEY and OCTOPRINT_URL
-```
-
-### Step 2 — Build the base image first
-
-The individual phase images all `FROM p2p-base:latest`. Build it once:
-
-```bash
-docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
-```
-
-### Step 3 — Build all service images
-
-```bash
+# Edit .env and configure HF_TOKEN, OCTOPRINT_API_KEY
 docker compose -f infra/docker-compose.yml build
-# Or via Makefile:
-make build
+docker compose -f infra/docker-compose.yml up api-server
 ```
-
-### Step 4 — Run the full pipeline
-
-```bash
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a ceramic vase" \
-    --print --start-print --verbose
-```
-
-> **macOS / Windows note:** OctoPrint on the host machine is accessed via
-> `host.docker.internal`. This is pre-configured in `infra/docker-compose.yml`.
-> Linux users: set `OCTOPRINT_URL=http://YOUR_HOST_IP:5001` in `.env`.
+*Note for macOS users:* The FLUX text-to-image generator (Phase 1) runs on CPU in Docker and will be slow (~84 mins). It is highly recommended to run Phase 1 natively on macOS (MPS) and only run Phase 2-5 or the API server in Docker.
 
 ---
 
-## 4. Skip Phases — Reuse Existing Outputs
+## 6. Running Individual Phase Images
 
-Use skip flags to fast-iterate on a specific phase without re-running expensive upstream steps (e.g. model inference).
+Each phase is individually addressable for testing and isolated runs.
 
-### Skip Phase 1 — reuse an existing blueprint image
-
-```bash
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "prompt" \
-    --skip-visualizer --blueprint /app/inputs/blueprint.png \
-    --print --start-print
-```
-
-### Skip Phases 1 and 2 — start from an existing mesh
-
-```bash
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py \
-    --skip-visualizer --skip-sculptor \
-    --mesh /app/outputs/raw_mesh.obj \
-    --print --start-print --verbose
-```
-
-### Mesh-only run (no printing — stop after Phase 3)
-
-```bash
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a sphere" \
-    --skip-visualizer --mesh /app/outputs/raw_mesh.obj
-```
-
----
-
-## 5. GPU Override (NVIDIA)
-
-The default compose file runs everything on CPU. To enable NVIDIA GPU
-acceleration for Phases 1 (FLUX) and 2 (TripoSR):
-
-### Requirements
-
-- NVIDIA GPU driver installed on the host
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed:
-
-  ```bash
-  # Ubuntu
-  sudo apt-get install -y nvidia-container-toolkit
-  sudo systemctl restart docker
-  ```
-
-### Run with GPU
-
-```bash
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml \
-    run --rm pipeline-runner \
-    python pythonsrc/pipeline.py "a sphere" --print --start-print
-# Or via Makefile:
-make pipeline-gpu PROMPT="a sphere"
-```
-
-The GPU override file sets `runtime: nvidia` and `CUDA_VISIBLE_DEVICES=0`
-only on the GPU-heavy phases (1, 2, and pipeline-runner). Phases 3–5
-are unaffected and always run on CPU.
-
----
-
-## 6. Raw `docker run` (No Compose)
-
-Use this pattern for CI environments or when you don't want to use Compose.
-
+### Phase 1 — Visualizer
 ```bash
 docker run --rm \
     -v p2p-models-flux:/models/flux \
-    -v p2p-models-triposr:/models/triposr \
+    -v p2p-models-hf-cache:/models/hf_cache \
     -v p2p-inputs:/app/inputs \
-    -v p2p-outputs:/app/outputs \
-    -e OCTOPRINT_URL=http://host.docker.internal:5001 \
-    -e OCTOPRINT_API_KEY=YOUR_KEY \
-    p2p-mesh-pipeline \
-    python pythonsrc/pipeline.py "a vase" --print --start-print
-```
-
-> **macOS / Windows:** use `host.docker.internal` instead of `localhost`
-> when OctoPrint is running on the host machine.
-
-> **Linux:** use `--add-host=host.docker.internal:host-gateway` if you
-> need host connectivity, or use your host's LAN IP directly.
-
----
-
-## 7. Running Individual Phase Images
-
-Each phase has its own image that can be invoked independently.
-Build and run a single phase for development and testing:
-
-### Phase 1 — Visualizer (text-to-image)
-
-```bash
-# Build standalone phase image
-docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
-docker build -f infra/docker/phase1.Dockerfile -t p2p-phase1-visualizer:latest .
-
-# Run
-docker run --rm \
-    -v p2p-models-flux:/models/flux \
-    -v p2p-inputs:/app/inputs \
-    -e FLUX_MODEL_PATH=/models/flux \
+    -e HF_TOKEN=your_token \
     p2p-phase1-visualizer:latest \
-    --prompt "a ceramic vase" \
-    --output /app/inputs/blueprint.png \
-    --steps 4
+    --prompt "a ceramic vase" --output /app/inputs/blueprint.png --steps 4
 ```
 
-### Phase 2 — Sculptor (2D → 3D)
-
+### Phase 2 — Sculptor
 ```bash
-docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .
-
 docker run --rm \
     -v p2p-models-triposr:/models/triposr \
     -v p2p-inputs:/app/inputs \
     -v p2p-outputs:/app/outputs \
-    -e TRIPOSR_MODEL_PATH=/models/triposr \
     p2p-phase2-sculptor:latest \
-    --blueprint /app/inputs/blueprint.png \
-    --output /app/outputs/raw_mesh.obj
+    --blueprint /app/inputs/blueprint.png --output /app/outputs/raw_mesh.obj
 ```
 
-### Phase 3 — Engineer (mesh repair + scale)
-
+### Phase 3 — Engineer
 ```bash
-docker build -f infra/docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
-
 docker run --rm \
     -v p2p-outputs:/app/outputs \
     p2p-phase3-engineer:latest \
-    /app/outputs/raw_mesh.obj \
-    /app/outputs/engineered_mesh.obj \
-    50.0 --verbose
+    /app/outputs/raw_mesh.obj /app/outputs/engineered_mesh.obj 50.0
 ```
 
-### Phase 4 — Slicer (CuraEngine)
-
+### Phase 4 — Slicer
 ```bash
-docker build -f infra/docker/phase4.Dockerfile -t p2p-phase4-slicer:latest .
-
 docker run --rm \
     -v p2p-outputs:/app/outputs \
     p2p-phase4-slicer:latest \
-    --input /app/outputs/engineered_mesh.obj \
-    --output /app/outputs/engineered_mesh.gcode
+    --input /app/outputs/engineered_mesh.obj --output /app/outputs/engineered_mesh.gcode
 ```
 
-### Phase 5 — Operator (OctoPrint)
-
+### Phase 5 — Operator
 ```bash
-docker build -f infra/docker/phase5.Dockerfile -t p2p-phase5-operator:latest .
-
 docker run --rm \
     -v p2p-outputs:/app/outputs \
     -e OCTOPRINT_URL=http://host.docker.internal:5001 \
-    -e OCTOPRINT_API_KEY=YOUR_KEY \
+    -e OCTOPRINT_API_KEY=your_key \
     p2p-phase5-operator:latest \
-    --file /app/outputs/engineered_mesh.gcode \
-    --url http://host.docker.internal:5001 \
-    --key YOUR_KEY \
-    --start --watch
+    --file /app/outputs/engineered_mesh.gcode --start --watch
 ```
 
 ---
 
-## 8. Volume Reference
+## 7. Running the API Server
 
-| Volume Name | Mount Point | Contents |
-|-------------|------------|---------| 
-| `p2p-models-flux` | `/models/flux` | FLUX.2-klein-4B weights (downloaded on first run) |
-| `p2p-models-triposr` | `/models/triposr` | TripoSR weights |
-| `p2p-models-hf-cache` | `/models/hf_cache` | HuggingFace hub cache (tokenisers, configs) |
-| `p2p-inputs` | `/app/inputs` | Blueprint images (input to pipeline) |
-| `p2p-outputs` | `/app/outputs` | Meshes, G-code (output from pipeline) |
-| `p2p-telemetry` | `/app/telemetry` | SQLite telemetry database (persists between restarts) |
-
-### Managing volumes
+The API server hosts the FastAPI application and serves the React UI.
 
 ```bash
-# List all p2p volumes
-docker volume ls | grep p2p
+# Start the API server in detached mode
+docker compose -f infra/docker-compose.yml up -d api-server
 
-# Inspect a volume (find its mountpoint on the host)
-docker volume inspect p2p-models-flux
-
-# Delete model weights to force a fresh download
-docker volume rm p2p-models-flux
-
-# Delete all p2p volumes (destructive — removes all outputs too)
-docker volume rm p2p-models-flux p2p-models-triposr p2p-inputs p2p-outputs
+# Verify health
+curl http://localhost:8000/health
 ```
-
-### Swapping a model
-
-To swap TripoSR for a new 3D reconstruction model:
-
-1. Edit `infra/docker/phase2.Dockerfile` — update the pip installs and model path.
-2. Delete the old volume: `docker volume rm p2p-models-triposr`
-3. Rebuild: `docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor:latest .`
-4. The pipeline-runner image also needs rebuilding if you changed phase2's Python deps.
+Once healthy, navigate to `http://localhost:8000` to access the Prompt2Print UI.
 
 ---
 
-## 9. Environment Variable Reference
+## 8. Skip-Phase Flags Reference
 
-Set these in your `.env` file (copied from `.env.template`).
-All values can also be passed via `docker run -e VAR=value`.
+You can pass these flags to the `pipeline-runner` or `pipeline.py` script to bypass completed phases.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OCTOPRINT_URL` | `http://host.docker.internal:5001` | OctoPrint base URL |
-| `OCTOPRINT_API_KEY` | *(empty)* | **Required** for Phase 5 (printing) |
-| `CURA_ENGINE_PATH` | `CuraEngine` | CuraEngine binary name or full path |
-| `FLUX_MODEL_PATH` | `/models/flux` | FLUX model weights directory |
-| `TRIPOSR_MODEL_PATH` | `/models/triposr` | TripoSR weights directory |
-| `PYTORCH_ENABLE_MPS_FALLBACK` | `1` | CPU fallback for unsupported MPS ops |
-| `HF_HOME` | `/models/hf_cache` | HuggingFace Hub cache directory |
-| `TRANSFORMERS_CACHE` | `/models/hf_cache` | Alias for `HF_HOME` |
+| Flag | Example | Description |
+|------|---------|-------------|
+| `--skip-visualizer` | `--skip-visualizer --blueprint /app/inputs/img.png` | Skips Phase 1; requires a provided image. |
+| `--skip-sculptor` | `--skip-sculptor --mesh /app/outputs/mesh.obj` | Skips Phase 2; requires a provided mesh. |
+| `--skip-engineer` | `--skip-engineer` | Skips Phase 3 repairs and scaling. |
+| `--skip-slicer` | `--skip-slicer` | Skips Phase 4 G-code slicing. |
+| `--print` / `--start-print` | `--print --start-print` | Opts in to Phase 5 execution (dispatch). |
+
+---
+
+## 9. GPU Override (NVIDIA)
+
+To leverage an NVIDIA GPU on Ubuntu/Windows, stack the GPU compose file on top of the base compose file:
+
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml up api-server
+```
+This passes `runtime: nvidia` down to the relevant containers. Ensure the host has the NVIDIA Container Toolkit installed.
 
 ---
 
 ## 10. Rebuilding a Single Phase
 
-One of the core design goals is **swap-ability**: changing one phase should not require touching any other.
-
-### Rebuild only Phase 3 (engineer)
+Phase separation enables fast rebuilds. If you edit Phase 3 code, only rebuild its container:
 
 ```bash
-# Rebuild the individual phase image
 docker compose -f infra/docker-compose.yml build phase3-engineer
-
-# Or rebuild standalone
-docker build -f infra/docker/phase3.Dockerfile -t p2p-phase3-engineer:latest .
 ```
+The other phases will remain cached. Note that changes to `infra/docker/base.Dockerfile` will require a full rebuild of all phases.
 
-### Rebuild the pipeline runner after changing phase deps
+---
+
+## 11. Volume Management
+
+Manage your named volumes using the Docker CLI:
 
 ```bash
-docker compose -f infra/docker-compose.yml build pipeline-runner
+# List all volumes
+docker volume ls | grep p2p
 
-# Or standalone
-docker build -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline:latest .
-```
+# Inspect volume location on host
+docker volume inspect p2p-telemetry
 
-### Rebuild base (affects all phases)
-
-```bash
-docker build -f infra/docker/base.Dockerfile -t p2p-base:latest .
-# Then rebuild all phases
-docker compose -f infra/docker-compose.yml build
+# WARNING: Destructive operations
+# Force models to re-download by deleting the volume
+docker volume rm p2p-models-flux
 ```
 
 ---
 
-## 11. Troubleshooting
+## 12. Telemetry Database
+
+The system records all print telemetry, failure events, and job status in a SQLite database at `/app/telemetry/telemetry.db` (mapped to the `p2p-telemetry` volume).
+
+Query it directly from the host:
+```bash
+docker compose -f infra/docker-compose.yml exec api-server sqlite3 /app/telemetry/telemetry.db \
+  "SELECT job_id, outcome, started_at FROM print_job ORDER BY started_at DESC LIMIT 10;"
+```
+
+Back it up locally:
+```bash
+docker cp $(docker compose -f infra/docker-compose.yml ps -q api-server):/app/telemetry/telemetry.db ./telemetry_backup.db
+```
+
+---
+
+## 13. Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'config'`
-
-**Cause:** `config.py` is gitignored and the container startup script failed.
-
-**Fix:** The entrypoint script should have created it automatically from `config.template.py`. If it didn't:
-
-```bash
-# Manually copy inside the container
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner \
-    cp pythonsrc/config.template.py pythonsrc/config.py
-```
-
-Or mount a pre-filled `config.py`:
-
-```bash
--v /path/to/your/config.py:/app/pythonsrc/config.py:ro
-```
+**Cause:** `config.py` is gitignored and the container startup script failed to copy from the template.
+**Fix:** Run `cp pythonsrc/config.template.py pythonsrc/config.py` and mount it manually, or allow the entrypoint script to run.
 
 ### `CuraEngine not found`
-
-**Cause:** The `curaengine` apt package failed to install, or the path is wrong.
-
-**Fix:**
-
-1. Verify the package installed: `docker compose -f infra/docker-compose.yml run --rm phase4-slicer which CuraEngine`
-2. If missing, try the lowercase variant: `CURA_ENGINE_PATH=curaengine`
-3. Check `apt-get install curaengine` output in the build log.
+**Cause:** Apt package `curaengine` failed to install in Phase 4.
+**Fix:** Verify with `docker compose run --rm phase4-slicer which CuraEngine`. Set `CURA_ENGINE_PATH=curaengine` (lowercase) if needed.
 
 ### `Connection refused — cannot reach OctoPrint`
-
-**Cause:** OctoPrint is running on the host but the container can't reach it.
-
-**Fix (macOS/Windows):** Use `http://host.docker.internal:5001` in `OCTOPRINT_URL`.
-
-**Fix (Linux):** Add `--add-host=host.docker.internal:host-gateway` to your
-`docker run` command, or use your host's LAN IP directly.
+**Cause:** Docker network can't resolve the host machine.
+**Fix (macOS/Windows):** Use `http://host.docker.internal:5001`.
+**Fix (Linux):** Use your LAN IP or add `--add-host=host.docker.internal:host-gateway`.
 
 ### `403 Forbidden` from OctoPrint
-
-**Cause:** `OCTOPRINT_API_KEY` is wrong or not set.
-
-**Fix:** Check OctoPrint → Settings → API → Global API Key and update `.env`.
+**Cause:** Incorrect or missing `OCTOPRINT_API_KEY`.
+**Fix:** Generate a new Global API Key in OctoPrint and update `.env`.
 
 ### Out of disk space during model download
-
-FLUX weights are ~16 GB. Ensure the Docker volume storage location has
-at least 30 GB free. Check with:
-
-```bash
-docker system df
-docker volume inspect p2p-models-flux
-```
+**Cause:** Insufficient space for 16GB FLUX weights.
+**Fix:** Use `docker system df` and clean up old images, or prune unused volumes.
 
 ### GPU not detected inside container
+**Cause:** Missing NVIDIA Container Toolkit.
+**Fix:** Install `nvidia-container-toolkit` on the host and run `sudo systemctl restart docker`.
 
-**Cause:** NVIDIA Container Toolkit not installed or Docker daemon not restarted.
+### `api-server fails to start: port 8000 in use`
+**Cause:** Another service is bound to port 8000 on the host machine.
+**Fix:** Find the blocking process (`lsof -i :8000`), kill it, or map `api-server` to a different host port in `docker-compose.yml`.
 
-**Fix:**
+### `Telemetry DB locked`
+**Cause:** Multiple `api-server` instances attempting concurrent SQLite writes.
+**Fix:** Ensure only one `api-server` container is running at a time via `docker compose down` and `docker compose up api-server`.
 
-```bash
-# Verify toolkit is installed
-nvidia-ctk --version
+### `OctoPrint telemetry not collecting: Socket.IO version mismatch`
+**Cause:** OctoPrint's Socket.IO server version does not match the `python-socketio` client version expected.
+**Fix:** Check OctoPrint plugin logs and verify the Socket.IO compatibility protocol.
 
-# Restart Docker daemon
-sudo systemctl restart docker
-
-# Test GPU visibility
-docker run --rm --runtime=nvidia nvidia/cuda:12.0-base nvidia-smi
-```
+### `Moonraker WebSocket disconnects immediately`
+**Cause:** The Klipper printer is not in a "ready" state or is disconnected from Moonraker.
+**Fix:** Verify Klipper state through Fluidd/Mainsail before running jobs.

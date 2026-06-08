@@ -1,3 +1,5 @@
+"""Telemetry collection from OctoPrint Socket.IO."""
+
 import asyncio
 import logging
 import socketio
@@ -10,17 +12,25 @@ from pythonsrc.telemetry.schema import TelemetrySample
 logger = logging.getLogger(__name__)
 
 class OctoPrintCollector:
-    """
-    Collects telemetry data from an OctoPrint 3D printer via Socket.IO.
-    
-    OctoPrint telemetry limitations:
-    - gcode_line: Not exposed via the streaming API (always None).
-    - print_speed_pct: Not exposed via the streaming API (always None).
-    - extrusion_factor_pct: Not exposed via the streaming API (always None).
-    - fan_speed_pct: Not exposed via the streaming API (always None).
+    """Collects telemetry data from an OctoPrint 3D printer via Socket.IO.
+
+    Limitations:
+        - gcode_line: Not exposed via the streaming API (always None).
+        - print_speed_pct: Not exposed via the streaming API (always None).
+        - extrusion_factor_pct: Not exposed via the streaming API (always None).
+        - fan_speed_pct: Not exposed via the streaming API (always None).
     """
 
     def __init__(self, host: str, port: int, api_key: str, job_id: str, db: TelemetryDB):
+        """Initialize the OctoPrint collector.
+
+        Args:
+            host: The OctoPrint host.
+            port: The OctoPrint port.
+            api_key: The API key for authentication.
+            job_id: The job identifier.
+            db: The telemetry database.
+        """
         self.host = host
         self.port = port
         self.api_key = api_key
@@ -38,14 +48,14 @@ class OctoPrintCollector:
         self.sio.on("event", self._on_event)
 
     async def start(self) -> None:
-        """Starts the collector and initiates connection."""
+        """Start the collector and initiate the Socket.IO connection."""
         if self._running:
             return
         self._running = True
         self._bg_task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
-        """Stops the collector and disconnects."""
+        """Stop the collector and disconnect the Socket.IO client."""
         self._running = False
         if self._bg_task:
             self._bg_task.cancel()

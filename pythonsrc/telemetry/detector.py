@@ -1,3 +1,5 @@
+"""Anomaly detection rules for print telemetry streams."""
+
 import asyncio
 import logging
 import os
@@ -13,18 +15,24 @@ from pythonsrc.operators.base import BasePrinterOperator
 logger = logging.getLogger(__name__)
 
 class AnomalyDetector:
-    """
-    Detector that consumes TelemetrySample objects from a queue and applies
-    rule-based anomaly detection.
+    """Detector that consumes TelemetrySample objects from a queue and applies rule-based anomaly detection.
     
     Firmware applicability:
-    - Rule 1 (Thermal runaway): Klipper + OctoPrint
-    - Rule 2 (Extrusion stall): Klipper only (requires gcode_line)
-    - Rule 3 (Layer shift): Klipper + OctoPrint
-    - Rule 4 (Bed adhesion): Klipper + OctoPrint
+        - Rule 1 (Thermal runaway): Klipper + OctoPrint
+        - Rule 2 (Extrusion stall): Klipper only (requires gcode_line)
+        - Rule 3 (Layer shift): Klipper + OctoPrint
+        - Rule 4 (Bed adhesion): Klipper + OctoPrint
+        - Rule 5 (Extrusion issue): Klipper + OctoPrint
     """
 
     def __init__(self, queue: asyncio.Queue, db: TelemetryDB, operator: Optional[BasePrinterOperator]):
+        """Initialize the AnomalyDetector.
+
+        Args:
+            queue: The asyncio Queue containing telemetry samples.
+            db: The telemetry database.
+            operator: The printer operator.
+        """
         self.queue = queue
         self.db = db
         self.operator = operator
@@ -128,14 +136,34 @@ class AnomalyDetector:
             pass
 
     async def _evaluate_rules(self, job_id: str, history: List[TelemetrySample]) -> None:
+        """Evaluate all anomaly detection rules for a job's recent history.
+
+        Args:
+            job_id: The unique identifier of the job.
+            history: A list of recent telemetry samples for the job.
+        """
         if not history:
             return
             
         current = history[-1]
         state, progress = await self._get_state_and_progress(job_id)
         
-        # Rule 1: Thermal runaway
-        # Condition: hotend_target > 150°C AND hotend_actual < (hotend_target - 25°C) for 5 consecutive samples
+        self._check_thermal_runaway(job_id, current, history)
+        self._check_extrusion_stall(job_id, current, history, state, progress)
+        self._check_layer_shift(job_id, current, history)
+        self._check_bed_adhesion(job_id, current, history, state, progress)
+        self._check_extrusion_issue(job_id, current, history)
+
+    def _check_thermal_runaway(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+        """Evaluate Rule 1: Thermal runaway.
+
+        Condition: hotend_target > 150°C AND hotend_actual < (hotend_target - 25°C) for 5 consecutive samples.
+
+        Args:
+            job_id: The unique identifier of the job.
+            current: The most recent telemetry sample.
+            history: A list of recent telemetry samples for the job.
+        """
         if len(history) >= 5:
             thermal_runaway = True
             for s in history[-5:]:
@@ -148,8 +176,18 @@ class AnomalyDetector:
             if thermal_runaway:
                 self._trigger_failure(job_id, current, "thermal_runaway", history[-5:])
 
-        # Rule 2: Extrusion stall (clog proxy)
-        # Condition: print progress > 5% AND gcode_line not incrementing across 10 consecutive samples while state = "printing"
+    def _check_extrusion_stall(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str, progress: float) -> None:
+        """Evaluate Rule 2: Extrusion stall (clog proxy).
+
+        Condition: print progress > 5% AND gcode_line not incrementing across 10 consecutive samples while state = "printing".
+
+        Args:
+            job_id: The unique identifier of the job.
+            current: The most recent telemetry sample.
+            history: A list of recent telemetry samples for the job.
+            state: The current printer state.
+            progress: The current print progress percentage.
+        """
         if len(history) >= 10 and state == "printing" and progress > 5.0:
             clog = True
             first_line = history[-10].gcode_line
@@ -163,16 +201,34 @@ class AnomalyDetector:
             if clog:
                 self._trigger_failure(job_id, current, "clog", history[-10:])
 
-        # Rule 3: Layer shift (Z regression)
-        # Condition: z_height_mm decreases by > 0.5mm between consecutive samples
+    def _check_layer_shift(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+        """Evaluate Rule 3: Layer shift (Z regression).
+
+        Condition: z_height_mm decreases by > 0.5mm between consecutive samples.
+
+        Args:
+            job_id: The unique identifier of the job.
+            current: The most recent telemetry sample.
+            history: A list of recent telemetry samples for the job.
+        """
         if len(history) >= 2:
             prev = history[-2]
             if prev.z_height_mm is not None and current.z_height_mm is not None:
                 if (prev.z_height_mm - current.z_height_mm) > 0.5:
                     self._trigger_failure(job_id, current, "layer_shift", history[-2:])
 
-        # Rule 4: Bed adhesion (early Z + low progress)
-        # Condition: z_height_mm < 1.0mm AND print progress < 10% AND state transitions from "printing" to "error" or "cancelled"
+    def _check_bed_adhesion(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str, progress: float) -> None:
+        """Evaluate Rule 4: Bed adhesion.
+
+        Condition: z_height_mm < 1.0mm AND print progress < 10% AND state transitions from "printing" to "error" or "cancelled".
+
+        Args:
+            job_id: The unique identifier of the job.
+            current: The most recent telemetry sample.
+            history: A list of recent telemetry samples for the job.
+            state: The current printer state.
+            progress: The current print progress percentage.
+        """
         cache = self._state_cache.get(job_id, {})
         prev_state = cache.get("prev_state", "printing")
         if current.z_height_mm is not None and current.z_height_mm < 1.0 and progress < 10.0:
@@ -181,3 +237,22 @@ class AnomalyDetector:
                 
         # Update prev_state
         cache["prev_state"] = state
+
+    def _check_extrusion_issue(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+        """Evaluate Rule 5: Extrusion issue.
+
+        Condition: extrusion_factor_pct <= 10.0 for 5 consecutive samples.
+
+        Args:
+            job_id: The unique identifier of the job.
+            current: The most recent telemetry sample.
+            history: A list of recent telemetry samples for the job.
+        """
+        if len(history) >= 5:
+            slow_extrusion = True
+            for s in history[-5:]:
+                if s.extrusion_factor_pct is None or s.extrusion_factor_pct > 10.0:
+                    slow_extrusion = False
+                    break
+            if slow_extrusion:
+                self._trigger_failure(job_id, current, "extrusion_issue", history[-5:])

@@ -163,3 +163,66 @@ async def test_moonraker_collector_reconnect(fake_server, in_memory_db, caplog):
         assert any("Moonraker connection error" in record.message for record in caplog.records)
         
     await collector.stop()
+
+@pytest.mark.asyncio
+async def test_moonraker_collector_partial_data(fake_server, in_memory_db):
+    ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
+    collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
+    
+    await collector.start()
+    await asyncio.sleep(0.5)
+    
+    # Missing fields
+    await fake_server.broadcast_status({
+        "print_stats": {},
+        "toolhead": {}
+        # missing extruder, heater_bed, etc.
+    })
+    
+    await asyncio.sleep(0.5)
+    await collector.stop()
+    
+    samples = in_memory_db.get_samples(TEST_JOB_ID)
+    assert len(samples) == 1
+    sample = samples[0]
+    
+    assert sample.gcode_line is None
+    assert sample.z_height_mm is None
+    assert sample.hotend_actual_c is None
+    assert sample.bed_actual_c is None
+
+@pytest.mark.asyncio
+async def test_moonraker_collector_invalid_json(fake_server, in_memory_db):
+    ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
+    collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
+    
+    await collector.start()
+    await asyncio.sleep(0.5)
+    
+    # Send invalid JSON
+    for ws in fake_server.clients:
+        if not ws.closed:
+            await ws.send("This is not valid JSON {]")
+            
+    await asyncio.sleep(0.5)
+    await collector.stop()
+    
+    # Should skip without crashing
+    samples = in_memory_db.get_samples(TEST_JOB_ID)
+    assert len(samples) == 0
+
+@pytest.mark.asyncio
+async def test_moonraker_collector_stop_cancels_loop(fake_server, in_memory_db):
+    ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
+    collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
+    
+    await collector.start()
+    await asyncio.sleep(0.5)
+    
+    assert collector._task is not None
+    assert not collector._task.done()
+    
+    await collector.stop()
+    await asyncio.sleep(0.5)
+    
+    assert collector._task is None
