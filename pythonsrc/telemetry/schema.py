@@ -30,8 +30,8 @@ class PrintJob:
     profile_name: str
     """The print profile name used for slicing."""
     
-    started_at: datetime
-    """The timestamp when the print job started."""
+    started_at: datetime | None
+    """The timestamp when the print job started, or None if not yet started."""
     
     completed_at: datetime | None
     """The timestamp when the print job completed or None if incomplete."""
@@ -56,7 +56,8 @@ class PrintJob:
             Dict[str, Any]: A dictionary representation of the PrintJob.
         """
         d = dataclasses.asdict(self)
-        d['started_at'] = self.started_at.isoformat()
+        if self.started_at:
+            d['started_at'] = self.started_at.isoformat()
         if self.completed_at:
             d['completed_at'] = self.completed_at.isoformat()
         return d
@@ -183,9 +184,22 @@ class FailureEvent:
     
     notes: str | None
     """Optional human-readable notes regarding the failure."""
-    
+
     snapshot: dict
     """The last N TelemetrySample records serialized as JSON."""
+
+    def __post_init__(self):
+        """Validate FailureEvent fields.
+
+        Raises:
+            ValueError: If failure_type or source is not a valid value.
+        """
+        valid_types = {"thermal_runaway", "layer_shift", "clog", "adhesion", "user_cancelled", "unknown"}
+        if self.failure_type not in valid_types:
+            raise ValueError(f"Invalid failure_type: {self.failure_type}")
+        valid_sources = {"manual", "automated"}
+        if self.source not in valid_sources:
+            raise ValueError(f"Invalid source: {self.source}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the FailureEvent to a JSON-serializable dictionary.

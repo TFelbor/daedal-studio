@@ -1,24 +1,31 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getJob } from '../api/client';
-import type { JobStatusResponse } from '../api/client';
+import type { JobStatusResponse, FailureEvent } from '../api/client';
 import { PhaseProgress } from '../components/PhaseProgress';
 import { TelemetryChart } from '../components/TelemetryChart';
 import { FailureButton } from '../components/FailureButton';
 import { PrinterStatus } from '../components/PrinterStatus';
-import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle } from 'lucide-react';
 import styles from './JobDetail.module.css';
 
 export function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const [job, setJob] = useState<JobStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failureEvents, setFailureEvents] = useState<FailureEvent[]>([]);
 
   const fetchJob = async () => {
     if (!id) return;
     try {
       const data = await getJob(id);
       setJob(data);
+      if (data.outcome === 'failure' || data.outcome === 'cancelled') {
+        fetch(`/jobs/${id}/failure`)
+          .then(res => res.json())
+          .then((events: FailureEvent[]) => setFailureEvents(events))
+          .catch(() => {});
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -28,7 +35,7 @@ export function JobDetail() {
 
   useEffect(() => {
     fetchJob();
-    const intervalId = setInterval(fetchJob, 5000); // also poll overall job
+    const intervalId = setInterval(fetchJob, 5000);
     return () => clearInterval(intervalId);
   }, [id]);
 
@@ -83,7 +90,7 @@ export function JobDetail() {
             </div>
             <div className={styles.detailRow}>
               <span className={styles.detailLabel}>Started</span>
-              <span>{new Date(job.started_at).toLocaleString()}</span>
+              <span>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</span>
             </div>
             {job.completed_at && (
               <div className={styles.detailRow}>
@@ -99,6 +106,37 @@ export function JobDetail() {
               </div>
             )}
           </div>
+
+          {failureEvents.length > 0 && (
+            <div className={`card ${styles.detailsCard}`}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
+                <AlertTriangle size={18} /> Failure Events
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {failureEvents.map(evt => (
+                  <div key={evt.event_id} style={{
+                    padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px',
+                    border: '1px solid #fecaca', fontSize: '14px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontWeight: 600, textTransform: 'capitalize', color: '#991b1b' }}>
+                        {evt.failure_type.replace(/_/g, ' ')}
+                      </span>
+                      <span style={{ color: '#6b7280', fontSize: '12px' }}>
+                        {new Date(evt.detected_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ color: '#4b5563' }}>
+                      Source: <span style={{ fontWeight: 500 }}>{evt.source}</span>
+                      {evt.z_height_mm != null && <> | Z: {evt.z_height_mm?.toFixed(1)}mm</>}
+                      {evt.gcode_line != null && <> | Line: {evt.gcode_line}</>}
+                    </div>
+                    {evt.notes && <div style={{ color: '#4b5563', marginTop: '4px', fontStyle: 'italic' }}>"{evt.notes}"</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

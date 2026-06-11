@@ -5,7 +5,7 @@ export interface PrintJob {
   printer_firmware: string;
   slicer: string;
   profile_name: string;
-  started_at: string;
+  started_at: string | null;
   completed_at: string | null;
   outcome: string;
 }
@@ -19,7 +19,7 @@ export interface JobStatusResponse {
   job_id: string;
   status: string;
   prompt: string;
-  started_at: string;
+  started_at: string | null;
   completed_at: string | null;
   outcome: string;
   log_tail: string[];
@@ -29,13 +29,16 @@ export interface JobStatusResponse {
 export interface TelemetrySample {
   sample_id: string;
   job_id: string;
-  timestamp: string;
-  extruder_temp: number;
-  bed_temp: number;
+  sampled_at: string;
+  hotend_actual_c: number | null;
+  hotend_target_c: number | null;
+  bed_actual_c: number | null;
+  bed_target_c: number | null;
   z_height_mm: number | null;
   gcode_line: number | null;
-  print_progress_pct: number | null;
-  state: string;
+  print_speed_pct: number | null;
+  extrusion_factor_pct: number | null;
+  fan_speed_pct: number | null;
 }
 
 export interface JobRequest {
@@ -71,7 +74,10 @@ export async function createJob(request: JobRequest): Promise<JobResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
   });
-  if (!res.ok) throw new Error('Failed to create job');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(errBody?.detail || `Failed to create job (${res.status})`);
+  }
   return res.json();
 }
 
@@ -81,8 +87,16 @@ export async function getJob(jobId: string): Promise<JobStatusResponse> {
   return res.json();
 }
 
-export async function listJobs(): Promise<(PrintJob & { status: string })[]> {
-  const res = await fetch('/jobs');
+export interface PaginatedJobs {
+  jobs: (PrintJob & { status: string })[];
+  total: number;
+  limit: number;
+  offset: number;
+  stats: { total: number; running: number; completed: number; failed: number; };
+}
+
+export async function listJobs(limit = 20, offset = 0, status = 'all'): Promise<PaginatedJobs> {
+  const res = await fetch(`/jobs?limit=${limit}&offset=${offset}&status=${status}`);
   if (!res.ok) throw new Error('Failed to list jobs');
   return res.json();
 }

@@ -293,7 +293,11 @@ app.on_startup.append(start_background_tasks)
 app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
-    print("Moonraker mock server starting on http://localhost:7125")
-    print("WebSocket available at ws://localhost:7125/websocket")
+    import argparse
+    parser = argparse.ArgumentParser(description="Moonraker API mock server")
+    parser.add_argument("--port", type=int, default=7125, help="Port to listen on (default: 7125)")
+    args = parser.parse_args()
+    print(f"Moonraker mock server starting on http://localhost:{args.port}")
+    print(f"WebSocket available at ws://localhost:{args.port}/websocket")
     print("Press Ctrl+C to stop.")
-    web.run_app(app, host="0.0.0.0", port=7125)
+    web.run_app(app, host="0.0.0.0", port=args.port)

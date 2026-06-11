@@ -57,7 +57,7 @@ RUN pip install --no-cache-dir \
 # DiffusionPipeline.from_pretrained auto-detects and uses the correct pipeline class.
 RUN pip install --no-cache-dir \
         "git+https://github.com/huggingface/diffusers.git" \
-        "transformers<4.45.0" \
+        "transformers>=4.45.0" \
         "accelerate>=0.33.0" \
         "safetensors>=0.4.0" \
         "sentencepiece>=0.2.0" \

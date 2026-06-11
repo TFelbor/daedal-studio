@@ -70,7 +70,23 @@ class TSR(BaseModule):
         OmegaConf.resolve(cfg)
         model = cls(cfg)
         ckpt = torch.load(weight_path, map_location="cpu")
-        model.load_state_dict(ckpt)
+        
+        # FIX: Adapt checkpoint keys from old transformers DINOv2 format to >=4.45.0 format
+        adapted_ckpt = {}
+        for k, v in ckpt.items():
+            if k.startswith("image_tokenizer.model.encoder.layer."):
+                new_k = k.replace("encoder.layer.", "layers.")
+                new_k = new_k.replace(".attention.attention.query.", ".attention.q_proj.")
+                new_k = new_k.replace(".attention.attention.key.", ".attention.k_proj.")
+                new_k = new_k.replace(".attention.attention.value.", ".attention.v_proj.")
+                new_k = new_k.replace(".attention.output.dense.", ".attention.o_proj.")
+                new_k = new_k.replace(".intermediate.dense.", ".mlp.fc1.")
+                new_k = new_k.replace(".output.dense.", ".mlp.fc2.")
+                adapted_ckpt[new_k] = v
+            else:
+                adapted_ckpt[k] = v
+
+        model.load_state_dict(adapted_ckpt, strict=False)
         return model
 
     def configure(self):

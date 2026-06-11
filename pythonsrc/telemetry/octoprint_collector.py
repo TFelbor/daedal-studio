@@ -9,6 +9,11 @@ from typing import Optional, Dict, Any
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import TelemetrySample
 
+try:
+    from server.job_broadcaster import broadcaster
+except ImportError:
+    broadcaster = None
+
 logger = logging.getLogger(__name__)
 
 class OctoPrintCollector:
@@ -147,6 +152,9 @@ class OctoPrintCollector:
 
         self.db.insert_sample(sample)
         await self.sample_queue.put(sample)
+        
+        if broadcaster:
+            asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
 
     async def _on_event(self, event_data: Dict[str, Any]) -> None:
         if not isinstance(event_data, dict):

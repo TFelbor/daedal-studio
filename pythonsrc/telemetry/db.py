@@ -4,10 +4,13 @@ from __future__ import annotations
 import sqlite3
 import os
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 import threading
+
+logger = logging.getLogger(__name__)
 
 from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
 
@@ -59,7 +62,7 @@ class TelemetryDB:
         """Create tables if they do not exist (idempotent)."""
         with self._lock:
             cursor = self.conn.cursor()
-            
+
             # PrintJob table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS print_job (
@@ -69,11 +72,38 @@ class TelemetryDB:
                     printer_firmware TEXT NOT NULL,
                     slicer TEXT NOT NULL,
                     profile_name TEXT NOT NULL,
-                    started_at TEXT NOT NULL,
+                    started_at TEXT,
                     completed_at TEXT,
                     outcome TEXT NOT NULL
                 )
             ''')
+
+            # Migrate existing table if started_at has NOT NULL constraint
+            cursor.execute("PRAGMA table_info(print_job)")
+            cols = {row[1]: row for row in cursor.fetchall()}
+            started_at_col = cols.get("started_at")
+            if started_at_col and started_at_col[3] == 1:  # notnull=1 means NOT NULL
+                logger.info("Migrating print_job.started_at to allow NULL")
+                cursor.execute("ALTER TABLE print_job RENAME TO print_job_old")
+                cursor.execute('''
+                    CREATE TABLE print_job (
+                        job_id TEXT PRIMARY KEY,
+                        prompt TEXT NOT NULL,
+                        printer_id TEXT NOT NULL,
+                        printer_firmware TEXT NOT NULL,
+                        slicer TEXT NOT NULL,
+                        profile_name TEXT NOT NULL,
+                        started_at TEXT,
+                        completed_at TEXT,
+                        outcome TEXT NOT NULL
+                    )
+                ''')
+                cursor.execute('''
+                    INSERT INTO print_job
+                    SELECT * FROM print_job_old
+                ''')
+                cursor.execute("DROP TABLE print_job_old")
+                self.conn.commit()
             
             # TelemetrySample table
             cursor.execute('''
@@ -130,6 +160,22 @@ class TelemetryDB:
             job.slicer, job.profile_name, _dt_to_str(job.started_at),
             _dt_to_str(job.completed_at), job.outcome
             ))
+            self.conn.commit()
+
+    def update_job_start_time(self, job_id: str, started_at: datetime) -> None:
+        """Update the start time for a print job when the pipeline begins.
+
+        Args:
+            job_id: The unique identifier of the job to update.
+            started_at: The timestamp when the pipeline actually started.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+            UPDATE print_job
+            SET started_at = ?
+            WHERE job_id = ?
+            ''', (_dt_to_str(started_at), job_id))
             self.conn.commit()
 
     def update_job_outcome(self, job_id: str, outcome: str, completed_at: datetime) -> None:

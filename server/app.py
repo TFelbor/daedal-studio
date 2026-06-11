@@ -9,14 +9,16 @@ import logging
 import os
 import sys
 import uuid
+import platform
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -26,23 +28,36 @@ from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
+import httpx
+from server.config_store import ConfigStore, CONFIG_KEYS
+from server.job_broadcaster import broadcaster
+from server.simulator_manager import simulator_manager
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="P2P Mesh API", version="1.0.0")
 
+config_store = ConfigStore()
+
 active_collectors = {}
+active_pipelines: dict[str, asyncio.subprocess.Process] = {}
+
+def get_resolved_strategy() -> str:
+    override = config_store.get("EXECUTION_STRATEGY_OVERRIDE")
+    if override and override in ("mps_native", "nvidia_docker", "cpu_docker"):
+        return override
+    return get_execution_strategy()
 
 class JobRequest(BaseModel):
     """Pydantic model representing a new print job request."""
-    prompt: str
-    printer_id: str
-    profile: str
-    skip_visualizer: bool
+    prompt: str = Field(..., min_length=1)
+    printer_id: str = Field(..., min_length=1)
+    profile: str = ""
+    skip_visualizer: bool = False
     skip_sculptor: bool = False
     blueprint_path: Optional[str] = None
-    print: bool
-    start_print: bool
+    print: bool = False
+    start_print: bool = False
 
 class JobResponse(BaseModel):
     """Pydantic model representing the immediate response to a job creation."""
@@ -54,23 +69,40 @@ class JobStatusResponse(BaseModel):
     job_id: str
     status: str
     prompt: str
-    started_at: str
     completed_at: Optional[str]
+    started_at: Optional[str] = None
     outcome: str
     log_tail: List[str]
     current_phase: Optional[dict] = None
 
 @app.on_event("startup")
 def startup_event():
-    """Handle application startup events.
-
-    Initializes the database schema and logs the execution strategy.
-    """
-    strategy = get_execution_strategy()
-    logger.info(f"Detected execution strategy: {strategy}")
+    """Handle application startup events."""
+    config_store.init_schema()
+    strategy = get_resolved_strategy()
+    logger.info(f"Resolved execution strategy: {strategy}")
+    
+    docker_available = False
+    try:
+        res = subprocess.run(["docker", "info"], capture_output=True, timeout=3.0)
+        docker_available = res.returncode == 0
+    except Exception:
+        pass
+        
+    if not docker_available and strategy in ("nvidia_docker", "cpu_docker"):
+        logger.warning(f"Strategy {strategy} requires Docker, but Docker is not available!")
+        
+    repo_root = Path(__file__).parent.parent
+    (repo_root / "data" / "inputs").mkdir(parents=True, exist_ok=True)
+    (repo_root / "data" / "outputs").mkdir(parents=True, exist_ok=True)
+    (repo_root / "data" / "logs").mkdir(parents=True, exist_ok=True)
+    
     db = TelemetryDB()
     db.init_schema()
     db.close()
+    
+    for k, v in config_store.get_all().items():
+        os.environ[k] = v
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -81,98 +113,174 @@ async def shutdown_event():
     for collector in active_collectors.values():
         await collector.stop()
     active_collectors.clear()
+    await simulator_manager.stop_moonraker()
+    await simulator_manager.stop_octoprint()
+
+async def _stream_output(process, log_file_obj, job_id: str):
+    import re
+    phase_re = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
+    phase_names = {1: "Visualizer", 2: "Sculptor", 3: "Engineer", 4: "Slicer", 5: "Operator"}
+    
+    async for line_bytes in process.stdout:
+        line = line_bytes.decode('utf-8', errors='replace')
+        log_file_obj.write(line)
+        log_file_obj.flush()
+        
+        m = phase_re.search(line)
+        if m:
+            phase_num = int(m.group(1))
+            action = m.group(2)
+            name = phase_names.get(phase_num, "Unknown")
+            
+            if action == "START":
+                status = "running"
+                error = None
+            elif action == "PASS":
+                status = "complete"
+                error = None
+            else:
+                status = "error"
+                error = "Phase failed"
+                
+            asyncio.create_task(broadcaster.broadcast(job_id, {
+                "type": "phase_update",
+                "data": {
+                    "phase": phase_num,
+                    "name": name,
+                    "status": status,
+                    "error": error,
+                    "ts": datetime.now(timezone.utc).isoformat()
+                }
+            }))
 
 async def _run_pipeline(job_id: str, request: JobRequest):
-    log_dir_env = os.environ.get("P2P_LOGS_DIR")
-    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).parent.parent
+    log_dir = repo_root / "data" / "logs"
     log_file = log_dir / f"{job_id}.log"
     
-    strategy = get_execution_strategy()
+    strategy = get_resolved_strategy()
     
-    pipeline_args = ["--job-id", job_id]
-    if request.profile:
-        pipeline_args.extend(["--profile", request.profile])
-    if request.skip_sculptor:
+    pipeline_args = []
+    
+    skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
+    skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+    if skip_viz:
+        pipeline_args.extend(["--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png"])
+    if skip_sculpt:
         pipeline_args.append("--skip-sculptor")
+        
+    profile = request.profile or config_store.get("DEFAULT_PROFILE")
+    if profile:
+        pipeline_args.extend(["--profile", profile])
+        
     if request.print:
         pipeline_args.append("--print")
     if request.start_print:
         pipeline_args.append("--start-print")
         
-    inputs_dir = os.path.join(os.path.dirname(__file__), "..", "data", "inputs")
-    blueprint_path = os.path.join(inputs_dir, "blueprint.png")
-    
     try:
+        # Mark job as started
+        db_start = TelemetryDB()
+        db_start.update_job_start_time(job_id, datetime.now(timezone.utc))
+        db_start.close()
+
+        pipeline_env = os.environ.copy()
+        pipeline_env["P2P_LOGS_DIR"] = str(log_dir)
+        # Ensure secrets from config store are available to subprocesses
+        hf_token = config_store.get("HF_TOKEN")
+        if hf_token:
+            pipeline_env["HF_TOKEN"] = hf_token
+            pipeline_env["HUGGINGFACE_HUB_TOKEN"] = hf_token
+
         with open(log_file, "w") as f:
             if strategy == "mps_native":
-                if not request.skip_visualizer and not request.blueprint_path:
-                    phase1_cmd = get_phase1_command(request.prompt, blueprint_path)
-                    
-                    if os.path.exists(blueprint_path):
-                        os.remove(blueprint_path)
-                        
-                    env = os.environ.copy()
-                    env["OUTPUT_PATH"] = blueprint_path
+                if not skip_viz:
+                    await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "running", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
+
+                    phase1_cmd = ["bash", "infra/scripts/run_phase1_native.sh", request.prompt]
                     process1 = await asyncio.create_subprocess_exec(
                         *phase1_cmd,
-                        stdout=f,
-                        stderr=f,
-                        cwd=os.path.join(os.path.dirname(__file__), ".."),
-                        env=env
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        cwd=repo_root,
+                        env=pipeline_env
                     )
+                    active_pipelines[job_id] = process1
+                    await _stream_output(process1, f, job_id)
                     await process1.wait()
+                    
                     if process1.returncode != 0:
+                        await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "error", "error": f"Failed with code {process1.returncode}", "ts": datetime.now(timezone.utc).isoformat()}})
                         raise Exception(f"Phase 1 failed with code {process1.returncode}")
                         
-                    if not os.path.exists(blueprint_path):
+                    if not (repo_root / "data" / "inputs" / "blueprint.png").exists():
                         raise Exception("Phase 1 completed but blueprint.png not found")
                         
-                b_path = request.blueprint_path or "/app/data/inputs/blueprint.png"
+                    await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "complete", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
+                
+                clean_args = []
+                skip_next = False
+                for arg in pipeline_args:
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if arg == "--skip-visualizer":
+                        continue
+                    if arg == "--blueprint":
+                        skip_next = True
+                        continue
+                    clean_args.append(arg)
+                    
                 cmd = [
                     "docker", "compose", "-f", "infra/docker-compose.yml",
-                    "run", "--rm", "pipeline-runner",
+                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
-                    "--skip-visualizer", "--blueprint", b_path
+                    "--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png",
+                    "--job-id", job_id
+                ] + clean_args
+            elif strategy == "nvidia_docker":
+                cmd = [
+                    "docker", "compose",
+                    "-f", "infra/docker-compose.yml",
+                    "-f", "infra/docker-compose.gpu.yml",
+                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
+                    "python", "pythonsrc/pipeline.py", request.prompt,
+                    "--job-id", job_id
+                ] + pipeline_args
+            else:
+                cmd = [
+                    "docker", "compose",
+                    "-f", "infra/docker-compose.yml",
+                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
+                    "python", "pythonsrc/pipeline.py", request.prompt,
+                    "--job-id", job_id
                 ] + pipeline_args
                 
-                process2 = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=f,
-                    stderr=f,
-                    cwd=os.path.join(os.path.dirname(__file__), "..")
-                )
-                await process2.wait()
-                returncode = process2.returncode
-            else:
-                cmd = get_phase1_command(request.prompt, blueprint_path)
-                cmd.extend(pipeline_args)
-                
-                if request.skip_visualizer:
-                    cmd.append("--skip-visualizer")
-                if request.blueprint_path:
-                    cmd.extend(["--blueprint", request.blueprint_path])
-                    
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=f,
-                    stderr=f,
-                    cwd=os.path.join(os.path.dirname(__file__), "..")
-                )
-                await process.wait()
-                returncode = process.returncode
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=repo_root
+            )
+            active_pipelines[job_id] = process
+            await _stream_output(process, f, job_id)
+            await process.wait()
+            returncode = process.returncode
             
             db = TelemetryDB()
             outcome = "success" if returncode == 0 else "failure"
             db.update_job_outcome(job_id, outcome, datetime.now(timezone.utc))
             db.close()
+            await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": outcome}})
     except Exception as e:
         db = TelemetryDB()
         db.update_job_outcome(job_id, "failure", datetime.now(timezone.utc))
         db.close()
         with open(log_file, "a") as f:
             f.write(f"\nPipeline failed to start: {e}\n")
+        await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "failure"}})
     finally:
+        active_pipelines.pop(job_id, None)
         collector = active_collectors.pop(job_id, None)
         if collector:
             await collector.stop()
@@ -192,8 +300,22 @@ async def create_job(request: JobRequest):
         A JobResponse containing the job ID and 'queued' status immediately.
     """
     job_id = str(uuid.uuid4())
+
+    repo_root = Path(__file__).parent.parent
     
-    profile_path = request.profile or "pythonsrc/profiles/ender3.json"
+    # Clean up artifacts from previous jobs to prevent the UI from loading old images
+    for artifact in [
+        repo_root / "data" / "inputs" / "blueprint.png",
+        repo_root / "data" / "outputs" / "mesh.obj",
+        repo_root / "data" / "outputs" / "mesh.gcode"
+    ]:
+        if artifact.exists():
+            try:
+                artifact.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete old artifact {artifact}: {e}")
+
+    profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
     firmware = "octoprint"
     base_url = "http://localhost:5001"
     api_key = None
@@ -204,8 +326,10 @@ async def create_job(request: JobRequest):
             base_url = profile_data.get("base_url", "http://localhost:5001")
             api_key = profile_data.get("api_key")
     except Exception as e:
-        logger.warning(f"Could not load profile {profile_path}: {e}")
-        
+        logger.error(f"Could not load profile {profile_path}: {e} — disabling print")
+        request.print = False
+        request.start_print = False
+
     db = TelemetryDB()
     job = PrintJob(
         job_id=job_id,
@@ -214,7 +338,7 @@ async def create_job(request: JobRequest):
         printer_firmware=firmware,
         slicer="cura",
         profile_name=request.profile or "default",
-        started_at=datetime.now(timezone.utc),
+        started_at=None,
         completed_at=None,
         outcome="unknown"
     )
@@ -266,8 +390,8 @@ async def get_job(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    log_dir_env = os.environ.get("P2P_LOGS_DIR")
-    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
+    repo_root = Path(__file__).parent.parent
+    log_dir = repo_root / "data" / "logs"
     log_file = log_dir / f"{job_id}.log"
     status_file = log_dir / f"{job_id}.status"
     
@@ -288,15 +412,22 @@ async def get_job(job_id: str):
                     pass
             
     # Determine synthetic status based on outcome
-    current_status = "queued" if job.outcome == "unknown" else "completed"
-    if job.outcome == "unknown" and job.started_at:
-        current_status = "running"
+    current_status = "queued"
+    if job.outcome == "unknown":
+        if job.started_at:
+            current_status = "running"
+    elif job.outcome == "success":
+        current_status = "completed"
+    elif job.outcome == "cancelled":
+        current_status = "cancelled"
+    else:
+        current_status = "failed"
             
     return JobStatusResponse(
         job_id=job.job_id,
         status=current_status,
         prompt=job.prompt,
-        started_at=job.started_at.isoformat(),
+        started_at=job.started_at.isoformat() if job.started_at else None,
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
         outcome=job.outcome,
         log_tail=log_tail,
@@ -334,44 +465,173 @@ async def download_job_output(job_id: str):
         
     return FileResponse(gcode_path, media_type="text/plain", filename=f"{job_id}.gcode")
 
-@app.get("/jobs")
-async def list_jobs():
-    """List all print jobs.
+@app.post("/jobs/{job_id}/print-dispatch")
+async def print_dispatch(job_id: str):
+    """Trigger Phase 5 (Operator) only, using an already-sliced gcode file."""
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    repo_root = Path(__file__).parent.parent
+    gcode_path = repo_root / "data" / "outputs" / "engineered_mesh.gcode"
 
-    Returns:
-        A list of up to 50 recent print jobs including their status,
-        timestamps, and metadata.
-    """
+    if not gcode_path.exists():
+        raise HTTPException(status_code=400, detail="Gcode file not found. Complete phases 1-4 first.")
+
+    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
+    if not os.path.exists(profile_path):
+        raise HTTPException(status_code=400, detail="Configured printer profile not found.")
+        
+    try:
+        cmd = [
+            sys.executable,
+            str(repo_root / "pythonsrc" / "run_operator.py"),
+            "--job-id", job_id,
+            "--gcode-path", str(gcode_path),
+            "--profile", profile_path
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=repo_root
+        )
+        
+        # We don't block the API, but we track it or just let it finish.
+        # For simplicity, we could await it or just launch and return. The prompt says "runs operator subprocess"
+        # We'll just await it so we can return error if it fails, or since we have a WebSocket, we could just fire & forget.
+        # Let's fire & forget so the UI doesn't hang, but since it's just dispatch we can wait a bit or let it run.
+        # Let's fire and forget.
+        async def _run():
+            await process.wait()
+            
+        asyncio.create_task(_run())
+        
+        return {"status": "dispatching"}
+    except Exception as e:
+        logger.error(f"Error in print-dispatch: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/jobs/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel the running job and the printer."""
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    # Kill pipeline
+    process = active_pipelines.get(job_id)
+    if process:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
+            
+    # Attempt to cancel printer
+    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
+    try:
+        if os.path.exists(profile_path):
+            with open(profile_path, "r") as f:
+                profile_data = json.load(f)
+                
+            firmware = profile_data.get("firmware", "octoprint")
+            base_url = profile_data.get("base_url", "http://localhost:5001")
+            api_key = profile_data.get("api_key")
+            
+            from pythonsrc.operators import PrinterFactory
+            op = PrinterFactory.create(firmware=firmware, base_url=base_url, api_key=api_key)
+            # Try to cancel
+            try:
+                op.cancel_print()
+            except Exception as e:
+                logger.warning(f"Could not cancel print on printer: {e}")
+    except Exception as e:
+        logger.warning(f"Error instantiating printer factory during cancel: {e}")
+        
+    db.update_job_outcome(job_id, "cancelled", datetime.now(timezone.utc))
+    db.close()
+    
+    await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "cancelled"}})
+    return {"status": "cancelled"}
+
+@app.get("/jobs")
+async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
+    """List print jobs with pagination and status filtering."""
     db = TelemetryDB()
     cursor = db.conn.cursor()
-    cursor.execute('SELECT * FROM print_job ORDER BY started_at DESC LIMIT 50')
+    
+    where_clause = ""
+    params = []
+    
+    if status == 'running':
+        where_clause = "WHERE outcome = 'unknown'"
+    elif status == 'completed':
+        where_clause = "WHERE outcome = 'success'"
+    elif status == 'failed':
+        where_clause = "WHERE outcome IN ('failure', 'cancelled')"
+        
+    count_query = f"SELECT COUNT(*) FROM print_job {where_clause}"
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()[0]
+    
+    global_counts_query = "SELECT outcome, COUNT(*) as count FROM print_job GROUP BY outcome"
+    cursor.execute(global_counts_query)
+    global_counts = cursor.fetchall()
+    
+    stats = {"total": 0, "running": 0, "completed": 0, "failed": 0}
+    for row in global_counts:
+        outcome = row['outcome']
+        c = row['count']
+        stats["total"] += c
+        if outcome == "unknown":
+            stats["running"] += c
+        elif outcome == "success":
+            stats["completed"] += c
+        else:
+            stats["failed"] += c
+            
+    query = f"SELECT * FROM print_job {where_clause} ORDER BY started_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    cursor.execute(query, params)
+    
     rows = cursor.fetchall()
     
     jobs = []
     for row in rows:
         job_outcome = row['outcome']
-        status_val = "running" if job_outcome == "unknown" else "completed"
+        if job_outcome == "unknown":
+            status_val = "running"
+        elif job_outcome == "cancelled":
+            status_val = "cancelled"
+        else:
+            status_val = "completed"
+            
         jobs.append({
             "job_id": row['job_id'],
             "prompt": row['prompt'],
             "printer_id": row['printer_id'],
+            "printer_firmware": row['printer_firmware'],
             "started_at": row['started_at'],
             "completed_at": row['completed_at'],
             "outcome": job_outcome,
             "status": status_val
         })
     db.close()
-    return jobs
+    return {"jobs": jobs, "total": total, "limit": limit, "offset": offset, "stats": stats}
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint.
-
-    Returns:
-        A dictionary with the API status, version, and execution strategy.
-    """
-    strategy = get_execution_strategy()
-    return {"status": "ok", "version": app.version, "execution_strategy": strategy}
+    """Health check endpoint."""
+    strategy = get_resolved_strategy()
+    detected = get_execution_strategy()
+    return {"status": "ok", "version": app.version, "execution_strategy": strategy, "detected_strategy": detected}
 
 @app.get("/jobs/{job_id}/telemetry")
 async def get_job_telemetry(job_id: str) -> List[Dict[str, Any]]:
@@ -430,6 +690,307 @@ async def create_failure_event(job_id: str, request: FailureRequest) -> Dict[str
     db.insert_failure_event(event)
     db.close()
     return event.to_dict()
+
+@app.get("/jobs/{job_id}/failure")
+async def get_failure_events(job_id: str) -> List[Dict[str, Any]]:
+    """Retrieve failure events for a job.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A list of FailureEvent dictionaries.
+    """
+    db = TelemetryDB()
+    events = db.get_failure_events(job_id)
+    db.close()
+    return [e.to_dict() for e in events]
+
+class ConfigUpdate(BaseModel):
+    key: str
+    value: str
+
+class TestConnectionRequest(BaseModel):
+    service: str
+
+@app.get("/config")
+async def get_config():
+    """Get all configuration keys with their values and metadata."""
+    stored = config_store.get_all()
+    results = {}
+    for key, meta in CONFIG_KEYS.items():
+        val = stored.get(key)
+        is_set = val is not None
+        
+        display_val = None
+        if is_set:
+            display_val = "••••••••" if meta.get("secret") else val
+            
+        results[key] = {
+            "value": display_val,
+            "is_set": is_set,
+            "label": meta.get("label"),
+            "description": meta.get("description"),
+            "required": meta.get("required"),
+            "secret": meta.get("secret")
+        }
+    return results
+
+@app.post("/config")
+async def update_config(update: ConfigUpdate):
+    """Update a configuration value."""
+    if update.key not in CONFIG_KEYS:
+        raise HTTPException(status_code=400, detail="Invalid config key")
+        
+    config_store.set(update.key, update.value)
+    os.environ[update.key] = update.value
+    
+    meta = CONFIG_KEYS[update.key]
+    display_val = "••••••••" if meta.get("secret") else update.value
+    
+    return {
+        "key": update.key,
+        "value": display_val,
+        "is_set": True,
+        "label": meta.get("label"),
+        "description": meta.get("description"),
+        "required": meta.get("required"),
+        "secret": meta.get("secret")
+    }
+
+@app.delete("/config/{key}")
+async def delete_config(key: str):
+    """Delete a configuration value."""
+    if key not in CONFIG_KEYS:
+        raise HTTPException(status_code=400, detail="Invalid config key")
+    
+    config_store.delete(key)
+    if key in os.environ:
+        del os.environ[key]
+        
+    return {"status": "success", "key": key}
+
+@app.get("/config/{key}/reveal")
+async def reveal_config(key: str):
+    """Reveal a secret configuration value."""
+    if key not in CONFIG_KEYS:
+        raise HTTPException(status_code=400, detail="Invalid config key")
+        
+    val = config_store.get(key)
+    if val is None:
+        raise HTTPException(status_code=404, detail="Config key not set")
+        
+    return {"key": key, "value": val}
+
+@app.post("/config/test-connection")
+async def test_connection(req: TestConnectionRequest):
+    """Test connection to a specific service."""
+    service = req.service.lower()
+    stored = config_store.get_all()
+    
+    import time
+    start_time = time.time()
+    
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            if service == "octoprint":
+                url = stored.get("OCTOPRINT_URL")
+                api_key = stored.get("OCTOPRINT_API_KEY")
+                if not url:
+                    return {"success": False, "message": "OCTOPRINT_URL not configured", "latency_ms": None}
+                
+                headers = {}
+                if api_key:
+                    headers["X-Api-Key"] = api_key
+                
+                resp = await client.get(f"{url.rstrip('/')}/api/version", headers=headers)
+                resp.raise_for_status()
+                
+            elif service == "moonraker":
+                url = stored.get("MOONRAKER_URL")
+                if not url:
+                    return {"success": False, "message": "MOONRAKER_URL not configured", "latency_ms": None}
+                    
+                resp = await client.get(f"{url.rstrip('/')}/printer/info")
+                resp.raise_for_status()
+                
+            elif service == "huggingface":
+                token = stored.get("HF_TOKEN")
+                if not token:
+                    return {"success": False, "message": "HF_TOKEN not configured", "latency_ms": None}
+                    
+                headers = {"Authorization": f"Bearer {token}"}
+                resp = await client.get("https://huggingface.co/api/whoami-v2", headers=headers)
+                resp.raise_for_status()
+                
+            else:
+                raise HTTPException(status_code=400, detail="Invalid service")
+                
+            latency_ms = int((time.time() - start_time) * 1000)
+            return {"success": True, "message": "Connection successful", "latency_ms": latency_ms}
+            
+        except httpx.TimeoutException:
+            return {"success": False, "message": "Connection timed out", "latency_ms": None}
+        except httpx.RequestError as e:
+            return {"success": False, "message": f"Connection failed: {str(e)}", "latency_ms": None}
+        except httpx.HTTPStatusError as e:
+            if service == "huggingface" and e.response.status_code == 401:
+                return {"success": False, "message": "Invalid HuggingFace Token", "latency_ms": None}
+            return {"success": False, "message": f"HTTP Error {e.response.status_code}: {e.response.text}", "latency_ms": None}
+        except Exception as e:
+            return {"success": False, "message": str(e), "latency_ms": None}
+
+@app.websocket("/ws/jobs/{job_id}")
+async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    if not job:
+        db.close()
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "data": {"code": 4004, "message": "Job not found"}})
+        await websocket.close(code=4004)
+        return
+
+    samples = db.get_samples(job_id, limit=20)
+    db.close()
+
+    await websocket.accept()
+    
+    status_resp = await get_job(job_id)
+    await websocket.send_json({"type": "job_status", "data": status_resp.dict()})
+    
+    await websocket.send_json({"type": "telemetry_batch", "data": [s.to_dict() for s in samples]})
+    
+    await broadcaster.connect(job_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await broadcaster.disconnect(job_id, websocket)
+
+@app.get("/simulators/status")
+async def get_simulators_status():
+    return simulator_manager.get_status()
+
+@app.post("/simulators/moonraker/start")
+async def start_moonraker_simulator():
+    status = await simulator_manager.start_moonraker()
+
+    healthy = False
+    async with httpx.AsyncClient(timeout=1.0) as client:
+        for _ in range(30):
+            try:
+                resp = await client.get(f"{status['url']}/printer/info")
+                if resp.status_code == 200:
+                    healthy = True
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+
+    status["healthy"] = healthy
+    await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
+    return status
+
+@app.post("/simulators/moonraker/stop")
+async def stop_moonraker_simulator():
+    status = await simulator_manager.stop_moonraker()
+    await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
+    return status
+
+@app.get("/simulators/moonraker/logs")
+async def get_moonraker_simulator_logs():
+    repo_root = Path(__file__).parent.parent
+    log_file = repo_root / "data" / "logs" / "moonraker_mock.log"
+    if not log_file.exists():
+        return {"lines": []}
+        
+    with open(log_file, "r") as f:
+        lines = f.readlines()
+        
+    return {"lines": [line.rstrip() for line in lines[-100:]]}
+
+@app.post("/simulators/octoprint/start")
+async def start_octoprint_simulator():
+    status = await simulator_manager.start_octoprint()
+
+    healthy = False
+    async with httpx.AsyncClient(timeout=1.0) as client:
+        for _ in range(30):
+            try:
+                resp = await client.get(f"{status['url']}/api/version")
+                if resp.status_code == 200:
+                    healthy = True
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+
+    status["healthy"] = healthy
+    await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
+    return status
+
+@app.post("/simulators/octoprint/stop")
+async def stop_octoprint_simulator():
+    status = await simulator_manager.stop_octoprint()
+    await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
+    return status
+
+@app.get("/simulators/octoprint/logs")
+async def get_octoprint_simulator_logs():
+    repo_root = Path(__file__).parent.parent
+    log_file = repo_root / "data" / "logs" / "octoprint_mock.log"
+    if not log_file.exists():
+        return {"lines": []}
+        
+    with open(log_file, "r") as f:
+        lines = f.readlines()
+        
+    return {"lines": [line.rstrip() for line in lines[-100:]]}
+
+@app.get("/system/info")
+async def system_info():
+    detected = get_execution_strategy()
+    resolved = get_resolved_strategy()
+    
+    docker_available = False
+    try:
+        res = subprocess.run(["docker", "info"], capture_output=True, timeout=3.0)
+        docker_available = res.returncode == 0
+    except Exception:
+        pass
+        
+    labels = {
+        "mps_native": "macOS Apple Silicon (MPS native Phase 1, Docker Phases 2-5)",
+        "nvidia_docker": "NVIDIA GPU (full pipeline via Docker with GPU)",
+        "cpu_docker": "CPU only (full pipeline via Docker)"
+    }
+    
+    return {
+        "detected_strategy": detected,
+        "resolved_strategy": resolved,
+        "override_active": config_store.get("EXECUTION_STRATEGY_OVERRIDE") is not None and config_store.get("EXECUTION_STRATEGY_OVERRIDE") in ("mps_native", "nvidia_docker", "cpu_docker"),
+        "strategy_label": labels.get(resolved, "Unknown"),
+        "docker_available": docker_available,
+        "platform": sys.platform,
+        "python_version": platform.python_version()
+    }
+
+@app.get("/jobs/{job_id}/blueprint")
+async def get_blueprint(job_id: str):
+    repo_root = Path(__file__).parent.parent
+    blueprint_path = repo_root / "data" / "inputs" / "blueprint.png"
+    if not blueprint_path.exists():
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+    return FileResponse(str(blueprint_path), media_type="image/png")
+
+@app.get("/jobs/{job_id}/mesh")
+async def get_mesh(job_id: str):
+    repo_root = Path(__file__).parent.parent
+    mesh_path = repo_root / "data" / "outputs" / "engineered_mesh.obj"
+    if not mesh_path.exists():
+        raise HTTPException(status_code=404, detail="Mesh not found")
+    return FileResponse(str(mesh_path), media_type="application/octet-stream")
 
 # --- Serve SPA ---
 @app.get("/{full_path:path}")

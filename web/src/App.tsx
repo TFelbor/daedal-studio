@@ -24,7 +24,7 @@ function Navigation() {
             <LayoutDashboard size={18} /> Dashboard
           </Link>
           <Link to="/setup" className={`${styles.navLink} ${location.pathname === '/setup' ? styles.active : ''}`}>
-            <Settings size={18} /> Setup
+            <Settings size={18} /> Settings
           </Link>
         </div>
       </div>

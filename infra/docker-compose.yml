@@ -40,8 +40,8 @@ services:
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
       PYTORCH_ENABLE_MPS_FALLBACK: "1"
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
       - p2p-models-flux:/models/flux
       - p2p-models-cache:/models/hf_cache
     profiles:
@@ -68,8 +68,8 @@ services:
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
       PYTORCH_ENABLE_MPS_FALLBACK: "1"
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
       - p2p-models-triposr:/models/triposr
       - p2p-models-u2net:/models/u2net
       - p2p-models-cache:/models/hf_cache
@@ -90,8 +90,8 @@ services:
       - path: ../.env
         required: false
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
     profiles:
       - phase3
       - all
@@ -111,8 +111,8 @@ services:
     environment:
       CURA_ENGINE_PATH: CuraEngine
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
     profiles:
       - phase4
       - all
@@ -134,8 +134,8 @@ services:
       # On Linux (native Docker), use the host's LAN IP or host-gateway.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
     profiles:
       - phase5
       - all
@@ -169,10 +169,10 @@ services:
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
-      - ../data/logs:/app/data/logs
-      - ../pythonsrc:/app/pythonsrc
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/logs:/app/data/logs
+      - ${HOST_PROJECT_ROOT:-..}/pythonsrc:/app/pythonsrc
       - p2p-models-flux:/models/flux
       - p2p-models-triposr:/models/triposr
       - p2p-models-u2net:/models/u2net
@@ -192,13 +192,20 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../data/inputs:/app/data/inputs
-      - ../data/outputs:/app/data/outputs
-      - ../data/logs:/app/data/logs
+      - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
+      - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
+      - ${HOST_PROJECT_ROOT:-..}/data/logs:/app/data/logs
+      - ${HOST_PROJECT_ROOT:-..}/pythonsrc:/app/pythonsrc
+      - ${HOST_PROJECT_ROOT:-..}/server:/app/server
+      - ${HOST_PROJECT_ROOT:-..}/tests:/app/tests
+      - /var/run/docker.sock:/var/run/docker.sock
       - p2p-telemetry:/app/telemetry
     environment:
       - TELEMETRY_DB_PATH=/app/telemetry/telemetry.db
       - P2P_LOGS_DIR=/app/data/logs
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_PROJECT_ROOT=${PWD}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-p2p-mesh-poc-docker}
     depends_on:
       - pipeline-runner
     command: uvicorn server.app:app --host 0.0.0.0 --port 8000

@@ -17,7 +17,7 @@
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,12 @@ build:
 # Start the API server (foreground)
 up:
 	docker compose -f $(COMPOSE_FILE) up api-server
+
+# Start the API server natively on the host (required for MPS acceleration on Mac)
+start-native:
+	@echo "Starting API server natively on host to enable MPS acceleration..."
+	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"
+	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=p2p-mesh-poc-docker python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
 
 # Stop all services
 down:

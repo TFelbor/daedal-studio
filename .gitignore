@@ -1,9 +1,12 @@
 # Personal config — contains secrets and machine-specific paths
 pythonsrc/config.py
+.config_key
 
 # Runtime data — gitignored, not part of source
+data/logs/
 data/inputs/
 data/outputs/
+data/logs/
 # Legacy paths (kept for backward compatibility during transition)
 outputs/
 inputs/
@@ -66,3 +69,7 @@ web/dist/
 docs-site/node_modules/
 docs-site/.docusaurus/
 docs-site/build/
+
+#Others
+.codegraph/
+CLAUDE.md

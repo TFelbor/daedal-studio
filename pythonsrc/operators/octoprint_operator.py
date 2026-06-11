@@ -341,7 +341,7 @@ class OctoPrintOperator(BasePrinterOperator):
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        logger.info("Uploading '%s' to OctoPrint (%s)…", file_path.name, location)
+        logger.info("Uploading '%s' to OctoPrint (local)…", file_path.name)
 
         with file_path.open("rb") as fh:
             files = {"file": (remote_name, fh, "application/octet-stream")}
@@ -616,14 +616,15 @@ if __name__ == "__main__":
         logger.error("--file is required unless using --dry-run or --status.")
         sys.exit(1)
 
-    result = op.upload_file(
-        file_path=args.file,
-        location=args.location,
-        select=True,
-        start=args.start,
-    )
-    file_url = result.get("files", {}).get(args.location, {}).get("refs", {}).get("resource", "")
-    logger.info("File available at: %s", file_url)
+    remote_name = Path(args.file).name
+    op.upload_file(local_path=args.file, remote_name=remote_name)
+
+    if args.select:
+        # Build resource URL for uploaded file
+        file_url = f"{op.base_url}/api/files/{args.location}/{remote_name}"
+        op.select_file(file_url, start=args.start)
+    if args.start:
+        op.start_print(remote_name)
 
     # ── Watch ─────────────────────────────────────────────────────────────────
     if args.watch and args.start:

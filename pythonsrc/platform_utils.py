@@ -12,7 +12,8 @@ def _docker_has_nvidia_runtime() -> bool:
             ["docker", "info", "--format", "{{.Runtimes}}"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            timeout=3.0
         )
         return "nvidia" in result.stdout.lower()
     except Exception:

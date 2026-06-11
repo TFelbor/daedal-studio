@@ -55,29 +55,68 @@ p2p-mesh/
 
 ## Quick Start
 
-### Path A: macOS Apple Silicon (recommended for Mac users)
+#### CLI OctoPrint Operator
 ```bash
-conda activate p2p-mesh
+python -m pythonsrc.operators.octoprint_operator --file <local_path> [--location <remote_dir>] [--select] [--start]
+```
+- `--file`: Local file to upload.
+- `--location` (default `local`): Remote directory on printer.
+- `--select`: After upload, select file for printing.
+- `--start`: Start print immediately after selection.
+
+#### Failure Events Endpoint
+```bash
+GET /jobs/{job_id}/failure   # retrieve manual failure reports
+POST /jobs/{job_id}/failure  # report failure from UI
+```
+Returns list of `FailureEvent` objects with snapshot of recent telemetry.
+
+#### Fernet Key Regeneration
+If encrypted config key in `.config_key` is corrupted, server logs warning and generates fresh key automatically, avoiding startup crash.
+
+#### Moonraker Mock Port
+Moonraker mock accepts optional `--port` argument (default `7125`). Use `docker compose up moonraker-mock` or run manually:
+```bash
+python tests/mocks/moonraker_mock.py --port 7126
+```
+
+
+### 1. Setup
+```bash
+# Clone and install dependencies
 pip install -r requirements.txt
+
+# Build Docker images (one-time)
+docker compose -f infra/docker-compose.yml build
+
+# Copy and edit environment/config files
+cp .env.template .env    # edit with HF_TOKEN and printer settings
+```
+
+### 2. Start the Server + Web UI
+```bash
+# Build frontend first (one-time, or after UI changes)
+cd web && npm install && npm run build && cd ..
+
+# Start API server (serves web UI on http://localhost:8000)
+docker compose -f infra/docker-compose.yml up api-server
+```
+Open **http://localhost:8000** — the web UI handles job submission, live phase tracking, blueprint/mesh preview, and printer control.
+
+### 3. Submit a Print Job
+From the web UI: enter a prompt like "a low poly planter box" and click **Generate & Print**. The pipeline runs automatically with the best execution strategy for your hardware (MPS on Apple Silicon, NVIDIA Docker if available, CPU Docker fallback).
+
+Alternatively, run from CLI:
+```bash
+# macOS Apple Silicon (Phase 1 native, rest in Docker)
 make phase1-native PROMPT="a ceramic vase"
-docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --skip-visualizer --blueprint /app/inputs/blueprint.png --print --start-print
-docker compose -f infra/docker-compose.yml up api-server
-```
-Open http://localhost:8000 to access the web UI.
 
-### Path B: Ubuntu/Windows with NVIDIA GPU
-```bash
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --print --start-print
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml up api-server
-```
-Open http://localhost:8000 to access the web UI.
-
-### Path C: CPU only (any platform, slow)
-```bash
+# Docker (any platform)
 docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a ceramic vase" --print --start-print
-docker compose -f infra/docker-compose.yml up api-server
 ```
-Open http://localhost:8000 to access the web UI.
+
+### 4. Test with Simulators
+From the **Settings** page (`/setup`), start the Moonraker or OctoPrint simulator to test printer communication without physical hardware. The simulators stream mock telemetry data and respond to print commands.
 
 ---
 

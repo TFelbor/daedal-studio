@@ -11,6 +11,11 @@ import websockets
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import TelemetrySample
 
+try:
+    from server.job_broadcaster import broadcaster
+except ImportError:
+    broadcaster = None
+
 logger = logging.getLogger(__name__)
 
 class MoonrakerCollector:
@@ -216,5 +221,8 @@ class MoonrakerCollector:
                 self.db.insert_sample(sample)
                 # Use put_nowait so we don't block the receive loop
                 self.sample_queue.put_nowait(sample)
+                
+                if broadcaster:
+                    asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
             except Exception as e:
                 logger.error(f"Failed to insert/emit TelemetrySample: {e}")

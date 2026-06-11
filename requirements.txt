@@ -112,5 +112,16 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 wheel==0.46.3
 zipp==3.23.0
-python-socketio[asyncio]
+python-socketio[asyncio_client]
 paho-mqtt==2.1.0
+cryptography
+aiohttp
+
+fastapi
+uvicorn
+aiosqlite
+websockets
+
+pytest
+pytest-asyncio
+responses

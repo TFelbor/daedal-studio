@@ -34,7 +34,10 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
+try:
+    from config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
+except ImportError:
+    from pythonsrc.config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.pipeline")
@@ -53,7 +56,6 @@ CURRENT_JOB_ID = None
 def _write_status(phase_num: int, status: str, error: str = None) -> None:
     if not CURRENT_JOB_ID:
         print(f"DEBUG: CURRENT_JOB_ID is None! sys.argv={sys.argv}")
-        return
         return
     log_dir_env = os.environ.get("P2P_LOGS_DIR")
     log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
@@ -122,7 +124,7 @@ def run(args: argparse.Namespace) -> None:
 
     blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
     raw_mesh_path = Path(args.mesh) if args.mesh else Path(os.path.join(OUTPUTS_DIR, "raw_mesh.obj"))
-    final_mesh_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.stl"))
+    final_mesh_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"))
     gcode_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.gcode"))
 
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────

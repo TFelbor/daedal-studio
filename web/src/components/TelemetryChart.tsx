@@ -21,13 +21,13 @@ export function TelemetryChart({ jobId }: TelemetryChartProps) {
         const samples = await getJobTelemetry(jobId);
         if (mounted) {
           // Recharts prefers oldest data first for left-to-right graphs.
-          // Depending on API, samples might be newest first. Let's sort by timestamp ascending.
-          const sorted = [...samples].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          // Depending on API, samples might be newest first. Let's sort by sampled_at ascending.
+          const sorted = [...samples].sort((a, b) => new Date(a.sampled_at).getTime() - new Date(b.sampled_at).getTime());
           
           // Format timestamps for display
           const formatted = sorted.map(s => ({
             ...s,
-            timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            timeLabel: new Date(s.sampled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
           }));
           
           setData(formatted);
@@ -81,8 +81,8 @@ export function TelemetryChart({ jobId }: TelemetryChartProps) {
               labelStyle={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.5rem' }}
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
-            <Line yAxisId="temp" type="monotone" dataKey="extruder_temp" name="Extruder Temp (°C)" stroke="#ff7300" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-            <Line yAxisId="temp" type="monotone" dataKey="bed_temp" name="Bed Temp (°C)" stroke="#8884d8" strokeWidth={2} dot={false} />
+            <Line yAxisId="temp" type="monotone" dataKey="hotend_actual_c" name="Extruder Temp (°C)" stroke="#ff7300" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+            <Line yAxisId="temp" type="monotone" dataKey="bed_actual_c" name="Bed Temp (°C)" stroke="#8884d8" strokeWidth={2} dot={false} />
             <Line yAxisId="height" type="stepAfter" dataKey="z_height_mm" name="Z Height (mm)" stroke="#387908" strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
