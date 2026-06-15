@@ -4,7 +4,7 @@ import { BlueprintPreview } from '../components/BlueprintPreview';
 import { MeshViewer } from '../components/MeshViewer';
 import { PipelineProgressBar } from '../components/PipelineProgressBar';
 import { JobControlPanel } from '../components/JobControlPanel';
-import { createJob, getJob } from '../api/client';
+import { createJob, getJob, listJobs } from '../api/client';
 import { getConfig } from '../api/config';
 import styles from './NewJob.module.css';
 
@@ -59,6 +59,20 @@ export function NewJob() {
       setTelemetrySamples([]);
     }
   }, [jobId]);
+
+  // Check for running job on mount
+  useEffect(() => {
+    listJobs(1, 0, 'running').then(data => {
+      if (data.jobs && data.jobs.length > 0) {
+        const activeJob = data.jobs[0];
+        setJobId(activeJob.job_id);
+        setPrompt(activeJob.prompt);
+        connectWebSocket(activeJob.job_id);
+      }
+    }).catch(err => {
+      console.error('Failed to fetch active jobs on mount', err);
+    });
+  }, []);
 
   const connectWebSocket = (id: string) => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -169,14 +183,14 @@ export function NewJob() {
         profile: configDefaults.profile,
         skip_visualizer: configDefaults.skipVisualizer,
         skip_sculptor: configDefaults.skipSculptor,
-        print: true,
-        start_print: true
+        print: false,
+        start_print: false
       });
       setJobId(data.job_id);
 
       // Initial phase running
       setPhases(prev => {
-        const next = [...prev];
+        const next = prev.map(p => ({ ...p, status: 'pending' as PhaseStatus['status'] }));
         next[0].status = 'running';
         return next;
       });
@@ -205,7 +219,7 @@ export function NewJob() {
       {!isRunning ? (
         <div className={styles.heroContainer}>
           <div className={styles.hero}>
-            <h1 className={styles.title}>Prompt to Print</h1>
+            <h1 className={styles.title}>Prompt2Print</h1>
             <p className={styles.subtitle}>Enter a description and watch it become a physical object.</p>
           </div>
 
@@ -235,15 +249,17 @@ export function NewJob() {
           <div className={styles.grid}>
             {/* Column 1: Prompt Summary */}
             <div className={styles.column}>
-              <div className={styles.promptSummary}>
-                <h3 className={styles.colTitle}>Prompt</h3>
-                <p className={styles.promptText}>"{prompt}"</p>
-                <button onClick={resetJob} className={styles.resetBtn}>
-                  <RotateCcw size={16} /> New Job
-                </button>
-                {!wsConnected && currentJob?.status !== 'completed' && currentJob?.outcome !== 'cancelled' && (
-                  <div className={styles.offlineBadge}>Offline (Polling)</div>
-                )}
+              <h3 className={styles.colTitle}>Prompt</h3>
+              <div className={styles.componentWrapper} style={{ padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                <p className={styles.promptText} style={{ textAlign: 'center' }}>{prompt}</p>
+                <div style={{ marginTop: 'auto', width: '100%' }}>
+                  <button onClick={resetJob} className={styles.resetBtn}>
+                    <RotateCcw size={16} /> New Job
+                  </button>
+                  {!wsConnected && currentJob?.status !== 'completed' && currentJob?.outcome !== 'cancelled' && (
+                    <div className={styles.offlineBadge}>Offline (Polling)</div>
+                  )}
+                </div>
               </div>
             </div>
 

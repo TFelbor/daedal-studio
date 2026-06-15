@@ -183,19 +183,19 @@ export function PrinterSetup() {
     <div className={styles.container}>
       <h1 style={{ marginBottom: '1.5rem', marginTop: 0 }}>Settings</h1>
 
-      <div style={{ display: 'flex', gap: '8px', padding: '16px', borderRadius: '8px', marginBottom: '24px', backgroundColor: statusInfo.color === 'green' ? '#dcfce7' : statusInfo.color === 'yellow' ? '#fef08a' : '#fee2e2', color: statusInfo.color === 'green' ? '#166534' : statusInfo.color === 'yellow' ? '#854d0e' : '#991b1b' }}>
+      <div style={{ display: 'flex', gap: '8px', padding: '16px', borderRadius: 'var(--border-radius)', marginBottom: '24px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', color: statusInfo.color === 'green' ? 'var(--text-secondary)' : 'var(--accent-color)' }}>
         {statusInfo.icon}
         <span style={{ fontWeight: 500 }}>{statusInfo.text}</span>
       </div>
 
       {saveError && (
-        <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderRadius: '8px', marginBottom: '24px', backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 500 }}>
+        <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderRadius: 'var(--border-radius)', marginBottom: '24px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--accent-color)', color: 'var(--accent-color)', fontWeight: 500 }}>
           <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '1px' }} /> {saveError}
         </div>
       )}
 
       {simError && (
-        <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderRadius: '8px', marginBottom: '24px', backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 500 }}>
+        <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderRadius: 'var(--border-radius)', marginBottom: '24px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--accent-color)', color: 'var(--accent-color)', fontWeight: 500 }}>
           <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '1px' }} /> {simError}
         </div>
       )}
@@ -238,7 +238,7 @@ export function PrinterSetup() {
                 {hfTestResult.success ? '✓ ' : '✗ '}{hfTestResult.message}
               </div>
             )}
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
               Required to download the FLUX base model. Get your token at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">huggingface.co/settings/tokens</a>.
             </div>
           </div>
@@ -328,10 +328,10 @@ export function PrinterSetup() {
 
             {printerType === 'octoprint' && (
               <>
-                <div style={{ display: 'flex', gap: '8px', padding: '12px', backgroundColor: '#e0f2fe', borderRadius: '4px', marginBottom: '16px' }}>
-                  <Info size={20} color="#0284c7" />
-                  <span style={{ color: '#0369a1', fontSize: '14px' }}>
-                    Running OctoPrint on a Raspberry Pi? Enter its local IP above. <a href="#" style={{ color: '#0369a1', textDecoration: 'underline' }}>See our setup guide →</a>
+                <div style={{ display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', marginBottom: '16px' }}>
+                  <Info size={20} color="var(--text-secondary)" />
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                    Running OctoPrint on a Raspberry Pi? Enter its local IP above. <a href="#" style={{ color: 'var(--accent-color)', textDecoration: 'underline' }}>See our setup guide →</a>
                   </span>
                 </div>
                 <div className="form-group">
@@ -370,9 +370,9 @@ export function PrinterSetup() {
 
             {printerType === 'bambu' && (
               <>
-                <div style={{ display: 'flex', gap: '8px', padding: '12px', backgroundColor: '#e0f2fe', borderRadius: '4px', marginBottom: '16px' }}>
-                  <Info size={20} color="#0284c7" />
-                  <span style={{ color: '#0369a1', fontSize: '14px' }}>
+                <div style={{ display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', marginBottom: '16px' }}>
+                  <Info size={20} color="var(--text-secondary)" />
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                     Enable LAN mode on your Bambu printer: Settings → Network → LAN Mode Liveview
                   </span>
                 </div>
@@ -448,10 +448,10 @@ export function PrinterSetup() {
         {/* Section 3: Simulators */}
         <div className="card" style={{ padding: '24px', textAlign: 'left' }}>
           <h2 style={{ marginTop: 0 }}>Simulators</h2>
-          <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', padding: '16px' }}>
             <h3 style={{ marginTop: 0 }}>Moonraker Simulator</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.moonraker?.running ? 'green' : 'red' }}></div>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.moonraker?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
               <span>Status: {simStatus?.moonraker?.running ? 'Running' : 'Stopped'}</span>
             </div>
             
@@ -483,10 +483,10 @@ export function PrinterSetup() {
               )}
             </div>
           </div>
-          <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginTop: '16px' }}>
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', padding: '16px', marginTop: '16px' }}>
             <h3 style={{ marginTop: 0 }}>OctoPrint Simulator</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.octoprint?.running ? 'green' : 'red' }}></div>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.octoprint?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
               <span>Status: {simStatus?.octoprint?.running ? 'Running' : 'Stopped'}</span>
             </div>
             

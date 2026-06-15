@@ -289,7 +289,12 @@ class Engineer:
             mesh = self.hollow_mesh(mesh, wall_thickness)
 
         mesh.export(str(output_path))
-        logger.info("Engineering complete → %s", output_path)
+        
+        # Also export as .stl for the Slicer (CuraEngine)
+        stl_output_path = output_path.with_suffix(".stl")
+        mesh.export(str(stl_output_path))
+        
+        logger.info("Engineering complete → %s (and .stl)", output_path)
         logger.info("Output analysis: %s", self.analyze_mesh(mesh))
         return output_path
 

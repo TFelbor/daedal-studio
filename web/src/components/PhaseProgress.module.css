@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .title {
@@ -98,6 +99,7 @@
   display: flex;
   flex-direction: column;
   max-width: 100%;
+  min-width: 0;
 }
 
 .logsHeader {
@@ -119,4 +121,6 @@
   overflow-x: auto;
   overflow-y: auto;
   flex-grow: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
 }

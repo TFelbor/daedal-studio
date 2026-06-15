@@ -6,7 +6,8 @@ import { PhaseProgress } from '../components/PhaseProgress';
 import { TelemetryChart } from '../components/TelemetryChart';
 import { FailureButton } from '../components/FailureButton';
 import { PrinterStatus } from '../components/PrinterStatus';
-import { ArrowLeft, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Printer } from 'lucide-react';
+import { getConfig } from '../api/config';
 import styles from './JobDetail.module.css';
 
 export function JobDetail() {
@@ -14,6 +15,8 @@ export function JobDetail() {
   const [job, setJob] = useState<JobStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [failureEvents, setFailureEvents] = useState<FailureEvent[]>([]);
+  const [printerConfigured, setPrinterConfigured] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const fetchJob = async () => {
     if (!id) return;
@@ -35,9 +38,30 @@ export function JobDetail() {
 
   useEffect(() => {
     fetchJob();
+    getConfig().then(data => {
+      const isConfigured = !!(data['MOONRAKER_URL']?.value || data['OCTOPRINT_URL']?.value || data['BAMBU_IP']?.value);
+      setPrinterConfigured(isConfigured);
+    }).catch(() => {});
     const intervalId = setInterval(fetchJob, 5000);
     return () => clearInterval(intervalId);
   }, [id]);
+
+  const handlePrint = async () => {
+    if (!job) return;
+    setPrinting(true);
+    try {
+      const res = await fetch(`/jobs/${job.job_id}/print-dispatch`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to dispatch print');
+      }
+      alert('Print job dispatched successfully!');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   if (loading || !job) {
     return (
@@ -52,7 +76,7 @@ export function JobDetail() {
 
   return (
     <div className={styles.container}>
-      <Link to="/" className={styles.backLink}>
+      <Link to="/jobs" className={styles.backLink}>
         <ArrowLeft size={16} /> Back to Dashboard
       </Link>
       
@@ -63,9 +87,22 @@ export function JobDetail() {
         </div>
         
         {isCompleted && (
-          <a href={`/jobs/${job.job_id}/download`} className="btn btn-primary" download>
-            <Download size={16} /> Download G-Code
-          </a>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <a href={`/jobs/${job.job_id}/download`} className="btn btn-primary" download>
+              <Download size={16} /> Download G-Code
+            </a>
+            {printerConfigured && (
+              <button 
+                className="btn btn-primary" 
+                onClick={handlePrint} 
+                disabled={printing}
+                style={{ backgroundColor: 'var(--accent-color)', borderColor: 'var(--accent-color)' }}
+              >
+                {printing ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />}
+                {printing ? ' Dispatching...' : ' Print'}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -109,29 +146,29 @@ export function JobDetail() {
 
           {failureEvents.length > 0 && (
             <div className={`card ${styles.detailsCard}`}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-color)' }}>
                 <AlertTriangle size={18} /> Failure Events
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {failureEvents.map(evt => (
                   <div key={evt.event_id} style={{
-                    padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px',
-                    border: '1px solid #fecaca', fontSize: '14px'
+                    padding: '12px', backgroundColor: 'var(--surface-color)', borderRadius: 'var(--border-radius)',
+                    border: '1px solid var(--border-color)', fontSize: '14px'
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 600, textTransform: 'capitalize', color: '#991b1b' }}>
+                      <span style={{ fontWeight: 600, textTransform: 'capitalize', color: 'var(--accent-color)' }}>
                         {evt.failure_type.replace(/_/g, ' ')}
                       </span>
-                      <span style={{ color: '#6b7280', fontSize: '12px' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
                         {new Date(evt.detected_at).toLocaleString()}
                       </span>
                     </div>
-                    <div style={{ color: '#4b5563' }}>
+                    <div style={{ color: 'var(--text-secondary)' }}>
                       Source: <span style={{ fontWeight: 500 }}>{evt.source}</span>
                       {evt.z_height_mm != null && <> | Z: {evt.z_height_mm?.toFixed(1)}mm</>}
                       {evt.gcode_line != null && <> | Line: {evt.gcode_line}</>}
                     </div>
-                    {evt.notes && <div style={{ color: '#4b5563', marginTop: '4px', fontStyle: 'italic' }}>"{evt.notes}"</div>}
+                    {evt.notes && <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>"{evt.notes}"</div>}
                   </div>
                 ))}
               </div>

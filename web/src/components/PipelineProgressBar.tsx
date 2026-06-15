@@ -25,29 +25,30 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
   };
 
   return (
-    <div style={{ width: '100%', padding: '16px 0', backgroundColor: '#fff', borderTop: '1px solid #e5e5e5' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', margin: '0 auto', gap: '8px', padding: '0 16px' }}>
+    <div style={{ width: '100%', padding: '12px 0', backgroundColor: 'transparent', borderTop: '1px solid var(--border-color)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', margin: '0 auto', gap: '8px', padding: '0 24px' }}>
         {PHASE_CONFIG.map((config, index) => {
           const status = getStatus(config.phase);
           const Icon = config.icon;
           
-          let bgColor = '#f3f4f6';
-          let textColor = '#9ca3af';
-          let iconColor = '#9ca3af';
+          let bgColor = 'var(--surface-color)';
+          let textColor = 'var(--text-secondary)';
+          let iconColor = 'var(--text-secondary)';
+          let borderColor = 'var(--border-color)';
           let isRunning = false;
 
           if (status === 'complete') {
-            bgColor = '#10b981';
-            textColor = '#fff';
-            iconColor = '#fff';
+            textColor = '#10b981';
+            iconColor = '#10b981';
+            borderColor = '#10b981';
           } else if (status === 'error') {
-            bgColor = '#ef4444';
-            textColor = '#fff';
-            iconColor = '#fff';
+            textColor = 'var(--accent-color)';
+            iconColor = 'var(--accent-color)';
+            borderColor = 'var(--accent-color)';
           } else if (status === 'running') {
-            bgColor = '#3b82f6';
-            textColor = '#fff';
-            iconColor = '#fff';
+            textColor = '#3b82f6';
+            iconColor = '#3b82f6';
+            borderColor = '#3b82f6';
             isRunning = true;
           }
 
@@ -55,9 +56,11 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
             <div key={config.phase} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
               <div style={{ 
                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', 
-                backgroundColor: bgColor, padding: '12px 8px', borderRadius: '8px',
+                backgroundColor: bgColor, padding: '12px 8px', 
+                borderRadius: 'var(--border-radius)',
+                border: `1px solid ${borderColor}`,
                 position: 'relative', overflow: 'hidden',
-                boxShadow: isRunning ? '0 0 10px rgba(59, 130, 246, 0.5)' : 'none',
+                boxShadow: 'none',
                 transition: 'all 0.3s ease'
               }}>
                 {isRunning && (
@@ -72,15 +75,15 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
                 <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon size={20} color={iconColor} />
                   <span style={{ color: textColor, fontWeight: 600, fontSize: '14px' }}>{config.name}</span>
-                  {status === 'complete' && <CheckCircle2 size={16} color="#fff" />}
-                  {status === 'error' && <AlertCircle size={16} color="#fff" />}
+                  {status === 'complete' && <CheckCircle2 size={16} color="#10b981" />}
+                  {status === 'error' && <AlertCircle size={16} color="var(--accent-color)" />}
                 </div>
               </div>
               
               {index < PHASE_CONFIG.length - 1 && (
                 <div style={{ 
-                  height: '4px', flex: 0.2, margin: '0 8px', borderRadius: '2px',
-                  backgroundColor: status === 'complete' ? '#10b981' : '#e5e5e5',
+                  height: '1px', flex: 0.2, margin: '0 8px',
+                  backgroundColor: status === 'complete' ? '#10b981' : 'var(--border-color)',
                   transition: 'background-color 0.3s ease'
                 }} />
               )}

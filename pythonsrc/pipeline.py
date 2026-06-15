@@ -204,7 +204,7 @@ def run(args: argparse.Namespace) -> None:
         _phase_fail(3, t0, exc)
 
     # ── Phase 4: Slicer ───────────────────────────────────────────────────────
-    if args.print:
+    if getattr(args, "slice", False) or args.print:
         t0 = _phase_start(4)
         try:
             from slicer import CuraSlicer, SlicerError
@@ -213,8 +213,10 @@ def run(args: argparse.Namespace) -> None:
                 cura_engine=args.cura_engine,
                 profile=args.profile,
             )
+            # Slicer (CuraEngine) needs .stl, Engineer outputs both .obj and .stl
+            stl_mesh_path = final_mesh_path.with_suffix(".stl")
             gcode_path = slicer.slice(
-                input_path=final_mesh_path,
+                input_path=stl_mesh_path,
                 output_path=gcode_path,
             )
             _phase_pass(4, t0, str(gcode_path))
@@ -319,6 +321,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Phase 4 options (Slicer)
     p4 = parser.add_argument_group("Phase 4 — Slicer (CuraEngine)")
+    p4.add_argument("--slice", action="store_true", help="Slice the generated mesh into G-code")
     p4.add_argument(
         "--profile",
         metavar="PATH",

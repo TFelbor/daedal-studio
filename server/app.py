@@ -173,6 +173,8 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     if profile:
         pipeline_args.extend(["--profile", profile])
         
+    pipeline_args.append("--slice")
+        
     if request.print:
         pipeline_args.append("--print")
     if request.start_print:
@@ -306,8 +308,10 @@ async def create_job(request: JobRequest):
     # Clean up artifacts from previous jobs to prevent the UI from loading old images
     for artifact in [
         repo_root / "data" / "inputs" / "blueprint.png",
-        repo_root / "data" / "outputs" / "mesh.obj",
-        repo_root / "data" / "outputs" / "mesh.gcode"
+        repo_root / "data" / "outputs" / "raw_mesh.obj",
+        repo_root / "data" / "outputs" / "engineered_mesh.obj",
+        repo_root / "data" / "outputs" / "engineered_mesh.stl",
+        repo_root / "data" / "outputs" / "engineered_mesh.gcode"
     ]:
         if artifact.exists():
             try:
@@ -535,6 +539,7 @@ async def cancel_job(job_id: str):
             pass
             
     # Attempt to cancel printer
+    repo_root = Path(__file__).parent.parent
     profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
     try:
         if os.path.exists(profile_path):

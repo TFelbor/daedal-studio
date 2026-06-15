@@ -14,7 +14,7 @@ function Navigation() {
     <nav className={styles.nav}>
       <div className={styles.navContainer}>
         <Link to="/" className={styles.logo}>
-          P2P Mesh
+          P2P
         </Link>
         <div className={styles.navLinks}>
           <Link to="/" className={`${styles.navLink} ${location.pathname === '/' ? styles.active : ''}`}>

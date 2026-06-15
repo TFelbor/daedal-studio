@@ -12,7 +12,7 @@ export function BlueprintPreview({ jobId, status }: BlueprintPreviewProps) {
 
   // Consider phase 1 running if status is 'running' but image not loaded
   const isRunning = status === 'running' && !loaded;
-  const showImage = !!jobId && (status === 'completed' || status === 'running');
+  const showImage = !!jobId && (status === 'completed' || status === 'complete' || status === 'running');
   
   const imgSrc = jobId ? `/jobs/${jobId}/blueprint${retryCount > 0 ? `?t=${retryCount}` : ''}` : '';
 
