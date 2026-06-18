@@ -1,128 +1,111 @@
-import asyncio
-import sys
 import os
-import signal
-from pathlib import Path
+import docker
 from typing import Dict, Any
 
 class SimulatorManager:
     def __init__(self):
-        self.moonraker_process: asyncio.subprocess.Process | None = None
-        self.moonraker_port: int | None = None
-        self._moonraker_log_fh = None
-        self.octoprint_process: asyncio.subprocess.Process | None = None
-        self.octoprint_port: int | None = None
-        self._octoprint_log_fh = None
+        try:
+            self.client = docker.from_env()
+        except Exception as e:
+            print(f"Warning: Could not initialize Docker client: {e}")
+            self.client = None
 
-    def _get_log_file(self, simulator_name: str) -> Path:
-        repo_root = Path(__file__).parent.parent
-        log_dir = repo_root / "data" / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        return log_dir / f"{simulator_name}_mock.log"
+        self.compose_project = os.environ.get("COMPOSE_PROJECT_NAME", "p2p-mesh-poc-docker")
+        self.service_name = "octoprint-simulator"
+
+    def _get_container(self):
+        if not self.client:
+            return None
+        
+        # Match by compose labels
+        filters = {
+            "label": [
+                f"com.docker.compose.project={self.compose_project}",
+                f"com.docker.compose.service={self.service_name}"
+            ]
+        }
+        containers = self.client.containers.list(all=True, filters=filters)
+        if containers:
+            return containers[0]
+            
+        # Fallback by name
+        for c in self.client.containers.list(all=True):
+            if self.service_name in c.name:
+                return c
+                
+        return None
 
     async def start_moonraker(self, port: int = 7125) -> Dict[str, Any]:
-        if self.moonraker_process and self.moonraker_process.returncode is None:
-            return {"running": True, "port": self.moonraker_port, "url": f"http://localhost:{self.moonraker_port}"}
-
-        repo_root = Path(__file__).parent.parent
-        mock_script = repo_root / "tests" / "mocks" / "moonraker_mock.py"
-
-        log_file = self._get_log_file("moonraker")
-        self._moonraker_log_fh = open(log_file, "w")
-
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-
-        self.moonraker_process = await asyncio.create_subprocess_exec(
-            sys.executable, str(mock_script), "--port", str(port),
-            stdout=self._moonraker_log_fh,
-            stderr=self._moonraker_log_fh,
-            cwd=repo_root,
-            env=env
-        )
-        self.moonraker_port = port
-
-        if self.moonraker_process.returncode is not None:
-            raise RuntimeError(
-                f"Moonraker mock failed to start (exit code {self.moonraker_process.returncode})"
-            )
-
-        return {"running": True, "port": port, "url": f"http://localhost:{port}"}
-
-    async def start_octoprint(self, port: int = 5001) -> Dict[str, Any]:
-        if self.octoprint_process and self.octoprint_process.returncode is None:
-            return {"running": True, "port": self.octoprint_port, "url": f"http://localhost:{self.octoprint_port}"}
-
-        repo_root = Path(__file__).parent.parent
-        mock_script = repo_root / "tests" / "mocks" / "octoprint_mock.py"
-
-        log_file = self._get_log_file("octoprint")
-        self._octoprint_log_fh = open(log_file, "w")
-
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-
-        self.octoprint_process = await asyncio.create_subprocess_exec(
-            sys.executable, str(mock_script), "--port", str(port),
-            stdout=self._octoprint_log_fh,
-            stderr=self._octoprint_log_fh,
-            cwd=repo_root,
-            env=env
-        )
-        self.octoprint_port = port
-
-        if self.octoprint_process.returncode is not None:
-            raise RuntimeError(
-                f"OctoPrint mock failed to start (exit code {self.octoprint_process.returncode})"
-            )
-
-        return {"running": True, "port": port, "url": f"http://localhost:{port}"}
+        return {"running": False, "error": "Moonraker simulator deprecated"}
 
     async def stop_moonraker(self) -> Dict[str, Any]:
-        if self.moonraker_process and self.moonraker_process.returncode is None:
-            self.moonraker_process.send_signal(signal.SIGTERM)
-            try:
-                await asyncio.wait_for(self.moonraker_process.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                self.moonraker_process.kill()
-                await self.moonraker_process.wait()
-
-        self.moonraker_process = None
-        self.moonraker_port = None
-        if self._moonraker_log_fh:
-            self._moonraker_log_fh.close()
-            self._moonraker_log_fh = None
         return {"running": False}
+
+    async def start_octoprint(self, port: int = 5001) -> Dict[str, Any]:
+        if not self.client:
+            raise RuntimeError("Docker client not available. Cannot start simulator.")
+            
+        container = self._get_container()
+        if not container:
+            # Container doesn't exist yet, we must create and start it via docker compose
+            import subprocess
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            try:
+                subprocess.run(
+                    ["docker", "compose", "-f", "infra/docker-compose.yml", "--profile", "simulator", "up", "-d", "octoprint-simulator"],
+                    check=True,
+                    cwd=project_root
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to create and start OctoPrint simulator container: {e}")
+        elif container.status != "running":
+            container.start()
+            
+        return {"running": True, "port": port, "url": f"http://localhost:{port}"}
 
     async def stop_octoprint(self) -> Dict[str, Any]:
-        if self.octoprint_process and self.octoprint_process.returncode is None:
-            self.octoprint_process.send_signal(signal.SIGTERM)
-            try:
-                await asyncio.wait_for(self.octoprint_process.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                self.octoprint_process.kill()
-                await self.octoprint_process.wait()
-
-        self.octoprint_process = None
-        self.octoprint_port = None
-        if self._octoprint_log_fh:
-            self._octoprint_log_fh.close()
-            self._octoprint_log_fh = None
+        if not self.client:
+            return {"running": False}
+            
+        container = self._get_container()
+        if container and container.status == "running":
+            container.stop(timeout=5)
+            
         return {"running": False}
 
+    def _get_octoprint_api_key(self) -> str | None:
+        import yaml
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        config_path = os.path.join(project_root, "data", "octoprint", "octoprint", "config.yaml")
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    config = yaml.safe_load(f)
+                return config.get("api", {}).get("key")
+        except Exception as e:
+            print(f"Warning: Could not read OctoPrint simulator config: {e}")
+        return None
+
     def get_status(self) -> Dict[str, Any]:
-        moonraker_running = self.moonraker_process is not None and self.moonraker_process.returncode is None
-        octoprint_running = self.octoprint_process is not None and self.octoprint_process.returncode is None
+        octo_running = False
+        port = 5001
+        
+        if self.client:
+            container = self._get_container()
+            if container and container.status == "running":
+                octo_running = True
+                
         return {
             "moonraker": {
-                "running": moonraker_running,
-                "port": self.moonraker_port if moonraker_running else None,
-                "url": f"http://localhost:{self.moonraker_port}" if moonraker_running else None
+                "running": False,
+                "port": None,
+                "url": None
             },
             "octoprint": {
-                "running": octoprint_running,
-                "port": self.octoprint_port if octoprint_running else None,
-                "url": f"http://localhost:{self.octoprint_port}" if octoprint_running else None
+                "running": octo_running,
+                "port": port if octo_running else None,
+                "url": f"http://localhost:{port}" if octo_running else None,
+                "api_key": self._get_octoprint_api_key() if octo_running else None
             }
         }
 

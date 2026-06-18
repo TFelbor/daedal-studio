@@ -140,6 +140,16 @@ services:
       - phase5
       - all
 
+  # ── OctoPrint Simulator (Real Dockerized instance) ────────────────────────
+  octoprint-simulator:
+    image: octoprint/octoprint:latest
+    ports:
+      - "5001:80"
+    volumes:
+      - ${HOST_PROJECT_ROOT:-..}/data/octoprint:/octoprint
+    profiles:
+      - simulator
+
   # ── Pipeline Runner (orchestrator — chains all phases) ────────────────────
   # This is the primary entry point for end-to-end runs.
   # It does NOT depend_on the phase services above (they are separate images
@@ -173,6 +183,8 @@ services:
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
       - ${HOST_PROJECT_ROOT:-..}/data/logs:/app/data/logs
       - ${HOST_PROJECT_ROOT:-..}/pythonsrc:/app/pythonsrc
+      - ~/.p2p-mesh:/root/.p2p-mesh
+      - p2p-telemetry:/app/telemetry
       - p2p-models-flux:/models/flux
       - p2p-models-triposr:/models/triposr
       - p2p-models-u2net:/models/u2net

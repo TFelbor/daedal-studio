@@ -7,7 +7,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/jobs': 'http://localhost:8000',
-      '/health': 'http://localhost:8000'
+      '/health': 'http://localhost:8000',
+      '/system': 'http://localhost:8000',
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true
+      }
     }
   }
 })

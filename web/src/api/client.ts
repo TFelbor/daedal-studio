@@ -24,6 +24,8 @@ export interface JobStatusResponse {
   outcome: string;
   log_tail: string[];
   current_phase: any | null;
+  printer_id: string | null;
+  printer_firmware: string | null;
 }
 
 export interface TelemetrySample {
@@ -114,5 +116,18 @@ export async function reportFailure(jobId: string, request: FailureRequest): Pro
     body: JSON.stringify(request)
   });
   if (!res.ok) throw new Error('Failed to report failure');
+  return res.json();
+}
+
+export async function printerAction(jobId: string, action: 'pause' | 'resume' | 'cancel'): Promise<any> {
+  const res = await fetch(`/jobs/${jobId}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(errBody?.detail || `Failed to execute action ${action}`);
+  }
   return res.json();
 }

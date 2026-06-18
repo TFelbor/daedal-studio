@@ -114,7 +114,7 @@ export function JobCard({ job }: JobCardProps) {
           Duration: {getDuration(job.started_at, job.completed_at)}
         </div>
         
-        <Link to={`/jobs/${job.job_id}`} style={{
+        <Link to={`/dashboard/${job.job_id}`} style={{
           display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px',
           color: '#3b82f6', textDecoration: 'none', fontWeight: 500, marginTop: '4px'
         }}>

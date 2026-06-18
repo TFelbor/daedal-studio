@@ -20,7 +20,7 @@ function Navigation() {
           <Link to="/" className={`${styles.navLink} ${location.pathname === '/' ? styles.active : ''}`}>
             <PlusCircle size={18} /> New Job
           </Link>
-          <Link to="/jobs" className={`${styles.navLink} ${location.pathname.startsWith('/jobs') ? styles.active : ''}`}>
+          <Link to="/dashboard" className={`${styles.navLink} ${location.pathname.startsWith('/dashboard') ? styles.active : ''}`}>
             <LayoutDashboard size={18} /> Dashboard
           </Link>
           <Link to="/setup" className={`${styles.navLink} ${location.pathname === '/setup' ? styles.active : ''}`}>
@@ -39,8 +39,8 @@ function App() {
       <main className="container">
         <Routes>
           <Route path="/" element={<NewJob />} />
-          <Route path="/jobs" element={<JobList />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/dashboard" element={<JobList />} />
+          <Route path="/dashboard/:id" element={<JobDetail />} />
           <Route path="/setup" element={<PrinterSetup />} />
         </Routes>
       </main>

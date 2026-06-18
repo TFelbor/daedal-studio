@@ -1,7 +1,7 @@
 .pageLayout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px); /* assuming 64px nav */
+  min-height: calc(100vh - 64px); /* assuming 64px nav */
   background-color: var(--bg-color);
 }
 
@@ -78,8 +78,7 @@
 .liveView {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 .grid {
@@ -88,14 +87,12 @@
   gap: 16px;
   padding: 16px 24px;
   flex: 1;
-  overflow: hidden;
 }
 
 @media (max-width: 1200px) {
   .grid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    overflow-y: auto;
   }
 }
 

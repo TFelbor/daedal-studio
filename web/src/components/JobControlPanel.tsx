@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Printer as PrinterIcon, StopCircle, Info } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
+import { GCodeViewer } from './GCodeViewer';
 
 interface JobControlPanelProps {
   jobId: string | null;
@@ -129,6 +130,17 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid #e5e5e5', margin: 0 }} />
+
+      {/* Live Preview */}
+      {(phases.some(p => p.phase === 4 && p.status === 'complete') || phases.some(p => p.phase >= 5) || currentJob?.status === 'completed') && (
+        <>
+          <div style={{ flex: 2, minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#4b5563' }}>Live Print Preview</h3>
+            <GCodeViewer jobId={jobId} zHeightMm={telemetrySamples[telemetrySamples.length - 1]?.z_height_mm} />
+          </div>
+          <hr style={{ border: 'none', borderTop: '1px solid #e5e5e5', margin: 0 }} />
+        </>
+      )}
 
       {/* Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
-import socketio
+import json
+import os
+import aiohttp
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
@@ -17,7 +19,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class OctoPrintCollector:
-    """Collects telemetry data from an OctoPrint 3D printer via Socket.IO.
+    """Collects telemetry data from an OctoPrint 3D printer via SockJS.
 
     Limitations:
         - gcode_line: Not exposed via the streaming API (always None).
@@ -42,25 +44,19 @@ class OctoPrintCollector:
         self.job_id = job_id
         self.db = db
         self.sample_queue: asyncio.Queue[TelemetrySample] = asyncio.Queue()
-        self.sio = socketio.AsyncClient()
         self._running = False
         self._bg_task: Optional[asyncio.Task] = None
         self._backoff = 1.0
 
-        # Register event handlers
-        self.sio.on("connected", self._on_connected)
-        self.sio.on("current", self._on_current)
-        self.sio.on("event", self._on_event)
-
     async def start(self) -> None:
-        """Start the collector and initiate the Socket.IO connection."""
+        """Start the collector and initiate the WebSocket connection."""
         if self._running:
             return
         self._running = True
         self._bg_task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
-        """Stop the collector and disconnect the Socket.IO client."""
+        """Stop the collector and disconnect."""
         self._running = False
         if self._bg_task:
             self._bg_task.cancel()
@@ -68,27 +64,47 @@ class OctoPrintCollector:
                 await self._bg_task
             except asyncio.CancelledError:
                 pass
-        if self.sio.connected:
-            await self.sio.disconnect()
 
     async def _run_loop(self) -> None:
         url = f"http://{self.host}:{self.port}"
+        ws_url = f"ws://{self.host}:{self.port}/sockjs/websocket"
+        
         while self._running:
             try:
-                if not self.sio.connected:
-                    logger.info(f"Connecting to OctoPrint at {url}")
-                    await self.sio.connect(url, headers={"X-Api-Key": self.api_key})
-                    self._backoff = 1.0  # Reset backoff on successful connect
-                    
-                    # Authenticate immediately after connect
-                    await self.sio.emit("authenticate", {"passive": True, "apikey": self.api_key})
-                
-                # Wait for disconnect
-                await self.sio.wait()
+                async with aiohttp.ClientSession() as session:
+                    logger.info(f"Connecting to OctoPrint websocket at {ws_url}")
+                    async with session.ws_connect(ws_url) as ws:
+                        self._backoff = 1.0
+                        logger.info("OctoPrint SocketJS connected event received.")
+                        
+                        # Authenticate over SockJS using API Key directly
+                        auth_msg = json.dumps({"auth": f"_api:{self.api_key}"})
+                        await ws.send_str(json.dumps([auth_msg]))
+                        
+                        # Receive loop
+                        async for msg in ws:
+                            if not self._running:
+                                break
+                            
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                data = msg.data
+                                if data.startswith('a['):
+                                    # Parse SockJS array frame
+                                    try:
+                                        frames = json.loads(data[1:])
+                                        for frame in frames:
+                                            parsed = json.loads(frame)
+                                            if "current" in parsed:
+                                                await self._on_current(parsed["current"])
+                                            elif "event" in parsed:
+                                                await self._on_event(parsed["event"])
+                                    except Exception as e:
+                                        logger.error(f"Error parsing websocket frame: {e}")
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                break
+
             except Exception as e:
                 logger.error(f"Connection error: {e}")
-                if self.sio.connected:
-                    await self.sio.disconnect()
             
             if not self._running:
                 break
@@ -96,9 +112,6 @@ class OctoPrintCollector:
             logger.info(f"Reconnecting in {self._backoff} seconds...")
             await asyncio.sleep(self._backoff)
             self._backoff = min(self._backoff * 2, 30.0)
-
-    async def _on_connected(self, data: Optional[Dict[str, Any]] = None) -> None:
-        logger.info("OctoPrint Socket.IO connected event received.")
 
     async def _on_current(self, payload: Dict[str, Any]) -> None:
         if not payload:
@@ -153,8 +166,30 @@ class OctoPrintCollector:
         self.db.insert_sample(sample)
         await self.sample_queue.put(sample)
         
-        if broadcaster:
-            asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
+        api_url = os.environ.get("P2P_API_URL")
+        if api_url:
+            async def send_telemetry():
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        await session.post(f"{api_url}/jobs/{self.job_id}/internal-telemetry", json={
+                            "type": "telemetry",
+                            "data": sample.to_dict()
+                        })
+                        state_data = {
+                            "state": payload.get("state"),
+                            "job": payload.get("job"),
+                            "progress": payload.get("progress"),
+                            "resends": payload.get("resends"),
+                            "ts": now.isoformat()
+                        }
+                        await session.post(f"{api_url}/jobs/{self.job_id}/internal-telemetry", json={
+                            "type": "printer_state",
+                            "data": state_data
+                        })
+                except Exception as e:
+                    logger.warning(f"Could not push telemetry to API: {e}")
+            
+            asyncio.create_task(send_telemetry())
 
     async def _on_event(self, event_data: Dict[str, Any]) -> None:
         if not isinstance(event_data, dict):

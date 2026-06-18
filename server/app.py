@@ -74,6 +74,8 @@ class JobStatusResponse(BaseModel):
     outcome: str
     log_tail: List[str]
     current_phase: Optional[dict] = None
+    printer_id: Optional[str] = None
+    printer_firmware: Optional[str] = None
 
 @app.on_event("startup")
 def startup_event():
@@ -193,8 +195,51 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         if hf_token:
             pipeline_env["HF_TOKEN"] = hf_token
             pipeline_env["HUGGINGFACE_HUB_TOKEN"] = hf_token
+            
+        # Export printer config to pipeline
+        firmware = config_store.get("DEFAULT_PRINTER_FIRMWARE") or "octoprint"
+        pipeline_env["P2P_FIRMWARE"] = firmware
+        
+        if firmware == "octoprint":
+            url = config_store.get("OCTOPRINT_URL")
+            key = config_store.get("OCTOPRINT_API_KEY")
+        elif firmware == "moonraker":
+            url = config_store.get("MOONRAKER_URL")
+            key = None
+        elif firmware == "bambu":
+            url = config_store.get("BAMBU_IP")
+            key = config_store.get("BAMBU_ACCESS_CODE")
+        else:
+            url = None
+            key = None
+            
+        if url:
+            # If pipeline is running in docker and the URL is localhost, rewrite it
+            if "localhost" in url or "127.0.0.1" in url:
+                url = url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
+            pipeline_env["P2P_PRINTER_URL"] = url
+            
+        if key:
+            pipeline_env["P2P_PRINTER_KEY"] = key
+            
+        if strategy == "mps_native":
+            pipeline_env["P2P_API_URL"] = "http://127.0.0.1:8000"
+        else:
+            pipeline_env["P2P_API_URL"] = "http://host.docker.internal:8000"
 
         with open(log_file, "w") as f:
+            docker_env_args = ["-e", "P2P_LOGS_DIR=/app/data/logs"]
+            if "TELEMETRY_DB_PATH" in pipeline_env:
+                docker_env_args.extend(["-e", f"TELEMETRY_DB_PATH={pipeline_env['TELEMETRY_DB_PATH']}"])
+            if "P2P_PRINTER_URL" in pipeline_env:
+                docker_env_args.extend(["-e", f"P2P_PRINTER_URL={pipeline_env['P2P_PRINTER_URL']}"])
+            if "P2P_PRINTER_KEY" in pipeline_env:
+                docker_env_args.extend(["-e", f"P2P_PRINTER_KEY={pipeline_env['P2P_PRINTER_KEY']}"])
+            if "P2P_FIRMWARE" in pipeline_env:
+                docker_env_args.extend(["-e", f"P2P_FIRMWARE={pipeline_env['P2P_FIRMWARE']}"])
+            if "P2P_API_URL" in pipeline_env:
+                docker_env_args.extend(["-e", f"P2P_API_URL={pipeline_env['P2P_API_URL']}"])
+                
             if strategy == "mps_native":
                 if not skip_viz:
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "running", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
@@ -235,7 +280,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     
                 cmd = [
                     "docker", "compose", "-f", "infra/docker-compose.yml",
-                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
+                    "run", "--rm"
+                ] + docker_env_args + [
+                    "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
                     "--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png",
                     "--job-id", job_id
@@ -245,7 +292,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     "docker", "compose",
                     "-f", "infra/docker-compose.yml",
                     "-f", "infra/docker-compose.gpu.yml",
-                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
+                    "run", "--rm"
+                ] + docker_env_args + [
+                    "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
                     "--job-id", job_id
                 ] + pipeline_args
@@ -253,7 +302,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 cmd = [
                     "docker", "compose",
                     "-f", "infra/docker-compose.yml",
-                    "run", "--rm", "-e", "P2P_LOGS_DIR=/app/data/logs", "pipeline-runner",
+                    "run", "--rm"
+                ] + docker_env_args + [
+                    "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
                     "--job-id", job_id
                 ] + pipeline_args
@@ -262,7 +313,8 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                cwd=repo_root
+                cwd=repo_root,
+                env=pipeline_env
             )
             active_pipelines[job_id] = process
             await _stream_output(process, f, job_id)
@@ -301,6 +353,10 @@ async def create_job(request: JobRequest):
     Returns:
         A JobResponse containing the job ID and 'queued' status immediately.
     """
+    status_res = await printer_status()
+    if not status_res["configured"]:
+        raise HTTPException(status_code=400, detail="Cannot start job: No real printer or simulator is configured and running. Please check your Printer Setup.")
+
     job_id = str(uuid.uuid4())
 
     repo_root = Path(__file__).parent.parent
@@ -435,7 +491,9 @@ async def get_job(job_id: str):
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
         outcome=job.outcome,
         log_tail=log_tail,
-        current_phase=current_phase
+        current_phase=current_phase,
+        printer_id=job.printer_id,
+        printer_firmware=job.printer_firmware
     )
 
 @app.get("/jobs/{job_id}/download")
@@ -458,16 +516,23 @@ async def download_job_output(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    if job.outcome != "success":
-        raise HTTPException(status_code=404, detail="Job is not complete or failed")
-        
+
     outputs_dir = os.path.join(os.path.dirname(__file__), "..", "data", "outputs")
     gcode_path = os.path.join(outputs_dir, "engineered_mesh.gcode")
     
     if not os.path.exists(gcode_path):
         raise HTTPException(status_code=404, detail="File not found")
         
-    return FileResponse(gcode_path, media_type="text/plain", filename=f"{job_id}.gcode")
+    def iterfile():
+        with open(gcode_path, mode="rb") as f:
+            while chunk := f.read(8192):
+                yield chunk
+                
+    headers = {
+        "Content-Disposition": f'attachment; filename="{job_id}.gcode"'
+    }
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(iterfile(), media_type="text/plain", headers=headers)
 
 @app.post("/jobs/{job_id}/print-dispatch")
 async def print_dispatch(job_id: str):
@@ -498,11 +563,17 @@ async def print_dispatch(job_id: str):
             "--profile", profile_path
         ]
         
+        env = os.environ.copy()
+        octoprint_key = config_store.get("OCTOPRINT_API_KEY")
+        if octoprint_key:
+            env["OCTOPRINT_API_KEY"] = octoprint_key
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
-            cwd=repo_root
+            cwd=repo_root,
+            env=env
         )
         
         # We don't block the API, but we track it or just let it finish.
@@ -550,6 +621,15 @@ async def cancel_job(job_id: str):
             base_url = profile_data.get("base_url", "http://localhost:5001")
             api_key = profile_data.get("api_key")
             
+            if firmware == "octoprint":
+                base_url = config_store.get("OCTOPRINT_URL") or base_url
+                api_key = config_store.get("OCTOPRINT_API_KEY") or api_key
+            elif firmware == "moonraker":
+                base_url = config_store.get("MOONRAKER_URL") or base_url
+            elif firmware == "bambu":
+                base_url = config_store.get("BAMBU_IP") or base_url
+                api_key = config_store.get("BAMBU_ACCESS_CODE") or api_key
+            
             from pythonsrc.operators import PrinterFactory
             op = PrinterFactory.create(firmware=firmware, base_url=base_url, api_key=api_key)
             # Try to cancel
@@ -565,6 +645,69 @@ async def cancel_job(job_id: str):
     
     await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "cancelled"}})
     return {"status": "cancelled"}
+
+class PrinterActionRequest(BaseModel):
+    action: str
+
+@app.post("/jobs/{job_id}/action")
+async def printer_action(job_id: str, request: PrinterActionRequest):
+    """Execute a printer action (pause, resume, cancel)."""
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    repo_root = Path(__file__).parent.parent
+    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
+    
+    if not os.path.exists(profile_path):
+        raise HTTPException(status_code=400, detail="Printer profile not found")
+        
+    try:
+        with open(profile_path, "r") as f:
+            profile_data = json.load(f)
+            
+        firmware = profile_data.get("firmware", "octoprint")
+        base_url = profile_data.get("base_url", "http://localhost:5001")
+        api_key = profile_data.get("api_key")
+        
+        if firmware == "octoprint":
+            base_url = config_store.get("OCTOPRINT_URL") or base_url
+            api_key = config_store.get("OCTOPRINT_API_KEY") or api_key
+        elif firmware == "moonraker":
+            base_url = config_store.get("MOONRAKER_URL") or base_url
+        elif firmware == "bambu":
+            base_url = config_store.get("BAMBU_IP") or base_url
+            api_key = config_store.get("BAMBU_ACCESS_CODE") or api_key
+        
+        from pythonsrc.operators import PrinterFactory
+        op = PrinterFactory.create(firmware=firmware, base_url=base_url, api_key=api_key)
+        
+        if request.action == "pause":
+            op.pause_print()
+        elif request.action == "resume":
+            op.resume_print()
+        elif request.action == "cancel":
+            op.cancel_print()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+            
+        return {"status": "success", "action": request.action}
+    except Exception as e:
+        logger.error(f"Failed to execute printer action {request.action}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class InternalTelemetryRequest(BaseModel):
+    type: str
+    data: dict
+
+@app.post("/jobs/{job_id}/internal-telemetry")
+async def internal_telemetry(job_id: str, request: InternalTelemetryRequest):
+    """Internal endpoint for pipeline-runner to push telemetry/state updates."""
+    await broadcaster.broadcast(job_id, {"type": request.type, "data": request.data})
+    return {"status": "success"}
 
 @app.get("/jobs")
 async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
@@ -981,6 +1124,26 @@ async def system_info():
         "python_version": platform.python_version()
     }
 
+@app.get("/system/printer/status")
+async def printer_status():
+    """Verify if a simulator or real printer is configured and running."""
+    # Check simulator
+    sim_status = simulator_manager.get_status()
+    if sim_status.get("octoprint", {}).get("running"):
+        return {"configured": True, "type": "simulator", "running": True}
+        
+    # Check real printer profile
+    profile = config_store.get("DEFAULT_PROFILE")
+    if profile:
+        profile_path = Path(__file__).parent.parent / profile
+        if profile_path.exists():
+            if profile in ["pythonsrc/profiles/ender3.json", "pythonsrc/profiles/bambu_test.json"]:
+                # These are dummy profiles that require the simulator, which is not running
+                return {"configured": False, "type": "none", "running": False}
+            return {"configured": True, "type": "real", "running": True} 
+            
+    return {"configured": False, "type": "none", "running": False}
+
 @app.get("/jobs/{job_id}/blueprint")
 async def get_blueprint(job_id: str):
     repo_root = Path(__file__).parent.parent
@@ -988,6 +1151,8 @@ async def get_blueprint(job_id: str):
     if not blueprint_path.exists():
         raise HTTPException(status_code=404, detail="Blueprint not found")
     return FileResponse(str(blueprint_path), media_type="image/png")
+
+
 
 @app.get("/jobs/{job_id}/mesh")
 async def get_mesh(job_id: str):

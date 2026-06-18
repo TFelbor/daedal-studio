@@ -33,6 +33,8 @@ export function NewJob() {
     profile: string;
   }>({ skipVisualizer: false, skipSculptor: false, profile: '' });
 
+  const [printerReady, setPrinterReady] = useState(false);
+
   useEffect(() => {
     getConfig()
       .then(data => {
@@ -43,6 +45,19 @@ export function NewJob() {
         });
       })
       .catch(() => {});
+
+    const checkPrinter = async () => {
+      try {
+        const res = await fetch('/system/printer/status');
+        if (res.ok) {
+          const status = await res.json();
+          setPrinterReady(status.configured && status.running);
+        }
+      } catch (err) {}
+    };
+    checkPrinter();
+    const interval = setInterval(checkPrinter, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Initialize phases
@@ -110,7 +125,7 @@ export function NewJob() {
           });
         } else if (msg.type === 'telemetry_batch') {
           setTelemetrySamples(msg.data);
-        } else if (msg.type === 'telemetry_update') {
+        } else if (msg.type === 'telemetry' || msg.type === 'telemetry_update') {
           setTelemetrySamples(prev => {
             const next = [...prev, msg.data];
             if (next.length > 20) return next.slice(next.length - 20);
@@ -183,8 +198,8 @@ export function NewJob() {
         profile: configDefaults.profile,
         skip_visualizer: configDefaults.skipVisualizer,
         skip_sculptor: configDefaults.skipSculptor,
-        print: false,
-        start_print: false
+        print: true,
+        start_print: true
       });
       setJobId(data.job_id);
 
@@ -224,6 +239,21 @@ export function NewJob() {
           </div>
 
           <form className={`card ${styles.form}`} onSubmit={handleSubmit}>
+            {!printerReady && (
+              <div style={{ 
+                backgroundColor: 'rgba(220, 53, 69, 0.1)', 
+                border: '1px solid var(--danger-color)',
+                color: 'var(--danger-color)', 
+                padding: '12px',
+                borderRadius: '8px',
+                marginBottom: '16px', 
+                fontSize: '14px', 
+                textAlign: 'center',
+                fontWeight: '500'
+              }}>
+                ⚠️ No printer or simulator configured/running. Please configure one in Settings.
+              </div>
+            )}
             <textarea
               className={`input ${styles.textarea}`}
               placeholder="e.g. A low poly planter box with a modern geometric design..."
@@ -231,13 +261,14 @@ export function NewJob() {
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
               autoFocus
+              disabled={!printerReady}
             />
             
             <div className={styles.actions}>
               <button 
                 type="submit" 
                 className={`btn btn-primary ${styles.submitBtn}`}
-                disabled={!prompt.trim() || loading}
+                disabled={!prompt.trim() || loading || !printerReady}
               >
                 {loading ? 'Starting...' : <><Play size={18} /> Generate & Print</>}
               </button>

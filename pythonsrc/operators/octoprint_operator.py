@@ -312,12 +312,13 @@ class OctoPrintOperator(BasePrinterOperator):
         )
 
     # ── File Management ───────────────────────────────────────────────────────
-    def upload_file(self, local_path: str, remote_name: str) -> bool:
+    def upload_file(self, local_path: str, remote_name: str, start_print: bool = False) -> bool:
         """Upload a G-code file to OctoPrint.
 
         Args:
             local_path: Local path to the ``.gcode`` file produced by the slicer.
             remote_name: The name the file will have on the OctoPrint server.
+            start_print: Whether to automatically start printing after upload.
 
         Returns:
             True if the upload was successful.
@@ -345,7 +346,7 @@ class OctoPrintOperator(BasePrinterOperator):
 
         with file_path.open("rb") as fh:
             files = {"file": (remote_name, fh, "application/octet-stream")}
-            data = {"select": "true", "print": "false"}
+            data = {"select": "true", "print": "true" if start_print else "false"}
             resp = self._session.post(
                 self._url("files/local"),
                 files=files,

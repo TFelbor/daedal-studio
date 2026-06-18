@@ -17,7 +17,7 @@ export interface ConnectionTestResult {
 
 export interface SimulatorStatus {
   moonraker: { running: boolean; port: number | null; url: string | null };
-  octoprint: { running: boolean; port: number | null; url: string | null };
+  octoprint: { running: boolean; port: number | null; url: string | null; api_key?: string | null };
 }
 
 export async function getConfig(): Promise<ConfigResponse> {

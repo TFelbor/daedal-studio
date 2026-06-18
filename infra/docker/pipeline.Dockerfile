@@ -94,7 +94,10 @@ RUN pip install --no-cache-dir \
         "requests>=2.31.0" \
         "numpy>=1.24.0" \
         "Pillow>=10.0.0" \
-        "matplotlib>=3.7.0"
+        "matplotlib>=3.7.0" \
+        "paho-mqtt>=1.6.1" \
+        "aiohttp>=3.9.0" \
+        "python-socketio[asyncio_client]"
 
 # ── Entrypoint script ────────────────────────────────────────────────────────
 # Bootstraps config.py from config.template.py on first run (config.py is

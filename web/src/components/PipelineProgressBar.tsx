@@ -25,8 +25,8 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
   };
 
   return (
-    <div style={{ width: '100%', padding: '12px 0', backgroundColor: 'transparent', borderTop: '1px solid var(--border-color)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', margin: '0 auto', gap: '8px', padding: '0 24px' }}>
+    <div style={{ width: '100%', padding: '12px 0', backgroundColor: 'transparent', borderTop: '1px solid var(--border-color)', containerType: 'inline-size' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', margin: '0 auto', gap: '8px', padding: '0 24px' }}>
         {PHASE_CONFIG.map((config, index) => {
           const status = getStatus(config.phase);
           const Icon = config.icon;
@@ -74,7 +74,7 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
                 
                 <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon size={20} color={iconColor} />
-                  <span style={{ color: textColor, fontWeight: 600, fontSize: '14px' }}>{config.name}</span>
+                  <span className="phase-label" style={{ color: textColor, fontWeight: 600, fontSize: '14px' }}>{config.name}</span>
                   {status === 'complete' && <CheckCircle2 size={16} color="#10b981" />}
                   {status === 'error' && <AlertCircle size={16} color="var(--accent-color)" />}
                 </div>
@@ -95,6 +95,11 @@ export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
         @keyframes shimmer-bar {
           0% { left: -100%; }
           100% { left: 200%; }
+        }
+        @container (max-width: 600px) {
+          .phase-label {
+            display: none;
+          }
         }
       `}</style>
     </div>

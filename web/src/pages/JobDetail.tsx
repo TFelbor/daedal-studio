@@ -4,10 +4,13 @@ import { getJob } from '../api/client';
 import type { JobStatusResponse, FailureEvent } from '../api/client';
 import { PhaseProgress } from '../components/PhaseProgress';
 import { TelemetryChart } from '../components/TelemetryChart';
+import { GCodeViewer } from '../components/GCodeViewer';
 import { FailureButton } from '../components/FailureButton';
 import { PrinterStatus } from '../components/PrinterStatus';
+import { PrinterStateCard } from '../components/PrinterStateCard';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Printer } from 'lucide-react';
-import { getConfig } from '../api/config';
+import { getConfig, testConnection } from '../api/config';
+import { useJobWebSocket } from '../hooks/useJobWebSocket';
 import styles from './JobDetail.module.css';
 
 export function JobDetail() {
@@ -16,7 +19,11 @@ export function JobDetail() {
   const [loading, setLoading] = useState(true);
   const [failureEvents, setFailureEvents] = useState<FailureEvent[]>([]);
   const [printerConfigured, setPrinterConfigured] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState('Checking...');
   const [printing, setPrinting] = useState(false);
+
+  const { telemetrySamples, printerState } = useJobWebSocket(job ? job.job_id : null);
+  const latestZHeight = telemetrySamples.length > 0 ? telemetrySamples[telemetrySamples.length - 1].z_height_mm : null;
 
   const fetchJob = async () => {
     if (!id) return;
@@ -46,6 +53,16 @@ export function JobDetail() {
     return () => clearInterval(intervalId);
   }, [id]);
 
+  useEffect(() => {
+    if (job?.printer_firmware) {
+      testConnection(job.printer_firmware)
+        .then(res => {
+          setPrinterStatus(res.success ? 'Online' : 'Offline');
+        })
+        .catch(() => setPrinterStatus('Offline'));
+    }
+  }, [job?.printer_firmware]);
+
   const handlePrint = async () => {
     if (!job) return;
     setPrinting(true);
@@ -73,10 +90,12 @@ export function JobDetail() {
   }
 
   const isCompleted = job.status === 'completed' || job.outcome === 'success';
+  const hasReachedPhase5 = job.current_phase?.phase >= 5 || (job.outcome === 'failure' && job.current_phase?.phase >= 5);
+  const showPrintMonitoring = job.status === 'running' || isCompleted || hasReachedPhase5;
 
   return (
     <div className={styles.container}>
-      <Link to="/jobs" className={styles.backLink}>
+      <Link to="/dashboard" className={styles.backLink}>
         <ArrowLeft size={16} /> Back to Dashboard
       </Link>
       
@@ -109,13 +128,24 @@ export function JobDetail() {
       <div className={styles.grid}>
         <div className={styles.mainCol}>
           <PhaseProgress jobId={job.job_id} />
-          {job.status === 'running' || isCompleted ? (
-            <TelemetryChart jobId={job.job_id} />
-          ) : null}
+          {showPrintMonitoring && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', minHeight: '350px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <TelemetryChart jobId={job.job_id} data={telemetrySamples} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div className={`card ${styles.chartCard}`} style={{ flex: 1, padding: 0 }}>
+                  <GCodeViewer jobId={job.job_id} zHeightMm={latestZHeight} />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
         <div className={styles.sideCol}>
-          <PrinterStatus printerId="default_printer" firmware="moonraker" />
+          <PrinterStatus printerId="Printer Configured" firmware={job.printer_firmware || 'unknown'} status={printerStatus} />
+          
+          <PrinterStateCard jobId={job.job_id} printerState={printerState} />
           
           <div className={`card ${styles.detailsCard}`}>
             <h3>Job Details</h3>

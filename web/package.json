@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@types/three": "^0.184.1",
+    "gcode-preview": "^2.18.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

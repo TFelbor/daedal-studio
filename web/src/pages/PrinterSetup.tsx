@@ -23,6 +23,8 @@ export function PrinterSetup() {
   const [config, setConfigState] = useState<ConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [simStatus, setSimStatus] = useState<SimulatorStatus | null>(null);
+  const [simStatusLoading, setSimStatusLoading] = useState(true);
+  const [useSimSuccess, setUseSimSuccess] = useState<'moonraker' | 'octoprint' | null>(null);
   const [printerType, setPrinterType] = useState('moonraker');
   
   const [hfTokenInput, setHfTokenInput] = useState('');
@@ -47,6 +49,9 @@ export function PrinterSetup() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [simLoading, setSimLoading] = useState<string | null>(null);
   const [simError, setSimError] = useState<string | null>(null);
+
+  const [overallStatus, setOverallStatus] = useState<'loading' | 'checking' | 'ready' | 'error' | 'incomplete'>('loading');
+  const [overallMessage, setOverallMessage] = useState('Loading configuration...');
 
   useEffect(() => {
     fetchData();
@@ -76,12 +81,81 @@ export function PrinterSetup() {
     }
   };
 
+  useEffect(() => {
+    if (!loading && config) {
+      runOverallChecks();
+    }
+  }, [loading, config, printerType]);
+
+  const runOverallChecks = async () => {
+    if (!config) return;
+
+    const hfSet = config['HF_TOKEN']?.is_set;
+    const skipViz = config['SKIP_VISUALIZER']?.value === 'true';
+    const skipSculpt = config['SKIP_SCULPTOR']?.value === 'true';
+
+    if (!hfSet && !skipViz) {
+      setOverallStatus('incomplete');
+      setOverallMessage('Setup incomplete — HuggingFace token missing.');
+      return;
+    }
+
+    const moonrakerSet = config['MOONRAKER_URL']?.value;
+    const octoprintSet = config['OCTOPRINT_URL']?.value;
+    const bambuSet = config['BAMBU_IP']?.value;
+    const printerSet = moonrakerSet || octoprintSet || bambuSet || (skipViz && skipSculpt);
+
+    if (!printerSet) {
+      setOverallStatus('incomplete');
+      setOverallMessage('Setup incomplete — Printer URL not configured.');
+      return;
+    }
+
+    setOverallStatus('checking');
+    setOverallMessage('Checking HuggingFace and Printer connections...');
+
+    // Test HF
+    if (!skipViz) {
+      try {
+        const hfRes = await testConnection('huggingface');
+        if (!hfRes.success) {
+          setOverallStatus('error');
+          setOverallMessage(`HuggingFace connection failed: ${hfRes.message}`);
+          return;
+        }
+      } catch (e: any) {
+        setOverallStatus('error');
+        setOverallMessage(`HuggingFace check error: ${e?.message || 'Failed'}`);
+        return;
+      }
+    }
+
+    // Test Printer
+    try {
+      const pRes = await testConnection(printerType);
+      if (!pRes.success) {
+        setOverallStatus('error');
+        setOverallMessage(`Printer connection failed: ${pRes.message} (Is your printer or simulator running?)`);
+        return;
+      }
+    } catch (e: any) {
+      setOverallStatus('error');
+      setOverallMessage(`Printer check error: ${e?.message || 'Failed'}`);
+      return;
+    }
+
+    setOverallStatus('ready');
+    setOverallMessage('Ready to print — all systems operational');
+  };
+
   const fetchSimStatus = async () => {
     try {
       const status = await getSimulatorStatus();
       setSimStatus(status);
     } catch (e) {
       // ignore
+    } finally {
+      setSimStatusLoading(false);
     }
   };
 
@@ -159,33 +233,42 @@ export function PrinterSetup() {
     }
   };
 
-  const getSetupStatus = () => {
-    if (!config) return { color: 'gray', text: 'Loading...', icon: <Loader2 className="animate-spin" /> };
-    
-    const hfSet = config['HF_TOKEN']?.is_set;
-    const skipViz = config['SKIP_VISUALIZER']?.value === 'true';
-    const skipSculpt = config['SKIP_SCULPTOR']?.value === 'true';
-    
-    const moonrakerSet = config['MOONRAKER_URL']?.value;
-    const octoprintSet = config['OCTOPRINT_URL']?.value;
-    const bambuSet = config['BAMBU_IP']?.value;
-    const printerSet = moonrakerSet || octoprintSet || bambuSet || (skipViz && skipSculpt);
-    
-    if (hfSet && printerSet) return { color: 'green', text: 'Ready to print — all required settings configured', icon: <CheckCircle /> };
-    if (!hfSet && printerSet) return { color: 'yellow', text: 'Almost ready — HuggingFace token missing', icon: <AlertTriangle /> };
-    return { color: 'red', text: 'Setup incomplete — configure required settings below', icon: <AlertCircle /> };
+  const renderStatusIcon = () => {
+    switch (overallStatus) {
+      case 'loading':
+      case 'checking':
+        return <Loader2 className="animate-spin" />;
+      case 'ready':
+        return <CheckCircle />;
+      case 'error':
+        return <AlertCircle />;
+      case 'incomplete':
+        return <AlertTriangle />;
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (overallStatus) {
+      case 'loading':
+      case 'checking':
+        return 'var(--text-secondary)';
+      case 'ready':
+        return 'green';
+      case 'error':
+      case 'incomplete':
+        return 'var(--accent-color)';
+    }
   };
 
   if (loading) return <div>Loading...</div>;
-  const statusInfo = getSetupStatus();
 
   return (
     <div className={styles.container}>
       <h1 style={{ marginBottom: '1.5rem', marginTop: 0 }}>Settings</h1>
 
-      <div style={{ display: 'flex', gap: '8px', padding: '16px', borderRadius: 'var(--border-radius)', marginBottom: '24px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', color: statusInfo.color === 'green' ? 'var(--text-secondary)' : 'var(--accent-color)' }}>
-        {statusInfo.icon}
-        <span style={{ fontWeight: 500 }}>{statusInfo.text}</span>
+      <div style={{ display: 'flex', gap: '8px', padding: '16px', borderRadius: 'var(--border-radius)', marginBottom: '24px', backgroundColor: 'var(--surface-color)', border: `1px solid ${overallStatus === 'ready' ? 'green' : 'var(--border-color)'}`, color: getStatusColor() }}>
+        {renderStatusIcon()}
+        <span style={{ fontWeight: 500 }}>{overallMessage}</span>
       </div>
 
       {saveError && (
@@ -439,7 +522,7 @@ export function PrinterSetup() {
               <datalist id="profile-list">
                 {DEFAULT_PROFILES.map(p => <option key={p} value={p} />)}
               </datalist>
-              {savingField === 'DEFAULT_PROFILE' && <Loader2 className="animate-spin" style={{ alignSelf: 'center', minWidth: '16px' }} />}
+              {savingField === 'DEFAULT_PROFILE' && <Loader2 className={styles.spinner} style={{ alignSelf: 'center', minWidth: '16px' }} />}
               {savedField === 'DEFAULT_PROFILE' && <span style={{ color: 'green', alignSelf: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}>Saved ✓</span>}
             </div>
           </div>
@@ -450,75 +533,99 @@ export function PrinterSetup() {
           <h2 style={{ marginTop: 0 }}>Simulators</h2>
           <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', padding: '16px' }}>
             <h3 style={{ marginTop: 0 }}>Moonraker Simulator</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.moonraker?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
-              <span>Status: {simStatus?.moonraker?.running ? 'Running' : 'Stopped'}</span>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {simStatus?.moonraker?.running ? (
-                <>
-                  <button className="btn btn-secondary" onClick={() => handleSimAction('moonraker', 'stop')} disabled={simLoading === 'moonraker'}>
-                    {simLoading === 'moonraker' ? <Loader2 className="animate-spin" size={16} /> : 'Stop Simulator'}
-                  </button>
-                  <span style={{ fontSize: '14px', fontFamily: 'monospace' }}>{simStatus.moonraker.url || 'ws://localhost:7125'}</span>
-                  <button
-                    className="btn btn-primary"
-                    disabled={simLoading === 'moonraker'}
-                    onClick={() => {
-                      setPrinterType('moonraker');
-                      handleSaveConfig('DEFAULT_PRINTER_FIRMWARE', 'moonraker');
-                      const url = (simStatus.moonraker.url || 'ws://localhost:7125').replace('ws://', 'http://');
-                      setMoonrakerUrl(url);
-                      handleSaveConfig('MOONRAKER_URL', url);
-                    }}
-                  >
-                    Use this simulator
-                  </button>
-                </>
-              ) : (
-                <button className="btn btn-primary" onClick={() => handleSimAction('moonraker', 'start')} disabled={simLoading === 'moonraker'}>
-                  {simLoading === 'moonraker' ? <Loader2 className="animate-spin" size={16} /> : 'Start Simulator'}
-                </button>
-              )}
-            </div>
+            {simStatusLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                <Loader2 className="animate-spin" size={16} /> Loading simulator status...
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.moonraker?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
+                  <span>Status: {simStatus?.moonraker?.running ? 'Running' : 'Stopped'}</span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  {simStatus?.moonraker?.running ? (
+                    <>
+                      <button className="btn btn-secondary" onClick={() => handleSimAction('moonraker', 'stop')} disabled={simLoading === 'moonraker'}>
+                        {simLoading === 'moonraker' ? <Loader2 className={styles.spinner} size={16} /> : 'Stop Simulator'}
+                      </button>
+                      <span style={{ fontSize: '14px', fontFamily: 'monospace' }}>{simStatus.moonraker.url || 'ws://localhost:7125'}</span>
+                      <button
+                        className={`btn ${useSimSuccess === 'moonraker' ? 'btn-success' : 'btn-primary'}`}
+                        style={useSimSuccess === 'moonraker' ? { backgroundColor: 'var(--success-color)', color: 'white' } : {}}
+                        disabled={simLoading === 'moonraker'}
+                        onClick={async () => {
+                          setPrinterType('moonraker');
+                          await handleSaveConfig('DEFAULT_PRINTER_FIRMWARE', 'moonraker');
+                          const url = (simStatus.moonraker.url || 'ws://localhost:7125').replace('ws://', 'http://');
+                          setMoonrakerUrl(url);
+                          await handleSaveConfig('MOONRAKER_URL', url);
+                          setUseSimSuccess('moonraker');
+                          setTimeout(() => setUseSimSuccess(null), 3000);
+                        }}
+                      >
+                        {useSimSuccess === 'moonraker' ? <><CheckCircle size={16} /> Configured</> : 'Use this simulator'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn btn-primary" onClick={() => handleSimAction('moonraker', 'start')} disabled={simLoading === 'moonraker'}>
+                        {simLoading === 'moonraker' ? <Loader2 className={styles.spinner} size={16} /> : 'Start Simulator'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', padding: '16px', marginTop: '16px' }}>
             <h3 style={{ marginTop: 0 }}>OctoPrint Simulator</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.octoprint?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
-              <span>Status: {simStatus?.octoprint?.running ? 'Running' : 'Stopped'}</span>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {simStatus?.octoprint?.running ? (
-                <>
-                  <button className="btn btn-secondary" onClick={() => handleSimAction('octoprint', 'stop')} disabled={simLoading === 'octoprint'}>
-                    {simLoading === 'octoprint' ? <Loader2 className="animate-spin" size={16} /> : 'Stop Simulator'}
-                  </button>
-                  <span style={{ fontSize: '14px', fontFamily: 'monospace' }}>{simStatus.octoprint.url || 'http://localhost:5001'}</span>
-                  <button
-                    className="btn btn-primary"
-                    disabled={simLoading === 'octoprint'}
-                    onClick={() => {
-                      setPrinterType('octoprint');
-                      handleSaveConfig('DEFAULT_PRINTER_FIRMWARE', 'octoprint');
-                      const url = simStatus.octoprint.url || 'http://localhost:5001';
-                      setOctoprintUrl(url);
-                      handleSaveConfig('OCTOPRINT_URL', url);
-                      setOctoprintKey('test-key');
-                      handleSaveConfig('OCTOPRINT_API_KEY', 'test-key');
-                    }}
-                  >
-                    Use this simulator
-                  </button>
-                </>
-              ) : (
-                <button className="btn btn-primary" onClick={() => handleSimAction('octoprint', 'start')} disabled={simLoading === 'octoprint'}>
-                  {simLoading === 'octoprint' ? <Loader2 className="animate-spin" size={16} /> : 'Start Simulator'}
-                </button>
-              )}
-            </div>
+            {simStatusLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                <Loader2 className="animate-spin" size={16} /> Loading simulator status...
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: simStatus?.octoprint?.running ? 'var(--accent-color)' : 'var(--text-secondary)' }}></div>
+                  <span>Status: {simStatus?.octoprint?.running ? 'Running' : 'Stopped'}</span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  {simStatus?.octoprint?.running ? (
+                    <>
+                      <button className="btn btn-secondary" onClick={() => handleSimAction('octoprint', 'stop')} disabled={simLoading === 'octoprint'}>
+                        {simLoading === 'octoprint' ? <Loader2 className={styles.spinner} size={16} /> : 'Stop Simulator'}
+                      </button>
+                      <span style={{ fontSize: '14px', fontFamily: 'monospace' }}>{simStatus.octoprint.url || 'http://localhost:5001'}</span>
+                      <button
+                        className={`btn ${useSimSuccess === 'octoprint' ? 'btn-success' : 'btn-primary'}`}
+                        style={useSimSuccess === 'octoprint' ? { backgroundColor: 'var(--success-color)', color: 'white' } : {}}
+                        disabled={simLoading === 'octoprint'}
+                        onClick={async () => {
+                          setPrinterType('octoprint');
+                          await handleSaveConfig('DEFAULT_PRINTER_FIRMWARE', 'octoprint');
+                          const url = simStatus.octoprint.url || 'http://localhost:5001';
+                          setOctoprintUrl(url);
+                          await handleSaveConfig('OCTOPRINT_URL', url);
+                          if (simStatus.octoprint.api_key) {
+                            setOctoprintKey(simStatus.octoprint.api_key);
+                            await handleSaveConfig('OCTOPRINT_API_KEY', simStatus.octoprint.api_key);
+                          }
+                          setUseSimSuccess('octoprint');
+                          setTimeout(() => setUseSimSuccess(null), 3000);
+                        }}
+                      >
+                        {useSimSuccess === 'octoprint' ? <><CheckCircle size={16} /> Configured</> : 'Use this simulator'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn btn-primary" onClick={() => handleSimAction('octoprint', 'start')} disabled={simLoading === 'octoprint'}>
+                        {simLoading === 'octoprint' ? <Loader2 className={styles.spinner} size={16} /> : 'Start Simulator'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 

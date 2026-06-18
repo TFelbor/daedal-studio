@@ -17,7 +17,9 @@ LABEL description="p2p-mesh Phase 5 — Operator (OctoPrint REST client)"
 # ── Python dependencies ───────────────────────────────────────────────────────
 # operators/octoprint_operator.py only requires `requests` beyond stdlib.
 RUN pip install --no-cache-dir \
-        "requests>=2.31.0"
+        "requests>=2.31.0" \
+        "aiohttp>=3.9.0" \
+        "python-socketio[asyncio_client]"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 # Requires OCTOPRINT_URL and OCTOPRINT_API_KEY env vars.
