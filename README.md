@@ -132,7 +132,7 @@ From the **Settings** page (`/setup`), start the Moonraker or OctoPrint simulato
 
 ## Telemetry & Failure Detection
 
-The system collects real-time telemetry from active printers, including hotend temperatures, bed temperatures, Z-axis height, current G-code line, and progress percentage. This data is stored in a local SQLite database and streamed via WebSocket to the frontend. Note that OctoPrint lacks `gcode_line` reporting in its standard telemetry events.
+The system collects real-time telemetry from active printers, including hotend temperatures, bed temperatures, Z-axis height, current G-code line, and progress percentage. This data is stored in a local SQLite database and streamed via WebSocket to the frontend. The telemetry stream also dynamically injects high-resolution synthetic temperature samples between full state updates for smoother UI monitoring. Note that OctoPrint lacks `gcode_line` reporting in its standard telemetry events.
 
 The system automatically detects failure conditions and triggers events based on four primary rules:
 1. `DetectTemperatureDrop`: Flags if the hotend temperature drops below 150°C during active printing.
@@ -162,18 +162,19 @@ pytest tests/ -m "slow and full_pipeline"
 - [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
 - [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job control
 - [x] **Dockerization** — Full pipeline containerization (Ubuntu 22.04, CuraEngine via apt)
-- [x] **API Layer** — FastAPI async job server with SQLite-backed job queue, UUID tracking, and status/download endpoints
+- [x] **API Layer** — FastAPI async job server with SQLite-backed job queue, UUID tracking, dynamic printer metadata endpoints, and status/download endpoints
 - [x] **Klipper/Moonraker integration** — WebSocket client for real-time state subscription; Moonraker REST operator to replace/extend OctoPrint operator
 - [x] **Telemetry schema v1** — Structured failure-event data model (Z-height, temp deviation, extrusion delta, G-code line, timestamp) defined before UI work begins
 - [x] **Telemetry collector** — Background WebSocket consumer writing structured telemetry to SQLite; per-job event log
 - [x] **Phase 5: Monitor** — Real-time failure detection using collected telemetry signatures; alert + optional pause-on-anomaly via Klipper pause API
-- [x] **Web UI** — React SPA (Vite) served by FastAPI; job submission, phase progress, preview of blueprint and mesh, print status
+- [x] **Web UI** — React SPA (Vite) served by FastAPI; job submission, phase progress, preview of blueprint and mesh, print status, and dynamic layouts supporting multiple firmware targets
 
 ---
 
 ### 🔨 In Progress — MVP Expansion
 
-- [ ] **Bambu Labs adapter** — MQTT-based operator for Bambu X1/P1 series (proprietary protocol); currently stubbed out
+- [ ] **Bambu Labs adapter** — MQTT-based operator for Bambu X1/P1 series (proprietary protocol); currently stubbed out in backend with placeholder UI
+- [ ] **Klipper UI** — Complete dedicated telemetry and control dashboard for Klipper (currently using generic service placeholder)
 - [ ] **Printer setup wizard** — Onboarding flow: printer firmware detection, profile selection, connection test, first-print walkthrough
 
 ---

@@ -3,7 +3,8 @@ import { NewJob } from './pages/NewJob';
 import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
-import { LayoutDashboard, PlusCircle, Settings } from 'lucide-react';
+import { PrintMonitor } from './pages/PrintMonitor';
+import { LayoutDashboard, PlusCircle, Settings, Monitor } from 'lucide-react';
 import './index.css';
 import styles from './App.module.css';
 
@@ -23,6 +24,9 @@ function Navigation() {
           <Link to="/dashboard" className={`${styles.navLink} ${location.pathname.startsWith('/dashboard') ? styles.active : ''}`}>
             <LayoutDashboard size={18} /> Dashboard
           </Link>
+          <Link to="/monitor" className={`${styles.navLink} ${location.pathname === '/monitor' ? styles.active : ''}`}>
+            <Monitor size={18} /> Monitor
+          </Link>
           <Link to="/setup" className={`${styles.navLink} ${location.pathname === '/setup' ? styles.active : ''}`}>
             <Settings size={18} /> Settings
           </Link>
@@ -41,6 +45,7 @@ function App() {
           <Route path="/" element={<NewJob />} />
           <Route path="/dashboard" element={<JobList />} />
           <Route path="/dashboard/:id" element={<JobDetail />} />
+          <Route path="/monitor" element={<PrintMonitor />} />
           <Route path="/setup" element={<PrinterSetup />} />
         </Routes>
       </main>

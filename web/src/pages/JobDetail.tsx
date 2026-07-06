@@ -8,6 +8,7 @@ import { GCodeViewer } from '../components/GCodeViewer';
 import { FailureButton } from '../components/FailureButton';
 import { PrinterStatus } from '../components/PrinterStatus';
 import { PrinterStateCard } from '../components/PrinterStateCard';
+import { ServicePlaceholder } from '../components/ServicePlaceholder';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Printer } from 'lucide-react';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
@@ -22,7 +23,7 @@ export function JobDetail() {
   const [printerStatus, setPrinterStatus] = useState('Checking...');
   const [printing, setPrinting] = useState(false);
 
-  const { telemetrySamples, printerState } = useJobWebSocket(job ? job.job_id : null);
+  const { telemetrySamples, printerState, printerMeta } = useJobWebSocket(job ? job.job_id : null);
   const latestZHeight = telemetrySamples.length > 0 ? telemetrySamples[telemetrySamples.length - 1].z_height_mm : null;
 
   const fetchJob = async () => {
@@ -93,6 +94,13 @@ export function JobDetail() {
   const hasReachedPhase5 = job.current_phase?.phase >= 5 || (job.outcome === 'failure' && job.current_phase?.phase >= 5);
   const showPrintMonitoring = job.status === 'running' || isCompleted || hasReachedPhase5;
 
+  // Determine firmware type — prefer WebSocket meta, fallback to REST response
+  const firmware = printerMeta.service || job.printer_firmware || 'octoprint';
+  const machineName = printerMeta.machineName || job.machine_name;
+  const layerHeightMm = printerMeta.layerHeightMm || job.layer_height_mm;
+  const isOctoprint = firmware === 'octoprint';
+  const isKlipperOrBambu = firmware === 'klipper' || firmware === 'bambu';
+
   return (
     <div className={styles.container}>
       <Link to="/dashboard" className={styles.backLink}>
@@ -143,9 +151,25 @@ export function JobDetail() {
         </div>
         
         <div className={styles.sideCol}>
-          <PrinterStatus printerId="Printer Configured" firmware={job.printer_firmware || 'unknown'} status={printerStatus} />
+          <PrinterStatus
+            printerId={job.printer_id || 'Printer'}
+            firmware={firmware}
+            status={printerStatus}
+            machineName={machineName}
+          />
           
-          <PrinterStateCard jobId={job.job_id} printerState={printerState} />
+          {isOctoprint && (
+            <PrinterStateCard
+              jobId={job.job_id}
+              printerState={printerState}
+              startedAt={job.started_at}
+              layerHeightMm={layerHeightMm}
+            />
+          )}
+
+          {isKlipperOrBambu && (
+            <ServicePlaceholder service={firmware as 'klipper' | 'bambu'} />
+          )}
           
           <div className={`card ${styles.detailsCard}`}>
             <h3>Job Details</h3>
@@ -157,7 +181,7 @@ export function JobDetail() {
             </div>
             <div className={styles.detailRow}>
               <span className={styles.detailLabel}>Started</span>
-              <span>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</span>
+              <span>{job.started_at ? new Date(job.started_at).toLocaleString() : '\u2014'}</span>
             </div>
             {job.completed_at && (
               <div className={styles.detailRow}>

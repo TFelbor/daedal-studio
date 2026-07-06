@@ -136,7 +136,9 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
         <>
           <div style={{ flex: 2, minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#4b5563' }}>Live Print Preview</h3>
-            <GCodeViewer jobId={jobId} zHeightMm={telemetrySamples[telemetrySamples.length - 1]?.z_height_mm} />
+            <div style={{ flex: 1, position: 'relative' }}>
+              <GCodeViewer jobId={jobId} zHeightMm={telemetrySamples.length > 0 ? telemetrySamples[telemetrySamples.length - 1].z_height_mm : null} />
+            </div>
           </div>
           <hr style={{ border: 'none', borderTop: '1px solid #e5e5e5', margin: 0 }} />
         </>

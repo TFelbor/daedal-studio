@@ -76,6 +76,9 @@ class JobStatusResponse(BaseModel):
     current_phase: Optional[dict] = None
     printer_id: Optional[str] = None
     printer_firmware: Optional[str] = None
+    profile_name: Optional[str] = None
+    machine_name: Optional[str] = None
+    layer_height_mm: Optional[float] = None
 
 @app.on_event("startup")
 def startup_event():
@@ -471,6 +474,20 @@ async def get_job(job_id: str):
                 except json.JSONDecodeError:
                     pass
             
+    machine_name = None
+    layer_height_mm = None
+    profile_path_str = job.profile_name
+    if profile_path_str and profile_path_str != "default":
+        try:
+            profile_full_path = repo_root / profile_path_str
+            if profile_full_path.exists():
+                with open(profile_full_path, "r") as pf:
+                    profile_data = json.load(pf)
+                    machine_name = profile_data.get("machine_name")
+                    layer_height_mm = profile_data.get("layer_height")
+        except Exception:
+            pass
+
     # Determine synthetic status based on outcome
     current_status = "queued"
     if job.outcome == "unknown":
@@ -493,8 +510,88 @@ async def get_job(job_id: str):
         log_tail=log_tail,
         current_phase=current_phase,
         printer_id=job.printer_id,
-        printer_firmware=job.printer_firmware
+        printer_firmware=job.printer_firmware,
+        profile_name=job.profile_name,
+        machine_name=machine_name,
+        layer_height_mm=layer_height_mm
     )
+
+@app.get("/jobs/{job_id}/printer-info")
+async def get_printer_info(job_id: str):
+    """Get normalized printer metadata for a job."""
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    repo_root = Path(__file__).parent.parent
+    
+    service_labels = {
+        "octoprint": "OctoPrint",
+        "klipper": "Klipper",
+        "bambu": "Bambu Lab",
+    }
+    
+    machine_name = None
+    layer_height_mm = None
+    machine_dimensions = None
+    profile_path_str = job.profile_name
+    
+    if profile_path_str and profile_path_str != "default":
+        try:
+            profile_full_path = repo_root / profile_path_str
+            if profile_full_path.exists():
+                with open(profile_full_path, "r") as pf:
+                    profile_data = json.load(pf)
+                    machine_name = profile_data.get("machine_name")
+                    layer_height_mm = profile_data.get("layer_height")
+                    w = profile_data.get("machine_width")
+                    d = profile_data.get("machine_depth")
+                    h = profile_data.get("machine_height")
+                    if w and d and h:
+                        machine_dimensions = {"width": w, "depth": d, "height": h}
+        except Exception:
+            pass
+    
+    firmware = job.printer_firmware or "octoprint"
+    connection_status = "unknown"
+    stored = config_store.get_all()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            if firmware == "octoprint":
+                url = stored.get("OCTOPRINT_URL")
+                if url:
+                    headers = {}
+                    api_key = stored.get("OCTOPRINT_API_KEY")
+                    if api_key:
+                        headers["X-Api-Key"] = api_key
+                    resp = await client.get(f"{url.rstrip('/')}/api/version", headers=headers)
+                    connection_status = "online" if resp.status_code == 200 else "offline"
+                else:
+                    connection_status = "offline"
+            elif firmware == "klipper":
+                url = stored.get("MOONRAKER_URL")
+                if url:
+                    resp = await client.get(f"{url.rstrip('/')}/printer/info")
+                    connection_status = "online" if resp.status_code == 200 else "offline"
+                else:
+                    connection_status = "offline"
+            else:
+                connection_status = "unknown"
+    except Exception:
+        connection_status = "offline"
+    
+    return {
+        "service": firmware,
+        "service_label": service_labels.get(firmware, firmware),
+        "printer_name": machine_name or job.printer_id,
+        "profile_name": profile_path_str,
+        "connection_status": connection_status,
+        "layer_height_mm": layer_height_mm,
+        "machine_dimensions": machine_dimensions
+    }
 
 @app.get("/jobs/{job_id}/download")
 async def download_job_output(job_id: str):

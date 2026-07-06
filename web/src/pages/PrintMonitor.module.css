@@ -1,0 +1,149 @@
+.header {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.titleArea {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.headerIcon {
+  color: var(--accent-color);
+}
+
+.title {
+  font-size: 2rem;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  color: var(--text-secondary);
+}
+
+.errorCard {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--danger-color);
+  background-color: #fff1f0;
+  border-color: #ffccc7;
+  padding: 1rem;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background-color: var(--surface-color);
+}
+
+.emptyIcon {
+  color: var(--border-color);
+  margin-bottom: 1rem;
+}
+
+.emptyState h2 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.emptyState p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 400px;
+}
+
+.jobList {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.jobMonitorContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+}
+
+.jobBanner {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.jobInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.jobInfo h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.jobId {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.monitorGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+}
+
+.mainCol {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sideCol {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.chartCard {
+  padding: 0;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .monitorGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .jobBanner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}

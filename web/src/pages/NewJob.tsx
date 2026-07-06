@@ -131,6 +131,32 @@ export function NewJob() {
             if (next.length > 20) return next.slice(next.length - 20);
             return next;
           });
+        } else if (msg.type === 'printer_state') {
+          if (msg.data?.temperature) {
+            const tool0 = msg.data.temperature.tool0 || msg.data.temperature.extruder;
+            const bed = msg.data.temperature.bed;
+            if (tool0?.actual != null || bed?.actual != null) {
+              const syntheticSample = {
+                sample_id: 'sync_' + Date.now(),
+                job_id: id,
+                sampled_at: new Date().toISOString(),
+                hotend_actual_c: tool0?.actual || 0,
+                hotend_target_c: tool0?.target || 0,
+                bed_actual_c: bed?.actual || 0,
+                bed_target_c: bed?.target || 0,
+                z_height_mm: null,
+                gcode_line: null,
+                print_speed_pct: null,
+                extrusion_factor_pct: null,
+                fan_speed_pct: null
+              };
+              setTelemetrySamples(prev => {
+                const next = [...prev, syntheticSample];
+                if (next.length > 20) return next.slice(next.length - 20);
+                return next;
+              });
+            }
+          }
         } else if (msg.type === 'job_complete') {
           setCurrentJob((prev: any) => ({ ...prev, status: 'completed', outcome: msg.data.outcome }));
         }
@@ -259,6 +285,14 @@ export function NewJob() {
               placeholder="e.g. A low poly planter box with a modern geometric design..."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (prompt.trim() && !loading && printerReady) {
+                    handleSubmit(e);
+                  }
+                }
+              }}
               rows={4}
               autoFocus
               disabled={!printerReady}

@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir fastapi uvicorn aiohttp websockets "python-socketio[asyncio]" aiosqlite httpx paho-mqtt cryptography
+RUN pip install --no-cache-dir fastapi uvicorn aiohttp websockets "python-socketio[asyncio]" aiosqlite httpx paho-mqtt cryptography docker
 
 COPY pythonsrc/ ./pythonsrc/
 COPY server/ ./server/

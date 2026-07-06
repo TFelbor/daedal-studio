@@ -26,6 +26,9 @@ export interface JobStatusResponse {
   current_phase: any | null;
   printer_id: string | null;
   printer_firmware: string | null;
+  profile_name: string | null;
+  machine_name: string | null;
+  layer_height_mm: number | null;
 }
 
 export interface TelemetrySample {
@@ -70,6 +73,16 @@ export interface FailureEvent {
   notes: string | null;
 }
 
+export interface PrinterInfo {
+  service: string;
+  service_label: string;
+  printer_name: string;
+  profile_name: string | null;
+  connection_status: 'online' | 'offline' | 'unknown';
+  layer_height_mm: number | null;
+  machine_dimensions: { width: number; depth: number; height: number } | null;
+}
+
 export async function createJob(request: JobRequest): Promise<JobResponse> {
   const res = await fetch('/jobs', {
     method: 'POST',
@@ -86,6 +99,12 @@ export async function createJob(request: JobRequest): Promise<JobResponse> {
 export async function getJob(jobId: string): Promise<JobStatusResponse> {
   const res = await fetch(`/jobs/${jobId}`);
   if (!res.ok) throw new Error('Failed to fetch job status');
+  return res.json();
+}
+
+export async function getPrinterInfo(jobId: string): Promise<PrinterInfo> {
+  const res = await fetch(`/jobs/${jobId}/printer-info`);
+  if (!res.ok) throw new Error('Failed to fetch printer info');
   return res.json();
 }
 

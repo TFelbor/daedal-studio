@@ -1,53 +1,82 @@
 .statusCard {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
+  position: relative;
+  overflow: hidden;
 }
 
-.iconWrapper {
-  background-color: rgba(0, 123, 255, 0.1);
-  color: var(--accent-color);
-  padding: 0.75rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.statusCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background-color: var(--text-secondary);
 }
 
-.info {
+.octoprint::before {
+  background-color: #4caf50;
+}
+
+.klipper::before {
+  background-color: #ff9800;
+}
+
+.bambu::before {
+  background-color: #2196f3;
+}
+
+.serviceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.serviceIcon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.serviceInfo {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.title {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.details {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+.serviceLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-secondary);
 }
 
-.dot {
-  opacity: 0.5;
+.printerName {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.status {
+.statusIndicator {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 4px;
+  font-size: 0.75rem;
   font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
 }
 
 .online {
-  color: var(--success-color);
+  color: #2e7d32;
+  background-color: #e8f5e9;
 }
 
 .offline {
-  color: var(--danger-color);
+  color: #c62828;
+  background-color: #ffebee;
 }
