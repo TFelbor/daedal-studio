@@ -21,6 +21,14 @@
 
 services:
 
+  # ── Base image (shared foundation for all phase images) ──────────────────
+  p2p-base:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: infra/docker/base.Dockerfile
+    image: p2p-base:latest
+
   # ── Phase 1: Visualizer (FLUX text-to-image) ─────────────────────────────
   phase1-visualizer:
     platform: linux/amd64
@@ -162,6 +170,8 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: "1"
     image: p2p-mesh-pipeline:latest
+    depends_on:
+      - p2p-base
     env_file:
       - path: ../.env
         required: false

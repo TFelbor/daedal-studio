@@ -21,8 +21,9 @@ COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
-# Build all Docker images
+# Build all Docker images (base image must be built first)
 build:
+	docker compose -f $(COMPOSE_FILE) build p2p-base
 	docker compose -f $(COMPOSE_FILE) build
 
 # Start the API server (foreground)

@@ -1,0 +1,8 @@
+-r requirements-base.txt
+mflux==0.16.4
+mlx==0.30.6
+mlx-lm==0.30.7
+mlx-metal==0.30.6
+torch==2.10.0
+torchaudio==2.11.0.dev20260215
+torchvision==0.20.1

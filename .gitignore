@@ -73,3 +73,4 @@ docs-site/build/
 #Others
 .codegraph/
 CLAUDE.md
+data/octoprint/

@@ -1,11 +1,14 @@
 import os
-import docker
 from typing import Dict, Any
 
 class SimulatorManager:
     def __init__(self):
         try:
+            import docker
             self.client = docker.from_env()
+        except ImportError:
+            print("Warning: 'docker' Python SDK not installed. Simulator features will be unavailable.")
+            self.client = None
         except Exception as e:
             print(f"Warning: Could not initialize Docker client: {e}")
             self.client = None
