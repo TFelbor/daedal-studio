@@ -12,7 +12,7 @@ click==8.3.1
 coloredlogs==15.0.1
 contourpy==1.3.2
 cycler==0.12.1
-diffusers==0.37.0.dev0
+diffusers==0.37.0
 docutils==0.22.4
 einops==0.8.2
 exceptiongroup==1.3.1
@@ -94,7 +94,7 @@ sympy==1.14.0
 tifffile==2025.5.10
 tokenizers==0.22.2
 toml==0.10.2
-torchmcubes==0.1.0
+git+https://github.com/tatsy/torchmcubes.git
 tqdm==4.67.3
 transformers==5.1.0
 trimesh==4.11.2

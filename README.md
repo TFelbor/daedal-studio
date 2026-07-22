@@ -82,16 +82,40 @@ python tests/mocks/moonraker_mock.py --port 7126
 
 
 ### 1. Setup
-```bash
-# Clone and install dependencies
-pip install -r requirements.txt
 
+Manually set up the environment:
+
+```bash
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install dependencies (on Linux)
+pip install -r requirements-linux.txt
+
+# Or install dependencies (on macOS)
+pip install -r requirements-mac.txt
+```
+
+Then build Docker images and configure environment variables:
+
+```bash
 # Build Docker images (one-time)
+# The base image must be built first before building other services:
+docker compose -f infra/docker-compose.yml build p2p-base
 docker compose -f infra/docker-compose.yml build
+
+# Alternatively, use the automated Makefile convenience target:
+make build
+
 
 # Copy and edit environment/config files
 cp .env.template .env    # edit with HF_TOKEN and printer settings
 ```
+
 
 ### 2. Start the Server + Web UI
 ```bash

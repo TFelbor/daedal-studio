@@ -34,6 +34,7 @@ build/
 # Conda / virtual environments
 env/
 venv/
+.venv/
 conda-env/
 *.conda
 
@@ -74,3 +75,4 @@ docs-site/build/
 .codegraph/
 CLAUDE.md
 data/octoprint/
+setup_venv.sh
