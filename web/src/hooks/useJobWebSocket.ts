@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TelemetrySample } from '../api/client';
 
 export interface PrinterMeta {
@@ -15,22 +15,39 @@ export function useJobWebSocket(jobId: string | null) {
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [printerState, setPrinterState] = useState<any>(null);
   const [printerMeta, setPrinterMeta] = useState<PrinterMeta>({ service: null, machineName: null, layerHeightMm: null, profileName: null });
+  const lastTelemetryRef = useRef<TelemetrySample | null>(null);
+  const lastWsMessageRef = useRef<any>(null);
 
   useEffect(() => {
+    // When the watched job changes, clear any stale telemetry/phase state before reconnecting.
+    setTelemetrySamples([]);
+    setPhases([]);
+    setJobStatus(null);
+    setPrinterState(null);
+    setPrinterMeta({ service: null, machineName: null, layerHeightMm: null, profileName: null });
+
     if (!jobId) return;
 
     let mounted = true;
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/jobs/${jobId}`;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // This was changed so that the "npm run dev" command would work with the WebSocket connection.
+    const wsUrl = import.meta.env.DEV
+      ? `${protocol}//localhost:8000/ws/jobs/${jobId}`
+      : `${protocol}//${window.location.host}/ws/jobs/${jobId}`;
+    console.info(`[WS] connecting to ${wsUrl}`);
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       if (mounted) setWsConnected(true);
+      console.info(`[WS] connected for job ${jobId}`);
     };
 
     ws.onmessage = (event) => {
       if (!mounted) return;
       try {
         const msg = JSON.parse(event.data);
+        console.info(`[WS] message received for job ${jobId}`, msg);
+        lastWsMessageRef.current = msg;
         if (msg.type === 'job_status') {
           const d = msg.data;
           setPrinterMeta({
@@ -42,12 +59,18 @@ export function useJobWebSocket(jobId: string | null) {
         } else if (msg.type === 'telemetry_batch') {
           const sorted = [...msg.data].sort((a, b) => new Date(a.sampled_at).getTime() - new Date(b.sampled_at).getTime());
           setTelemetrySamples(sorted);
+          if (sorted.length > 0) {
+            lastTelemetryRef.current = sorted[sorted.length - 1];
+            console.info(`[WS] telemetry_batch stored for job ${jobId}, total samples ${sorted.length}`);
+          }
         } else if (msg.type === 'telemetry' || msg.type === 'telemetry_update') {
           setTelemetrySamples(prev => {
             const next = [...prev, msg.data];
             if (next.length > 100) return next.slice(next.length - 100);
             return next;
           });
+          lastTelemetryRef.current = msg.data;
+          console.info(`[WS] telemetry message stored for job ${jobId}, current sample:`, msg.data);
         } else if (msg.type === 'printer_state') {
           setPrinterState(msg.data);
           if (msg.data?.temperature) {
@@ -98,6 +121,7 @@ export function useJobWebSocket(jobId: string | null) {
 
     ws.onclose = () => {
       if (mounted) setWsConnected(false);
+      console.info(`[WS] disconnected for job ${jobId}`);
     };
 
     return () => {
@@ -105,6 +129,14 @@ export function useJobWebSocket(jobId: string | null) {
       ws.close();
     };
   }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const intervalId = window.setInterval(() => {
+      console.info(`[Telemetry] job ${jobId} last telemetry sample`, lastTelemetryRef.current, 'total count', telemetrySamples.length, 'last WS message', lastWsMessageRef.current);
+    }, 10000);
+    return () => window.clearInterval(intervalId);
+  }, [jobId, telemetrySamples.length]);
 
   return { telemetrySamples, wsConnected, phases, jobStatus, printerState, printerMeta };
 }

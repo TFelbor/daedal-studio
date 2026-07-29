@@ -53,6 +53,51 @@ p2p-mesh/
 
 ---
 
+## Disabling Telemetry
+
+It is important to avoid sending usage or prompt telemetry to your AI provider while using this project, therefore you must disable telemetry in the client or account settings for each provider you use. The exact labels vary slightly by product version, but the general flow is the same: open the provider settings, find the privacy or diagnostics section, and turn off any option that says "Send usage data", "Share prompts", "Improve the model", "Usage telemetry", "Diagnostic data", or similar.
+
+### Copilot
+1. Open the Copilot or VS Code settings panel.
+2. Search for terms such as "telemetry", "diagnostics", "send usage data", or "improve Copilot".
+3. Disable any option related to sending usage data or product improvement.
+4. If you are using an organization-managed tenant, also check your admin or enterprise privacy settings because the tenant policy can override the local client setting.
+5. Restart the client if a setting change does not take effect immediately.
+
+### Gemini
+1. Open the Gemini app or web interface and go to Settings or Privacy.
+2. Look for sections named "Data usage", "Model improvement", "Help improve Gemini", or "Telemetry".
+3. Turn off any toggle that allows your prompts or usage data to be used for training or diagnostics.
+4. If you use a Google Workspace or managed account, confirm that the account-level privacy policy does not enable data sharing by default.
+
+### OpenAI
+1. Open your OpenAI account settings or the client application settings.
+2. Navigate to Privacy, Data Controls, or Settings.
+3. Disable any setting related to sharing chat data, usage telemetry, or model improvement.
+4. If you use ChatGPT Team/Enterprise, check the workspace or organization privacy settings as well, because those can override individual preferences.
+
+### Claude
+1. Open the Claude app or web interface and go to Settings or Privacy.
+2. Find the section for data usage, telemetry, or model improvement.
+3. Turn off any option that allows your interactions to be used for training, diagnostics, or product improvement.
+4. If you are signed in through an organization, review the workspace or enterprise privacy controls as well.
+
+### Antigravity
+1. Open the Antigravity client or account dashboard.
+2. Go to Preferences, Privacy, or Telemetry settings.
+3. Disable any toggle or checkbox for usage reporting, diagnostics, or anonymous telemetry.
+4. Save the settings and restart the application if needed.
+
+### OpenRouter
+1. Sign in to OpenRouter and open your account or settings page.
+2. Look for privacy, telemetry, or data-sharing controls.
+3. Disable any option related to usage analytics, diagnostic data, or model-improvement sharing.
+4. If you use the OpenRouter API directly, also review any SDK or client configuration that may send telemetry by default and disable it there if available.
+
+> Tip: If you do not see a telemetry toggle in the UI, the safest approach is to use a local-only client configuration, avoid any optional data-sharing consent prompts, and review the provider's privacy policy for the latest wording.
+
+---
+
 ## Quick Start
 
 #### CLI OctoPrint Operator

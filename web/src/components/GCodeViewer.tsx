@@ -101,9 +101,13 @@ export function GCodeViewer({ jobId, zHeightMm }: GCodeViewerProps) {
             break;
           }
         }
-        
-        if (previewRef.current.maxLayerIndex !== targetLayer) {
-          previewRef.current.maxLayerIndex = targetLayer;
+
+        const currentEndLayer = typeof previewRef.current.endLayer === 'number'
+          ? previewRef.current.endLayer
+          : previewRef.current.maxLayerIndex;
+
+        if (currentEndLayer !== targetLayer) {
+          previewRef.current.endLayer = targetLayer;
           if (typeof previewRef.current.render === 'function') {
             previewRef.current.render();
           }

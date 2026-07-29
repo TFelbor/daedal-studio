@@ -223,6 +223,7 @@ class MoonrakerCollector:
                 self.sample_queue.put_nowait(sample)
                 
                 if broadcaster:
+                    logger.info(f"MoonrakerCollector broadcasting telemetry for job {self.job_id}: {sample.to_dict()}")
                     asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
             except Exception as e:
                 logger.error(f"Failed to insert/emit TelemetrySample: {e}")
