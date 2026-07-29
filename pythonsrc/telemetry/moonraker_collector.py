@@ -9,12 +9,8 @@ from typing import Optional
 import websockets
 
 from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.internal_telemetry import send_internal_telemetry
 from pythonsrc.telemetry.schema import TelemetrySample
-
-try:
-    from server.job_broadcaster import broadcaster
-except ImportError:
-    broadcaster = None
 
 logger = logging.getLogger(__name__)
 
@@ -222,8 +218,8 @@ class MoonrakerCollector:
                 # Use put_nowait so we don't block the receive loop
                 self.sample_queue.put_nowait(sample)
                 
-                if broadcaster:
-                    logger.info(f"MoonrakerCollector broadcasting telemetry for job {self.job_id}: {sample.to_dict()}")
-                    asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
+                message = {"type": "telemetry", "data": sample.to_dict()}
+                logger.info(f"MoonrakerCollector relaying telemetry for job {self.job_id}: {message['data']}")
+                asyncio.create_task(send_internal_telemetry(self.job_id, message))
             except Exception as e:
                 logger.error(f"Failed to insert/emit TelemetrySample: {e}")

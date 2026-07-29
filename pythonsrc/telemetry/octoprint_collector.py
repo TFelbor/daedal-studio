@@ -11,12 +11,8 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.internal_telemetry import send_internal_telemetry
 from pythonsrc.telemetry.schema import TelemetrySample
-
-try:
-    from server.job_broadcaster import broadcaster
-except ImportError:
-    broadcaster = None
 
 logger = logging.getLogger(__name__)
 
@@ -197,19 +193,20 @@ class OctoPrintCollector:
         self.db.insert_sample(sample)
         await self.sample_queue.put(sample)
         
-        if broadcaster:
-            logger.info(f"OctoPrintCollector broadcasting telemetry for job {self.job_id}: {sample.to_dict()}")
-            asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "telemetry", "data": sample.to_dict()}))
-            
-            state_data = {
-                "state": payload.get("state"),
-                "job": payload.get("job"),
-                "progress": payload.get("progress"),
-                "resends": payload.get("resends"),
-                "ts": now.isoformat()
-            }
-            logger.info(f"OctoPrintCollector broadcasting printer_state for job {self.job_id}: {state_data}")
-            asyncio.create_task(broadcaster.broadcast(self.job_id, {"type": "printer_state", "data": state_data}))
+        telemetry_message = {"type": "telemetry", "data": sample.to_dict()}
+        state_data = {
+            "state": payload.get("state"),
+            "job": payload.get("job"),
+            "progress": payload.get("progress"),
+            "resends": payload.get("resends"),
+            "ts": now.isoformat()
+        }
+        printer_state_message = {"type": "printer_state", "data": state_data}
+
+        logger.info(f"OctoPrintCollector relaying telemetry for job {self.job_id}: {telemetry_message['data']}")
+        asyncio.create_task(send_internal_telemetry(self.job_id, telemetry_message))
+        logger.info(f"OctoPrintCollector relaying printer_state for job {self.job_id}: {state_data}")
+        asyncio.create_task(send_internal_telemetry(self.job_id, printer_state_message))
 
     async def _on_event(self, event_data: Dict[str, Any]) -> None:
         if not isinstance(event_data, dict):

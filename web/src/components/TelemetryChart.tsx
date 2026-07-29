@@ -51,7 +51,7 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
     return (
       <div className={`card ${styles.chartCard} ${styles.empty}`}>
         <Activity size={24} className={styles.iconEmpty} />
-        <p>Waiting for telemetry data...</p>
+        <p>Leave this in maintenance until telemetry data from a real 3D printer is available.</p>
         <details style={{ marginTop: '1rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', alignSelf: 'stretch', textAlign: 'left', color: 'var(--text-primary)' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Debug: Raw Data Prop</summary>
           <pre style={{ fontSize: '0.75rem', maxHeight: '200px', overflow: 'auto', marginTop: '0.5rem' }}>
