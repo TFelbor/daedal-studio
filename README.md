@@ -2,7 +2,7 @@
 
 ![Build Status](https://img.shields.io/badge/Build-passing-brightgreen)
 ![Status](https://img.shields.io/badge/Status-Proof_of_Concept_COMPLETE-brightgreen)
-![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Ubuntu|Windows-gray)
+![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Fedora|Windows-gray)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
 **p2p-mesh** is the generative engine for the Prompt2Print platform — a fully local, end-to-end pipeline that converts a natural language prompt into a physical 3D print with zero cloud round-trips.
