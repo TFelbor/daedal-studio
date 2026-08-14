@@ -6,6 +6,7 @@ import { PipelineProgressBar } from '../components/PipelineProgressBar';
 import { JobControlPanel } from '../components/JobControlPanel';
 import { createJob, getJob, listJobs } from '../api/client';
 import { getConfig } from '../api/config';
+import './NewJob.css';
 import styles from './NewJob.module.css';
 
 interface PhaseStatus {

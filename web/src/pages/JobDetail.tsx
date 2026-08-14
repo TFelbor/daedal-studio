@@ -12,6 +12,7 @@ import { ServicePlaceholder } from '../components/ServicePlaceholder';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Printer } from 'lucide-react';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
+import './JobDetail.css';
 import styles from './JobDetail.module.css';
 
 export function JobDetail() {

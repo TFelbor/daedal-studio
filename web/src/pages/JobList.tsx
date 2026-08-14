@@ -3,6 +3,7 @@ import { listJobs } from '../api/client';
 import type { PaginatedJobs } from '../api/client';
 import { JobCard } from '../components/JobCard';
 import { Loader2, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
+import './JobList.css';
 import styles from './JobList.module.css';
 
 export function JobList() {

@@ -1,16 +1,28 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { NewJob } from './pages/NewJob';
 import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
-import { LayoutDashboard, PlusCircle, Settings, Monitor } from 'lucide-react';
-import './index.css';
+import { LayoutDashboard, PlusCircle, Settings, Monitor, MoonStar, SunMedium } from 'lucide-react';
+import { toggleTheme } from './theme';
 import styles from './App.module.css';
 
 function Navigation() {
   const location = useLocation();
-  
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
+
+  useEffect(() => {
+    const updateTheme = () => {
+      setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+    };
+
+    updateTheme();
+    window.addEventListener('themechange', updateTheme);
+    return () => window.removeEventListener('themechange', updateTheme);
+  }, []);
+
   return (
     <nav className={styles.nav}>
       <div className={styles.navContainer}>
@@ -30,6 +42,15 @@ function Navigation() {
           <Link to="/setup" className={`${styles.navLink} ${location.pathname === '/setup' ? styles.active : ''}`}>
             <Settings size={18} /> Settings
           </Link>
+          <button
+            type="button"
+            className="btn btn-secondary theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <SunMedium size={16} /> : <MoonStar size={16} />}
+            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
         </div>
       </div>
     </nav>

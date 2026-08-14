@@ -10,6 +10,7 @@ import {
   stopSimulator
 } from '../api/config';
 import type { ConfigResponse, SimulatorStatus } from '../api/config';
+import './PrinterSetup.css';
 import styles from './PrinterSetup.module.css';
 
 const DEFAULT_PROFILES = [

@@ -7,6 +7,7 @@ import { ServicePlaceholder } from '../components/ServicePlaceholder';
 import { TelemetryChart } from '../components/TelemetryChart';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
 import { Loader2, Monitor, Printer, AlertCircle } from 'lucide-react';
+import './PrintMonitor.css';
 import styles from './PrintMonitor.module.css';
 
 // We need a wrapper component for each job to use hooks independently

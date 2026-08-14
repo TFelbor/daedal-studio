@@ -1,0 +1,133 @@
+.print-monitor-header {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.print-monitor-title-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.print-monitor-header-icon {
+  color: var(--accent-color);
+}
+
+.print-monitor-title {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.print-monitor-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.print-monitor-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  color: var(--text-secondary);
+}
+
+.print-monitor-error-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--danger-color);
+  background: rgba(220, 53, 69, 0.06);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: var(--border-radius);
+}
+
+.print-monitor-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.print-monitor-empty-icon {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.print-monitor-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.print-monitor-job-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+}
+
+.print-monitor-job-banner {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.print-monitor-job-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.print-monitor-job-info h4 {
+  margin: 0 0 0.25rem;
+}
+
+.print-monitor-job-id {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.print-monitor-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+}
+
+.print-monitor-main-col,
+.print-monitor-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.print-monitor-chart-card {
+  padding: 0;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .print-monitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .print-monitor-job-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
