@@ -122,16 +122,24 @@ class AnomalyDetector:
         try:
             while True:
                 sample: TelemetrySample = await self.queue.get()
-                job_id = sample.job_id
-                
-                if job_id not in self._history:
-                    self._history[job_id] = deque(maxlen=20)
-                
-                history = self._history[job_id]
-                history.append(sample)
-                
-                await self._evaluate_rules(job_id, list(history))
-                self.queue.task_done()
+                try:
+                    job_id = sample.job_id
+
+                    if job_id not in self._history:
+                        self._history[job_id] = deque(maxlen=20)
+
+                    history = self._history[job_id]
+                    history.append(sample)
+
+                    await self._evaluate_rules(job_id, list(history))
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # One malformed sample or one broken rule must not take down
+                    # detection for every job — log it and keep consuming.
+                    logger.exception("Anomaly rule evaluation failed for sample; continuing")
+                finally:
+                    self.queue.task_done()
         except asyncio.CancelledError:
             pass
 
@@ -256,3 +264,24 @@ class AnomalyDetector:
                     break
             if slow_extrusion:
                 self._trigger_failure(job_id, current, "extrusion_issue", history[-5:])
+
+
+def attach_detector(collector, db: TelemetryDB, operator: Optional[BasePrinterOperator] = None) -> asyncio.Task:
+    """Start an AnomalyDetector consuming a collector's samples.
+
+    Without this, a collector's ``sample_queue`` is written but never read: the queue
+    grows unbounded and no automated failure detection happens at all. The detector runs
+    in the same process as the collector, so it sees samples as they arrive.
+
+    Args:
+        collector: Any collector exposing a ``sample_queue`` asyncio.Queue.
+        db: Database that FailureEvents are written to.
+        operator: Printer operator used for state/progress lookups and, when
+            ``PAUSE_ON_FAILURE`` is set, to pause the print. Rules that depend on
+            progress cannot fire without it.
+
+    Returns:
+        The background task running the detector; cancel it to stop detection.
+    """
+    detector = AnomalyDetector(collector.sample_queue, db, operator)
+    return asyncio.create_task(detector.run())

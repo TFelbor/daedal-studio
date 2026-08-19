@@ -88,7 +88,16 @@ export function PhaseProgress({ jobId }: PhaseProgressProps) {
   return (
     <div className={`card ${styles.progressCard}`}>
       <h3 className={styles.title} style={{ marginBottom: '8px' }}>Pipeline Progress</h3>
-      <PipelineProgressBar phases={phases} />
+      <PipelineProgressBar
+        phases={phases}
+        printabilityStatus={
+          jobStatus.printability_verdict === 'unprintable'
+            ? 'error'
+            : jobStatus.printability_score !== null && jobStatus.printability_score !== undefined
+              ? 'complete'
+              : undefined
+        }
+      />
       
       {jobStatus.log_tail && jobStatus.log_tail.length > 0 && (
         <div className={styles.logsContainer}>

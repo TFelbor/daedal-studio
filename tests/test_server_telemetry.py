@@ -35,7 +35,7 @@ def clear_db():
 
 @patch('server.app._run_pipeline', new_callable=AsyncMock)
 @patch('pythonsrc.telemetry.moonraker_collector.MoonrakerCollector.start', new_callable=AsyncMock)
-def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline):
+def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline, printer_configured):
     """Integration test (Klipper path)"""
     resp = client.post("/jobs", json={
         "prompt": "test klipper",
@@ -85,7 +85,7 @@ def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline):
 
 @patch('server.app._run_pipeline', new_callable=AsyncMock)
 @patch('pythonsrc.telemetry.octoprint_collector.OctoPrintCollector.start', new_callable=AsyncMock)
-def test_octoprint_telemetry(mock_octoprint_start, mock_run_pipeline):
+def test_octoprint_telemetry(mock_octoprint_start, mock_run_pipeline, printer_configured):
     """Integration test (OctoPrint path)"""
     resp = client.post("/jobs", json={
         "prompt": "test octoprint",
@@ -109,7 +109,7 @@ def test_octoprint_telemetry(mock_octoprint_start, mock_run_pipeline):
 
 @patch('server.app.logger.warning')
 @patch('server.app._run_pipeline', new_callable=AsyncMock)
-def test_bambu_telemetry(mock_run_pipeline, mock_logger_warning, tmp_path):
+def test_bambu_telemetry(mock_run_pipeline, mock_logger_warning, tmp_path, printer_configured):
     """Bambu job logs the warning and proceeds without crashing"""
     profile_file = tmp_path / "bambu.json"
     profile_file.write_text(json.dumps({

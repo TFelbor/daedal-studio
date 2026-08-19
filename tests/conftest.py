@@ -86,3 +86,20 @@ async def fake_octoprint_sio(unused_tcp_port):
     yield f"http://127.0.0.1:{unused_tcp_port}"
     
     await runner.cleanup()
+
+
+@pytest.fixture
+def printer_configured():
+    """Satisfy POST /jobs' "a printer must be configured" gate.
+
+    `printer_status()` inspects live simulator containers and the encrypted config
+    store, so without this patch job-submission tests pass or fail depending on what
+    happens to be running on the developer's machine.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    with patch(
+        "server.app.printer_status",
+        new=AsyncMock(return_value={"configured": True, "type": "simulator", "running": True}),
+    ) as p:
+        yield p

@@ -5,6 +5,9 @@ import requests
 import pytest
 from pathlib import Path
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.real_printer
 def test_pipeline_status():
     env = os.environ.copy()
     env["P2P_LOGS_DIR"] = str(Path("data/logs").absolute())
@@ -136,7 +139,7 @@ def test_get_job_telemetry_empty_samples():
     assert response.status_code == 200
     assert response.json() == []
 
-def test_post_jobs_triggers_background():
+def test_post_jobs_triggers_background(printer_configured):
     response = client.post("/jobs", json={
         "prompt": "Test background trigger",
         "printer_id": "default",

@@ -46,15 +46,18 @@ def main():
 
         filename = os.path.basename(args.gcode_path)
         logger.info(f"Uploading {filename}...")
-        op.upload_file(args.gcode_path, filename, start_print=args.start_print)
+        # Base-signature call only — OctoPrint's upload-and-print kwarg is not part of
+        # the BasePrinterOperator contract and raises TypeError on other firmwares.
+        op.upload_file(args.gcode_path, filename)
 
         if args.start_print:
-            # Print has been started during upload!
-            logger.info("Print started automatically on upload.")
+            logger.info("Starting print...")
+            op.start_print(filename)
 
             
             import asyncio
             from pythonsrc.telemetry.db import TelemetryDB
+            from pythonsrc.telemetry.detector import attach_detector
             from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
             from urllib.parse import urlparse
 
@@ -71,7 +74,10 @@ def main():
 
                 collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
                 await collector.start()
-                
+
+                # Consume the samples so automated failure detection runs.
+                detector_task = attach_detector(collector, db, op)
+
                 try:
                     await asyncio.sleep(5)
                     while True:
@@ -94,6 +100,11 @@ def main():
                             
                         await asyncio.sleep(5)
                 finally:
+                    detector_task.cancel()
+                    try:
+                        await detector_task
+                    except asyncio.CancelledError:
+                        pass
                     await collector.stop()
                     db.close()
 

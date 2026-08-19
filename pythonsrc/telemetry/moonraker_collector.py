@@ -10,6 +10,7 @@ import websockets
 
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.internal_telemetry import send_internal_telemetry
+from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.schema import TelemetrySample
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class MoonrakerCollector:
         
         self._stop_event = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
+        self._claim = CollectorClaim(db, job_id, "MoonrakerCollector")
 
     async def start(self) -> None:
         """Connect to the WebSocket and begin collecting telemetry.
@@ -62,6 +64,7 @@ class MoonrakerCollector:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        self._claim.release()
 
     async def _run(self) -> None:
         """Main connection and reconnection loop."""
@@ -213,6 +216,11 @@ class MoonrakerCollector:
             )
 
             # Insert sample and emit to queue
+            if not self._claim.may_write(asyncio.get_running_loop().time()):
+                # Another process already collects this job — a second writer would
+                # duplicate every telemetry_sample row.
+                return
+
             try:
                 self.db.insert_sample(sample)
                 # Use put_nowait so we don't block the receive loop

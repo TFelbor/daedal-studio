@@ -5,7 +5,7 @@ import sqlite3
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 import threading
@@ -32,6 +32,73 @@ def _str_to_dt(s: str | None) -> datetime | None:
     if s.endswith('Z'):
         s = s[:-1] + '+00:00'
     return datetime.fromisoformat(s)
+
+# Columns added to print_job after the original schema shipped. Kept as data so the
+# migration and the INSERT stay in sync.
+_PRINT_JOB_EXTRA_COLUMNS = {
+    "generation_model": "TEXT",
+    "generation_model_version": "TEXT",
+    "generation_backend": "TEXT",
+    "generation_params": "TEXT",
+    "generation_cost_usd": "REAL",
+    "generation_duration_s": "REAL",
+    "mesh_features": "TEXT",
+    "printability_score": "REAL",
+    "printability_verdict": "TEXT",
+    "printability_report": "TEXT",
+}
+
+# The subset stored as JSON text and decoded back into dicts on read.
+_PRINT_JOB_JSON_COLUMNS = ("generation_params", "mesh_features", "printability_report")
+
+
+def _add_missing_columns(cursor, table: str, columns: dict[str, str]) -> None:
+    """Add any missing columns to a table, leaving existing data untouched.
+
+    Args:
+        cursor: An open SQLite cursor.
+        table: Name of the table to migrate.
+        columns: Mapping of column name to SQL type.
+    """
+    cursor.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cursor.fetchall()}
+    for name, sql_type in columns.items():
+        if name not in existing:
+            logger.info("Migrating %s: adding column %s", table, name)
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}")
+
+
+def _load_json(value):
+    """Decode a JSON column, tolerating NULL and malformed values.
+
+    Args:
+        value: The raw column value.
+
+    Returns:
+        The decoded object, or None when absent or unparseable.
+    """
+    if not value:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring malformed JSON column value")
+        return None
+
+
+def _dump_json(value):
+    """Encode an object for a JSON column.
+
+    Args:
+        value: The object to encode, or None.
+
+    Returns:
+        A JSON string, or None when the value is None.
+    """
+    return None if value is None else json.dumps(value)
+
 
 class TelemetryDB:
     """Database wrapper for telemetry storage using SQLite."""
@@ -105,6 +172,13 @@ class TelemetryDB:
                 cursor.execute("DROP TABLE print_job_old")
                 self.conn.commit()
             
+            # Add the generation-provenance and printability columns to databases
+            # created before they existed. ALTER TABLE ADD COLUMN is the only safe
+            # migration here — the started_at migration above copies with SELECT *, so it
+            # must keep running against the original nine columns.
+            _add_missing_columns(cursor, "print_job", _PRINT_JOB_EXTRA_COLUMNS)
+            self.conn.commit()
+
             # TelemetrySample table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS telemetry_sample (
@@ -139,7 +213,24 @@ class TelemetryDB:
                     FOREIGN KEY (job_id) REFERENCES print_job (job_id)
                 )
             ''')
-            
+
+            # Telemetry collector claim table.
+            #
+            # More than one process can legitimately try to collect telemetry for the
+            # same job (the API server, pipeline.py's Phase 5 monitor, and
+            # run_operator.py all construct collectors). Two collectors writing the
+            # same print produces duplicate telemetry_sample rows, which corrupts the
+            # dataset. A claim row lets exactly one of them win, across processes.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS telemetry_collector_claim (
+                    job_id TEXT PRIMARY KEY,
+                    owner TEXT NOT NULL,
+                    claimed_at TEXT NOT NULL,
+                    heartbeat_at TEXT NOT NULL,
+                    FOREIGN KEY (job_id) REFERENCES print_job (job_id)
+                )
+            ''')
+
             self.conn.commit()
 
     def insert_job(self, job: PrintJob) -> None:
@@ -153,12 +244,19 @@ class TelemetryDB:
             cursor.execute('''
             INSERT INTO print_job (
                 job_id, prompt, printer_id, printer_firmware, slicer, profile_name,
-                started_at, completed_at, outcome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                started_at, completed_at, outcome,
+                generation_model, generation_model_version, generation_backend,
+                generation_params, generation_cost_usd, generation_duration_s,
+                mesh_features, printability_score, printability_verdict, printability_report
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
             job.job_id, job.prompt, job.printer_id, job.printer_firmware,
             job.slicer, job.profile_name, _dt_to_str(job.started_at),
-            _dt_to_str(job.completed_at), job.outcome
+            _dt_to_str(job.completed_at), job.outcome,
+            job.generation_model, job.generation_model_version, job.generation_backend,
+            _dump_json(job.generation_params), job.generation_cost_usd, job.generation_duration_s,
+            _dump_json(job.mesh_features), job.printability_score, job.printability_verdict,
+            _dump_json(job.printability_report)
             ))
             self.conn.commit()
 
@@ -217,6 +315,181 @@ class TelemetryDB:
             ))
             self.conn.commit()
 
+    def update_job_generation(
+        self,
+        job_id: str,
+        model: str | None = None,
+        model_version: str | None = None,
+        backend: str | None = None,
+        params: dict | None = None,
+        cost_usd: float | None = None,
+        duration_s: float | None = None,
+    ) -> None:
+        """Record which model produced this job's mesh, and what it cost.
+
+        Only the arguments provided are written, so a hosted-API caller can add cost
+        after the fact without clearing the model name.
+
+        Args:
+            job_id: The job to update.
+            model: Model name, e.g. "TripoSR" or "TRELLIS.2".
+            model_version: Version, revision or endpoint id.
+            backend: "local", "hosted_api" or "unknown".
+            params: Generation settings used.
+            cost_usd: Charge for this generation, for pay-per-generation endpoints.
+            duration_s: Wall-clock generation time in seconds.
+        """
+        updates = {
+            "generation_model": model,
+            "generation_model_version": model_version,
+            "generation_backend": backend,
+            "generation_params": _dump_json(params),
+            "generation_cost_usd": cost_usd,
+            "generation_duration_s": duration_s,
+        }
+        self._update_job_columns(job_id, updates)
+
+    def update_job_printability(
+        self,
+        job_id: str,
+        score: float | None = None,
+        verdict: str | None = None,
+        features: dict | None = None,
+        report: dict | None = None,
+    ) -> None:
+        """Record the pre-print printability assessment for a job.
+
+        Args:
+            job_id: The job to update.
+            score: Composite printability score 0–100.
+            verdict: "ready", "risky" or "unprintable".
+            features: Mesh feature snapshot.
+            report: Full per-check report.
+        """
+        updates = {
+            "printability_score": score,
+            "printability_verdict": verdict,
+            "mesh_features": _dump_json(features),
+            "printability_report": _dump_json(report),
+        }
+        self._update_job_columns(job_id, updates)
+
+    def _update_job_columns(self, job_id: str, updates: dict) -> None:
+        """Write the non-None entries of `updates` to a print_job row.
+
+        Args:
+            job_id: The job to update.
+            updates: Mapping of column name to value; None values are skipped so a
+                partial update never erases a previously recorded field.
+        """
+        fields = {k: v for k, v in updates.items() if v is not None}
+        if not fields:
+            return
+        assignments = ", ".join(f"{k} = ?" for k in fields)
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                f"UPDATE print_job SET {assignments} WHERE job_id = ?",
+                (*fields.values(), job_id),
+            )
+            self.conn.commit()
+
+    # ── Collector claims ──────────────────────────────────────────────────────
+    def try_claim_collector(self, job_id: str, owner: str, stale_after_s: float = 120.0) -> bool:
+        """Try to become the single telemetry collector for a job.
+
+        The claim is taken by whichever collector calls this first, and is only taken
+        over from a previous owner once that owner has stopped sending heartbeats for
+        ``stale_after_s``. Claiming at the point where telemetry actually arrives (not
+        at connect time) means a collector that cannot authenticate or reach the
+        printer never takes the claim away from one that can.
+
+        Args:
+            job_id: The job being collected.
+            owner: Stable identifier for the claiming collector.
+            stale_after_s: Seconds without a heartbeat before a claim can be taken over.
+
+        Returns:
+            True if this owner now holds the claim, False if another owner holds it.
+        """
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT owner, heartbeat_at FROM telemetry_collector_claim WHERE job_id = ?",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+
+            if row is not None:
+                current_owner = row["owner"]
+                if current_owner == owner:
+                    cursor.execute(
+                        "UPDATE telemetry_collector_claim SET heartbeat_at = ? WHERE job_id = ?",
+                        (_dt_to_str(now), job_id),
+                    )
+                    self.conn.commit()
+                    return True
+
+                last_beat = _str_to_dt(row["heartbeat_at"])
+                if last_beat is not None and (now - last_beat).total_seconds() < stale_after_s:
+                    return False
+
+                logger.warning(
+                    "Taking over stale telemetry claim for job %s from %s", job_id, current_owner
+                )
+                cursor.execute(
+                    "UPDATE telemetry_collector_claim SET owner = ?, claimed_at = ?, heartbeat_at = ? "
+                    "WHERE job_id = ?",
+                    (owner, _dt_to_str(now), _dt_to_str(now), job_id),
+                )
+                self.conn.commit()
+                return True
+
+            try:
+                cursor.execute(
+                    "INSERT INTO telemetry_collector_claim (job_id, owner, claimed_at, heartbeat_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (job_id, owner, _dt_to_str(now), _dt_to_str(now)),
+                )
+                self.conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                # Another process inserted between the SELECT and the INSERT.
+                return False
+
+    def release_collector_claim(self, job_id: str, owner: str) -> None:
+        """Release a job's collector claim, if this owner still holds it.
+
+        Args:
+            job_id: The job whose claim should be released.
+            owner: The claiming collector's identifier.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "DELETE FROM telemetry_collector_claim WHERE job_id = ? AND owner = ?",
+                (job_id, owner),
+            )
+            self.conn.commit()
+
+    def get_collector_claim(self, job_id: str) -> Optional[str]:
+        """Return the owner currently holding a job's collector claim, if any.
+
+        Args:
+            job_id: The job to look up.
+
+        Returns:
+            The owner identifier, or None if the job is unclaimed.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT owner FROM telemetry_collector_claim WHERE job_id = ?", (job_id,)
+            )
+            row = cursor.fetchone()
+            return row["owner"] if row else None
+
     def insert_failure_event(self, event: FailureEvent) -> None:
         """Insert a FailureEvent into the database.
 
@@ -253,6 +526,9 @@ class TelemetryDB:
             if not row:
                 return None
 
+        # A database migrated mid-session may lack the newer columns; read defensively.
+        keys = {k: row[k] for k in row.keys()}
+
         return PrintJob(
             job_id=row['job_id'],
             prompt=row['prompt'],
@@ -262,7 +538,17 @@ class TelemetryDB:
             profile_name=row['profile_name'],
             started_at=_str_to_dt(row['started_at']),  # type: ignore
             completed_at=_str_to_dt(row['completed_at']),
-            outcome=row['outcome']  # type: ignore
+            outcome=row['outcome'],  # type: ignore
+            generation_model=keys.get('generation_model'),
+            generation_model_version=keys.get('generation_model_version'),
+            generation_backend=keys.get('generation_backend'),
+            generation_params=_load_json(keys.get('generation_params')),
+            generation_cost_usd=keys.get('generation_cost_usd'),
+            generation_duration_s=keys.get('generation_duration_s'),
+            mesh_features=_load_json(keys.get('mesh_features')),
+            printability_score=keys.get('printability_score'),
+            printability_verdict=keys.get('printability_verdict'),
+            printability_report=_load_json(keys.get('printability_report')),
         )
 
     def get_samples(self, job_id: str, limit: int = 500) -> list[TelemetrySample]:
