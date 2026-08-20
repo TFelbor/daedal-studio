@@ -34,6 +34,13 @@ def _str_to_dt(s: str | None) -> datetime | None:
         s = s[:-1] + '+00:00'
     return datetime.fromisoformat(s)
 
+# Columns renamed after shipping. Applied before the additive migration below, so an
+# existing database keeps the values it already recorded under the old name instead of
+# stranding them beside a fresh empty column.
+_PRINT_JOB_RENAMED_COLUMNS = {
+    "generation_cost_usd": "generation_cost_eur",
+}
+
 # Columns added to print_job after the original schema shipped. Kept as data so the
 # migration and the INSERT stay in sync.
 _PRINT_JOB_EXTRA_COLUMNS = {
@@ -41,7 +48,10 @@ _PRINT_JOB_EXTRA_COLUMNS = {
     "generation_model_version": "TEXT",
     "generation_backend": "TEXT",
     "generation_params": "TEXT",
-    "generation_cost_usd": "REAL",
+    # Euro, not dollars: every hosted image-to-3D endpoint this project has priced
+    # bills in EUR (Pixazo's TRELLIS.2 is €0,32/generation), and a column named for
+    # a currency it does not hold is a number nobody can add up later.
+    "generation_cost_eur": "REAL",
     "generation_duration_s": "REAL",
     "mesh_features": "TEXT",
     "printability_score": "REAL",
@@ -161,6 +171,29 @@ def _row_to_job(row) -> PrintJob:
             value = field.default
         kwargs[field.name] = value
     return PrintJob(**kwargs)
+
+
+def _rename_columns(cursor, table: str, renames: dict[str, str]) -> None:
+    """Rename columns that changed name after shipping, preserving their data.
+
+    Must run *before* `_add_missing_columns`, which would otherwise add the new
+    name as an empty column beside the old one — leaving the recorded values
+    stranded under a name nothing reads. A rename is only attempted when the old
+    name is present and the new one is not, so the migration is idempotent and a
+    database carrying both (from a half-applied migration) is left alone rather
+    than silently losing one of them.
+
+    Args:
+        cursor: An open SQLite cursor.
+        table: Name of the table to migrate.
+        renames: Mapping of old column name to new column name.
+    """
+    cursor.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cursor.fetchall()}
+    for old, new in renames.items():
+        if old in existing and new not in existing:
+            logger.info("Migrating %s: renaming column %s to %s", table, old, new)
+            cursor.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
 
 
 def _add_missing_columns(cursor, table: str, columns: dict[str, str]) -> None:
@@ -287,6 +320,7 @@ class TelemetryDB:
             # created before they existed. ALTER TABLE ADD COLUMN is the only safe
             # migration here — the started_at migration above copies with SELECT *, so it
             # must keep running against the original nine columns.
+            _rename_columns(cursor, "print_job", _PRINT_JOB_RENAMED_COLUMNS)
             _add_missing_columns(cursor, "print_job", _PRINT_JOB_EXTRA_COLUMNS)
             self.conn.commit()
 
@@ -444,7 +478,7 @@ class TelemetryDB:
         model_version: str | None = None,
         backend: str | None = None,
         params: dict | None = None,
-        cost_usd: float | None = None,
+        cost_eur: float | None = None,
         duration_s: float | None = None,
     ) -> None:
         """Record which model produced this job's mesh, and what it cost.
@@ -458,7 +492,8 @@ class TelemetryDB:
             model_version: Version, revision or endpoint id.
             backend: "local", "remote_worker", "hosted_api" or "unknown".
             params: Generation settings used.
-            cost_usd: Charge for this generation, for pay-per-generation endpoints.
+            cost_eur: Charge for this generation in euro, for pay-per-generation
+                endpoints.
             duration_s: Wall-clock generation time in seconds.
         """
         updates = {
@@ -466,7 +501,7 @@ class TelemetryDB:
             "generation_model_version": model_version,
             "generation_backend": backend,
             "generation_params": _dump_json(params),
-            "generation_cost_usd": cost_usd,
+            "generation_cost_eur": cost_eur,
             "generation_duration_s": duration_s,
         }
         self._update_job_columns(job_id, updates)

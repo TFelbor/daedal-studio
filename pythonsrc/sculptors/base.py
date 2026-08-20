@@ -54,7 +54,9 @@ class SculptorBackend(ABC):
     MODEL_NAME: str = "unknown"
     MODEL_VERSION: str | None = None
     BACKEND: str = "local"
-    last_generation_cost_usd: float | None = None
+    #: Charge for the most recent generation, in **euro**. Left None by backends
+    #: that are not billed per call; a hosted backend sets it after each request.
+    last_generation_cost_eur: float | None = None
 
     @abstractmethod
     def reconstruct(self, image_path: str | Path) -> trimesh.Trimesh:

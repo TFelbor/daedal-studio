@@ -85,24 +85,88 @@ This is the most common place for a licence problem to enter unnoticed.
 | Model | Licence | Commercial use | Notes |
 |---|---|---|---|
 | FLUX.2-klein-4B (`black-forest-labs/FLUX.2-klein-4B`) | Apache-2.0 | Yes | Black Forest Labs' openly-licensed variant |
-| TRELLIS.2-4B (`microsoft/TRELLIS.2-4B`) | MIT | Yes | © Microsoft Corporation. Phase 2's image→3D model |
-| BiRefNet (`ZhengPeng7/BiRefNet`) | MIT | Yes | Background removal inside TRELLIS.2's `preprocess_image` |
+| TRELLIS.2-4B (`microsoft/TRELLIS.2-4B`) | MIT | Yes | © Microsoft Corporation. Phase 2's image→3D model. No restriction on generated output |
+| DINOv3 ViT-L/16 (`facebook/dinov3-vitl16-pretrain-lvd1689m`) | [DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/) | Yes, with conditions | © Meta Platforms. TRELLIS.2's `image_cond_model`. Attribution, Acceptable Use Policy and trade-control terms apply — see below |
+| BiRefNet (`ZhengPeng7/BiRefNet`) | MIT | Yes | Background removal. **Substituted by this project** for the checkpoint's configured default — see below |
+| ~~BRIA RMBG-2.0 (`briaai/RMBG-2.0`)~~ | CC BY-NC 4.0 | **No** — paid BRIA agreement required | Upstream TRELLIS.2's configured matte model. **Never loaded.** Overridden before construction — see below |
 
-> **BiRefNet is loaded with `trust_remote_code=True`.** That is upstream
-> TRELLIS.2's own call (`trellis2/pipelines/rembg/BiRefNet.py`), and it executes
-> modelling code fetched from the Hugging Face Hub at load time. The licence is
-> MIT and the repo is named explicitly rather than resolved from a shifting
-> default, so there is no licence hazard — but it is remote code execution on the
-> GPU worker, and pinning a revision is worth doing before any untrusted
-> deployment.
+#### Built with DINOv3
 
-> **The rembg / u2net pin is gone because rembg is gone.** Phase 2 previously used
-> `rembg` for TripoSR's background cut-out, which required pinning
-> `rembg==2.0.69` *and* naming `u2net` explicitly, because newer rembg releases
-> default to BRIA RMBG-2.0 — a model requiring a paid commercial agreement.
-> TRELLIS.2 does its own background removal with an explicitly named model, so
-> that hazard no longer exists in this codebase. **Do not reintroduce `rembg`
-> without restoring both controls.**
+> This product is **Built with DINOv3**. DINOv3 is © Meta Platforms, Inc. and
+> licensed under the [DINOv3
+> License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/).
+
+DINOv3 is TRELLIS.2's image conditioning encoder — `image_cond_model` in the
+checkpoint's `pipeline.json`, consumed by `pipeline.get_cond()`. It sits on the
+shape path, so unlike the rasterizer (§ *nvdiffrast and nvdiffrec*) and the matte
+weights (below) it **cannot be structurally avoided**; the model does not work
+without it. That is acceptable, because the DINOv3 License **permits commercial
+use**. What it requires:
+
+- **Attribution.** "Built with DINOv3" displayed prominently. Carried in this
+  file, in `README.md`, and in the application's UI footer
+  (`web/src/App.tsx`).
+- **Acceptable Use Policy.** No military, warfare, nuclear, espionage or
+  weapons-development use, and no reverse-engineering of the underlying
+  components.
+- **Trade controls.** Use must comply with applicable export-control and
+  sanctions regulations.
+- **Propagation on redistribution.** Distributing the weights or a derivative of
+  them is only permitted under the same agreement, with a copy provided. **Do not
+  bake DINOv3 weights into a distributed image** — that converts a use into a
+  redistribution and pulls the licence onto the artifact. The weights are fetched
+  at run time into a named volume, which is why this stays a use.
+- **Acknowledgement in publications** reporting research performed with it.
+
+The repo is **gated**: access is granted per-account after accepting the terms, so
+whoever accepted them with the project's `HF_TOKEN` is the licensee of record.
+
+#### The checkpoint's background-removal weights are non-commercial and are overridden
+
+> `microsoft/TRELLIS.2-4B`'s `pipeline.json` configures background removal as:
+>
+> ```json
+> "rembg_model": { "name": "BiRefNet", "args": { "model_name": "briaai/RMBG-2.0" } }
+> ```
+>
+> The **class** is BiRefNet (MIT). The **weights** are BRIA RMBG-2.0, published
+> under **CC BY-NC 4.0** — free for non-commercial use only, with commercial use
+> requiring a paid agreement with BRIA. Loading them would put a non-commercial
+> restriction on the pipeline, exactly as `pymeshfix` did (§3).
+
+This is the `rembg` / u2net hazard returning by a **different route**. The old one
+was a library silently changing its default; this one is an upstream config file
+naming the encumbered repo outright. The lesson generalises: **an explicitly named
+model id is no protection when the id someone else named is the encumbered one.**
+Read the id, not the class name.
+
+Phase 2 therefore substitutes MIT BiRefNet weights
+([`pythonsrc/sculptors/background.py`](pythonsrc/sculptors/background.py)):
+
+- `permissive_rembg()` rebinds `trellis2.pipelines.rembg.BiRefNet` to
+  `PermissiveBiRefNet` for the duration of `Pipeline.from_pretrained`. It must wrap
+  the *load*, not follow it: upstream constructs the matte model eagerly, so
+  reassigning `pipeline.rembg_model` afterwards would already have downloaded the
+  BRIA weights and accepted their gated-repo terms to get there.
+- `assert_permissive_matte()` then verifies the loaded pipeline actually holds the
+  substitute. It checks the outcome rather than the mechanism, so the day upstream
+  stops resolving that config entry through `getattr` the load **fails** instead of
+  quietly reverting.
+- `NON_COMMERCIAL_MATTE_MODEL_IDS` is a deny-list, enforced by
+  [`tests/test_licensing_guards.py`](tests/test_licensing_guards.py).
+- This covers the `trellis2` and `remote` backends both — the GPU worker imports
+  this same code. It does **not** cover `pixazo`; see *Hosted services*.
+
+> **Our MIT BiRefNet is still loaded with `trust_remote_code=True`**, matching
+> upstream's own call. That executes modelling code fetched from the Hugging Face
+> Hub at load time. MIT, so no licence hazard — but it is remote code execution on
+> the GPU worker. Pin a revision via `$P2P_BIREFNET_MODEL_ID` (`repo@sha`) before
+> any untrusted deployment.
+
+> **Do not reintroduce `rembg`** without restoring both of its old controls (a
+> version pin *and* an explicitly named permissive model), and **do not remove the
+> matte substitution** on the theory that upstream names its model explicitly. It
+> does. That is the problem.
 
 ### Phase 2 GPU worker — TRELLIS.2 and its CUDA stack
 
@@ -147,6 +211,35 @@ textured output — a preview render, a GLB export — the renderer must come fr
 permissively licensed backend (PyTorch3D, BSD-3-Clause, is the substitution
 upstream's structure accommodates), **not** from nvdiffrast. Adding one also
 reopens the question for the CPU images, which currently need no rasterizer at all.
+
+### Hosted services
+
+Called over HTTPS, never linked or vendored, so they add no licence obligation to
+the distributed artifact. Listed because what they *return* enters the pipeline.
+
+| Service | Notes |
+|---|---|
+| Pixazo `trellis-2-image-to-3d` | Runs TRELLIS.2 (MIT) as a paid endpoint, €0,32 per generation. Returns GLB. No client library is installed — `pythonsrc/sculptors/pixazo.py` uses `requests` against the documented REST API, so the arm's-length rule that governs CuraEngine and OctoPrint applies here by construction |
+
+> **The upstream defaults this project overrides are not overridden on someone
+> else's servers.** A hosted TRELLIS.2 endpoint most likely runs the checkpoint as
+> shipped, which means BRIA RMBG-2.0 for background removal and DINOv3 for
+> conditioning, under *their* licences rather than ours. Running their code is not
+> our copyright act, so this is a **contractual** exposure, not a copyright one:
+> if a provider is not licensed for what it runs, the loss lands wherever the
+> terms of service put it, and standard terms disclaim it. Before the `pixazo`
+> backend is used for anything beyond the beta, get written confirmation from the
+> provider that its deployment is licensed for commercial use and that generated
+> output carries commercial rights, plus an indemnity for third-party IP claims.
+> Absent that, keep this backend beta-only. `create_sculptor()` already makes it
+> swappable, so that costs nothing but a config change.
+
+> **The blueprint leaves the machine when this backend is used.** `image_url` is
+> either a `data:` URI or a public URL, so the prompt's rendered image is uploaded
+> to a third party and the resulting mesh is served from their CDN. That is a
+> privacy property of the deployment, not a licence one, but it is the reason
+> `generation_backend` distinguishes `hosted_api` from `remote_worker`: only one of
+> them sends user content off-premises.
 
 ### Python libraries
 
@@ -205,9 +298,10 @@ each of which had carried an obligation of its own:
 | `rembg` + `u2net` weights | MIT + Apache-2.0, both pinned defensively | Background cut-out before reconstruction |
 
 The `torchmcubes` removal retires this project's only weak-copyleft dependency.
-The `rembg` removal retires the pin documented in §2: TRELLIS.2 names its own
-background-removal model, so the "default model silently becomes a paid one"
-hazard no longer applies here.
+The `rembg` removal retires that package's version pin — but **not** the hazard it
+was pinned against. TRELLIS.2 names its own background-removal model, and the model
+it names *is* BRIA RMBG-2.0. The control moved rather than disappearing: see §2,
+*The checkpoint's background-removal weights are non-commercial and are overridden*.
 
 ---
 

@@ -109,6 +109,9 @@ aiohttp
 
 fastapi
 uvicorn
+# Required by the sculptor worker's multipart /sculpt endpoint. FastAPI raises at
+# import time without it, so its absence takes out the whole worker test module.
+python-multipart
 aiosqlite
 websockets
 

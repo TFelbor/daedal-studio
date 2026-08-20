@@ -6,13 +6,15 @@ The implementation lives in `sculptors/`; this module is the stable entry point 
 
 Usage:
     python pythonsrc/sculptor.py [--blueprint PATH] [--output PATH] [--faces N]
-                                 [--backend auto|trellis2|remote] [--verbose]
+                                 [--backend auto|trellis2|remote|pixazo] [--verbose]
 
 Backends:
     trellis2  In-process TRELLIS.2-4B. Needs an NVIDIA GPU with ~24 GB VRAM.
     remote    Posts the blueprint to a GPU worker (services/trellis2_worker).
+    pixazo    Calls Pixazo's hosted TRELLIS.2 endpoint. EUR 0,32 per generation,
+              and the only backend that runs on an Apple Silicon Mac.
     auto      remote if $P2P_SCULPTOR_REMOTE_URL is set, else trellis2 if CUDA
-              is visible.
+              is visible, else pixazo if $PIXAZO_API_KEY is set.
 """
 
 from __future__ import annotations

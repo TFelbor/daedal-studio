@@ -51,3 +51,23 @@
   color: var(--accent-color);
   border-bottom-color: var(--accent-color);
 }
+
+/* Model attribution. "Built with DINOv3" is a licence obligation, not branding —
+   see THIRD-PARTY-NOTICES.md — so this is styled to stay legible rather than to
+   recede into the background entirely. */
+.attribution {
+  max-width: 1200px;
+  margin: 3rem auto 0;
+  padding: 1.25rem 2rem 2rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.attributionSep {
+  color: var(--border-color);
+}

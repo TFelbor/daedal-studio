@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Prompt2Print (p2p-mesh) is a pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
 
-**Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs either in-process on a CUDA host or in a GPU worker the rest of the pipeline reaches over HTTP. See **Sculptor** below.
+**Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs in-process on a CUDA host, in a GPU worker the rest of the pipeline reaches over HTTP, or on Pixazo's hosted endpoint (€0,32 per generation — the only option on a Mac). See **Sculptor** below.
+
+**Phase 1 is unaffected by any of that.** `visualizer.get_device()` still picks `mps` on Apple Silicon and `infra/scripts/run_phase1_native.sh` / `make phase1-native` / `make start-native` are the MPS-native path. Phase 2's backend choice is independent of it.
 
 ## Build & Run Commands
 
@@ -77,19 +79,24 @@ Image→3D reconstruction with **TRELLIS.2-4B**. `pythonsrc/sculptor.py` is a th
 the package, kept so `from sculptor import create_sculptor`, the Phase 2 container entrypoint
 and the CLI all have one stable name.
 
-Two backends run the *same* model; which one runs is a deployment detail, not a difference in
-output:
+Three backends run the *same* model; which one runs is a deployment detail, not a difference in
+output — except for the coordinate frame, which is why each declares its own `up_axis`:
 
 - **`trellis2`** — in-process. Requires CUDA, ~24 GB VRAM, and `$TRELLIS2_REPO_PATH` pointing at
   a TRELLIS.2 checkout (upstream is not pip-installable).
-- **`remote`** — posts the blueprint to a GPU worker (`services/trellis2_worker/`) and gets raw
-  geometry back. This is how a Mac or a CPU-only Linux box reaches the model.
+- **`remote`** — posts the blueprint to a self-hosted GPU worker (`services/trellis2_worker/`)
+  and gets raw geometry back.
+- **`pixazo`** — calls Pixazo's hosted `trellis-2-image-to-3d` endpoint. The only backend that
+  works on an Apple Silicon Mac, and the only one that costs money.
 
 `create_sculptor()` / `resolve_backend_name()` resolve `auto` as: `remote` if
 `$P2P_SCULPTOR_REMOTE_URL` is set (an explicit configuration outranks a local GPU that may be
-busy with Phase 1), else `trellis2` if CUDA is visible, else **raise**. There is deliberately no
-fallback: silently producing a mesh from something other than the model you asked for is worse
-than failing, and there is no CPU implementation to fall back *to*.
+busy with Phase 1), else `trellis2` if CUDA is visible, else `pixazo` if `$PIXAZO_API_KEY` is
+set, else **raise**. The paid endpoint is last on purpose — hardware already paid for must never
+be passed over for one that bills — and selecting it logs the price, so a run that starts
+spending money says so. There is deliberately no CPU fallback: silently producing a mesh from
+something other than the model you asked for is worse than failing, and there is nothing to fall
+back *to*.
 
 - **Shape-only path.** `Trellis2Backend` drives the pipeline stages itself
   (`get_cond` → `sample_sparse_structure` → `sample_shape_slat[_cascade]` → `decode_shape_slat`)
@@ -117,15 +124,49 @@ than failing, and there is no CPU implementation to fall back *to*.
   pipeline never has to know which ones a given backend has. `remote` renames the wire field
   `seed` to `mesh_seed` on the way out: it shares a telemetry column with local runs, and one
   field under two names is a column nobody can query.
-- **Background removal is upstream's** — BiRefNet (`ZhengPeng7/BiRefNet`, MIT) inside
-  `preprocess_image`, which premultiplies the cut-out the way the model was trained. Phase 2 no
-  longer uses `rembg`/u2net; that was a TripoSR grey-composite trick for shape-from-shading and
-  it would fight this model's own preprocessing.
+- **Background removal is upstream's step on our weights.** `preprocess_image` cuts the subject
+  out and premultiplies it the way the model was trained, so Phase 2 no longer uses
+  `rembg`/u2net — that was a TripoSR grey-composite trick for shape-from-shading and it would
+  fight this model's own preprocessing. But the checkpoint configures the step as
+  `BiRefNet(model_name="briaai/RMBG-2.0")`, and **BRIA RMBG-2.0 is CC BY-NC 4.0** — the class is
+  MIT, the weights are not. `pythonsrc/sculptors/background.py` substitutes MIT BiRefNet
+  (`ZhengPeng7/BiRefNet`) via `permissive_rembg()`, held open **across**
+  `Pipeline.from_pretrained` because upstream builds the matte model eagerly and a swap
+  afterwards would already have downloaded the encumbered weights.
+  `assert_permissive_matte()` then checks the outcome rather than the mechanism, so an upstream
+  reshuffle fails the load instead of silently reverting. Covers `trellis2` *and* `remote` — the
+  worker runs this same code. Does **not** cover `pixazo`: that is someone else's deployment,
+  and therefore a contract question, not a code one.
 - **New CLI/API knobs**: `--sculptor-backend`, `--pipeline-type`
   (`512`|`1024`|`1024_cascade`|`1536_cascade`), `--mesh-seed`, `--smooth`. `--mesh-seed` is
   *not* `--seed`: one reproduces the blueprint, the other the reconstruction, and a single value
   for both would make it impossible to re-sculpt one image two ways. `POST /jobs` accepts
   `pipeline_type` and `mesh_seed`.
+
+### Hosted sculptor (pythonsrc/sculptors/pixazo.py)
+
+`POST {gateway}/trellis-2-image-to-3d/v1/trellis-2-image-to-3d-request`, then poll
+`GET {gateway}/v2/requests/status/{request_id}` until `COMPLETED` and download `output.media_url[0]`.
+Auth is `Ocp-Apim-Subscription-Key`, not a bearer token.
+
+- **`up_axis = "y"`, unlike every other backend.** The endpoint returns **GLB**, and glTF is
+  Y-up — upstream's `to_glb()` swaps Y/Z on the way out precisely because the model's own frame
+  is Z-up. trimesh does not undo that, so `postprocess`'s rotation is load-bearing here in a way
+  it is not for `trellis2`. Getting it wrong is silent: the part prints lying on its side.
+  Overridable per instance via `$P2P_PIXAZO_UP_AXIS` so settling the question empirically does
+  not need a redeploy.
+- **`image_url` takes a URL, not an upload.** There is no documented upload endpoint, so
+  `_resolve_image_url` inlines the blueprint as a `data:` URI by default — zero infrastructure —
+  and uses `$P2P_PIXAZO_IMAGE_BASE_URL` when a public bucket or tunnel is available instead.
+- **`pipeline_type` → `resolution` is lossy.** The hosted API has no cascade sampler, so
+  `1024_cascade` and `1024` both send `resolution=1024`. `generation_params()` records *both* the
+  requested pipeline type and the resolution sent, because a collapsed cascade is not the same
+  experiment as a native run and nothing after the fact could tell them apart.
+- **The charge is booked only after a mesh arrives** (`last_generation_cost_eur`), not at submit.
+  A queued call that never delivered is not a mesh, and counting it would overstate cost per
+  usable mesh — the number the pilot is actually trying to learn.
+- Unset knobs are **omitted** from the payload rather than sent as null, so the endpoint applies
+  its own documented defaults.
 
 ### Sculptor worker (services/trellis2_worker/)
 
@@ -213,20 +254,25 @@ FastAPI application with:
   `parent_job_id` are denormalised onto `print_job` for the common query.
 - **Generation provenance + pre-print quality on `PrintJob`**: `generation_model`,
   `generation_model_version`, `generation_backend` (see below), `generation_params`,
-  `generation_cost_usd`, `generation_duration_s`, `mesh_features`, `printability_score`,
+  `generation_cost_eur`, `generation_duration_s`, `mesh_features`, `printability_score`,
   `printability_verdict`, `printability_report`. All optional, so pre-existing rows stay valid, and
   `db.init_schema()` adds the columns to older databases via `ALTER TABLE`. These exist because
   they cannot be backfilled: after a print finishes, nothing else records which model made the
   mesh or what the call cost. Write them with `db.update_job_generation()` and
   `db.update_job_printability()` — both skip `None` arguments, so cost arriving after the model
   name does not erase it.
+- **`generation_cost_eur` is euro, not dollars** (renamed from `generation_cost_usd`;
+  `db._PRINT_JOB_RENAMED_COLUMNS` migrates existing databases with `ALTER TABLE RENAME COLUMN`
+  *before* the additive pass, so recorded values move rather than being stranded beside a fresh
+  empty column). Every hosted endpoint this project has priced bills in EUR, and a figure stored
+  in one currency under the name of another cannot be summed later.
 - **`generation_backend` has four values, not two**: `local`, `remote_worker`, `hosted_api`,
-  `unknown`. `remote_worker` is a self-hosted GPU worker: nothing is billed per call, so
-  `generation_cost_usd` stays None while `generation_duration_s` legitimately includes upload and
+  `unknown`. `hosted_api` is the only one that sets a cost. `remote_worker` is a self-hosted GPU worker: nothing is billed per call, so
+  `generation_cost_eur` stays None while `generation_duration_s` legitimately includes upload and
   queueing. Folding it into `local` makes both numbers unreadable; folding it into `hosted_api`
   implies a cost that does not exist.
 - **Swapping the image-to-3D model** (e.g. TRELLIS.2 self-hosted → TRELLIS.2 on fal.ai): set
-  `MODEL_NAME`, `MODEL_VERSION`, `BACKEND` and `last_generation_cost_usd` on the sculptor object,
+  `MODEL_NAME`, `MODEL_VERSION`, `BACKEND` and `last_generation_cost_eur` on the sculptor object,
   and report its knobs from `generation_params()`. `pipeline._record_generation()` reads all of it
   off the instance after Phase 2, so a pay-per-generation backend needs no pipeline change to get
   its cost and latency recorded per job.
@@ -332,13 +378,29 @@ been violated once, so treat them as load-bearing rather than aspirational:
   HTTP/socket respectively, never linked or embedded. All FOSS slicers are AGPL/GPL, so
   subprocess isolation is the design, not a workaround. Both are shipped unmodified; the
   written source offer lives in `THIRD-PARTY-NOTICES.md`.
-- **Model weights carry licences independent of the library that loads them.** `rembg` is MIT
-  but its *default* model became BRIA RMBG-2.0, which requires a paid commercial agreement.
-  This is why `rembg` was pinned to `2.0.69` **and** `u2net` named explicitly while TripoSR was
-  Phase 2. `rembg` is now gone (TRELLIS.2 does its own background removal with an explicitly
-  named MIT model), so the pin is gone too — **do not reintroduce `rembg` without restoring both
-  controls.** The live instance of this rule is now TRELLIS.2's BiRefNet, named in upstream's
-  `pipeline.json` rather than resolved from a default, and loaded with `trust_remote_code=True`.
+- **Model weights carry licences independent of the library that loads them — and independent of
+  the class name.** `rembg` is MIT but its *default* model became BRIA RMBG-2.0, which requires a
+  paid commercial agreement; that is why `rembg` was pinned to `2.0.69` **and** `u2net` named
+  explicitly while TripoSR was Phase 2. `rembg` is gone, but the same weights came back by a
+  second route: `microsoft/TRELLIS.2-4B`'s own `pipeline.json` reads
+  `"rembg_model": {"name": "BiRefNet", "args": {"model_name": "briaai/RMBG-2.0"}}`. **An
+  explicitly named repo is no protection when the repo someone else named is the encumbered
+  one** — read the id, not the class. Phase 2 overrides it (see Sculptor above);
+  `tests/test_licensing_guards.py` holds the line. Two rules follow: **do not reintroduce
+  `rembg`**, and **do not remove the matte substitution** on the theory that upstream names its
+  model explicitly. The remaining live instance of `trust_remote_code=True` is our own MIT
+  BiRefNet load — MIT, but still remote code execution; pin a revision with
+  `$P2P_BIREFNET_MODEL_ID` (`repo@sha`) before any untrusted deployment.
+- **DINOv3 is unavoidable and that is fine — but it carries obligations.**
+  `image_cond_model` is `facebook/dinov3-vitl16-pretrain-lvd1689m`, feeding `get_cond`, so it is
+  on the shape path and cannot be structurally avoided the way the rasterizer and the matte
+  weights can. The **DINOv3 License permits commercial use**; what it requires is attribution
+  ("Built with DINOv3", carried in the UI footer, `README.md` and `THIRD-PARTY-NOTICES.md`),
+  compliance with its Acceptable Use Policy and trade-control terms, propagation of the licence
+  if the weights or a derivative are ever *redistributed*, and acknowledgement in publications.
+  The repo is gated, so whoever accepted the terms with the project's `HF_TOKEN` is the licensee.
+  **Do not bake DINOv3 weights into a distributed image** — that turns a use into a
+  redistribution.
 - **Never install nvdiffrast or nvdiffrec.** Upstream TRELLIS.2's documented install line asks
   for both, and both are under the **NVIDIA Source Code License — non-commercial research only**.
   They are the same class of hazard as `pymeshfix`, and harder to spot because GitHub reports the

@@ -60,7 +60,7 @@ class RemoteSculptorBackend(SculptorBackend):
 
     MODEL_NAME = "TRELLIS.2"
 
-    # Not `hosted_api`: nothing is billed per call, so `generation_cost_usd` stays
+    # Not `hosted_api`: nothing is billed per call, so `generation_cost_eur` stays
     # None while latency legitimately includes network time. Telling the two apart
     # in the dataset is the whole point of a separate value.
     BACKEND = "remote_worker"

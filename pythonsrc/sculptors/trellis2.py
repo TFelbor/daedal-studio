@@ -42,6 +42,7 @@ import numpy as np
 import trimesh
 from PIL import Image
 
+from .background import assert_permissive_matte, permissive_rembg
 from .base import SculptorBackend, SculptorError
 
 logger = logging.getLogger("p2p.sculptor.trellis2")
@@ -99,12 +100,15 @@ class Trellis2Backend(SculptorBackend):
             output resolution rather than exceeding it.
 
     Note:
-        Background removal is upstream's: `preprocess_image` runs BiRefNet
-        (`ZhengPeng7/BiRefNet`, MIT) and premultiplies the cut-out, which is how
-        the model was trained. Phase 2 therefore no longer uses `rembg`/u2net —
-        that was a TripoSR-specific grey-composite trick for shape-from-shading
-        and it would fight this model's own preprocessing. BiRefNet is loaded with
-        `trust_remote_code=True` by upstream; see THIRD-PARTY-NOTICES.md.
+        Background removal is upstream's *step* but not upstream's *weights*.
+        `preprocess_image` cuts the subject out and premultiplies it, which is how
+        the model was trained, so Phase 2 no longer uses `rembg`/u2net — that was a
+        TripoSR-specific grey-composite trick for shape-from-shading and it would
+        fight this model's own preprocessing. The checkpoint configures that step as
+        `BiRefNet(model_name="briaai/RMBG-2.0")`, and BRIA RMBG-2.0 is CC BY-NC 4.0
+        — non-commercial without a paid agreement. `_load_pipeline` therefore
+        substitutes MIT BiRefNet weights before the pipeline is constructed; see
+        `background.py` and THIRD-PARTY-NOTICES.md.
     """
 
     name = "trellis2"
@@ -244,7 +248,19 @@ class Trellis2Backend(SculptorBackend):
         return DEFAULT_MODEL_ID
 
     def _load_pipeline(self):
-        """Load the image-to-3D pipeline with the texture models left out."""
+        """Load the image-to-3D pipeline, texture models out and matte weights swapped.
+
+        Two licence constraints are enforced structurally here rather than by
+        remembering them:
+
+        * `model_names_to_load` omits the texture models, so nothing on this path
+          ever needs a rasterizer — which is what keeps non-commercially licensed
+          nvdiffrast/nvdiffrec out of the image.
+        * `permissive_rembg()` is held open across `from_pretrained`, because the
+          checkpoint's configured background-removal weights (`briaai/RMBG-2.0`) are
+          non-commercial and upstream constructs that model eagerly. Swapping after
+          the fact would be too late — the weights would already be on disk.
+        """
         from trellis2.pipelines import Trellis2ImageTo3DPipeline
 
         class _ShapeOnlyPipeline(Trellis2ImageTo3DPipeline):
@@ -258,7 +274,9 @@ class Trellis2Backend(SculptorBackend):
             model_names_to_load = list(SHAPE_ONLY_MODELS)
 
         logger.info("Loading TRELLIS.2 (shape-only) from %s…", self.model_dir)
-        pipeline = _ShapeOnlyPipeline.from_pretrained(str(self.model_dir))
+        with permissive_rembg():
+            pipeline = _ShapeOnlyPipeline.from_pretrained(str(self.model_dir))
+        assert_permissive_matte(pipeline)
         pipeline.cuda()
         return pipeline
 

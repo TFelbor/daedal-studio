@@ -58,6 +58,26 @@ function Navigation() {
   );
 }
 
+function Attribution() {
+  // Required, not decorative. TRELLIS.2 conditions on Meta's DINOv3, whose licence
+  // permits commercial use only alongside prominent "Built with DINOv3"
+  // attribution — and the encoder is on the shape path, so there is no build of
+  // this app that does not use it. See THIRD-PARTY-NOTICES.md.
+  return (
+    <footer className={styles.attribution}>
+      <span>Built with DINOv3</span>
+      <span className={styles.attributionSep} aria-hidden="true">
+        ·
+      </span>
+      <span>3D reconstruction by TRELLIS.2 (© Microsoft, MIT)</span>
+      <span className={styles.attributionSep} aria-hidden="true">
+        ·
+      </span>
+      <span>Blueprints by FLUX.2-klein</span>
+    </footer>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -74,6 +94,7 @@ function App() {
           <Route path="/setup" element={<PrinterSetup />} />
         </Routes>
       </main>
+      <Attribution />
     </BrowserRouter>
   );
 }

@@ -1287,7 +1287,7 @@ async def get_job_provenance(job_id: str) -> Dict[str, Any]:
             "model_version": job.generation_model_version,
             "backend": job.generation_backend,
             "params": job.generation_params,
-            "cost_usd": job.generation_cost_usd,
+            "cost_eur": job.generation_cost_eur,
             "duration_s": job.generation_duration_s,
         },
         "mesh": {
