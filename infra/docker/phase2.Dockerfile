@@ -46,7 +46,7 @@ RUN pip install --no-cache-dir \
         "trimesh>=4.0.0" \
         "Pillow>=10.0.0" \
         "numpy>=1.24.0" \
-        "rembg>=2.0.50" \
+        "rembg==2.0.69" \
         "onnxruntime>=1.15.0" \
         "fast-simplification>=0.1.6" \
         "huggingface_hub>=0.24.0" \
@@ -61,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install torchmcubes from source (not on PyPI as a wheel)
-RUN pip install git+https://github.com/tatsy/torchmcubes.git
+RUN pip install git+https://github.com/tatsy/torchmcubes.git@3381600ddc3d2e4d74222f8495866be5fafbace4
 
 RUN pip install --no-cache-dir PyMCubes
 

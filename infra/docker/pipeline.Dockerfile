@@ -69,7 +69,7 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
         "einops>=0.8.0" \
         "omegaconf>=2.3.0" \
-        "rembg>=2.0.50" \
+        "rembg==2.0.69" \
         "onnxruntime>=1.15.0"
 
 # System build deps for torchmcubes C extension
@@ -78,14 +78,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install torchmcubes from source (not on PyPI as a wheel)
-RUN pip install git+https://github.com/tatsy/torchmcubes.git
+RUN pip install git+https://github.com/tatsy/torchmcubes.git@3381600ddc3d2e4d74222f8495866be5fafbace4
 
 RUN pip install --no-cache-dir PyMCubes
 
-# 4. Phase 3 deps (pymeshfix / trimesh)
+# 4. Phase 3 deps (manifold3d / trimesh)
 RUN pip install --no-cache-dir \
         "trimesh[all]>=4.0.0" \
-        "pymeshfix>=0.16.0" \
+        "manifold3d>=3.0.0" \
         "fast-simplification>=0.1.6" \
         "scipy>=1.11.0"
 

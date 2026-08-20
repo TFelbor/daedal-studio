@@ -41,7 +41,7 @@ The pipeline runs 5 sequential phases per job:
 |---|---|---|---|---|
 | 1 | Visualizer | FLUX.2-klein-4B (4B params) | **GPU-heavy** | Free: serverless · Paid: hot VRAM |
 | 2 | Sculptor | TripoSR + Marching Cubes res=256 | **GPU-heavy** | Free: serverless · Paid: hot VRAM |
-| 3 | Engineer | pymeshfix + trimesh (repair, scale, orient) | CPU-only | All tiers: same CPU container |
+| 3 | Engineer | manifold3d + trimesh (repair, scale, orient) | CPU-only | All tiers: same CPU container |
 | 4 | Slicer | CuraEngine (mesh → G-code) | CPU-only | All tiers: same CPU container |
 | 5 | Operator | HTTP REST upload to user's printer | Network only | All tiers: negligible |
 

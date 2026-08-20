@@ -14,6 +14,7 @@ from pythonsrc.printability import (
     CheckResult,
     PrintabilityReport,
     ProcessProfile,
+    _composite_score,
     evaluate_printability,
 )
 
@@ -222,16 +223,65 @@ def test_sla_style_profile_tightens_the_wall_threshold():
     assert check(evaluate_printability(plate, resin), "min_wall_thickness").status == "pass"
 
 
+# ── Self-intersections (manifold3d) ───────────────────────────────────────────
+
+
+def test_clean_solid_passes_self_intersection_check(clean_box_report):
+    """A single closed solid has nothing to intersect with."""
+    assert check(clean_box_report, "self_intersections").status == "pass"
+
+
+def test_disjoint_components_are_not_self_intersecting(fdm):
+    """Two separate bodies are a floating-component problem, not an intersection one."""
+    apart = trimesh.util.concatenate([
+        trimesh.creation.box(extents=[10, 10, 10]),
+        trimesh.creation.box(extents=[10, 10, 10]).apply_translation([40, 0, 0]),
+    ])
+    result = check(evaluate_printability(on_bed(apart), fdm), "self_intersections")
+    assert result.status == "pass"
+
+
+def test_interpenetrating_shells_are_measured(fdm):
+    """Two boxes overlapping by a 5mm cube: the overlap volume is reported, not just flagged."""
+    overlapping = trimesh.util.concatenate([
+        trimesh.creation.box(extents=[10, 10, 10]),
+        trimesh.creation.box(extents=[10, 10, 10]).apply_translation([5, 5, 5]),
+    ])
+    result = check(evaluate_printability(on_bed(overlapping), fdm), "self_intersections")
+
+    assert result.status == "warn"
+    assert result.value == pytest.approx(125.0, rel=1e-3)   # 5 × 5 × 5 mm³
+
+
+def test_open_surface_fails_as_not_a_solid(fdm):
+    """A mesh that does not bound a volume cannot be sliced; that is fatal, not advisory."""
+    box = trimesh.creation.box(extents=[10, 10, 10])
+    holed = box.copy()
+    holed.update_faces(np.arange(len(box.faces)) != 0)
+
+    result = check(evaluate_printability(on_bed(holed), fdm), "self_intersections")
+    assert result.status == "fail"
+    assert result.critical
+
+
 # ── Scoring and serialisation ─────────────────────────────────────────────────
 
 
-def test_unavailable_check_does_not_affect_the_score(clean_box_report):
-    """self_intersections cannot run without a collision engine; it must not count either way."""
-    report = clean_box_report
-    unavailable = check(report, "self_intersections")
+def test_unavailable_check_does_not_affect_the_score():
+    """A check that could not run must not count either way — it leaves the denominator."""
+    passing = [CheckResult(check="a", status="pass", detail="", value=None, threshold=0, weight=1.0)]
+    with_unavailable = passing + [
+        CheckResult(check="b", status="not_checked", detail="", value=None, threshold=0, weight=9.0)
+    ]
 
-    assert unavailable.status == "not_checked"
-    assert report.score == 100.0          # a clean mesh still scores full marks
+    assert _composite_score(passing) == 100.0
+    assert _composite_score(with_unavailable) == 100.0
+
+    # And it is genuinely excluded, not silently treated as a pass:
+    failing = passing + [
+        CheckResult(check="b", status="fail", detail="", value=None, threshold=0, weight=1.0)
+    ]
+    assert _composite_score(failing) == 50.0
 
 
 def test_critical_warning_is_never_ready(fdm):

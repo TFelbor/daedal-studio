@@ -15,7 +15,7 @@ The system uses **TripoSR** to perform neural implicit surface extraction, turni
 ## Phase 3: Engineer
 **Input**: Raw 3D Mesh  
 **Output**: Engineered Mesh (.obj)  
-Raw AI meshes often have holes, inverted normals, or incorrect scaling. We use `pymeshfix` and `trimesh` to decimate polygon counts, repair the manifold, and scale the object to fit safely on your printer's build volume.
+Raw AI meshes often have holes, inverted normals, or incorrect scaling. We use `manifold3d` and `trimesh` to decimate polygon counts, repair the manifold, and scale the object to fit safely on your printer's build volume.
 
 ## Phase 4: Slicer
 **Input**: Engineered Mesh  

@@ -85,7 +85,7 @@ services:
       - phase2
       - all
 
-  # ── Phase 3: Engineer (pymeshfix + trimesh, repair + scale) ──────────────
+  # ── Phase 3: Engineer (manifold3d + trimesh, repair + scale) ─────────────
   phase3-engineer:
     platform: linux/amd64
     build:

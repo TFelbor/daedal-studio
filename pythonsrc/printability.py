@@ -29,6 +29,14 @@ import trimesh
 from scipy import ndimage
 from trimesh import grouping
 
+try:  # Apache-2.0; present in every image, but the check degrades if absent.
+    import manifold3d
+
+    HAVE_MANIFOLD3D = True
+except ImportError:  # pragma: no cover — exercised only on a broken install
+    manifold3d = None
+    HAVE_MANIFOLD3D = False
+
 logger = logging.getLogger("p2p.printability")
 
 CheckStatus = Literal["pass", "warn", "fail", "not_checked"]
@@ -395,6 +403,115 @@ def _min_wall_thickness(mesh: trimesh.Trimesh, profile: ProcessProfile) -> tuple
     return float(max(thickness.min(), 0.0)), pitch
 
 
+def _check_self_intersections(mesh: trimesh.Trimesh) -> CheckResult:
+    """
+    Detect interpenetrating shells using the manifold3d kernel (Apache-2.0).
+
+    Two things are asked of the kernel, and they fail differently:
+
+    * Constructing a ``Manifold`` is a hard topological test. Rejection means
+      the surface is not a valid solid at all — a fatal condition for slicing.
+    * Unioning the decomposed components resolves interpenetration. If the
+      union's volume is *less* than the sum of the parts, the parts were
+      overlapping and the overlap was being counted twice. A slicer fed that
+      mesh sees contradictory inside/outside tests in the overlap region.
+
+    Reports ``not_checked`` rather than guessing when the kernel is absent, so
+    the score denominator excludes it instead of rewarding an untested mesh.
+    """
+    if not HAVE_MANIFOLD3D:
+        return CheckResult(
+            check="self_intersections",
+            status="not_checked",
+            detail="manifold3d is not installed; exact self-intersection testing is unavailable.",
+            value=None,
+            threshold=0,
+            weight=2.0,
+        )
+
+    try:
+        gl = manifold3d.Mesh(
+            vert_properties=np.asarray(mesh.vertices, dtype=np.float32),
+            tri_verts=np.asarray(mesh.faces, dtype=np.uint32),
+        )
+        gl.merge()
+        man = manifold3d.Manifold(gl)
+
+        if man.status() != manifold3d.Error.NoError:
+            return CheckResult(
+                check="self_intersections",
+                status="fail",
+                detail=(
+                    f"manifold3d rejected the mesh as a solid ({man.status()}). "
+                    "The surface does not bound a well-defined volume, so slicing is unreliable."
+                ),
+                value=None,
+                threshold=0,
+                weight=2.0,
+                critical=True,
+            )
+
+        parts = man.decompose()
+        if len(parts) <= 1:
+            return CheckResult(
+                check="self_intersections",
+                status="pass",
+                detail="Single closed solid; no interpenetrating shells.",
+                value=0,
+                threshold=0,
+                weight=2.0,
+            )
+
+        part_volume = sum(p.volume() for p in parts)
+        union = manifold3d.Manifold.batch_boolean(parts, manifold3d.OpType.Add)
+        if union.status() != manifold3d.Error.NoError:
+            return CheckResult(
+                check="self_intersections",
+                status="not_checked",
+                detail=f"manifold3d could not union the {len(parts)} components ({union.status()}).",
+                value=None,
+                threshold=0,
+                weight=2.0,
+            )
+
+        overlap = part_volume - union.volume()
+        # Below a millionth of the total volume this is float noise, not geometry.
+        if overlap <= max(part_volume * 1e-6, 1e-9):
+            return CheckResult(
+                check="self_intersections",
+                status="pass",
+                detail=f"{len(parts)} separate components, none interpenetrating.",
+                value=0.0,
+                threshold=0,
+                weight=2.0,
+            )
+
+        pct = 100.0 * overlap / part_volume
+        return CheckResult(
+            check="self_intersections",
+            status="warn",
+            detail=(
+                f"{len(parts)} components overlap by {overlap:.2f}mm³ ({pct:.1f}% of total volume). "
+                "Engineer.repair_mesh unions these, so this is a warning about the input mesh, "
+                "not the sliced result."
+            ),
+            value=round(overlap, 3),
+            threshold=0,
+            weight=2.0,
+        )
+
+    except Exception as exc:  # noqa: BLE001 — scoring must never fail the job
+        logger.warning("Self-intersection check failed: %s", exc)
+        return CheckResult(
+            check="self_intersections",
+            status="not_checked",
+            detail=f"Self-intersection check raised {type(exc).__name__}: {exc}",
+            value=None,
+            threshold=0,
+            weight=2.0,
+        )
+
+
 # ── Evaluation ────────────────────────────────────────────────────────────────────
 
 
@@ -621,17 +738,7 @@ def evaluate_printability(
             critical=True,
         ))
 
-    checks.append(CheckResult(
-        check="self_intersections",
-        status="not_checked",
-        detail=(
-            "Exact self-intersection testing needs a collision engine; none of manifold3d, "
-            "python-fcl or rtree is installed. Install manifold3d to enable this check."
-        ),
-        value=None,
-        threshold=0,
-        weight=2.0,
-    ))
+    checks.append(_check_self_intersections(mesh))
 
     features = {
         "face_count": int(len(mesh.faces)),

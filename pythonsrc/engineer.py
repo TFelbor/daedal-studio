@@ -12,7 +12,7 @@ from pathlib import Path
 from config import OUTPUTS_DIR
 
 import numpy as np
-import pymeshfix  # MeshFix algorithm — Attene 2010; version 0.18.1
+import manifold3d  # Apache-2.0 — guaranteed-manifold kernel; version 3.5.x
 import trimesh
 import trimesh.repair
 import trimesh.util
@@ -38,15 +38,60 @@ class Engineer:
         self.layer_height = layer_height
 
     # ── Repair ────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _to_manifold(mesh: trimesh.Trimesh) -> "manifold3d.Manifold":
+        """
+        Hand a trimesh over to the manifold3d kernel.
+
+        ``Mesh.merge()`` welds near-coincident vertices, which is what turns a
+        surface that is *visually* closed but has duplicated boundary vertices
+        into one the kernel will accept. The returned Manifold may still be in
+        an error state — callers must check ``.status()``.
+        """
+        gl = manifold3d.Mesh(
+            vert_properties=np.asarray(mesh.vertices, dtype=np.float32),
+            tri_verts=np.asarray(mesh.faces, dtype=np.uint32),
+        )
+        gl.merge()
+        return manifold3d.Manifold(gl)
+
+    @staticmethod
+    def _from_manifold(man: "manifold3d.Manifold") -> trimesh.Trimesh:
+        """Convert a manifold3d Manifold back into a trimesh.Trimesh."""
+        gl = man.to_mesh()
+        verts = np.asarray(gl.vert_properties)
+        # vert_properties is (n, stride); the first three columns are XYZ.
+        verts = verts.reshape(-1, gl.vert_properties.shape[-1])[:, :3]
+        return trimesh.Trimesh(
+            vertices=verts,
+            faces=np.asarray(gl.tri_verts).reshape(-1, 3),
+            process=False,
+        )
+
     def repair_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
-        Repair mesh topology using pymeshfix (MeshFix algorithm, Attene 2010).
+        Repair mesh topology with trimesh (MIT) + manifold3d (Apache-2.0).
 
-        Handles self-intersections, non-manifold edges, and topological holes
-        that trimesh's built-in repair cannot fix. Falls back to trimesh-only
-        repair if pymeshfix raises an exception.
+        Replaces the previous pymeshfix implementation, which was unusable
+        commercially: pymeshfix wraps MeshFix (Attene 2010), published under
+        GPL/AGPL with an explicit requirement that commercial use be licensed
+        separately from IMATI-GE/CNR. Linking it in-process would have made
+        this pipeline a derivative work.
 
-        pymeshfix version: 0.18.1
+        The two libraries do different jobs and are used accordingly:
+
+        * trimesh *closes* the surface — degenerate/duplicate face removal,
+          winding and normal consistency, hole filling. manifold3d cannot do
+          this; handed an open surface it returns ``Error.NotManifold`` and an
+          empty result.
+        * manifold3d *guarantees* the result — constructing a Manifold is a
+          hard topological check, and a boolean union over the decomposed
+          components resolves self-intersections and interpenetrating shells
+          into a single well-formed solid. This is strictly what a slicer
+          needs, and it is something MeshFix did not do reliably.
+
+        Falls back to the trimesh-only result if the kernel rejects the mesh,
+        so a pathological input degrades instead of failing the job.
         """
         before_faces = len(mesh.faces)
         before_watertight = mesh.is_watertight
@@ -57,62 +102,68 @@ class Engineer:
         )
 
         try:
-            # ── Pre-clean: remove degeneracies before passing to pymeshfix ────
-            # pymeshfix performs better on pre-cleaned input.
-            pre = mesh.copy()
+            # ── Stage 1: close the surface with trimesh ───────────────────────
+            # manifold3d validates topology, it does not create it. Anything
+            # still open here will be rejected by the kernel below.
+            closed = self._repair_mesh_fallback(mesh)
 
-            # Remove degenerate faces (trimesh 4.x API)
-            valid_mask = pre.nondegenerate_faces()
-            pre.update_faces(valid_mask)
+            # ── Stage 2: hand to the manifold3d kernel ────────────────────────
+            man = self._to_manifold(closed)
+            if man.status() != manifold3d.Error.NoError:
+                logger.warning(
+                    "manifold3d rejected the mesh (%s) — keeping trimesh-only repair.",
+                    man.status(),
+                )
+                return closed
 
-            # Remove duplicate faces via np.unique on sorted face rows
-            sorted_faces = np.sort(pre.faces, axis=1)
-            _, unique_idx = np.unique(sorted_faces, axis=0, return_index=True)
-            pre.update_faces(unique_idx)
+            # ── Stage 3: union the components ─────────────────────────────────
+            # Interpenetrating shells are common in generated meshes and are a
+            # slicing hazard: overlapping volume gets counted twice and the
+            # slicer sees contradictory inside/outside tests. A boolean union
+            # collapses them into one solid.
+            parts = man.decompose()
+            if len(parts) > 1:
+                man = manifold3d.Manifold.batch_boolean(parts, manifold3d.OpType.Add)
+                if man.status() != manifold3d.Error.NoError:
+                    logger.warning(
+                        "manifold3d union failed (%s) — keeping trimesh-only repair.",
+                        man.status(),
+                    )
+                    return closed
+                logger.debug("Unioned %d interpenetrating components into one solid.", len(parts))
 
-            # Remove unreferenced vertices
-            pre.remove_unreferenced_vertices()
+            if man.is_empty():
+                logger.warning("manifold3d produced an empty solid — keeping trimesh-only repair.")
+                return closed
 
-            # ── pymeshfix repair (MeshFix algorithm) ──────────────────────────
-            # Note: pymeshfix 0.18.1 repair() takes no verbose kwarg;
-            # repaired arrays are available as .points and .faces.
-            meshfix = pymeshfix.MeshFix(pre.vertices, pre.faces)
-            meshfix.repair()
-            clean_vertices, clean_faces = meshfix.points, meshfix.faces
+            repaired = self._from_manifold(man)
 
-            # ── Reconstruct trimesh from repaired arrays ───────────────────────
-            repaired = trimesh.Trimesh(
-                vertices=clean_vertices,
-                faces=clean_faces,
-                process=False,
-            )
-
-            # ── Final winding-consistency pass ────────────────────────────────
-            trimesh.repair.fix_normals(repaired, multibody=True)
-
-            after_faces = len(repaired.faces)
             after_watertight = repaired.is_watertight
-            improved = (not before_watertight and after_watertight) or (before_watertight and after_watertight)
+            improved = after_watertight and not before_watertight
             logger.debug(
-                "After pymeshfix repair — watertight: %s, faces: %d (improved: %s)",
+                "After manifold3d repair — watertight: %s, faces: %d, genus: %d (improved: %s)",
                 after_watertight,
-                after_faces,
+                len(repaired.faces),
+                man.genus(),
                 improved,
             )
             return repaired
 
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "pymeshfix repair failed (%s) — falling back to trimesh-only repair.",
+                "manifold3d repair failed (%s) — falling back to trimesh-only repair.",
                 exc,
             )
             return self._repair_mesh_fallback(mesh)
 
     def _repair_mesh_fallback(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
-        Original trimesh-only repair logic, preserved as a fallback.
+        trimesh-only repair: clean degeneracies, then close the surface.
 
-        Called automatically when pymeshfix raises an exception.
+        This is both stage 1 of :meth:`repair_mesh` and its fallback — the
+        manifold3d kernel needs a closed surface as input, and if the kernel
+        then rejects the result this is what ships. Pure MIT, no copyleft.
+
         Compatible with trimesh 4.x, where remove_degenerate_faces /
         remove_duplicate_faces are no longer instance methods.
         """

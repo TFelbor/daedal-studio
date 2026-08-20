@@ -14,12 +14,32 @@ from config import INPUTS_DIR, OUTPUTS_DIR
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import numpy as np
+import rembg
 import torch
 import trimesh
 from PIL import Image
 
 from tsr.system import TSR
 from tsr.utils import remove_background, resize_foreground
+
+# ── Background-removal model ──────────────────────────────────────────────────
+# Named explicitly rather than relying on rembg's default. rembg is MIT, but the
+# *model weights* carry their own licences and the default has already changed
+# once: newer releases default to BRIA RMBG-2.0, which requires a paid agreement
+# for commercial use. u2net is Apache-2.0. Pinning rembg==2.0.69 alone would not
+# protect us — the version pin and this name have to agree, and only this name
+# survives a dependency bump.
+REMBG_MODEL = os.environ.get("REMBG_MODEL", "u2net")
+_rembg_session = None
+
+
+def get_rembg_session():
+    """Lazily build the rembg session; downloads the model on first use."""
+    global _rembg_session
+    if _rembg_session is None:
+        logger.info("Creating rembg session with model: %s", REMBG_MODEL)
+        _rembg_session = rembg.new_session(REMBG_MODEL)
+    return _rembg_session
 
 # ── M4/MPS Monkey Patch ───────────────────────────────────────────────────────
 from tsr.models.isosurface import MarchingCubeHelper
@@ -92,7 +112,7 @@ class P2PSculptor:
         image = Image.open(image_path)
 
         # ── Pre-processing ────────────────────────────────────────────────────
-        image = remove_background(image)
+        image = remove_background(image, rembg_session=get_rembg_session())
         image = resize_foreground(image, 0.85)
 
         # Clean dirty alpha channel — anything < 20% opaque → fully transparent
