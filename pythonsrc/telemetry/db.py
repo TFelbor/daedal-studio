@@ -5,6 +5,7 @@ import sqlite3
 import os
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -12,7 +13,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
+from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent, JobEvent
 
 def get_default_db_path() -> str:
     """Get the default telemetry database path from environment or home directory."""
@@ -46,10 +47,120 @@ _PRINT_JOB_EXTRA_COLUMNS = {
     "printability_score": "REAL",
     "printability_verdict": "TEXT",
     "printability_report": "TEXT",
+    # Blueprint provenance (Phase 1).
+    "blueprint_model": "TEXT",
+    "blueprint_model_version": "TEXT",
+    "blueprint_seed": "INTEGER",
+    "blueprint_prompt_engineered": "TEXT",
+    "blueprint_params": "TEXT",
+    "blueprint_sha256": "TEXT",
+    "blueprint_duration_s": "REAL",
+    # Mesh lineage (before and after repair).
+    "raw_mesh_sha256": "TEXT",
+    "raw_mesh_features": "TEXT",
+    "repaired_mesh_sha256": "TEXT",
+    "repaired_mesh_features": "TEXT",
+    # Slicing.
+    "slice_status": "TEXT",
+    "slice_error": "TEXT",
+    "slice_duration_s": "REAL",
+    "estimated_print_time_s": "INTEGER",
+    "filament_used_mm": "REAL",
+    "filament_used_mm3": "REAL",
+    "filament_used_g": "REAL",
+    "support_filament_mm3": "REAL",
+    "layer_count": "INTEGER",
+    "slice_stats": "TEXT",
+    # Target process and material.
+    "material_type": "TEXT",
+    "material_brand": "TEXT",
+    "material_colour": "TEXT",
+    "nozzle_diameter_mm": "REAL",
+    "process_params": "TEXT",
+    # Lineage and engagement.
+    "parent_job_id": "TEXT",
+    "regeneration_reason": "TEXT",
+    "download_count": "INTEGER DEFAULT 0",
+    # Human-reported outcome.
+    "outcome_source": "TEXT",
+    "outcome_reported_at": "TEXT",
 }
 
 # The subset stored as JSON text and decoded back into dicts on read.
-_PRINT_JOB_JSON_COLUMNS = ("generation_params", "mesh_features", "printability_report")
+_PRINT_JOB_JSON_COLUMNS = (
+    "generation_params",
+    "mesh_features",
+    "printability_report",
+    "blueprint_params",
+    "raw_mesh_features",
+    "repaired_mesh_features",
+    "slice_stats",
+    "process_params",
+)
+
+
+# Columns holding a datetime, serialized to ISO 8601 text.
+_PRINT_JOB_DATETIME_COLUMNS = ("started_at", "completed_at", "outcome_reported_at")
+
+# The nine columns the table shipped with, in declaration order.
+_PRINT_JOB_BASE_COLUMNS = (
+    "job_id", "prompt", "printer_id", "printer_firmware", "slicer",
+    "profile_name", "started_at", "completed_at", "outcome",
+)
+
+
+def _job_to_row(job: PrintJob) -> dict:
+    """Flatten a PrintJob into a column-name → SQL-value mapping.
+
+    Derived from the dataclass fields rather than an explicit column list, so adding a
+    field to `PrintJob` and to `_PRINT_JOB_EXTRA_COLUMNS` is all that a new signal
+    needs — the INSERT cannot fall out of sync with the schema.
+
+    Args:
+        job: The PrintJob to flatten.
+
+    Returns:
+        A mapping of column name to a value SQLite can store.
+    """
+    import dataclasses as _dc
+
+    row = {}
+    for field in _dc.fields(job):
+        value = getattr(job, field.name)
+        if field.name in _PRINT_JOB_JSON_COLUMNS:
+            value = _dump_json(value)
+        elif field.name in _PRINT_JOB_DATETIME_COLUMNS:
+            value = _dt_to_str(value)
+        row[field.name] = value
+    return row
+
+
+def _row_to_job(row) -> PrintJob:
+    """Rebuild a PrintJob from a print_job row.
+
+    Reads defensively via `.get`: a database migrated mid-session, or a row written by
+    an older build, may be missing the newer columns entirely.
+
+    Args:
+        row: A `sqlite3.Row` from the print_job table.
+
+    Returns:
+        The reconstructed PrintJob.
+    """
+    import dataclasses as _dc
+
+    keys = {k: row[k] for k in row.keys()}
+    kwargs = {}
+    for field in _dc.fields(PrintJob):
+        value = keys.get(field.name)
+        if field.name in _PRINT_JOB_JSON_COLUMNS:
+            value = _load_json(value)
+        elif field.name in _PRINT_JOB_DATETIME_COLUMNS:
+            value = _str_to_dt(value)
+        elif value is None and field.default is not _dc.MISSING:
+            value = field.default
+        kwargs[field.name] = value
+    return PrintJob(**kwargs)
 
 
 def _add_missing_columns(cursor, table: str, columns: dict[str, str]) -> None:
@@ -231,6 +342,27 @@ class TelemetryDB:
                 )
             ''')
 
+            # Job engagement events.
+            #
+            # Downloads, regenerations and feedback prompts are all "did the user do
+            # this, and when" signals that nothing else in the system records. Kept as
+            # rows rather than columns so that the pilot metric — how often a shown
+            # outcome prompt is actually answered — is a query rather than a migration.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS job_event (
+                    event_id TEXT PRIMARY KEY,
+                    job_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    detail TEXT,
+                    FOREIGN KEY (job_id) REFERENCES print_job (job_id)
+                )
+            ''')
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_job_event_job_kind "
+                "ON job_event (job_id, kind)"
+            )
+
             self.conn.commit()
 
     def insert_job(self, job: PrintJob) -> None:
@@ -239,25 +371,15 @@ class TelemetryDB:
         Args:
             job: The PrintJob object to insert.
         """
+        row = _job_to_row(job)
+        columns = ", ".join(row)
+        placeholders = ", ".join("?" for _ in row)
         with self._lock:
             cursor = self.conn.cursor()
-            cursor.execute('''
-            INSERT INTO print_job (
-                job_id, prompt, printer_id, printer_firmware, slicer, profile_name,
-                started_at, completed_at, outcome,
-                generation_model, generation_model_version, generation_backend,
-                generation_params, generation_cost_usd, generation_duration_s,
-                mesh_features, printability_score, printability_verdict, printability_report
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-            job.job_id, job.prompt, job.printer_id, job.printer_firmware,
-            job.slicer, job.profile_name, _dt_to_str(job.started_at),
-            _dt_to_str(job.completed_at), job.outcome,
-            job.generation_model, job.generation_model_version, job.generation_backend,
-            _dump_json(job.generation_params), job.generation_cost_usd, job.generation_duration_s,
-            _dump_json(job.mesh_features), job.printability_score, job.printability_verdict,
-            _dump_json(job.printability_report)
-            ))
+            cursor.execute(
+                f"INSERT INTO print_job ({columns}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
             self.conn.commit()
 
     def update_job_start_time(self, job_id: str, started_at: datetime) -> None:
@@ -373,6 +495,321 @@ class TelemetryDB:
             "printability_report": _dump_json(report),
         }
         self._update_job_columns(job_id, updates)
+
+    def update_job_blueprint(
+        self,
+        job_id: str,
+        model: str | None = None,
+        model_version: str | None = None,
+        seed: int | None = None,
+        prompt_engineered: str | None = None,
+        params: dict | None = None,
+        sha256: str | None = None,
+        duration_s: float | None = None,
+    ) -> None:
+        """Record how this job's blueprint image was produced.
+
+        The seed is the point of this method. It was previously derived from the wall
+        clock inside the visualizer and discarded, which made every result in the
+        system unreproducible; without it a good print cannot be repeated and two runs
+        cannot be compared.
+
+        Args:
+            job_id: The job to update.
+            model: Text-to-image model name.
+            model_version: Model revision or repo id.
+            seed: The RNG seed actually used.
+            prompt_engineered: The full string fed to the model, suffix included.
+            params: Conditioning settings (steps, guidance_scale, width, height).
+            sha256: Hash of the blueprint PNG.
+            duration_s: Wall-clock generation seconds.
+        """
+        self._update_job_columns(job_id, {
+            "blueprint_model": model,
+            "blueprint_model_version": model_version,
+            "blueprint_seed": seed,
+            "blueprint_prompt_engineered": prompt_engineered,
+            "blueprint_params": _dump_json(params),
+            "blueprint_sha256": sha256,
+            "blueprint_duration_s": duration_s,
+        })
+
+    def update_job_mesh_lineage(
+        self,
+        job_id: str,
+        raw_sha256: str | None = None,
+        raw_features: dict | None = None,
+        repaired_sha256: str | None = None,
+        repaired_features: dict | None = None,
+    ) -> None:
+        """Record the mesh before and after repair.
+
+        Stored as hashes plus feature snapshots rather than geometry: the .obj files
+        stay on disk under data/outputs, but the row must remain queryable after those
+        directories are pruned.
+
+        Args:
+            job_id: The job to update.
+            raw_sha256: Hash of the sculptor's raw mesh.
+            raw_features: Geometry features of the raw mesh.
+            repaired_sha256: Hash of the engineered mesh.
+            repaired_features: Geometry features of the engineered mesh.
+        """
+        self._update_job_columns(job_id, {
+            "raw_mesh_sha256": raw_sha256,
+            "raw_mesh_features": _dump_json(raw_features),
+            "repaired_mesh_sha256": repaired_sha256,
+            "repaired_mesh_features": _dump_json(repaired_features),
+        })
+
+    def update_job_slice(
+        self,
+        job_id: str,
+        status: str | None = None,
+        error: str | None = None,
+        duration_s: float | None = None,
+        estimated_print_time_s: int | None = None,
+        filament_used_mm: float | None = None,
+        filament_used_mm3: float | None = None,
+        filament_used_g: float | None = None,
+        support_filament_mm3: float | None = None,
+        layer_count: int | None = None,
+        stats: dict | None = None,
+    ) -> None:
+        """Record the slicer's verdict and material estimates.
+
+        Args:
+            job_id: The job to update.
+            status: "success", "failed" or "skipped".
+            error: Slicer error text when the slice failed.
+            duration_s: Wall-clock slicing seconds.
+            estimated_print_time_s: Slicer print time estimate.
+            filament_used_mm: Filament length extruded.
+            filament_used_mm3: Filament volume extruded.
+            filament_used_g: Filament mass, when the material is known.
+            support_filament_mm3: Volume spent on supports.
+            layer_count: Number of layers.
+            stats: Full `SliceStats.to_dict()` payload.
+        """
+        self._update_job_columns(job_id, {
+            "slice_status": status,
+            "slice_error": error,
+            "slice_duration_s": duration_s,
+            "estimated_print_time_s": estimated_print_time_s,
+            "filament_used_mm": filament_used_mm,
+            "filament_used_mm3": filament_used_mm3,
+            "filament_used_g": filament_used_g,
+            "support_filament_mm3": support_filament_mm3,
+            "layer_count": layer_count,
+            "slice_stats": _dump_json(stats),
+        })
+
+    def update_job_outcome_verdict(
+        self,
+        job_id: str,
+        outcome: str,
+        source: str,
+        completed_at: datetime | None = None,
+        reported_at: datetime | None = None,
+    ) -> None:
+        """Record a print outcome together with who decided it.
+
+        Unlike `update_job_outcome`, this writes `outcome_source`, distinguishing a
+        human's "it came off the bed" from the printer merely reaching the end of the
+        file. Only the former is ground truth for training or evaluation.
+
+        A machine write never overwrites a human one. Printer events can arrive long
+        after someone has already answered, and replacing "I watched it fail" with "the
+        file finished" would destroy the only reliable label on the row. The rule lives
+        here rather than at each call site because there are several machine writers —
+        the pipeline, the OctoPrint collector, the cancel endpoint — and any one of them
+        forgetting it silently corrupts the dataset.
+
+        Args:
+            job_id: The job to update.
+            outcome: The outcome value to store.
+            source: "machine" or "user".
+            completed_at: When the job finished, if it is being closed out now.
+            reported_at: When the verdict was given; defaults to now for user reports.
+        """
+        if source == "machine":
+            existing = self.get_job(job_id)
+            if existing is not None and existing.outcome_source == "user":
+                logger.info(
+                    "Job %s already has a user-reported outcome (%s); ignoring machine "
+                    "outcome %s", job_id, existing.outcome, outcome,
+                )
+                return
+
+        if source == "user" and reported_at is None:
+            reported_at = datetime.now(timezone.utc)
+        # outcome is written unconditionally: _update_job_columns skips None, and an
+        # outcome always has a value, so no branch is needed here.
+        self._update_job_columns(job_id, {
+            "outcome": outcome,
+            "outcome_source": source,
+            "completed_at": _dt_to_str(completed_at),
+            "outcome_reported_at": _dt_to_str(reported_at),
+        })
+
+    # ── Job events ────────────────────────────────────────────────────────────
+    def insert_job_event(self, event: JobEvent) -> None:
+        """Insert an engagement event for a job.
+
+        Args:
+            event: The JobEvent to store.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO job_event (event_id, job_id, occurred_at, kind, detail) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    event.event_id,
+                    event.job_id,
+                    _dt_to_str(event.occurred_at),
+                    event.kind,
+                    _dump_json(event.detail),
+                ),
+            )
+            self.conn.commit()
+
+    def record_job_event(self, job_id: str, kind: str, detail: dict | None = None) -> JobEvent:
+        """Build, store and return a job event stamped with the current time.
+
+        Args:
+            job_id: The job the event belongs to.
+            kind: One of `JOB_EVENT_KINDS`.
+            detail: Optional event-specific payload.
+
+        Returns:
+            The stored JobEvent.
+        """
+        event = JobEvent(
+            event_id=str(uuid.uuid4()),
+            job_id=job_id,
+            occurred_at=datetime.now(timezone.utc),
+            kind=kind,
+            detail=detail,
+        )
+        self.insert_job_event(event)
+        return event
+
+    def get_job_events(self, job_id: str, kind: str | None = None) -> list[JobEvent]:
+        """Retrieve a job's engagement events in chronological order.
+
+        Args:
+            job_id: The job to look up.
+            kind: Restrict to a single event kind when given.
+
+        Returns:
+            A list of JobEvent objects, oldest first.
+        """
+        sql = "SELECT * FROM job_event WHERE job_id = ?"
+        params: list = [job_id]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        sql += " ORDER BY occurred_at ASC"
+
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+
+        return [
+            JobEvent(
+                event_id=row["event_id"],
+                job_id=row["job_id"],
+                occurred_at=_str_to_dt(row["occurred_at"]),  # type: ignore
+                kind=row["kind"],
+                detail=_load_json(row["detail"]),
+            )
+            for row in rows
+        ]
+
+    def count_job_events(self, kind: str) -> int:
+        """Count events of one kind across all jobs.
+
+        Args:
+            kind: The event kind to count.
+
+        Returns:
+            The number of matching events.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM job_event WHERE kind = ?", (kind,))
+            return int(cursor.fetchone()[0])
+
+    def feedback_funnel(self) -> dict:
+        """Count how many prompted jobs actually got an answer.
+
+        Counted over *jobs that were prompted*, not raw event totals. A verdict can be
+        given through a path that never showed a prompt — opening a job directly, for
+        instance — so dividing total reports by total prompts can exceed 1 and stops
+        meaning anything. The denominator here is the set of people who were asked.
+
+        Returns:
+            A mapping with `prompted`, `answered`, `dismissed` and `unanswered` job
+            counts. `answered` and `dismissed` are subsets of `prompted`.
+        """
+        def distinct_jobs(cursor, kind: str) -> set:
+            cursor.execute(
+                "SELECT DISTINCT job_id FROM job_event WHERE kind = ?", (kind,)
+            )
+            return {row[0] for row in cursor.fetchall()}
+
+        with self._lock:
+            cursor = self.conn.cursor()
+            prompted = distinct_jobs(cursor, "outcome_prompt_shown")
+            answered = distinct_jobs(cursor, "outcome_reported") & prompted
+            dismissed = distinct_jobs(cursor, "outcome_prompt_dismissed") & prompted
+
+        return {
+            "prompted": len(prompted),
+            "answered": len(answered),
+            # A job can be dismissed and later answered; the two overlap by design.
+            "dismissed": len(dismissed - answered),
+            "unanswered": len(prompted - answered),
+        }
+
+    def increment_download_count(self, job_id: str) -> None:
+        """Bump a job's denormalised download counter.
+
+        The authoritative per-download records are `job_event` rows; this column exists
+        so the common "was this ever downloaded" query needs no join.
+
+        Args:
+            job_id: The job that was downloaded.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE print_job SET download_count = COALESCE(download_count, 0) + 1 "
+                "WHERE job_id = ?",
+                (job_id,),
+            )
+            self.conn.commit()
+
+    def get_jobs_awaiting_verdict(self, limit: int = 50) -> list[PrintJob]:
+        """Retrieve jobs whose printer finished but whose outcome no human has confirmed.
+
+        Args:
+            limit: Maximum number of jobs to return.
+
+        Returns:
+            PrintJob rows in `awaiting_verdict`, most recently completed first.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM print_job WHERE outcome = 'awaiting_verdict' "
+                "ORDER BY completed_at DESC LIMIT ?",
+                (limit,),
+            )
+            rows = cursor.fetchall()
+        return [_row_to_job(row) for row in rows]
 
     def _update_job_columns(self, job_id: str, updates: dict) -> None:
         """Write the non-None entries of `updates` to a print_job row.
@@ -526,30 +963,7 @@ class TelemetryDB:
             if not row:
                 return None
 
-        # A database migrated mid-session may lack the newer columns; read defensively.
-        keys = {k: row[k] for k in row.keys()}
-
-        return PrintJob(
-            job_id=row['job_id'],
-            prompt=row['prompt'],
-            printer_id=row['printer_id'],
-            printer_firmware=row['printer_firmware'],  # type: ignore
-            slicer=row['slicer'],
-            profile_name=row['profile_name'],
-            started_at=_str_to_dt(row['started_at']),  # type: ignore
-            completed_at=_str_to_dt(row['completed_at']),
-            outcome=row['outcome'],  # type: ignore
-            generation_model=keys.get('generation_model'),
-            generation_model_version=keys.get('generation_model_version'),
-            generation_backend=keys.get('generation_backend'),
-            generation_params=_load_json(keys.get('generation_params')),
-            generation_cost_usd=keys.get('generation_cost_usd'),
-            generation_duration_s=keys.get('generation_duration_s'),
-            mesh_features=_load_json(keys.get('mesh_features')),
-            printability_score=keys.get('printability_score'),
-            printability_verdict=keys.get('printability_verdict'),
-            printability_report=_load_json(keys.get('printability_report')),
-        )
+        return _row_to_job(row)
 
     def get_samples(self, job_id: str, limit: int = 500) -> list[TelemetrySample]:
         """Retrieve TelemetrySamples for a specific print job.

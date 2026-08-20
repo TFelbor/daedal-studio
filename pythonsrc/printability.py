@@ -515,6 +515,119 @@ def _check_self_intersections(mesh: trimesh.Trimesh) -> CheckResult:
 # ── Evaluation ────────────────────────────────────────────────────────────────────
 
 
+def _build_features(
+    mesh: trimesh.Trimesh,
+    *,
+    extents,
+    components,
+    floating,
+    enclosed,
+    boundary_edges,
+    non_manifold_edges,
+    degenerate_faces,
+    thickness,
+    thickness_tol,
+    overhang_frac,
+    bed_contact,
+) -> Dict[str, Any]:
+    """Assemble the mesh feature snapshot from already-computed measurements.
+
+    Split out so `evaluate_printability` and `extract_features` produce an identical
+    dictionary, and a full report's `features` can be compared field-for-field against
+    a cheap pre-repair snapshot.
+
+    Args:
+        mesh: The mesh being described.
+        extents: Bounding-box extents in millimetres.
+        components: Total connected component count.
+        floating: Components not touching the bed.
+        enclosed: Components nested inside another (sealed cavities).
+        boundary_edges: Edges belonging to exactly one face.
+        non_manifold_edges: Edges shared by three or more faces.
+        degenerate_faces: Zero-area face count.
+        thickness: Measured minimum wall thickness, or None.
+        thickness_tol: Measurement tolerance for `thickness`.
+        overhang_frac: Fraction of surface area overhanging past the profile limit.
+        bed_contact: First-layer footprint in square millimetres.
+
+    Returns:
+        The feature dictionary stored on the telemetry row.
+    """
+    return {
+        "face_count": int(len(mesh.faces)),
+        "vertex_count": int(len(mesh.vertices)),
+        "is_watertight": bool(mesh.is_watertight),
+        "is_winding_consistent": bool(mesh.is_winding_consistent),
+        "volume_mm3": round(float(mesh.volume), 3) if mesh.is_volume else None,
+        "surface_area_mm2": round(float(mesh.area), 3),
+        "extent_mm": [round(float(e), 3) for e in extents],
+        "euler_number": int(mesh.euler_number),
+        "component_count": components,
+        "floating_component_count": floating,
+        "enclosed_void_count": enclosed,
+        "boundary_edge_count": boundary_edges,
+        "non_manifold_edge_count": non_manifold_edges,
+        "degenerate_face_count": degenerate_faces,
+        "min_wall_thickness_mm": round(thickness, 3) if thickness is not None else None,
+        "min_wall_tolerance_mm": round(thickness_tol, 3),
+        "overhang_area_fraction": round(overhang_frac, 4),
+        "bed_contact_mm2": round(bed_contact, 2),
+    }
+
+
+def extract_features(
+    mesh: trimesh.Trimesh,
+    profile: Optional[ProcessProfile] = None,
+    *,
+    thickness: bool = True,
+) -> Dict[str, Any]:
+    """Measure a mesh without scoring it.
+
+    `evaluate_printability` only makes sense for a mesh that has been oriented and
+    scaled, but the raw mesh coming out of the sculptor is neither, and it still needs
+    describing — a before/after pair is the only way to tell a mesh that was already
+    sound from one that repair rescued.
+
+    Args:
+        mesh: Any mesh, oriented or not.
+        profile: Process limits; defaults to the FDM profile.
+        thickness: Whether to measure minimum wall thickness. This is the expensive
+            measurement (voxelisation plus a distance transform) and is meaningless on
+            an unscaled mesh, so callers describing a raw mesh should pass False.
+
+    Returns:
+        The same feature dictionary shape `evaluate_printability` reports, with
+        thickness fields None when `thickness` is False.
+    """
+    profile = profile or ProcessProfile()
+
+    boundary_edges, non_manifold_edges = _edge_counts(mesh)
+    degenerate_faces = int((~mesh.nondegenerate_faces()).sum())
+    components, floating, enclosed = _component_analysis(mesh, profile)
+    overhang_frac = _overhang_area_fraction(mesh, profile)
+    bed_contact = _bed_contact_area(mesh, profile)
+    if thickness:
+        thickness_mm, thickness_tol = _min_wall_thickness(mesh, profile)
+    else:
+        thickness_mm, thickness_tol = None, 0.0
+    extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
+
+    return _build_features(
+        mesh,
+        extents=extents,
+        components=components,
+        floating=floating,
+        enclosed=enclosed,
+        boundary_edges=boundary_edges,
+        non_manifold_edges=non_manifold_edges,
+        degenerate_faces=degenerate_faces,
+        thickness=thickness_mm,
+        thickness_tol=thickness_tol,
+        overhang_frac=overhang_frac,
+        bed_contact=bed_contact,
+    )
+
+
 def evaluate_printability(
     mesh: trimesh.Trimesh,
     profile: Optional[ProcessProfile] = None,
@@ -740,26 +853,20 @@ def evaluate_printability(
 
     checks.append(_check_self_intersections(mesh))
 
-    features = {
-        "face_count": int(len(mesh.faces)),
-        "vertex_count": int(len(mesh.vertices)),
-        "is_watertight": bool(mesh.is_watertight),
-        "is_winding_consistent": bool(mesh.is_winding_consistent),
-        "volume_mm3": round(float(mesh.volume), 3) if mesh.is_volume else None,
-        "surface_area_mm2": round(float(mesh.area), 3),
-        "extent_mm": [round(float(e), 3) for e in extents],
-        "euler_number": int(mesh.euler_number),
-        "component_count": components,
-        "floating_component_count": floating,
-        "enclosed_void_count": enclosed,
-        "boundary_edge_count": boundary_edges,
-        "non_manifold_edge_count": non_manifold_edges,
-        "degenerate_face_count": degenerate_faces,
-        "min_wall_thickness_mm": round(thickness, 3) if thickness is not None else None,
-        "min_wall_tolerance_mm": round(thickness_tol, 3),
-        "overhang_area_fraction": round(overhang_frac, 4),
-        "bed_contact_mm2": round(bed_contact, 2),
-    }
+    features = _build_features(
+        mesh,
+        extents=extents,
+        components=components,
+        floating=floating,
+        enclosed=enclosed,
+        boundary_edges=boundary_edges,
+        non_manifold_edges=non_manifold_edges,
+        degenerate_faces=degenerate_faces,
+        thickness=thickness,
+        thickness_tol=thickness_tol,
+        overhang_frac=overhang_frac,
+        bed_contact=bed_contact,
+    )
 
     score = _composite_score(checks)
     return PrintabilityReport(

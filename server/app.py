@@ -140,6 +140,24 @@ class JobRequest(BaseModel):
     blueprint_path: Optional[str] = None
     print: bool = False
     start_print: bool = False
+    # What the user was aiming at. Material is not decoration: it sets the density
+    # behind the filament mass estimate and is the likeliest explanation for a bed
+    # adhesion failure, and nothing else in the system records it.
+    material_type: Optional[str] = None
+    material_brand: Optional[str] = None
+    material_colour: Optional[str] = None
+    # Reproducibility and lineage.
+    seed: Optional[int] = None
+    parent_job_id: Optional[str] = None
+    regeneration_reason: Optional[str] = None
+
+
+class OutcomeRequest(BaseModel):
+    """A human's verdict on whether a print actually succeeded."""
+    verdict: str = Field(..., pattern="^(success|failure|cancelled)$")
+    failure_type: Optional[str] = None
+    notes: Optional[str] = None
+    layer_pct: Optional[float] = None
 
 class JobResponse(BaseModel):
     """Pydantic model representing the immediate response to a job creation."""
@@ -163,6 +181,48 @@ class JobStatusResponse(BaseModel):
     layer_height_mm: Optional[float] = None
     printability_score: Optional[float] = None
     printability_verdict: Optional[str] = None
+    material_type: Optional[str] = None
+    material_brand: Optional[str] = None
+    material_colour: Optional[str] = None
+    blueprint_seed: Optional[int] = None
+    parent_job_id: Optional[str] = None
+    download_count: int = 0
+    slice_status: Optional[str] = None
+    estimated_print_time_s: Optional[int] = None
+    filament_used_mm3: Optional[float] = None
+    filament_used_g: Optional[float] = None
+    support_filament_mm3: Optional[float] = None
+    layer_count: Optional[int] = None
+    outcome_source: Optional[str] = None
+    awaiting_verdict: bool = False
+
+
+def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float]]:
+    """Read a printer profile and pull out the nozzle diameter.
+
+    The snapshot is stored on the job because profiles are edited in place. Resolving
+    them at query time makes a finished job silently claim whatever settings the file
+    holds today, which is how a historical row ends up describing a print that never
+    happened.
+
+    Args:
+        profile_path: Absolute path to the profile JSON.
+
+    Returns:
+        A (profile dict, nozzle diameter) pair; both None when the file is unreadable.
+    """
+    try:
+        with open(profile_path, "r") as handle:
+            data = json.load(handle)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not snapshot printer profile %s: %s", profile_path, exc)
+        return None, None
+    try:
+        nozzle = float(data.get("machine_nozzle_size") or 0.4)
+    except (TypeError, ValueError):
+        nozzle = 0.4
+    return data, nozzle
+
 
 @app.on_event("startup")
 def startup_event():
@@ -266,7 +326,14 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         pipeline_args.extend(["--profile", profile])
         
     pipeline_args.append("--slice")
-        
+
+    # Forwarded so the pipeline can record them: the seed is what makes a blueprint
+    # reproducible, and the material selects the density behind the mass estimate.
+    if request.seed is not None:
+        pipeline_args.extend(["--seed", str(request.seed)])
+    if request.material_type:
+        pipeline_args.extend(["--material-type", request.material_type])
+
     if request.print:
         pipeline_args.append("--print")
     if request.start_print:
@@ -401,13 +468,29 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             returncode = process.returncode
             
             db = TelemetryDB()
-            outcome = "success" if returncode == 0 else "failure"
-            db.update_job_outcome(job_id, outcome, datetime.now(timezone.utc))
+            if returncode != 0:
+                outcome = "failure"
+            elif request.print and request.start_print:
+                # The pipeline exits as soon as the printer accepts the job, so a zero
+                # exit code means "dispatched", not "printed". Recording that as a
+                # success is how the outcome column ends up describing the software
+                # rather than the part. Only a human can close this out.
+                outcome = "awaiting_verdict"
+            else:
+                outcome = "success"
+            db.update_job_outcome_verdict(
+                job_id,
+                outcome,
+                source="machine",
+                completed_at=datetime.now(timezone.utc),
+            )
             db.close()
             await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": outcome}})
     except Exception as e:
         db = TelemetryDB()
-        db.update_job_outcome(job_id, "failure", datetime.now(timezone.utc))
+        db.update_job_outcome_verdict(
+            job_id, "failure", source="machine", completed_at=datetime.now(timezone.utc)
+        )
         db.close()
         with open(log_file, "a") as f:
             f.write(f"\nPipeline failed to start: {e}\n")
@@ -467,6 +550,8 @@ async def create_job(request: JobRequest):
     firmware, base_url, api_key = resolve_printer_target(profile_path)
     base_url = base_url or "http://localhost:5001"
 
+    process_params, nozzle_diameter_mm = _profile_snapshot(profile_path)
+
     db = TelemetryDB()
     job = PrintJob(
         job_id=job_id,
@@ -477,10 +562,29 @@ async def create_job(request: JobRequest):
         profile_name=request.profile or "default",
         started_at=None,
         completed_at=None,
-        outcome="unknown"
+        outcome="unknown",
+        material_type=request.material_type,
+        material_brand=request.material_brand,
+        material_colour=request.material_colour,
+        nozzle_diameter_mm=nozzle_diameter_mm,
+        process_params=process_params,
+        parent_job_id=request.parent_job_id,
+        regeneration_reason=request.regeneration_reason,
     )
     db.insert_job(job)
-    
+
+    # A regeneration is an implicit judgement on the parent — the user looked at that
+    # result and asked for another. Recorded against the parent, which is the job the
+    # signal is actually about.
+    if request.parent_job_id:
+        try:
+            db.record_job_event(request.parent_job_id, "regenerate", {
+                "child_job_id": job_id,
+                "reason": request.regeneration_reason,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record regenerate event: %s", exc)
+
     if request.print:
         collector = None
         if firmware in ("klipper", "moonraker"):
@@ -558,32 +662,43 @@ async def get_job(job_id: str):
                 except json.JSONDecodeError:
                     pass
             
+    # Prefer the snapshot frozen when the job was created. Reading the profile file
+    # instead means editing a profile retroactively rewrites what old jobs claim to
+    # have printed with; the live read stays only as a fallback for rows predating
+    # process_params.
     machine_name = None
     layer_height_mm = None
-    profile_path_str = job.profile_name
-    if profile_path_str and profile_path_str != "default":
-        try:
-            profile_full_path = repo_root / profile_path_str
-            if profile_full_path.exists():
-                with open(profile_full_path, "r") as pf:
-                    profile_data = json.load(pf)
-                    machine_name = profile_data.get("machine_name")
-                    layer_height_mm = profile_data.get("layer_height")
-        except Exception:
-            pass
+    if job.process_params:
+        machine_name = job.process_params.get("machine_name")
+        layer_height_mm = job.process_params.get("layer_height")
+    else:
+        profile_path_str = job.profile_name
+        if profile_path_str and profile_path_str != "default":
+            try:
+                profile_full_path = repo_root / profile_path_str
+                if profile_full_path.exists():
+                    with open(profile_full_path, "r") as pf:
+                        profile_data = json.load(pf)
+                        machine_name = profile_data.get("machine_name")
+                        layer_height_mm = profile_data.get("layer_height")
+            except Exception:
+                pass
 
-    # Determine synthetic status based on outcome
+    # Determine synthetic status based on outcome. A job awaiting a human verdict has
+    # finished as far as the software is concerned, so it maps to "completed" — the
+    # pending state is carried by `awaiting_verdict` rather than by overloading a
+    # status string every consumer already switches on.
     current_status = "queued"
     if job.outcome == "unknown":
         if job.started_at:
             current_status = "running"
-    elif job.outcome == "success":
+    elif job.outcome in ("success", "awaiting_verdict"):
         current_status = "completed"
     elif job.outcome == "cancelled":
         current_status = "cancelled"
     else:
         current_status = "failed"
-            
+
     return JobStatusResponse(
         job_id=job.job_id,
         status=current_status,
@@ -600,6 +715,20 @@ async def get_job(job_id: str):
         layer_height_mm=layer_height_mm,
         printability_score=job.printability_score,
         printability_verdict=job.printability_verdict,
+        material_type=job.material_type,
+        material_brand=job.material_brand,
+        material_colour=job.material_colour,
+        blueprint_seed=job.blueprint_seed,
+        parent_job_id=job.parent_job_id,
+        download_count=job.download_count or 0,
+        slice_status=job.slice_status,
+        estimated_print_time_s=job.estimated_print_time_s,
+        filament_used_mm3=job.filament_used_mm3,
+        filament_used_g=job.filament_used_g,
+        support_filament_mm3=job.support_filament_mm3,
+        layer_count=job.layer_count,
+        outcome_source=job.outcome_source,
+        awaiting_verdict=job.outcome == "awaiting_verdict",
     )
 
 @app.get("/jobs/{job_id}/printer-info")
@@ -694,25 +823,36 @@ async def download_job_output(job_id: str):
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
-    db.close()
-    
+
     if not job:
+        db.close()
         raise HTTPException(status_code=404, detail="Job not found")
-        
 
     gcode_path = resolve_job_artifact(job_id, "engineered_mesh.gcode")
 
     if gcode_path is None:
+        db.close()
         raise HTTPException(status_code=404, detail="File not found")
 
     # A job that never finished has no G-code of its own. Serving the flat legacy file
     # here would hand the caller some other job's print.
     is_per_job = gcode_path.parent.name == job_id
-    if not is_per_job and job.outcome not in ("success", "cancelled"):
+    if not is_per_job and job.outcome not in ("success", "cancelled", "awaiting_verdict"):
+        db.close()
         raise HTTPException(
             status_code=404,
             detail="No G-code for this job yet (job has not completed slicing).",
         )
+
+    # A download is the clearest signal that a result was worth keeping, and it is
+    # unrecoverable after the fact — recorded before the bytes stream, since the
+    # response is lazy and may be abandoned mid-flight.
+    try:
+        db.record_job_event(job_id, "download", {"artifact": "engineered_mesh.gcode"})
+        db.increment_download_count(job_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record download event for %s: %s", job_id, exc)
+    db.close()
 
     def iterfile():
         with open(gcode_path, mode="rb") as f:
@@ -915,7 +1055,9 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         where_clause = "WHERE outcome = 'success'"
     elif status == 'failed':
         where_clause = "WHERE outcome IN ('failure', 'cancelled')"
-        
+    elif status == 'awaiting_verdict':
+        where_clause = "WHERE outcome = 'awaiting_verdict'"
+
     count_query = f"SELECT COUNT(*) FROM print_job {where_clause}"
     cursor.execute(count_query, params)
     total = cursor.fetchone()[0]
@@ -924,7 +1066,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     cursor.execute(global_counts_query)
     global_counts = cursor.fetchall()
     
-    stats = {"total": 0, "running": 0, "completed": 0, "failed": 0}
+    stats = {"total": 0, "running": 0, "completed": 0, "failed": 0, "awaiting_verdict": 0}
     for row in global_counts:
         outcome = row['outcome']
         c = row['count']
@@ -933,9 +1075,13 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             stats["running"] += c
         elif outcome == "success":
             stats["completed"] += c
+        elif outcome == "awaiting_verdict":
+            # Its own bucket: counting an unconfirmed print as a failure would be as
+            # wrong as counting it as a success.
+            stats["awaiting_verdict"] += c
         else:
             stats["failed"] += c
-            
+
     query = f"SELECT * FROM print_job {where_clause} ORDER BY started_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     cursor.execute(query, params)
@@ -952,6 +1098,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         else:
             status_val = "completed"
             
+        keys = row.keys()
         jobs.append({
             "job_id": row['job_id'],
             "prompt": row['prompt'],
@@ -960,7 +1107,12 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             "started_at": row['started_at'],
             "completed_at": row['completed_at'],
             "outcome": job_outcome,
-            "status": status_val
+            "status": status_val,
+            # Read via `keys` because a database migrated mid-session may not carry
+            # these columns yet.
+            "material_type": row['material_type'] if 'material_type' in keys else None,
+            "awaiting_verdict": job_outcome == "awaiting_verdict",
+            "outcome_source": row['outcome_source'] if 'outcome_source' in keys else None,
         })
     db.close()
     return {"jobs": jobs, "total": total, "limit": limit, "offset": offset, "stats": stats}
@@ -1079,6 +1231,286 @@ async def get_failure_events(job_id: str) -> List[Dict[str, Any]]:
     events = db.get_failure_events(job_id)
     db.close()
     return [e.to_dict() for e in events]
+
+@app.get("/jobs/{job_id}/provenance")
+async def get_job_provenance(job_id: str) -> Dict[str, Any]:
+    """Return everything captured about how a job's result was produced.
+
+    Kept off `GET /jobs/{id}`, which is polled by the UI on a timer and would otherwise
+    carry a large payload on every tick. This is the endpoint to read when analysing
+    the pilot dataset.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A dictionary of blueprint, mesh, slice, target and engagement facts.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    events = db.get_job_events(job_id)
+    db.close()
+
+    return {
+        "job_id": job.job_id,
+        "prompt": job.prompt,
+        "blueprint": {
+            "model": job.blueprint_model,
+            "model_version": job.blueprint_model_version,
+            "seed": job.blueprint_seed,
+            "prompt_engineered": job.blueprint_prompt_engineered,
+            "params": job.blueprint_params,
+            "sha256": job.blueprint_sha256,
+            "duration_s": job.blueprint_duration_s,
+        },
+        "generation": {
+            "model": job.generation_model,
+            "model_version": job.generation_model_version,
+            "backend": job.generation_backend,
+            "params": job.generation_params,
+            "cost_usd": job.generation_cost_usd,
+            "duration_s": job.generation_duration_s,
+        },
+        "mesh": {
+            "raw_sha256": job.raw_mesh_sha256,
+            "raw_features": job.raw_mesh_features,
+            "repaired_sha256": job.repaired_mesh_sha256,
+            "repaired_features": job.repaired_mesh_features,
+            "printed_features": job.mesh_features,
+        },
+        "printability": {
+            "score": job.printability_score,
+            "verdict": job.printability_verdict,
+        },
+        "slice": {
+            "status": job.slice_status,
+            "error": job.slice_error,
+            "duration_s": job.slice_duration_s,
+            "estimated_print_time_s": job.estimated_print_time_s,
+            "filament_used_mm": job.filament_used_mm,
+            "filament_used_mm3": job.filament_used_mm3,
+            "filament_used_g": job.filament_used_g,
+            "support_filament_mm3": job.support_filament_mm3,
+            "layer_count": job.layer_count,
+            "stats": job.slice_stats,
+        },
+        "target": {
+            "printer_id": job.printer_id,
+            "printer_firmware": job.printer_firmware,
+            "profile_name": job.profile_name,
+            "process_params": job.process_params,
+            "nozzle_diameter_mm": job.nozzle_diameter_mm,
+            "material_type": job.material_type,
+            "material_brand": job.material_brand,
+            "material_colour": job.material_colour,
+        },
+        "engagement": {
+            "download_count": job.download_count or 0,
+            "parent_job_id": job.parent_job_id,
+            "regeneration_reason": job.regeneration_reason,
+            "events": [e.to_dict() for e in events],
+        },
+        "outcome": {
+            "outcome": job.outcome,
+            "source": job.outcome_source,
+            "reported_at": job.outcome_reported_at.isoformat() if job.outcome_reported_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        },
+    }
+
+
+# ── Print outcome feedback ────────────────────────────────────────────────────
+# The signal nothing else can supply. A printer reporting "job finished" says only
+# that the file ran to the end; whether the part survived, adhered and came off the
+# bed intact is knowable only by the person standing next to it. Everything below
+# exists to make saying so take one tap, and to measure how often people bother.
+
+@app.get("/feedback/pending")
+async def list_pending_feedback(limit: int = 50) -> Dict[str, Any]:
+    """List prints whose outcome no human has confirmed yet.
+
+    Args:
+        limit: Maximum number of jobs to return.
+
+    Returns:
+        A dictionary with the pending jobs and a count.
+    """
+    db = TelemetryDB()
+    jobs = db.get_jobs_awaiting_verdict(limit=limit)
+    db.close()
+
+    return {
+        "count": len(jobs),
+        "jobs": [
+            {
+                "job_id": job.job_id,
+                "prompt": job.prompt,
+                "printer_id": job.printer_id,
+                "material_type": job.material_type,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "estimated_print_time_s": job.estimated_print_time_s,
+                "printability_score": job.printability_score,
+            }
+            for job in jobs
+        ],
+    }
+
+
+@app.post("/jobs/{job_id}/outcome/prompt-shown")
+async def record_outcome_prompt_shown(job_id: str) -> Dict[str, Any]:
+    """Record that the outcome prompt was actually put in front of someone.
+
+    Called by the UI when a pending card first renders. Logged once per job — the
+    denominator of the pilot's response rate has to be prompts a person saw, not jobs
+    that entered the queue, and a re-render or a page refresh must not inflate it.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A dictionary reporting whether a new event was recorded.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
+    db = TelemetryDB()
+    if not db.get_job(job_id):
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    already = db.get_job_events(job_id, kind="outcome_prompt_shown")
+    if already:
+        db.close()
+        return {"recorded": False, "reason": "already shown"}
+
+    db.record_job_event(job_id, "outcome_prompt_shown")
+    db.close()
+    return {"recorded": True}
+
+
+@app.post("/jobs/{job_id}/outcome/dismiss")
+async def dismiss_outcome_prompt(job_id: str) -> Dict[str, Any]:
+    """Record that someone was asked for a verdict and chose not to give one.
+
+    A skip is data. Whether pilot users will report outcomes at all is the thing being
+    tested, so a declined prompt has to be distinguishable from one never shown. The
+    job stays in `awaiting_verdict` and can still be answered later.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A dictionary confirming the dismissal was recorded.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
+    db = TelemetryDB()
+    if not db.get_job(job_id):
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.record_job_event(job_id, "outcome_prompt_dismissed")
+    db.close()
+    return {"recorded": True}
+
+
+@app.post("/jobs/{job_id}/outcome")
+async def report_outcome(job_id: str, request: OutcomeRequest) -> Dict[str, Any]:
+    """Record a human's verdict on whether a print succeeded.
+
+    Writes `outcome_source="user"`, which is what separates ground truth from the
+    printer's own report. A failure verdict also writes a manual `FailureEvent`, so the
+    existing detector-versus-human comparison keeps working without a second code path.
+
+    Args:
+        job_id: The unique identifier of the job.
+        request: The verdict, plus optional failure details.
+
+    Returns:
+        A dictionary with the recorded outcome.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    db.update_job_outcome_verdict(job_id, request.verdict, source="user")
+
+    failure_event = None
+    if request.verdict == "failure":
+        samples = db.get_samples(job_id, limit=50)
+        failure_event = FailureEvent(
+            event_id=str(uuid.uuid4()),
+            job_id=job_id,
+            detected_at=datetime.now(timezone.utc),
+            gcode_line=samples[0].gcode_line if samples else None,
+            z_height_mm=samples[0].z_height_mm if samples else None,
+            failure_type=request.failure_type or "unknown",
+            source="manual",
+            notes=request.notes,
+            snapshot=[s.to_dict() for s in samples],
+        )
+        db.insert_failure_event(failure_event)
+
+    db.record_job_event(job_id, "outcome_reported", {
+        "verdict": request.verdict,
+        "failure_type": request.failure_type,
+        "layer_pct": request.layer_pct,
+    })
+    db.close()
+
+    await broadcaster.broadcast(job_id, {
+        "type": "job_complete",
+        "data": {"outcome": request.verdict, "outcome_source": "user"},
+    })
+
+    return {
+        "job_id": job_id,
+        "outcome": request.verdict,
+        "outcome_source": "user",
+        "failure_event_id": failure_event.event_id if failure_event else None,
+    }
+
+
+@app.get("/feedback/stats")
+async def feedback_stats() -> Dict[str, Any]:
+    """Report how often outcome prompts are actually answered.
+
+    The pilot's headline number. Counted over jobs that were prompted, so a job nobody
+    has been shown yet neither helps nor hurts the rate, and a verdict volunteered
+    without a prompt cannot push it above 1.
+
+    Returns:
+        Funnel counts, raw event totals and the derived response rate.
+    """
+    db = TelemetryDB()
+    funnel = db.feedback_funnel()
+    reported_total = db.count_job_events("outcome_reported")
+    pending = len(db.get_jobs_awaiting_verdict(limit=1000))
+    db.close()
+
+    prompted = funnel["prompted"]
+    return {
+        "prompts_shown": prompted,
+        "outcomes_reported": funnel["answered"],
+        "prompts_dismissed": funnel["dismissed"],
+        "unanswered": funnel["unanswered"],
+        # Includes verdicts given without a prompt, e.g. straight from a job page.
+        "outcomes_reported_total": reported_total,
+        "pending": pending,
+        "response_rate": round(funnel["answered"] / prompted, 4) if prompted else None,
+    }
+
 
 class ConfigUpdate(BaseModel):
     key: str

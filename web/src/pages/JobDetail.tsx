@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getJob } from '../api/client';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { createJob, getJob } from '../api/client';
 import type { JobStatusResponse, FailureEvent } from '../api/client';
 import { PhaseProgress } from '../components/PhaseProgress';
 import { PrintabilityCard } from '../components/PrintabilityCard';
@@ -10,7 +10,7 @@ import { FailureButton } from '../components/FailureButton';
 import { PrinterStatus } from '../components/PrinterStatus';
 import { PrinterStateCard } from '../components/PrinterStateCard';
 import { ServicePlaceholder } from '../components/ServicePlaceholder';
-import { ArrowLeft, Download, Loader2, AlertTriangle, Printer } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertTriangle, Printer, RefreshCw } from 'lucide-react';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
 import './JobDetail.css';
@@ -24,6 +24,43 @@ export function JobDetail() {
   const [printerConfigured, setPrinterConfigured] = useState(false);
   const [printerStatus, setPrinterStatus] = useState('Checking...');
   const [printing, setPrinting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const navigate = useNavigate();
+
+  /**
+   * Start a fresh job from this one, carrying the link between them.
+   *
+   * The link is the point. "The user asked for another one" is a judgement on this
+   * result that nothing else records, and it is unrecoverable once the two jobs sit in
+   * the database as unrelated rows.
+   */
+  const handleRegenerate = async () => {
+    if (!job) return;
+    setRegenerating(true);
+    try {
+      const created = await createJob({
+        prompt: job.prompt,
+        printer_id: job.printer_id || 'default_printer',
+        profile: job.profile_name && job.profile_name !== 'default' ? job.profile_name : '',
+        skip_visualizer: false,
+        skip_sculptor: false,
+        print: true,
+        start_print: true,
+        material_type: job.material_type || undefined,
+        material_brand: job.material_brand || undefined,
+        material_colour: job.material_colour || undefined,
+        parent_job_id: job.job_id,
+        // A new seed on purpose: regenerating means the last result was not wanted, so
+        // reusing its seed would reproduce exactly what the user rejected.
+      });
+      navigate(`/dashboard/${created.job_id}`);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Failed to regenerate');
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const { telemetrySamples, printerState, printerMeta } = useJobWebSocket(job ? job.job_id : null);
   const latestZHeight = telemetrySamples.length > 0 ? telemetrySamples[telemetrySamples.length - 1].z_height_mm : null;
@@ -192,11 +229,76 @@ export function JobDetail() {
                 <span>{new Date(job.completed_at).toLocaleString()}</span>
               </div>
             )}
-            
+            {job.material_type && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Material</span>
+                <span>{[job.material_type, job.material_brand, job.material_colour].filter(Boolean).join(' · ')}</span>
+              </div>
+            )}
+            {job.blueprint_seed != null && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Seed</span>
+                <span style={{ fontFamily: 'monospace' }}>{job.blueprint_seed}</span>
+              </div>
+            )}
+            {job.estimated_print_time_s != null && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Est. print time</span>
+                <span>{Math.round(job.estimated_print_time_s / 60)} min</span>
+              </div>
+            )}
+            {job.filament_used_g != null && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Filament</span>
+                <span>
+                  {job.filament_used_g.toFixed(1)} g
+                  {job.support_filament_mm3 ? ` (incl. supports)` : ''}
+                </span>
+              </div>
+            )}
+            {job.layer_count != null && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Layers</span>
+                <span>{job.layer_count}</span>
+              </div>
+            )}
+            {job.outcome_source && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Outcome reported by</span>
+                {/* "machine" means the printer reached the end of the file, which is
+                    not the same as the part surviving. Worth showing plainly. */}
+                <span>{job.outcome_source === 'user' ? 'a person' : 'the printer'}</span>
+              </div>
+            )}
+            {job.parent_job_id && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>Regenerated from</span>
+                <Link to={`/dashboard/${job.parent_job_id}`}>{job.parent_job_id.slice(0, 8)}</Link>
+              </div>
+            )}
+
             {job.status === 'running' && (
               <div className={styles.failureSection}>
                 <hr className={styles.divider} />
                 <FailureButton jobId={job.job_id} onReported={fetchJob} />
+              </div>
+            )}
+
+            {job.status !== 'running' && (
+              <div className={styles.failureSection}>
+                <hr className={styles.divider} />
+                {/* Regenerating is an implicit judgement on this result. Routing it
+                    through here rather than the blank new-job form is what makes the
+                    lineage recordable at all. */}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
+                >
+                  {regenerating ? <Loader2 size={16} className="spinner" /> : <RefreshCw size={16} />}
+                  Regenerate
+                </button>
               </div>
             )}
           </div>

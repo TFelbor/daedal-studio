@@ -275,6 +275,20 @@ class OctoPrintCollector:
         asyncio.create_task(send_internal_telemetry(self.job_id, printer_state_message))
 
     async def _on_event(self, event_data: Dict[str, Any]) -> None:
+        """Translate an OctoPrint print event into a job outcome.
+
+        ``PrintDone`` deliberately does not mean success. All the printer knows is that
+        it reached the end of the G-code file; whether the part adhered, warped or came
+        off the bed intact is invisible to it. Recording that as a success is how a
+        dataset ends up full of "successful" prints that were scrap, so the job moves to
+        `awaiting_verdict` and a human closes it out.
+
+        A failure, error or cancellation is different — those the machine genuinely
+        observed, so they are recorded as machine-sourced outcomes directly.
+
+        Args:
+            event_data: The OctoPrint event payload.
+        """
         if not isinstance(event_data, dict):
             return
 
@@ -284,9 +298,18 @@ class OctoPrintCollector:
         if event_type in ("PrintFailed", "Error"):
             outcome = "failure"
         elif event_type == "PrintDone":
-            outcome = "success"
+            outcome = "awaiting_verdict"
         elif event_type == "PrintCancelled":
             outcome = "cancelled"
 
-        if outcome:
-            self.db.update_job_outcome(self.job_id, outcome, datetime.now(timezone.utc))
+        if not outcome:
+            return
+
+        # A human verdict already on the row wins; the guard lives in
+        # update_job_outcome_verdict so every machine writer inherits it.
+        self.db.update_job_outcome_verdict(
+            self.job_id,
+            outcome,
+            source="machine",
+            completed_at=datetime.now(timezone.utc),
+        )

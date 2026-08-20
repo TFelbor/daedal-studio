@@ -1,0 +1,190 @@
+/* The outcome prompt.
+ *
+ * Designed for one-tap answering: the two verdict buttons are the largest targets on
+ * the card, and nothing between seeing the card and answering it requires reading.
+ * Failure detail is progressive — it appears only after someone has already said the
+ * print failed, so the cheap answer is never gated behind the detailed one.
+ */
+
+.banner {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--highlight-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+
+.header:hover {
+  background: var(--surface-muted);
+}
+
+.headerIcon {
+  color: var(--highlight-color);
+  flex-shrink: 0;
+}
+
+.headerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerTitle {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.headerSub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+
+.list {
+  border-top: 1px solid var(--border-color);
+}
+
+.card {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.card:last-child {
+  border-bottom: none;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.prompt {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* Verdict buttons carry the weight: they are what the card is for. */
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.verdict:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.verdict:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.clean {
+  border-color: #16a34a;
+  color: #16a34a;
+}
+
+.clean:hover:not(:disabled) {
+  background: #16a34a;
+  color: #fff;
+}
+
+.failed {
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+.failed:hover:not(:disabled) {
+  background: var(--danger-color);
+  color: #fff;
+}
+
+/* Skip is deliberately quiet but present. A declined prompt is a measurement; hiding
+ * the option would only turn it into an unanswered one. */
+.skip {
+  border-color: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.skip:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.detail {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.detailRow {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.detailLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.error {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--danger-color);
+}
+
+.thanks {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #16a34a;
+  font-size: 0.9rem;
+  font-weight: 600;
+}

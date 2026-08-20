@@ -36,8 +36,12 @@ class PrintJob:
     completed_at: datetime | None
     """The timestamp when the print job completed or None if incomplete."""
     
-    outcome: Literal["success", "failure", "cancelled", "unknown"]
-    """The final outcome of the print job."""
+    outcome: Literal["success", "failure", "cancelled", "unknown", "awaiting_verdict"]
+    """The final outcome of the print job.
+
+    ``awaiting_verdict`` means the printer reported the job finished but no human has
+    confirmed whether the part actually came off the bed. See ``outcome_source``.
+    """
 
     # ── Generation provenance ─────────────────────────────────────────────────
     # Which model produced the mesh, and what it cost. Retro-labelling this is
@@ -79,15 +83,141 @@ class PrintJob:
     printability_report: Dict[str, Any] | None = None
     """Full per-check printability report as produced by `PrintabilityReport.to_dict()`."""
 
+    # ── Blueprint provenance (Phase 1) ────────────────────────────────────────
+    # Kept under a `blueprint_` prefix rather than folded into `generation_*`, which is
+    # documented and read elsewhere as the *sculptor's* provenance. Without these a run
+    # cannot be reproduced at all: the seed was previously derived from the wall clock
+    # and thrown away, and the prompt actually sent to FLUX is not the user's prompt.
+
+    blueprint_model: str | None = None
+    """Text-to-image model that produced the blueprint, e.g. "FLUX.1-schnell"."""
+
+    blueprint_model_version: str | None = None
+    """Model revision or HuggingFace repo id."""
+
+    blueprint_seed: int | None = None
+    """The RNG seed actually used. Required to reproduce a blueprint."""
+
+    blueprint_prompt_engineered: str | None = None
+    """The full string fed to the model, including the clay-render suffix the
+    visualizer appends. Differs from `prompt`, which is what the user typed."""
+
+    blueprint_params: Dict[str, Any] | None = None
+    """Conditioning settings: steps, guidance_scale, width, height."""
+
+    blueprint_sha256: str | None = None
+    """SHA-256 of the blueprint PNG. Identifies user-supplied images under
+    `--skip-visualizer`, where no seed or prompt exists."""
+
+    blueprint_duration_s: float | None = None
+    """Wall-clock seconds spent generating the blueprint."""
+
+    # ── Mesh lineage ──────────────────────────────────────────────────────────
+    # `mesh_features` above stays the *printed* mesh. These two make repair's effect
+    # measurable: without a before/after pair there is no way to tell a mesh that was
+    # fine from one that repair rescued.
+
+    raw_mesh_sha256: str | None = None
+    """SHA-256 of the sculptor's raw mesh, before any repair."""
+
+    raw_mesh_features: Dict[str, Any] | None = None
+    """Geometry features of the raw mesh, as produced by `printability.extract_features`."""
+
+    repaired_mesh_sha256: str | None = None
+    """SHA-256 of the engineered mesh, after repair, scaling and optional hollowing."""
+
+    repaired_mesh_features: Dict[str, Any] | None = None
+    """Geometry features of the repaired mesh."""
+
+    # ── Slicing ───────────────────────────────────────────────────────────────
+
+    slice_status: Literal["success", "failed", "skipped"] | None = None
+    """Whether CuraEngine produced G-code for this job."""
+
+    slice_error: str | None = None
+    """Slicer error text when `slice_status` is "failed"."""
+
+    slice_duration_s: float | None = None
+    """Wall-clock seconds spent slicing."""
+
+    estimated_print_time_s: int | None = None
+    """Slicer's print time estimate in seconds."""
+
+    filament_used_mm: float | None = None
+    """Total filament length extruded, in millimetres."""
+
+    filament_used_mm3: float | None = None
+    """Total filament volume extruded, in cubic millimetres."""
+
+    filament_used_g: float | None = None
+    """Total filament mass, derived from volume and material density. None when the
+    material is unknown."""
+
+    support_filament_mm3: float | None = None
+    """Filament volume spent on support structures, in cubic millimetres."""
+
+    layer_count: int | None = None
+    """Number of layers in the sliced G-code."""
+
+    slice_stats: Dict[str, Any] | None = None
+    """Full slice statistics: per-feature-type extrusion breakdown and the raw
+    G-code header, as produced by `gcode_stats.SliceStats.to_dict()`."""
+
+    # ── Target process and material ───────────────────────────────────────────
+
+    material_type: str | None = None
+    """Filament type: PLA, PETG, ABS, TPU, ASA, other."""
+
+    material_brand: str | None = None
+    """Filament brand, free text."""
+
+    material_colour: str | None = None
+    """Filament colour, free text."""
+
+    nozzle_diameter_mm: float | None = None
+    """Nozzle diameter used, in millimetres."""
+
+    process_params: Dict[str, Any] | None = None
+    """Snapshot of the resolved printer profile, frozen when the job was created.
+
+    Read this rather than the profile file: profiles are edited in place, so resolving
+    them at query time makes a historical job silently claim settings it never used.
+    """
+
+    # ── Lineage and engagement ────────────────────────────────────────────────
+
+    parent_job_id: str | None = None
+    """The job this one was regenerated from, forming a lineage chain."""
+
+    regeneration_reason: str | None = None
+    """Why the user regenerated, when they said."""
+
+    download_count: int = 0
+    """How many times this job's G-code has been downloaded. Individual events with
+    timestamps live in the `job_event` table."""
+
+    # ── Human-reported outcome ────────────────────────────────────────────────
+
+    outcome_source: Literal["machine", "user"] | None = None
+    """Who decided `outcome`. "machine" means the printer reported the job finished,
+    which is not the same as the part surviving. Only "user" is ground truth."""
+
+    outcome_reported_at: datetime | None = None
+    """When a human recorded their verdict."""
+
     def __post_init__(self):
         """Validate the instantiated PrintJob fields.
 
         Raises:
             ValueError: If the outcome field is not a valid predefined state.
         """
-        valid_outcomes = {"success", "failure", "cancelled", "unknown"}
+        valid_outcomes = {"success", "failure", "cancelled", "unknown", "awaiting_verdict"}
         if self.outcome not in valid_outcomes:
             raise ValueError(f"Invalid outcome: {self.outcome}")
+        if self.outcome_source is not None and self.outcome_source not in {"machine", "user"}:
+            raise ValueError(f"Invalid outcome_source: {self.outcome_source}")
+        if self.slice_status is not None and self.slice_status not in {"success", "failed", "skipped"}:
+            raise ValueError(f"Invalid slice_status: {self.slice_status}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the PrintJob to a JSON-serializable dictionary.
@@ -100,6 +230,8 @@ class PrintJob:
             d['started_at'] = self.started_at.isoformat()
         if self.completed_at:
             d['completed_at'] = self.completed_at.isoformat()
+        if self.outcome_reported_at:
+            d['outcome_reported_at'] = self.outcome_reported_at.isoformat()
         return d
 
     @classmethod
@@ -116,17 +248,19 @@ class PrintJob:
         for f in dataclasses.fields(cls):
             if f.name in data:
                 d[f.name] = data[f.name]
+            elif f.default is not dataclasses.MISSING:
+                # Fields with a non-None default (download_count) must keep it rather
+                # than being coerced to None, which would violate their declared type.
+                d[f.name] = f.default
             else:
                 d[f.name] = None
-                
-        if d.get('started_at') and isinstance(d['started_at'], str):
-            s = d['started_at']
-            if s.endswith('Z'): s = s[:-1] + '+00:00'
-            d['started_at'] = datetime.fromisoformat(s)
-        if d.get('completed_at') and isinstance(d['completed_at'], str):
-            c = d['completed_at']
-            if c.endswith('Z'): c = c[:-1] + '+00:00'
-            d['completed_at'] = datetime.fromisoformat(c)
+
+        for key in ('started_at', 'completed_at', 'outcome_reported_at'):
+            value = d.get(key)
+            if value and isinstance(value, str):
+                if value.endswith('Z'):
+                    value = value[:-1] + '+00:00'
+                d[key] = datetime.fromisoformat(value)
         return cls(**d)
 @dataclasses.dataclass
 class TelemetrySample:
@@ -278,3 +412,86 @@ class FailureEvent:
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['detected_at'] = datetime.fromisoformat(s)
         return cls(**d)
+
+
+JOB_EVENT_KINDS = (
+    "download",
+    "regenerate",
+    "outcome_prompt_shown",
+    "outcome_prompt_dismissed",
+    "outcome_reported",
+)
+"""Recognised `JobEvent.kind` values.
+
+These are the user-engagement signals that cannot be reconstructed after the fact:
+nothing else records that someone downloaded a result, asked for another one, or was
+shown a feedback prompt and chose not to answer it.
+"""
+
+
+@dataclasses.dataclass
+class JobEvent:
+    """A timestamped user-engagement event attached to a print job.
+
+    One table rather than a column per signal, because the pilot's central question —
+    will people report print outcomes — is answered by comparing the counts of
+    ``outcome_prompt_shown`` and ``outcome_reported``, and new signals should not each
+    require a schema migration.
+    """
+
+    event_id: str
+    """UUID string uniquely identifying this event."""
+
+    job_id: str
+    """Foreign key linking to the PrintJob."""
+
+    occurred_at: datetime
+    """When the event happened."""
+
+    kind: str
+    """One of `JOB_EVENT_KINDS`."""
+
+    detail: Dict[str, Any] | None = None
+    """Event-specific payload, e.g. the artifact name for a download."""
+
+    def __post_init__(self):
+        """Validate the event kind.
+
+        Raises:
+            ValueError: If `kind` is not a recognised event kind.
+        """
+        if self.kind not in JOB_EVENT_KINDS:
+            raise ValueError(f"Invalid job event kind: {self.kind}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the JobEvent to a JSON-serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary representation of the JobEvent.
+        """
+        d = dataclasses.asdict(self)
+        d['occurred_at'] = self.occurred_at.isoformat()
+        return d
+
+    @classmethod
+    def from_dict(cls: Type[JobEvent], data: Dict[str, Any]) -> JobEvent:
+        """Create a JobEvent instance from a dictionary.
+
+        Args:
+            data: A dictionary containing JobEvent properties.
+
+        Returns:
+            JobEvent: An initialized JobEvent object.
+        """
+        occurred_at = data.get('occurred_at')
+        if isinstance(occurred_at, str):
+            if occurred_at.endswith('Z'):
+                occurred_at = occurred_at[:-1] + '+00:00'
+            occurred_at = datetime.fromisoformat(occurred_at)
+        return cls(
+            event_id=data['event_id'],
+            job_id=data['job_id'],
+            occurred_at=occurred_at,
+            kind=data['kind'],
+            detail=data.get('detail'),
+        )

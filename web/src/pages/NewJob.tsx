@@ -4,7 +4,7 @@ import { BlueprintPreview } from '../components/BlueprintPreview';
 import { MeshViewer } from '../components/MeshViewer';
 import { PipelineProgressBar } from '../components/PipelineProgressBar';
 import { JobControlPanel } from '../components/JobControlPanel';
-import { createJob, getJob, listJobs } from '../api/client';
+import { createJob, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
 import { getConfig } from '../api/config';
 import './NewJob.css';
 import styles from './NewJob.module.css';
@@ -17,6 +17,11 @@ interface PhaseStatus {
 
 export function NewJob() {
   const [prompt, setPrompt] = useState('');
+  const [materialType, setMaterialType] = useState('PLA');
+  const [materialBrand, setMaterialBrand] = useState('');
+  const [materialColour, setMaterialColour] = useState('');
+  const [seed, setSeed] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const [jobId, setJobId] = useState<string | null>(null);
@@ -226,7 +231,15 @@ export function NewJob() {
         skip_visualizer: configDefaults.skipVisualizer,
         skip_sculptor: configDefaults.skipSculptor,
         print: true,
-        start_print: true
+        start_print: true,
+        // Recorded per job rather than assumed from the printer: spools get swapped
+        // without anyone telling the app, and material is the likeliest explanation
+        // for a bed adhesion failure after the fact.
+        material_type: materialType || undefined,
+        material_brand: materialBrand || undefined,
+        material_colour: materialColour || undefined,
+        // Blank means "draw one and record it", which is what we want by default.
+        seed: seed.trim() ? Number(seed) : undefined,
       });
       setJobId(data.job_id);
 
@@ -298,7 +311,63 @@ export function NewJob() {
               autoFocus
               disabled={!printerReady}
             />
-            
+
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+              <label htmlFor="material-type" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Material
+              </label>
+              <select
+                id="material-type"
+                className="input"
+                value={materialType}
+                onChange={(e) => setMaterialType(e.target.value)}
+                disabled={!printerReady}
+                style={{ width: 'auto', minWidth: '110px' }}
+              >
+                {MATERIAL_TYPES.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowAdvanced((v) => !v)}
+                style={{ marginLeft: 'auto', fontSize: '0.82rem' }}
+              >
+                {showAdvanced ? 'Hide details' : 'More details'}
+              </button>
+            </div>
+
+            {showAdvanced && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.6rem', marginTop: '0.6rem' }}>
+                <input
+                  className="input"
+                  placeholder="Filament brand"
+                  value={materialBrand}
+                  onChange={(e) => setMaterialBrand(e.target.value)}
+                  disabled={!printerReady}
+                />
+                <input
+                  className="input"
+                  placeholder="Colour"
+                  value={materialColour}
+                  onChange={(e) => setMaterialColour(e.target.value)}
+                  disabled={!printerReady}
+                />
+                {/* Blank draws a fresh seed and records it. Filling it in reproduces a
+                    previous blueprint exactly — the point of recording it at all. */}
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  placeholder="Seed (blank = random)"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  disabled={!printerReady}
+                />
+              </div>
+            )}
+
             <div className={styles.actions}>
               <button 
                 type="submit" 

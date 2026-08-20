@@ -124,6 +124,204 @@ def _record_generation(args, model, model_version, backend, params, cost_usd, du
         logger.warning("Could not record generation provenance: %s", exc)
 
 
+def _file_sha256(path) -> str | None:
+    """Hash a file's contents.
+
+    Args:
+        path: Path to the file.
+
+    Returns:
+        The lowercase hex digest, or None if the file cannot be read.
+    """
+    import hashlib
+
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError as exc:
+        logger.warning("Could not hash %s: %s", path, exc)
+        return None
+
+
+def _record_blueprint(args, blueprint_path, result=None) -> None:
+    """Persist how this job's blueprint was produced.
+
+    The seed is the reason this exists. It used to be derived from the wall clock
+    inside the visualizer and discarded, so no result in the system could be
+    reproduced or compared against another. `result` is None when Phase 1 was skipped
+    and the image came from elsewhere; the hash is still recorded, because it is the
+    only thing that identifies a user-supplied blueprint.
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        blueprint_path: Path to the blueprint PNG.
+        result: The visualizer's BlueprintResult, when Phase 1 ran.
+    """
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        db = TelemetryDB()
+        db.update_job_blueprint(
+            args.job_id,
+            model=getattr(result, "model_id", None),
+            model_version=getattr(result, "model_id", None),
+            seed=getattr(result, "seed", None),
+            prompt_engineered=getattr(result, "engineered_prompt", None),
+            params=getattr(result, "params", None),
+            sha256=_file_sha256(blueprint_path),
+            duration_s=getattr(result, "duration_s", None),
+        )
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record blueprint provenance: %s", exc)
+
+
+def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
+    """Persist a before/after description of the mesh around repair.
+
+    Repair is the pipeline's least observable step: it can rescue a broken mesh or
+    mangle a sound one, and afterwards only the result survives. Hashes plus feature
+    snapshots make the difference measurable without keeping the geometry.
+
+    Wall thickness is skipped on the raw mesh: it is the expensive measurement, and
+    the raw mesh has not been scaled to millimetres yet, so the number would be
+    meaningless as well as slow.
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        raw_mesh_path: The sculptor's output, before repair.
+        repaired_mesh_path: The engineer's output, after repair.
+    """
+    if not args.job_id:
+        return
+    try:
+        import trimesh
+
+        try:
+            from printability import extract_features
+        except ImportError:
+            from pythonsrc.printability import extract_features
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        def describe(path, *, thickness):
+            if not Path(path).exists():
+                return None, None
+            try:
+                mesh = trimesh.load(str(path), force="mesh")
+                return _file_sha256(path), extract_features(mesh, thickness=thickness)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not describe mesh %s: %s", path, exc)
+                return _file_sha256(path), None
+
+        raw_hash, raw_features = describe(raw_mesh_path, thickness=False)
+        repaired_hash, repaired_features = describe(repaired_mesh_path, thickness=True)
+
+        db = TelemetryDB()
+        db.update_job_mesh_lineage(
+            args.job_id,
+            raw_sha256=raw_hash,
+            raw_features=raw_features,
+            repaired_sha256=repaired_hash,
+            repaired_features=repaired_features,
+        )
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record mesh lineage: %s", exc)
+
+
+def _record_slice(args, gcode_path, duration_s, status="success", error=None) -> None:
+    """Persist the slicer's verdict and its material estimates.
+
+    Called on failure as well as success: "this mesh could not be sliced" is a result,
+    and a dataset that only contains successful slices cannot be used to predict which
+    meshes will fail.
+
+    Statistics come from `gcode_stats`, which derives them from the E axis rather than
+    the G-code header — CuraEngine's CLI leaves the header's filament figure at zero.
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        gcode_path: The produced G-code, when the slice succeeded.
+        duration_s: Wall-clock slicing seconds.
+        status: "success", "failed" or "skipped".
+        error: Slicer error text, when it failed.
+    """
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        stats = None
+        if status == "success" and gcode_path and Path(gcode_path).exists():
+            try:
+                try:
+                    from gcode_stats import parse_gcode_file
+                except ImportError:
+                    from pythonsrc.gcode_stats import parse_gcode_file
+
+                stats = parse_gcode_file(
+                    gcode_path,
+                    filament_diameter_mm=_filament_diameter(args),
+                    material_type=getattr(args, "material_type", None),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not parse G-code statistics: %s", exc)
+
+        db = TelemetryDB()
+        db.update_job_slice(
+            args.job_id,
+            status=status,
+            error=error,
+            duration_s=round(duration_s, 2),
+            estimated_print_time_s=getattr(stats, "estimated_print_time_s", None),
+            filament_used_mm=getattr(stats, "filament_used_mm", None),
+            filament_used_mm3=getattr(stats, "filament_used_mm3", None),
+            filament_used_g=getattr(stats, "filament_used_g", None),
+            support_filament_mm3=getattr(stats, "support_filament_mm3", None),
+            layer_count=getattr(stats, "layer_count", None),
+            stats=stats.to_dict() if stats else None,
+        )
+        db.close()
+
+        if stats:
+            print(
+                f"[P2P] Slice stats: {stats.filament_used_mm / 1000:.2f}m filament, "
+                f"{stats.layer_count} layers, ~{(stats.estimated_print_time_s or 0) / 60:.0f}min",
+                flush=True,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record slice statistics: %s", exc)
+
+
+def _filament_diameter(args) -> float:
+    """Resolve the filament diameter to convert extruded length into volume.
+
+    Args:
+        args: Parsed CLI arguments, whose --profile may name a printer profile.
+
+    Returns:
+        The diameter in millimetres, defaulting to 1.75 when the profile is silent.
+    """
+    try:
+        from gcode_stats import DEFAULT_FILAMENT_DIAMETER_MM
+    except ImportError:
+        from pythonsrc.gcode_stats import DEFAULT_FILAMENT_DIAMETER_MM
+
+    profile_path = getattr(args, "profile", None)
+    if not profile_path:
+        return DEFAULT_FILAMENT_DIAMETER_MM
+    try:
+        with open(profile_path, "r") as handle:
+            return float(json.load(handle).get("material_diameter", DEFAULT_FILAMENT_DIAMETER_MM))
+    except Exception:  # noqa: BLE001
+        return DEFAULT_FILAMENT_DIAMETER_MM
+
+
 def _phase_start(phase_num: int) -> float:
     """Print a phase start banner and return the start timestamp."""
     name = _PHASE_NAMES.get(phase_num, "Unknown")
@@ -207,11 +405,14 @@ def run(args: argparse.Namespace) -> None:
             from visualizer import Visualizer
 
             viz = Visualizer()
-            viz.generate_blueprint(
+            blueprint_result = viz.generate_blueprint(
                 prompt=args.prompt,
                 output_path=blueprint_path,
                 num_inference_steps=args.steps,
+                seed=args.seed,
             )
+            print(f"[P2P] Blueprint seed: {blueprint_result.seed}", flush=True)
+            _record_blueprint(args, blueprint_path, blueprint_result)
             _phase_pass(1, t0, str(blueprint_path))
         except Exception as exc:
             _phase_fail(1, t0, exc)
@@ -235,6 +436,12 @@ def run(args: argparse.Namespace) -> None:
             shutil.copy2(blueprint_path, outputs_dir / "blueprint.png")
         except Exception as exc:
             logger.warning("Could not snapshot blueprint for job %s: %s", args.job_id, exc)
+
+    # A skipped Phase 1 has no seed or prompt to record, but the image still needs
+    # identifying — without a hash there is nothing to distinguish two runs that were
+    # handed different blueprints.
+    if args.skip_visualizer and blueprint_path.exists():
+        _record_blueprint(args, blueprint_path, None)
 
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
@@ -285,6 +492,7 @@ def run(args: argparse.Namespace) -> None:
             hollow=args.hollow,
             wall_thickness=args.wall,
         )
+        _record_mesh_lineage(args, raw_mesh_path, final_mesh_path)
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:
         _phase_fail(3, t0, exc)
@@ -379,9 +587,16 @@ def run(args: argparse.Namespace) -> None:
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
             )
+            _record_slice(args, gcode_path, time.time() - t0, status="success")
             _phase_pass(4, t0, str(gcode_path))
         except Exception as exc:
+            # Recorded before _phase_fail, which exits the process. A mesh that could
+            # not be sliced is a data point, and a dataset holding only successful
+            # slices cannot predict which meshes will fail.
+            _record_slice(args, None, time.time() - t0, status="failed", error=str(exc))
             _phase_fail(4, t0, exc)
+    elif args.job_id:
+        _record_slice(args, None, 0.0, status="skipped")
 
     # ── Phase 5: Operator ─────────────────────────────────────────────────────
     if args.print:
@@ -534,10 +749,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Stop before slicing if the printability score is below SCORE (0-100). "
              "Off by default — printability is advisory and only recorded.",
     )
+    # Material is a pipeline input, not just a label: it sets the density used to turn
+    # extruded volume into grams, and it is the field most likely to explain a bed
+    # adhesion failure after the fact.
+    telemetry.add_argument(
+        "--material-type",
+        default=None,
+        metavar="TYPE",
+        help="Filament type (PLA, PETG, ABS, TPU, ASA); also selects the density used "
+             "for the filament mass estimate",
+    )
 
     # Phase 1 options
     p1 = parser.add_argument_group("Phase 1 — Visualizer")
     p1.add_argument("--steps", type=int, default=4, metavar="N", help="Diffusion inference steps")
+    p1.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="RNG seed for the blueprint; a random one is drawn, reported and recorded if omitted",
+    )
 
     # Phase 2 options
     p2 = parser.add_argument_group("Phase 2 — Sculptor")

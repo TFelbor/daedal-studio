@@ -5,6 +5,7 @@ import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
+import { OutcomeFeedback } from './components/OutcomeFeedback';
 import { LayoutDashboard, PlusCircle, Settings, Monitor, MoonStar, SunMedium } from 'lucide-react';
 import { toggleTheme } from './theme';
 import styles from './App.module.css';
@@ -62,6 +63,9 @@ function App() {
     <BrowserRouter>
       <Navigation />
       <main className="container">
+        {/* Sits in the shell rather than on one page: a user who finished a print and
+            navigated elsewhere is exactly the person we need an answer from. */}
+        <OutcomeFeedback />
         <Routes>
           <Route path="/" element={<NewJob />} />
           <Route path="/dashboard" element={<JobList />} />
