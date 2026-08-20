@@ -34,9 +34,15 @@ up:
 	docker compose -f $(COMPOSE_FILE) up api-server
 
 # Start the API server natively on the host (required for MPS acceleration on Mac)
+# Docker services get .env through compose's `env_file:`; a native run got nothing,
+# so credentials in .env (HF_TOKEN, PIXAZO_API_KEY, ...) were silently absent unless
+# exported by hand. load_native_env.sh lifts those across — and *only* those: .env
+# also holds container paths like TELEMETRY_DB_PATH=/app/..., and exporting one of
+# those into a host process makes the server try to write the read-only root.
 start-native:
 	@echo "Starting API server natively on host to enable MPS acceleration..."
 	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"
+	. infra/scripts/load_native_env.sh; \
 	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=p2p-mesh-poc-docker python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
 
 # Stop all services
@@ -78,6 +84,7 @@ worker-health:
 # Run Phase 1 natively on macOS (MPS accelerated, ~30s)
 phase1-native:
 	@if [ -z "$(PROMPT)" ]; then echo "Usage: make phase1-native PROMPT='a ceramic vase'"; exit 1; fi
+	. infra/scripts/load_native_env.sh; \
 	bash infra/scripts/run_phase1_native.sh "$(PROMPT)"
 
 # Full pipeline on macOS: Phase 1 native (MPS) + Phases 2–5 in Docker

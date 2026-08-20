@@ -9,6 +9,7 @@ which is precisely where a mesh silently comes out lying on its side.
 
 import io
 import os
+import types
 
 import numpy as np
 import pytest
@@ -28,6 +29,13 @@ SCULPTOR_ENV_VARS = (
     "P2P_SCULPTOR_REMOTE_URL",
     "P2P_SCULPTOR_REMOTE_KEY",
     "TRELLIS2_PIPELINE_TYPE",
+    # A developer with a real subscription key exported would otherwise see `auto`
+    # resolve to `pixazo` and the "nothing is runnable" test fail for the wrong
+    # reason. The key is the whole input to that branch, so it belongs here.
+    "PIXAZO_API_KEY",
+    "P2P_PIXAZO_GATEWAY",
+    "P2P_PIXAZO_IMAGE_BASE_URL",
+    "P2P_PIXAZO_UP_AXIS",
 )
 
 
@@ -312,7 +320,7 @@ def test_model_headers_land_on_provenance(remote, monkeypatch, blueprint, tmp_pa
     # Self-hosted, so nothing is billed per call — telling this apart from a paid
     # hosted API is the point of the separate value.
     assert remote.BACKEND == "remote_worker"
-    assert remote.last_generation_cost_usd is None
+    assert remote.last_generation_cost_eur is None
 
 
 def test_http_error_is_surfaced_with_the_worker_body(remote, monkeypatch, blueprint, tmp_path):
@@ -503,3 +511,208 @@ def test_sampler_params_omit_unset_knobs():
     assert _sampler_params(None, None) == {}
     assert _sampler_params(12, None) == {"steps": 12}
     assert _sampler_params(None, 7.5) == {"guidance_strength": 7.5}
+
+
+# ── Hosted backend (Pixazo) ───────────────────────────────────────────────────
+
+
+@pytest.fixture
+def pixazo(clean_env):
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    return PixazoBackend()
+
+
+def test_auto_selects_pixazo_when_only_a_key_is_configured(clean_env):
+    """The Apple Silicon case: no CUDA, no worker, but a subscription key."""
+    clean_env.setattr("pythonsrc.sculptors._cuda_available", lambda: False)
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    assert resolve_backend_name("auto") == "pixazo"
+
+
+def test_auto_prefers_a_local_gpu_over_the_paid_endpoint(clean_env):
+    """Hardware already paid for must never be passed over for one that bills."""
+    clean_env.setattr("pythonsrc.sculptors._cuda_available", lambda: True)
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    assert resolve_backend_name("auto") == "trellis2"
+
+
+def test_auto_prefers_a_self_hosted_worker_over_the_paid_endpoint(clean_env):
+    clean_env.setattr("pythonsrc.sculptors._cuda_available", lambda: False)
+    clean_env.setenv("P2P_SCULPTOR_REMOTE_URL", "http://gpu-host:8100")
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    assert resolve_backend_name("auto") == "remote"
+
+
+def test_no_backend_message_names_the_hosted_option(clean_env):
+    clean_env.setattr("pythonsrc.sculptors._cuda_available", lambda: False)
+    with pytest.raises(SculptorError, match="PIXAZO_API_KEY"):
+        resolve_backend_name("auto")
+
+
+def test_pixazo_without_a_key_is_rejected_at_construction(clean_env):
+    with pytest.raises(SculptorError, match="needs a subscription key"):
+        create_sculptor("pixazo")
+
+
+def test_pixazo_is_a_hosted_api_backend(pixazo):
+    """`local` would imply no charge; `remote_worker` would imply a GPU we own."""
+    assert pixazo.BACKEND == "hosted_api"
+    assert pixazo.MODEL_NAME == "TRELLIS.2"
+
+
+def test_pixazo_output_is_treated_as_y_up(pixazo):
+    """GLB is glTF's frame, not the model's. Getting this wrong prints on its side."""
+    assert pixazo.up_axis == "y"
+
+
+def test_pixazo_up_axis_is_overridable_without_a_code_change(clean_env):
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.setenv("P2P_PIXAZO_UP_AXIS", "Z")
+    assert PixazoBackend().up_axis == "z"
+
+
+@pytest.mark.parametrize(
+    "pipeline_type,resolution",
+    [("512", 512), ("1024", 1024), ("1024_cascade", 1024), ("1536_cascade", 1536)],
+)
+def test_pipeline_type_maps_onto_the_api_resolution(clean_env, pipeline_type, resolution):
+    """The hosted API has no cascade sampler, so both cascades collapse."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    assert PixazoBackend(pipeline_type=pipeline_type).resolution == resolution
+
+
+def test_pixazo_rejects_an_unknown_pipeline_type(clean_env):
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    with pytest.raises(SculptorError, match="Invalid pipeline_type"):
+        PixazoBackend(pipeline_type="2048")
+
+
+def test_generation_params_records_both_the_request_and_what_was_sent(clean_env):
+    """A collapsed cascade must not look like a native 1024 run in the dataset."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    params = PixazoBackend(pipeline_type="1024_cascade", seed=7).generation_params()
+    assert params["sculptor_backend"] == "pixazo"
+    assert params["pipeline_type"] == "1024_cascade"
+    assert params["resolution"] == 1024
+    assert params["mesh_seed"] == 7
+    assert params["price_eur"] == 0.32
+
+
+def test_unset_knobs_are_absent_from_the_payload_not_null(pixazo):
+    """A null would override the endpoint's documented default with nothing."""
+    payload = pixazo._payload("https://example.test/b.png")
+    assert payload == {"image_url": "https://example.test/b.png", "resolution": 1024}
+
+
+def test_set_knobs_reach_the_payload_under_the_api_field_names(clean_env):
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    backend = PixazoBackend(seed=7, shape_steps=20, ss_guidance=6.5)
+    payload = backend._payload("https://example.test/b.png")
+    assert payload["seed"] == 7
+    assert payload["shape_slat_sampling_steps"] == 20
+    assert payload["ss_guidance_strength"] == 6.5
+
+
+def test_subscription_key_is_sent_in_the_gateway_header(pixazo):
+    assert pixazo._headers() == {"Ocp-Apim-Subscription-Key": "key-123"}
+
+
+def test_blueprint_is_inlined_as_a_data_uri_by_default(pixazo, blueprint):
+    """Zero-infrastructure default: a working Phase 2 beats one needing a bucket."""
+    url = pixazo._resolve_image_url(blueprint)
+    assert url.startswith("data:image/png;base64,")
+    assert len(url) > len("data:image/png;base64,")
+
+
+def test_a_public_base_url_is_used_when_configured(clean_env, blueprint):
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.setenv("P2P_PIXAZO_IMAGE_BASE_URL", "https://cdn.test/bp/")
+    url = PixazoBackend()._resolve_image_url(blueprint)
+    assert url == f"https://cdn.test/bp/{blueprint.name}"
+
+
+def test_cost_is_unset_until_a_generation_actually_delivers(pixazo, blueprint):
+    """A submit that never completed is not a mesh, and must not book a charge."""
+    def _boom(_url):
+        raise SculptorError("submit failed")
+
+    pixazo._submit = _boom
+    with pytest.raises(SculptorError):
+        pixazo.reconstruct(blueprint)
+    assert pixazo.last_generation_cost_eur is None
+
+
+def test_cost_is_recorded_once_a_mesh_comes_back(pixazo, blueprint):
+    mesh = trimesh.creation.box(extents=(1, 10, 1))
+    pixazo._submit = lambda _url: "req-1"
+    pixazo._await_result = lambda _rid: "https://cdn.test/out.glb"
+    pixazo._download_mesh = lambda _url: mesh
+
+    assert pixazo.reconstruct(blueprint) is mesh
+    assert pixazo.last_generation_cost_eur == 0.32
+    assert pixazo.last_request_id == "req-1"
+    assert pixazo.generation_params()["request_id"] == "req-1"
+
+
+def _stub_requests(monkeypatch, body):
+    """Make `import requests` inside the backend yield a stub returning `body`.
+
+    The backend imports requests inside the method, so replacing the module in
+    `sys.modules` is what the call actually sees — patching an attribute on the
+    backend module would not be reached.
+    """
+    import sys
+
+    import requests as real
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return body
+
+    stub = types.SimpleNamespace(
+        get=lambda *a, **k: _Response(),
+        post=lambda *a, **k: _Response(),
+        exceptions=real.exceptions,
+    )
+    monkeypatch.setitem(sys.modules, "requests", stub)
+
+
+def test_a_failed_generation_surfaces_the_gateway_reason(pixazo, monkeypatch):
+    """An ERROR status must not be polled to the timeout as if still running."""
+    _stub_requests(monkeypatch, {"status": "ERROR", "error": "unsupported image"})
+    with pytest.raises(SculptorError, match="unsupported image"):
+        pixazo._await_result("req-1")
+
+
+def test_a_completed_generation_with_no_media_url_is_an_error(pixazo, monkeypatch):
+    """COMPLETED-but-empty is a billed call with nothing to show; never return None."""
+    _stub_requests(monkeypatch, {"status": "COMPLETED", "output": {"media_url": []}})
+    with pytest.raises(SculptorError, match="no media_url"):
+        pixazo._await_result("req-1")
+
+
+def test_the_output_mesh_url_is_read_from_media_url(pixazo, monkeypatch):
+    _stub_requests(
+        monkeypatch,
+        {"status": "COMPLETED", "output": {"media_url": ["https://cdn.test/out.glb"]}},
+    )
+    assert pixazo._await_result("req-1") == "https://cdn.test/out.glb"

@@ -94,7 +94,7 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
         f.flush()
 
 
-def _record_generation(args, model, model_version, backend, params, cost_usd, duration_s) -> None:
+def _record_generation(args, model, model_version, backend, params, cost_eur, duration_s) -> None:
     """Persist which model produced this job's mesh, and what it cost.
 
     A hosted, pay-per-generation backend (e.g. TRELLIS.2 on fal.ai) makes cost and
@@ -105,7 +105,7 @@ def _record_generation(args, model, model_version, backend, params, cost_usd, du
     a label makes both meaningless.
 
     Reads its values off the sculptor when present, so swapping in a new backend means
-    setting MODEL_NAME / MODEL_VERSION / BACKEND / last_generation_cost_usd on it rather
+    setting MODEL_NAME / MODEL_VERSION / BACKEND / last_generation_cost_eur on it rather
     than touching the pipeline.
 
     Args:
@@ -114,7 +114,7 @@ def _record_generation(args, model, model_version, backend, params, cost_usd, du
         model_version: Version, revision or hosted endpoint id.
         backend: "local", "remote_worker" or "hosted_api".
         params: Generation settings used.
-        cost_usd: Charge for this generation, if the backend bills per call.
+        cost_eur: Charge for this generation in euro, if the backend bills per call.
         duration_s: Wall-clock generation seconds.
     """
     if not args.job_id:
@@ -129,7 +129,7 @@ def _record_generation(args, model, model_version, backend, params, cost_usd, du
             model_version=model_version,
             backend=backend,
             params=params,
-            cost_usd=cost_usd,
+            cost_eur=cost_eur,
             duration_s=duration_s,
         )
         db.close()
@@ -490,7 +490,7 @@ def run(args: argparse.Namespace) -> None:
                     "target_mm": args.target_mm,
                     "hollow": args.hollow,
                 },
-                cost_usd=getattr(sculptor, "last_generation_cost_usd", None),
+                cost_eur=getattr(sculptor, "last_generation_cost_eur", None),
                 duration_s=round(time.time() - t0, 2),
             )
             _phase_pass(2, t0, str(raw_mesh_path))
@@ -806,9 +806,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p2.add_argument(
         "--sculptor-backend",
         default=None,
-        choices=["auto", "trellis2", "remote"],
+        choices=["auto", "trellis2", "remote", "pixazo"],
         help="Where reconstruction runs: trellis2 in-process (needs a CUDA GPU), "
-             "remote via a GPU worker, or auto (default: $P2P_SCULPTOR_BACKEND, else auto)",
+             "remote via a self-hosted GPU worker, pixazo via the hosted endpoint "
+             "(bills EUR 0,32 per generation), or auto "
+             "(default: $P2P_SCULPTOR_BACKEND, else auto)",
     )
     p2.add_argument(
         "--pipeline-type",

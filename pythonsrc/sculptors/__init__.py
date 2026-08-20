@@ -1,17 +1,21 @@
 """
 sculptors — Phase 2 reconstruction, powered by TRELLIS.2.
 
-Two ways to run the same model:
+Three ways to run the same model:
 
     trellis2  In-process TRELLIS.2-4B. CUDA only, needs ~24 GB VRAM.
-    remote    Delegates to a GPU worker over HTTP (see services/trellis2_worker).
+    remote    Delegates to a self-hosted GPU worker (see services/trellis2_worker).
+    pixazo    Calls Pixazo's hosted TRELLIS.2 endpoint. €0,32 per generation.
 
-Both produce geometry in the same frame and share `SculptorBackend.postprocess`, so
-which one ran is a deployment detail rather than a difference in output.
+All three produce geometry in the same frame and share
+`SculptorBackend.postprocess`, so which one ran is a deployment detail rather than a
+difference in output — the frame is the one thing that differs at the source, and
+each backend declares its own `up_axis` for exactly that reason.
 
 There is no CPU backend. TRELLIS.2's `o_voxel`, `flex_gemm` and `cumesh` are
-compiled CUDA extensions with no CPU kernels, so a machine without an NVIDIA GPU
-reaches the model through `remote` or not at all — `auto` resolves accordingly.
+compiled CUDA extensions with no CPU kernels, so a machine without an NVIDIA GPU —
+every Apple Silicon Mac included — reaches the model through `remote` or `pixazo`,
+or not at all. `auto` resolves accordingly.
 
 Usage:
     from sculptors import create_sculptor
@@ -30,7 +34,7 @@ from .base import SculptorBackend, SculptorError
 
 logger = logging.getLogger("p2p.sculptor")
 
-BACKENDS = ("trellis2", "remote")
+BACKENDS = ("trellis2", "remote", "pixazo")
 DEFAULT_BACKEND = "auto"
 
 __all__ = [
@@ -56,11 +60,15 @@ def _cuda_available() -> bool:
 def resolve_backend_name(requested: str | None = None) -> str:
     """Resolve a backend name, expanding `auto` against what the host can run.
 
-    Resolution order for `auto`:
+    Resolution order for `auto`, cheapest-and-most-explicit first:
       1. `remote`, if a worker URL is configured — the deliberate choice on a
          GPU-less host, and an explicit configuration outranks a local GPU that
          may be busy with Phase 1.
       2. `trellis2`, if an NVIDIA GPU is visible.
+      3. `pixazo`, if a subscription key is configured. Last because it is the only
+         backend that bills per call: hardware you already own should never be
+         passed over in favour of one that charges. Selecting it is logged with the
+         price, so a run that starts spending money says so.
 
     Args:
         requested: Explicit backend name, `auto`, or None to read
@@ -93,10 +101,21 @@ def resolve_backend_name(requested: str | None = None) -> str:
         logger.info("Auto-selected sculptor backend 'trellis2' (CUDA GPU available)")
         return "trellis2"
 
+    if os.environ.get("PIXAZO_API_KEY"):
+        from .pixazo import PRICE_EUR_PER_GENERATION
+
+        logger.info(
+            "Auto-selected sculptor backend 'pixazo' (subscription key configured) "
+            "— this backend bills €%.2f per generation",
+            PRICE_EUR_PER_GENERATION,
+        )
+        return "pixazo"
+
     raise SculptorError(
         "No runnable sculptor backend. TRELLIS.2 needs an NVIDIA GPU with ~24 GB of "
-        "VRAM, and none is visible. Either run on a CUDA host, or start the GPU "
-        "worker (services/trellis2_worker/) and point P2P_SCULPTOR_REMOTE_URL at it."
+        "VRAM, and none is visible. Pick one of: run on a CUDA host; start the GPU "
+        "worker (services/trellis2_worker/) and point P2P_SCULPTOR_REMOTE_URL at it; "
+        "or set PIXAZO_API_KEY to use the hosted endpoint."
     )
 
 
@@ -111,9 +130,9 @@ def create_sculptor(
 
     `pipeline_type` and `seed` are named rather than left to **kwargs because they
     are the two settings a caller wants to control without knowing where inference
-    runs: for `trellis2` they are constructor arguments, for `remote` they are form
-    fields posted to the worker. Routing them here is what lets `pipeline.py` pass
-    the same options either way.
+    runs: for `trellis2` and `pixazo` they are constructor arguments, for `remote`
+    they are form fields posted to the worker. Routing them here is what lets
+    `pipeline.py` pass the same options either way.
 
     Args:
         backend: Backend name, `auto`, or None to read `$P2P_SCULPTOR_BACKEND`.
@@ -138,6 +157,15 @@ def create_sculptor(
         if seed is not None:
             kwargs.setdefault("seed", seed)
         return Trellis2Backend(**kwargs)
+
+    if name == "pixazo":
+        from .pixazo import PixazoBackend
+
+        if pipeline_type:
+            kwargs.setdefault("pipeline_type", pipeline_type)
+        if seed is not None:
+            kwargs.setdefault("seed", seed)
+        return PixazoBackend(**kwargs)
 
     from .remote import RemoteSculptorBackend
 

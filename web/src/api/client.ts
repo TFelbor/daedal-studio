@@ -160,7 +160,7 @@ export interface JobProvenance {
     model_version: string | null;
     backend: string | null;
     params: Record<string, unknown> | null;
-    cost_usd: number | null;
+    cost_eur: number | null;
     duration_s: number | null;
   };
   mesh: {

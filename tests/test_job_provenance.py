@@ -67,7 +67,7 @@ def test_new_fields_default_to_none():
     """Existing callers construct PrintJob positionally; the new columns must be optional."""
     job = make_job("j1")
     assert job.generation_model is None
-    assert job.generation_cost_usd is None
+    assert job.generation_cost_eur is None
     assert job.printability_score is None
     assert job.mesh_features is None
 
@@ -79,7 +79,7 @@ def test_job_round_trips_with_provenance():
         generation_model_version="fal-ai/trellis-2",
         generation_backend="hosted_api",
         generation_params={"resolution": 1024},
-        generation_cost_usd=0.30,
+        generation_cost_eur=0.30,
         generation_duration_s=41.2,
         mesh_features={"face_count": 20480},
         printability_score=91.5,
@@ -90,7 +90,7 @@ def test_job_round_trips_with_provenance():
 
     assert restored.generation_model == "TRELLIS.2"
     assert restored.generation_backend == "hosted_api"
-    assert restored.generation_cost_usd == 0.30
+    assert restored.generation_cost_eur == 0.30
     assert restored.generation_params == {"resolution": 1024}
     assert restored.printability_score == 91.5
 
@@ -115,14 +115,14 @@ def test_update_job_generation_records_cost_and_latency(db):
         model_version="fal-ai/trellis-2",
         backend="hosted_api",
         params={"resolution": 1024},
-        cost_usd=0.35,
+        cost_eur=0.35,
         duration_s=38.9,
     )
     job = db.get_job("j4")
 
     assert job.generation_model == "TRELLIS.2"
     assert job.generation_model_version == "fal-ai/trellis-2"
-    assert job.generation_cost_usd == 0.35
+    assert job.generation_cost_eur == 0.35
     assert job.generation_duration_s == 38.9
     assert job.generation_params["resolution"] == 1024
 
@@ -131,12 +131,12 @@ def test_partial_update_does_not_erase_earlier_values(db):
     """Cost often arrives after the model name; the later write must not blank the earlier."""
     db.insert_job(make_job("j5"))
     db.update_job_generation("j5", model="TRELLIS.2", backend="hosted_api")
-    db.update_job_generation("j5", cost_usd=0.30)
+    db.update_job_generation("j5", cost_eur=0.30)
     job = db.get_job("j5")
 
     assert job.generation_model == "TRELLIS.2"
     assert job.generation_backend == "hosted_api"
-    assert job.generation_cost_usd == 0.30
+    assert job.generation_cost_eur == 0.30
 
 
 def test_update_job_printability(db):

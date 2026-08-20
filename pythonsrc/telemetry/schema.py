@@ -62,7 +62,7 @@ class PrintJob:
 
     ``local`` is in-process. ``remote_worker`` is a self-hosted GPU worker reached
     over HTTP (`services/trellis2_worker`) — distinct from ``hosted_api`` because
-    nothing is billed per call, so ``generation_cost_usd`` stays None while
+    nothing is billed per call, so ``generation_cost_eur`` stays None while
     ``generation_duration_s`` legitimately includes upload and queueing. Folding the
     two together would make both numbers unreadable.
     """
@@ -70,8 +70,13 @@ class PrintJob:
     generation_params: Dict[str, Any] | None = None
     """Generation settings (steps, target faces, resolution, target size, hollow…)."""
 
-    generation_cost_usd: float | None = None
-    """Cost of this generation, for pay-per-generation endpoints. None when self-hosted."""
+    generation_cost_eur: float | None = None
+    """Charge for this generation in **euro**, for pay-per-generation endpoints.
+
+    None when self-hosted — `local` and `remote_worker` runs cost nothing per call.
+    Recorded in EUR because that is the currency the hosted endpoints bill in; a
+    figure stored in one currency and named for another cannot be summed later.
+    """
 
     generation_duration_s: float | None = None
     """Wall-clock seconds spent generating the mesh."""
