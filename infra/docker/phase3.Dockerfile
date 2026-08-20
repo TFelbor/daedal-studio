@@ -1,8 +1,8 @@
 # ────────────────────────────────────────────────────────────────────────────
-# phase3.Dockerfile — Engineer (pymeshfix + trimesh, mesh repair & scale)
+# phase3.Dockerfile — Engineer (manifold3d + trimesh, mesh repair & scale)
 #
 # Inherits the base layer and adds:
-#   - pymeshfix (MeshFix algorithm — Attene 2010)
+#   - manifold3d (Apache-2.0 guaranteed-manifold kernel; replaced GPL pymeshfix)
 #   - trimesh with full optional deps
 #   - numpy, scipy (required for hollowing / voxel operations)
 #   - fast-simplification (optional but recommended for decimation)
@@ -18,7 +18,7 @@ FROM p2p-base:latest AS phase3-engineer
 LABEL description="p2p-mesh Phase 3 — Engineer (mesh repair + scale)"
 
 # ── System dependencies ───────────────────────────────────────────────────────
-# VTK and pymeshfix may need additional system libs for their C++ bindings.
+# manifold3d ships manylinux wheels; these libs remain for trimesh's optional extras.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libgmp-dev \
@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir \
         "numpy>=1.24.0" \
         "scipy>=1.11.0" \
         "trimesh[all]>=4.0.0" \
-        "pymeshfix>=0.16.0" \
+        "manifold3d>=3.0.0" \
         "fast-simplification>=0.1.6" \
         "Pillow>=10.0.0" \
         "matplotlib>=3.7.0"

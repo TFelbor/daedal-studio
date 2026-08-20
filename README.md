@@ -19,7 +19,7 @@ This project is built for developers and makers who want a fully local AI-to-phy
 |-------------------|-------------------|-------------------|----------------------------------|
 | Visualizer        | `pythonsrc/`      | FLUX.2-klein-4B   | Text → blueprint image           |
 | Sculptor          | `pythonsrc/`      | TripoSR           | Image → 3D mesh                  |
-| Engineer          | `pythonsrc/`      | pymeshfix/trimesh | Mesh repair + scaling            |
+| Engineer          | `pythonsrc/`      | manifold3d/trimesh | Mesh repair + scaling            |
 | Slicer            | `pythonsrc/`      | CuraEngine        | Mesh → G-code                    |
 | Operators         | `pythonsrc/operators/` | REST/HTTP      | Printer control (OctoPrint/Klipper/Bambu stub) |
 | Telemetry         | `pythonsrc/telemetry/` | SQLite/WS/SIO  | Printer state streaming + failure detection |
@@ -227,7 +227,7 @@ pytest tests/ -m "slow and full_pipeline"
 
 - [x] **Phase 1: Visualizer** — Text-to-image blueprinting (FLUX.2-klein-4B, MPS acceleration)
 - [x] **Phase 2: Sculptor** — Neural 3D reconstruction & Taubin smoothing (TripoSR)
-- [x] **Phase 3: Engineer** — Automated mesh repair, scaling & orientation (pymeshfix)
+- [x] **Phase 3: Engineer** — Automated mesh repair, scaling & orientation (manifold3d)
 - [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
 - [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job control
 - [x] **Dockerization** — Full pipeline containerization (Ubuntu 22.04, CuraEngine via apt)
