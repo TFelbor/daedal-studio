@@ -10,6 +10,7 @@ import aiohttp
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
+from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.internal_telemetry import send_internal_telemetry
 from pythonsrc.telemetry.schema import TelemetrySample
@@ -45,6 +46,8 @@ class OctoPrintCollector:
         self._running = False
         self._bg_task: Optional[asyncio.Task] = None
         self._backoff = 1.0
+        self._claim = CollectorClaim(db, job_id, "OctoPrintCollector")
+        self._needs_reauth = False
 
     async def start(self) -> None:
         """Start the collector and initiate the WebSocket connection."""
@@ -54,7 +57,7 @@ class OctoPrintCollector:
         self._bg_task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
-        """Stop the collector and disconnect."""
+        """Stop the collector, disconnect, and release its telemetry claim."""
         self._running = False
         if self._bg_task:
             self._bg_task.cancel()
@@ -62,6 +65,7 @@ class OctoPrintCollector:
                 await self._bg_task
             except asyncio.CancelledError:
                 pass
+        self._claim.release()
 
     @staticmethod
     def _sockjs_url(host: str, port: int) -> str:
@@ -75,6 +79,46 @@ class OctoPrintCollector:
         server_id = ''.join(random.choices(string.digits, k=3))
         session_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         return f"ws://{host}:{port}/sockjs/{server_id}/{session_id}/websocket"
+
+    async def _fetch_ws_credentials(self, session: aiohttp.ClientSession) -> Optional[str]:
+        """Obtain the "<user>:<session>" string OctoPrint's WebSocket expects.
+
+        OctoPrint does not accept the raw API key as a socket credential: sending
+        ``_api:<api_key>`` is answered with ``{"reauthRequired": {"reason": "stale"}}``
+        and no telemetry is ever pushed. A passive login exchanges the API key for a
+        session token, which is what the socket authenticates against.
+
+        Args:
+            session: HTTP session used for the login request.
+
+        Returns:
+            The auth string, or None if the login failed.
+        """
+        url = f"http://{self.host}:{self.port}/api/login"
+        try:
+            async with session.post(
+                url,
+                json={"passive": True},
+                headers={"X-Api-Key": self.api_key},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(
+                        "OctoPrint passive login failed (%s) — telemetry will not stream",
+                        resp.status,
+                    )
+                    return None
+                body = await resp.json()
+        except Exception as exc:
+            logger.error("OctoPrint passive login error: %s", exc)
+            return None
+
+        name = body.get("name")
+        token = body.get("session")
+        if not name or not token:
+            logger.error("OctoPrint passive login returned no session; got keys: %s", list(body))
+            return None
+        return f"{name}:{token}"
 
     async def _run_loop(self) -> None:
         while self._running:
@@ -97,9 +141,14 @@ class OctoPrintCollector:
                                 logger.debug(f"OctoPrint WS raw frame: {data[:200]}")
 
                                 if data == 'o':
-                                    # SockJS 'open' frame — connection established, now authenticate
+                                    # SockJS 'open' frame — authenticate with a session
+                                    # token obtained from a passive login.
                                     logger.info("SockJS open frame received, sending auth.")
-                                    auth_msg = json.dumps({"auth": f"_api:{self.api_key}"})
+                                    credentials = await self._fetch_ws_credentials(session)
+                                    if credentials is None:
+                                        logger.error("Cannot authenticate OctoPrint socket; reconnecting.")
+                                        break
+                                    auth_msg = json.dumps({"auth": credentials})
                                     await ws.send_str(json.dumps([auth_msg]))
                                     authenticated = True
                                 elif data in ('h', ''):  # heartbeat — ignore
@@ -120,8 +169,20 @@ class OctoPrintCollector:
                                                 await self._on_event(parsed["event"])
                                             elif "connected" in parsed:
                                                 logger.info(f"OctoPrint connected: {parsed['connected']}")
+                                            elif "reauthRequired" in parsed:
+                                                logger.warning(
+                                                    "OctoPrint requires reauthentication (%s) — reconnecting",
+                                                    parsed["reauthRequired"],
+                                                )
+                                                self._needs_reauth = True
                                     except Exception as e:
                                         logger.error(f"Error parsing websocket frame: {e} — raw: {data[:200]}")
+
+                                    if self._needs_reauth:
+                                        # Drop the socket so the loop reconnects and
+                                        # performs a fresh passive login.
+                                        self._needs_reauth = False
+                                        break
                                 elif data.startswith('c'):
                                     # SockJS close frame
                                     logger.warning(f"SockJS close frame received: {data}")
@@ -190,9 +251,14 @@ class OctoPrintCollector:
             fan_speed_pct=None
         )
 
+        if not self._claim.may_write(asyncio.get_running_loop().time()):
+            # Another process is already collecting this job; writing here too would
+            # duplicate every telemetry_sample row.
+            return
+
         self.db.insert_sample(sample)
         await self.sample_queue.put(sample)
-        
+
         telemetry_message = {"type": "telemetry", "data": sample.to_dict()}
         state_data = {
             "state": payload.get("state"),

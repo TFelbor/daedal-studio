@@ -27,6 +27,8 @@ from pythonsrc.telemetry.db import TelemetryDB, _str_to_dt
 from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+from pythonsrc.telemetry.detector import attach_detector
+from pythonsrc.operators import PrinterFactory
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
 import httpx
 from server.config_store import ConfigStore, CONFIG_KEYS
@@ -40,7 +42,87 @@ app = FastAPI(title="P2P Mesh API", version="1.0.0")
 config_store = ConfigStore()
 
 active_collectors = {}
+active_detectors: dict[str, asyncio.Task] = {}
 active_pipelines: dict[str, asyncio.subprocess.Process] = {}
+
+
+def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
+    """Locate a job's artifact, preferring its per-job directory.
+
+    The pipeline writes artifacts to ``data/outputs/{job_id}/`` so that jobs cannot
+    overwrite each other. Older jobs wrote to the flat ``data/outputs/`` layout, so that
+    path is still accepted as a fallback for rows created before the change.
+
+    Args:
+        job_id: The job whose artifact is wanted.
+        filename: Artifact filename, e.g. "engineered_mesh.gcode".
+
+    Returns:
+        The path to the artifact, or None if neither location has it.
+    """
+    outputs = Path(__file__).parent.parent / "data" / "outputs"
+    per_job = outputs / job_id / filename
+    if per_job.exists():
+        return per_job
+
+    legacy = outputs / filename
+    if legacy.exists():
+        return legacy
+
+    if filename == "blueprint.png":
+        shared_input = Path(__file__).parent.parent / "data" / "inputs" / "blueprint.png"
+        if shared_input.exists():
+            return shared_input
+
+    return None
+
+
+def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | None, str | None]:
+    """Resolve which printer a job talks to, from one place.
+
+    Precedence is split deliberately:
+
+    * **firmware** — the profile wins when it names one, because a job asks for a
+      specific profile explicitly, which is more specific than a global default.
+    * **base_url / api_key** — the config store wins, because those are what the user
+      typed into Printer Setup; the values in the bundled profiles are dev defaults
+      (and their ``api_key`` is usually null).
+
+    Resolving this in one place stops the telemetry collector from watching a different
+    printer than the pipeline is printing to.
+
+    Args:
+        profile_path: Optional path to a printer profile JSON.
+
+    Returns:
+        A (firmware, base_url, api_key) tuple. Firmware falls back to "octoprint".
+    """
+    profile_data: dict = {}
+    if profile_path:
+        try:
+            with open(profile_path, "r") as f:
+                profile_data = json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not read printer profile {profile_path}: {e}")
+
+    firmware = profile_data.get("firmware") or config_store.get("DEFAULT_PRINTER_FIRMWARE") or "octoprint"
+
+    if firmware in ("klipper", "moonraker"):
+        base_url = config_store.get("MOONRAKER_URL")
+        api_key = config_store.get("MOONRAKER_API_KEY")
+    elif firmware == "bambu":
+        base_url = config_store.get("BAMBU_IP")
+        # The wizard writes BAMBU_CODE; reading BAMBU_ACCESS_CODE (as the old code did)
+        # always resolved to None.
+        api_key = config_store.get("BAMBU_CODE")
+    else:
+        base_url = config_store.get("OCTOPRINT_URL")
+        api_key = config_store.get("OCTOPRINT_API_KEY")
+
+    base_url = base_url or profile_data.get("base_url")
+    api_key = api_key or profile_data.get("api_key")
+
+    return firmware, base_url, api_key
 
 def get_resolved_strategy() -> str:
     override = config_store.get("EXECUTION_STRATEGY_OVERRIDE")
@@ -79,6 +161,8 @@ class JobStatusResponse(BaseModel):
     profile_name: Optional[str] = None
     machine_name: Optional[str] = None
     layer_height_mm: Optional[float] = None
+    printability_score: Optional[float] = None
+    printability_verdict: Optional[str] = None
 
 @app.on_event("startup")
 def startup_event():
@@ -115,6 +199,9 @@ async def shutdown_event():
 
     Gracefully stops all active telemetry collectors.
     """
+    for detector_task in active_detectors.values():
+        detector_task.cancel()
+    active_detectors.clear()
     for collector in active_collectors.values():
         await collector.stop()
     active_collectors.clear()
@@ -199,23 +286,12 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             pipeline_env["HF_TOKEN"] = hf_token
             pipeline_env["HUGGINGFACE_HUB_TOKEN"] = hf_token
             
-        # Export printer config to pipeline
-        firmware = config_store.get("DEFAULT_PRINTER_FIRMWARE") or "octoprint"
+        # Export printer config to pipeline — resolved in one place so the pipeline
+        # and the telemetry collector can never target different printers.
+        profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
+        firmware, url, key = resolve_printer_target(profile_path)
         pipeline_env["P2P_FIRMWARE"] = firmware
-        
-        if firmware == "octoprint":
-            url = config_store.get("OCTOPRINT_URL")
-            key = config_store.get("OCTOPRINT_API_KEY")
-        elif firmware == "moonraker":
-            url = config_store.get("MOONRAKER_URL")
-            key = None
-        elif firmware == "bambu":
-            url = config_store.get("BAMBU_IP")
-            key = config_store.get("BAMBU_ACCESS_CODE")
-        else:
-            url = None
-            key = None
-            
+
         if url:
             # If pipeline is running in docker and the URL is localhost, rewrite it
             if "localhost" in url or "127.0.0.1" in url:
@@ -338,6 +414,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "failure"}})
     finally:
         active_pipelines.pop(job_id, None)
+        detector_task = active_detectors.pop(job_id, None)
+        if detector_task:
+            detector_task.cancel()
         collector = active_collectors.pop(job_id, None)
         if collector:
             await collector.stop()
@@ -380,18 +459,13 @@ async def create_job(request: JobRequest):
 
     profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
     firmware = "octoprint"
-    base_url = "http://localhost:5001"
-    api_key = None
-    try:
-        with open(profile_path, "r") as f:
-            profile_data = json.load(f)
-            firmware = profile_data.get("firmware", "octoprint")
-            base_url = profile_data.get("base_url", "http://localhost:5001")
-            api_key = profile_data.get("api_key")
-    except Exception as e:
-        logger.error(f"Could not load profile {profile_path}: {e} — disabling print")
+    if not os.path.exists(profile_path):
+        logger.error(f"Printer profile not found: {profile_path} — disabling print")
         request.print = False
         request.start_print = False
+
+    firmware, base_url, api_key = resolve_printer_target(profile_path)
+    base_url = base_url or "http://localhost:5001"
 
     db = TelemetryDB()
     job = PrintJob(
@@ -409,7 +483,7 @@ async def create_job(request: JobRequest):
     
     if request.print:
         collector = None
-        if firmware == "klipper":
+        if firmware in ("klipper", "moonraker"):
             ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
             if not ws_url.endswith("/websocket"):
                 ws_url = ws_url.rstrip("/") + "/websocket"
@@ -421,11 +495,21 @@ async def create_job(request: JobRequest):
             collector = OctoPrintCollector(host, port, api_key or "", job_id, TelemetryDB())
         elif firmware == "bambu":
             logger.warning("Telemetry not yet available for Bambu")
-            
+
         if collector:
             active_collectors[job_id] = collector
             asyncio.create_task(collector.start())
-            
+
+            # Consume the collector's samples — without this, automated failure
+            # detection never runs. Whichever collector process wins the telemetry
+            # claim is the one whose queue receives samples.
+            try:
+                operator = PrinterFactory.create(firmware, base_url, api_key)
+            except Exception as e:
+                operator = None
+                logger.warning(f"No operator for detector ({firmware}): {e}")
+            active_detectors[job_id] = attach_detector(collector, TelemetryDB(), operator)
+
     db.close()
     
     asyncio.create_task(_run_pipeline(job_id, request))
@@ -513,7 +597,9 @@ async def get_job(job_id: str):
         printer_firmware=job.printer_firmware,
         profile_name=job.profile_name,
         machine_name=machine_name,
-        layer_height_mm=layer_height_mm
+        layer_height_mm=layer_height_mm,
+        printability_score=job.printability_score,
+        printability_verdict=job.printability_verdict,
     )
 
 @app.get("/jobs/{job_id}/printer-info")
@@ -614,12 +700,20 @@ async def download_job_output(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
         
 
-    outputs_dir = os.path.join(os.path.dirname(__file__), "..", "data", "outputs")
-    gcode_path = os.path.join(outputs_dir, "engineered_mesh.gcode")
-    
-    if not os.path.exists(gcode_path):
+    gcode_path = resolve_job_artifact(job_id, "engineered_mesh.gcode")
+
+    if gcode_path is None:
         raise HTTPException(status_code=404, detail="File not found")
-        
+
+    # A job that never finished has no G-code of its own. Serving the flat legacy file
+    # here would hand the caller some other job's print.
+    is_per_job = gcode_path.parent.name == job_id
+    if not is_per_job and job.outcome not in ("success", "cancelled"):
+        raise HTTPException(
+            status_code=404,
+            detail="No G-code for this job yet (job has not completed slicing).",
+        )
+
     def iterfile():
         with open(gcode_path, mode="rb") as f:
             while chunk := f.read(8192):
@@ -642,9 +736,9 @@ async def print_dispatch(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
         
     repo_root = Path(__file__).parent.parent
-    gcode_path = repo_root / "data" / "outputs" / "engineered_mesh.gcode"
+    gcode_path = resolve_job_artifact(job_id, "engineered_mesh.gcode")
 
-    if not gcode_path.exists():
+    if gcode_path is None:
         raise HTTPException(status_code=400, detail="Gcode file not found. Complete phases 1-4 first.")
 
     profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
@@ -905,6 +999,41 @@ class FailureRequest(BaseModel):
     """Pydantic model representing a manual failure event report."""
     failure_type: str
     notes: Optional[str] = None
+
+@app.get("/jobs/{job_id}/printability")
+async def get_job_printability(job_id: str):
+    """Return the pre-print printability report for a job.
+
+    Args:
+        job_id: The job whose report is wanted.
+
+    Returns:
+        The report as produced by `PrintabilityReport.to_dict()`.
+
+    Raises:
+        HTTPException: 404 if the job is unknown, or if it has no report — a job that
+            never reached the Engineer has nothing to score.
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.printability_report:
+        return job.printability_report
+
+    # Jobs run before the report was persisted still have the artifact on disk.
+    report_path = resolve_job_artifact(job_id, "printability.json")
+    if report_path is not None:
+        try:
+            with open(report_path, "r") as f:
+                return json.load(f)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Could not read printability report for {job_id}: {exc}")
+
+    raise HTTPException(status_code=404, detail="No printability report for this job yet")
 
 @app.post("/jobs/{job_id}/failure")
 async def create_failure_event(job_id: str, request: FailureRequest) -> Dict[str, Any]:
@@ -1243,9 +1372,16 @@ async def printer_status():
 
 @app.get("/jobs/{job_id}/blueprint")
 async def get_blueprint(job_id: str):
-    repo_root = Path(__file__).parent.parent
-    blueprint_path = repo_root / "data" / "inputs" / "blueprint.png"
-    if not blueprint_path.exists():
+    """Serve the blueprint image this job used.
+
+    Args:
+        job_id: The job whose blueprint is wanted.
+
+    Returns:
+        The PNG image, from the job's own directory when the pipeline snapshotted it.
+    """
+    blueprint_path = resolve_job_artifact(job_id, "blueprint.png")
+    if blueprint_path is None:
         raise HTTPException(status_code=404, detail="Blueprint not found")
     return FileResponse(str(blueprint_path), media_type="image/png")
 
@@ -1253,9 +1389,16 @@ async def get_blueprint(job_id: str):
 
 @app.get("/jobs/{job_id}/mesh")
 async def get_mesh(job_id: str):
-    repo_root = Path(__file__).parent.parent
-    mesh_path = repo_root / "data" / "outputs" / "engineered_mesh.obj"
-    if not mesh_path.exists():
+    """Serve the engineered mesh this job produced.
+
+    Args:
+        job_id: The job whose mesh is wanted.
+
+    Returns:
+        The .obj file, from the job's own directory when it exists.
+    """
+    mesh_path = resolve_job_artifact(job_id, "engineered_mesh.obj")
+    if mesh_path is None:
         raise HTTPException(status_code=404, detail="Mesh not found")
     return FileResponse(str(mesh_path), media_type="application/octet-stream")
 

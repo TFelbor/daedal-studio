@@ -1,4 +1,4 @@
-import { Image, Cuboid, Ruler, Layers, Printer, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Image, Cuboid, Ruler, ShieldCheck, Layers, Printer, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface PhaseStatus {
   phase: number;
@@ -8,18 +8,30 @@ interface PhaseStatus {
 
 interface PipelineProgressBarProps {
   phases: PhaseStatus[];
+  /** Printability runs between Engineer and Slicer. It is not a numbered phase — the
+   *  .status protocol and every historical job key off phases 1-5 — so its state comes
+   *  from whether a report exists rather than from a phase number. */
+  printabilityStatus?: PhaseStatus['status'];
 }
+
+const PRINTABILITY_STEP = -1;   // sentinel: a step with no phase number
 
 const PHASE_CONFIG = [
   { phase: 1, name: 'Visualizer', icon: Image },
   { phase: 2, name: 'Sculptor', icon: Cuboid },
   { phase: 3, name: 'Engineer', icon: Ruler },
+  { phase: PRINTABILITY_STEP, name: 'Printability', icon: ShieldCheck },
   { phase: 4, name: 'Slicer', icon: Layers },
   { phase: 5, name: 'Operator', icon: Printer },
 ];
 
-export function PipelineProgressBar({ phases }: PipelineProgressBarProps) {
+export function PipelineProgressBar({ phases, printabilityStatus }: PipelineProgressBarProps) {
   const getStatus = (phaseNum: number) => {
+    if (phaseNum === PRINTABILITY_STEP) {
+      if (printabilityStatus) return printabilityStatus;
+      // Engineer finishing is what triggers scoring, so mirror its completion.
+      return phases.find(x => x.phase === 3)?.status === 'complete' ? 'running' : 'pending';
+    }
     const p = phases.find(x => x.phase === phaseNum);
     return p ? p.status : 'pending';
   };

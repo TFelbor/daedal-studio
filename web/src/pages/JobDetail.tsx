@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getJob } from '../api/client';
 import type { JobStatusResponse, FailureEvent } from '../api/client';
 import { PhaseProgress } from '../components/PhaseProgress';
+import { PrintabilityCard } from '../components/PrintabilityCard';
 import { TelemetryChart } from '../components/TelemetryChart';
 import { GCodeViewer } from '../components/GCodeViewer';
 import { FailureButton } from '../components/FailureButton';
@@ -137,6 +138,7 @@ export function JobDetail() {
       <div className={styles.grid}>
         <div className={styles.mainCol}>
           <PhaseProgress jobId={job.job_id} />
+          <PrintabilityCard jobId={job.job_id} />
           {showPrintMonitoring && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', minHeight: '350px' }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>

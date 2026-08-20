@@ -39,6 +39,46 @@ class PrintJob:
     outcome: Literal["success", "failure", "cancelled", "unknown"]
     """The final outcome of the print job."""
 
+    # ── Generation provenance ─────────────────────────────────────────────────
+    # Which model produced the mesh, and what it cost. Retro-labelling this is
+    # impossible: once a print is done, nothing records whether its mesh came from
+    # TripoSR locally or a hosted TRELLIS.2 call, so a model swap silently mixes two
+    # populations in the same dataset. All fields are optional so old rows stay valid.
+
+    generation_model: str | None = None
+    """Image-to-3D model that produced the mesh, e.g. "TripoSR" or "TRELLIS.2"."""
+
+    generation_model_version: str | None = None
+    """Model version, revision or endpoint id, e.g. "fal-ai/trellis-2"."""
+
+    generation_backend: Literal["local", "hosted_api", "unknown"] | None = None
+    """Where inference ran — locally, or behind a paid hosted API."""
+
+    generation_params: Dict[str, Any] | None = None
+    """Generation settings (steps, target faces, resolution, target size, hollow…)."""
+
+    generation_cost_usd: float | None = None
+    """Cost of this generation, for pay-per-generation endpoints. None when self-hosted."""
+
+    generation_duration_s: float | None = None
+    """Wall-clock seconds spent generating the mesh."""
+
+    # ── Pre-print quality ─────────────────────────────────────────────────────
+    # The printability gate's output, stored alongside the eventual outcome so that
+    # (features → predicted score → actual result) is one row.
+
+    mesh_features: Dict[str, Any] | None = None
+    """Geometry feature snapshot of the printed mesh (face count, volume, walls…)."""
+
+    printability_score: float | None = None
+    """Composite printability score 0–100, or None if never evaluated."""
+
+    printability_verdict: str | None = None
+    """Printability label: "ready", "risky" or "unprintable"."""
+
+    printability_report: Dict[str, Any] | None = None
+    """Full per-check printability report as produced by `PrintabilityReport.to_dict()`."""
+
     def __post_init__(self):
         """Validate the instantiated PrintJob fields.
 
@@ -176,7 +216,7 @@ class FailureEvent:
     z_height_mm: float | None
     """The Z height at which the failure occurred."""
     
-    failure_type: Literal["thermal_runaway", "layer_shift", "clog", "adhesion", "user_cancelled", "unknown"]
+    failure_type: Literal["thermal_runaway", "layer_shift", "clog", "adhesion", "extrusion_issue", "user_cancelled", "unknown"]
     """The categorized type of failure."""
     
     source: Literal["manual", "automated"]
@@ -185,8 +225,13 @@ class FailureEvent:
     notes: str | None
     """Optional human-readable notes regarding the failure."""
 
-    snapshot: dict
-    """The last N TelemetrySample records serialized as JSON."""
+    snapshot: list[Dict[str, Any]] | dict
+    """The last N TelemetrySample records serialized as JSON.
+
+    Written as a list of ``TelemetrySample.to_dict()`` rows by both the automated
+    detector and the manual ``POST /jobs/{id}/failure`` endpoint; ``dict`` is
+    accepted for backwards compatibility with older rows.
+    """
 
     def __post_init__(self):
         """Validate FailureEvent fields.
@@ -194,7 +239,7 @@ class FailureEvent:
         Raises:
             ValueError: If failure_type or source is not a valid value.
         """
-        valid_types = {"thermal_runaway", "layer_shift", "clog", "adhesion", "user_cancelled", "unknown"}
+        valid_types = {"thermal_runaway", "layer_shift", "clog", "adhesion", "extrusion_issue", "user_cancelled", "unknown"}
         if self.failure_type not in valid_types:
             raise ValueError(f"Invalid failure_type: {self.failure_type}")
         valid_sources = {"manual", "automated"}

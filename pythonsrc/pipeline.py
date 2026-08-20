@@ -84,6 +84,46 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
         f.flush()
 
 
+def _record_generation(args, model, model_version, backend, params, cost_usd, duration_s) -> None:
+    """Persist which model produced this job's mesh, and what it cost.
+
+    A hosted, pay-per-generation backend (fal.ai TRELLIS.2) makes cost and latency
+    per-generation facts that cannot be reconstructed later, and a model swap otherwise
+    mixes two populations in one dataset with nothing to tell them apart.
+
+    Reads its values off the sculptor when present, so swapping in a new backend means
+    setting MODEL_NAME / MODEL_VERSION / BACKEND / last_generation_cost_usd on it rather
+    than touching the pipeline.
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        model: Model name, e.g. "TripoSR" or "TRELLIS.2".
+        model_version: Version, revision or hosted endpoint id.
+        backend: "local" or "hosted_api".
+        params: Generation settings used.
+        cost_usd: Charge for this generation, if the backend bills per call.
+        duration_s: Wall-clock generation seconds.
+    """
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        db = TelemetryDB()
+        db.update_job_generation(
+            args.job_id,
+            model=model,
+            model_version=model_version,
+            backend=backend,
+            params=params,
+            cost_usd=cost_usd,
+            duration_s=duration_s,
+        )
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record generation provenance: %s", exc)
+
+
 def _phase_start(phase_num: int) -> float:
     """Print a phase start banner and return the start timestamp."""
     name = _PHASE_NAMES.get(phase_num, "Unknown")
@@ -129,10 +169,19 @@ def run(args: argparse.Namespace) -> None:
     os.makedirs(INPUTS_DIR, exist_ok=True)
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
+    # Per-job output directory. Without this every job overwrites the same
+    # engineered_mesh.* files, so downloading job A's G-code can hand you job B's.
+    # Runs without a --job-id (manual CLI use) keep the flat layout.
+    if args.job_id:
+        outputs_dir = Path(OUTPUTS_DIR) / args.job_id
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        outputs_dir = Path(OUTPUTS_DIR)
+
     blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
-    raw_mesh_path = Path(args.mesh) if args.mesh else Path(os.path.join(OUTPUTS_DIR, "raw_mesh.obj"))
-    final_mesh_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"))
-    gcode_path = Path(os.path.join(OUTPUTS_DIR, "engineered_mesh.gcode"))
+    raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
+    final_mesh_path = outputs_dir / "engineered_mesh.obj"
+    gcode_path = outputs_dir / "engineered_mesh.gcode"
 
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
     if not args.skip_visualizer:
@@ -178,6 +227,15 @@ def run(args: argparse.Namespace) -> None:
                 logger.error("Failed to generate fallback blueprint: %s", e)
                 sys.exit(1)
 
+    # Snapshot the blueprint this job actually used. Phase 1 may run natively and
+    # write the shared data/inputs/blueprint.png, so copy it in for provenance.
+    if args.job_id and blueprint_path.exists():
+        try:
+            import shutil
+            shutil.copy2(blueprint_path, outputs_dir / "blueprint.png")
+        except Exception as exc:
+            logger.warning("Could not snapshot blueprint for job %s: %s", args.job_id, exc)
+
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
         t0 = _phase_start(2)
@@ -189,6 +247,15 @@ def run(args: argparse.Namespace) -> None:
                 image_path=blueprint_path,
                 output_path=raw_mesh_path,
                 target_faces=args.faces,
+            )
+            _record_generation(
+                args,
+                model=getattr(sculptor, "MODEL_NAME", "TripoSR"),
+                model_version=getattr(sculptor, "MODEL_VERSION", None),
+                backend=getattr(sculptor, "BACKEND", "local"),
+                params={"target_faces": args.faces, "target_mm": args.target_mm, "hollow": args.hollow},
+                cost_usd=getattr(sculptor, "last_generation_cost_usd", None),
+                duration_s=round(time.time() - t0, 2),
             )
             _phase_pass(2, t0, str(raw_mesh_path))
         except Exception as exc:
@@ -221,6 +288,80 @@ def run(args: argparse.Namespace) -> None:
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:
         _phase_fail(3, t0, exc)
+
+    # ── Phase 3.5: Printability gate ──────────────────────────────────────────
+    # Deliberately not a numbered phase: the .status protocol, the WebSocket phase
+    # updates and the UI progress bar all key off phases 1-5, and renumbering would
+    # silently change what every historical .status file means.
+    printability_report = None
+    print("\n[P2P] ─── PRINTABILITY START ───", flush=True)
+    t0 = time.time()
+    try:
+        try:
+            from printability import ProcessProfile, evaluate_mesh_file
+        except ImportError:
+            from pythonsrc.printability import ProcessProfile, evaluate_mesh_file
+
+        process_profile = ProcessProfile()
+        profile_path = args.profile or "pythonsrc/profiles/ender3.json"
+        try:
+            with open(profile_path, "r") as f:
+                process_profile = ProcessProfile.from_printer_profile(json.load(f))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not read %s for printability limits (%s) — using FDM defaults.", profile_path, exc)
+
+        report = evaluate_mesh_file(
+            str(final_mesh_path),
+            profile=process_profile,
+            job_id=args.job_id,
+            was_hollowed=args.hollow,
+        )
+        printability_report = report
+
+        report_path = outputs_dir / "printability.json"
+        with open(report_path, "w") as f:
+            json.dump(report.to_dict(), f, indent=2)
+
+        print(f"[P2P] Printability score: {report.score:.1f}/100 → {report.verdict}", flush=True)
+        for check in report.failed():
+            print(f"[P2P]   ✗ {check.check}: {check.detail}", flush=True)
+        for check in report.warnings():
+            print(f"[P2P]   ! {check.check}: {check.detail}", flush=True)
+        print(f"[P2P] ─── PRINTABILITY DONE ({time.time() - t0:.1f}s) → {report_path} ───\n", flush=True)
+
+        if args.job_id:
+            try:
+                from pythonsrc.telemetry.db import TelemetryDB
+
+                db = TelemetryDB()
+                db.update_job_printability(
+                    args.job_id,
+                    score=report.score,
+                    verdict=report.verdict,
+                    features=report.features,
+                    report=report.to_dict(),
+                )
+                db.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not persist printability report: %s", exc)
+
+        # Advisory by default — a low score never blocks a print unless the caller
+        # explicitly asks for a floor.
+        if args.min_printability is not None and report.score < args.min_printability:
+            logger.error(
+                "Printability score %.1f is below the requested minimum %.1f — stopping before the slicer.",
+                report.score,
+                args.min_printability,
+            )
+            _write_status(3, "error", f"printability {report.score:.1f} < {args.min_printability:.1f}")
+            sys.exit(1)
+
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Scoring is diagnostic; never fail a print because the scorer itself broke.
+        logger.warning("Printability evaluation failed (%s) — continuing without a score.", exc)
+        print("[P2P] ─── PRINTABILITY SKIPPED (evaluation error) ───\n", flush=True)
 
     # ── Phase 4: Slicer ───────────────────────────────────────────────────────
     if getattr(args, "slice", False) or args.print:
@@ -274,19 +415,19 @@ def run(args: argparse.Namespace) -> None:
             op.connect()
 
             logger.info("Uploading G-code…")
-            op.upload_file(
-                str(gcode_path),
-                gcode_path.name,
-                start_print=args.start_print
-            )
+            # Only the two-argument form is part of the BasePrinterOperator contract —
+            # OctoPrint's upload-and-print shortcut is not, so it must not be used here
+            # or every other firmware raises TypeError.
+            op.upload_file(str(gcode_path), gcode_path.name)
             logger.info(f"Upload complete — file available on {firmware}.")
 
             if args.start_print:
-                logger.info("Print started automatically on upload.")
-                # We do not call op.start_print() anymore.
-                
+                logger.info("Starting print…")
+                op.start_print(gcode_path.name)
+
                 import asyncio
                 from pythonsrc.telemetry.db import TelemetryDB
+                from pythonsrc.telemetry.detector import attach_detector
                 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
                 from urllib.parse import urlparse
 
@@ -304,7 +445,11 @@ def run(args: argparse.Namespace) -> None:
 
                     collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
                     await collector.start()
-                    
+
+                    # Consume the collector's samples so automated failure detection
+                    # actually runs; `op` gives the detector real state/progress.
+                    detector_task = attach_detector(collector, db, op)
+
                     try:
                         # Give the printer a moment to transition to printing state
                         await asyncio.sleep(5)
@@ -329,6 +474,11 @@ def run(args: argparse.Namespace) -> None:
                                 
                             await asyncio.sleep(5)
                     finally:
+                        detector_task.cancel()
+                        try:
+                            await detector_task
+                        except asyncio.CancelledError:
+                            pass
                         await collector.stop()
                         db.close()
 
@@ -376,6 +526,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # Telemetry
     telemetry = parser.add_argument_group("telemetry")
     telemetry.add_argument("--job-id", metavar="ID", help="Telemetry Job ID for status reporting")
+    telemetry.add_argument(
+        "--min-printability",
+        type=float,
+        default=None,
+        metavar="SCORE",
+        help="Stop before slicing if the printability score is below SCORE (0-100). "
+             "Off by default — printability is advisory and only recorded.",
+    )
 
     # Phase 1 options
     p1 = parser.add_argument_group("Phase 1 — Visualizer")

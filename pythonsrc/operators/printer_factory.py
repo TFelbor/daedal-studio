@@ -10,7 +10,8 @@ class PrinterFactory:
         """Create a printer operator instance for the given firmware.
 
         Args:
-            firmware: The type of firmware (e.g., 'klipper', 'octoprint', 'bambu').
+            firmware: The type of firmware ('klipper' (alias: 'moonraker'),
+                'octoprint', or 'bambu'). Case-insensitive.
             base_url: The base URL of the printer's API.
             api_key: The optional API key for authentication.
 
@@ -21,6 +22,11 @@ class PrinterFactory:
             ValueError: If the requested firmware type is unknown.
         """
         firmware = firmware.lower()
+        # The UI and config store persist "moonraker" (the API's name) while printer
+        # profiles use "klipper" (the firmware's name). Both mean the same operator;
+        # without this alias a UI-configured Klipper printer raises ValueError here.
+        if firmware == "moonraker":
+            firmware = "klipper"
         if firmware == "klipper":
             from pythonsrc.operators.moonraker_operator import MoonrakerOperator
             return MoonrakerOperator(base_url, api_key)

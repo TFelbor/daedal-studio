@@ -15,6 +15,26 @@ export interface JobResponse {
   status: string;
 }
 
+export interface PrintabilityCheck {
+  check: string;
+  status: 'pass' | 'warn' | 'fail' | 'not_checked';
+  detail: string;
+  value: unknown;
+  threshold: unknown;
+  weight: number;
+  critical: boolean;
+}
+
+export interface PrintabilityReport {
+  job_id: string | null;
+  evaluated_at: string | null;
+  process: string;
+  score: number;
+  verdict: 'ready' | 'risky' | 'unprintable';
+  checks: PrintabilityCheck[];
+  features: Record<string, unknown>;
+}
+
 export interface JobStatusResponse {
   job_id: string;
   status: string;
@@ -29,6 +49,8 @@ export interface JobStatusResponse {
   profile_name: string | null;
   machine_name: string | null;
   layer_height_mm: number | null;
+  printability_score: number | null;
+  printability_verdict: string | null;
 }
 
 export interface TelemetrySample {
@@ -119,6 +141,13 @@ export interface PaginatedJobs {
 export async function listJobs(limit = 20, offset = 0, status = 'all'): Promise<PaginatedJobs> {
   const res = await fetch(`/jobs?limit=${limit}&offset=${offset}&status=${status}`);
   if (!res.ok) throw new Error('Failed to list jobs');
+  return res.json();
+}
+
+export async function getJobPrintability(jobId: string): Promise<PrintabilityReport | null> {
+  const res = await fetch(`/jobs/${jobId}/printability`);
+  if (res.status === 404) return null;   // not every job reaches the Engineer
+  if (!res.ok) throw new Error('Failed to fetch printability report');
   return res.json();
 }
 
