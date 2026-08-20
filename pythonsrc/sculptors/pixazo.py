@@ -55,6 +55,13 @@ PRICE_EUR_PER_GENERATION = 0.32
 DEFAULT_TIMEOUT = 600.0
 POLL_INTERVAL_SECONDS = 5.0
 
+#: Face budget requested from the endpoint, mirroring `Trellis2Backend`'s
+#: `gpu_simplify_target`. The API's own default is 500_000, and a mesh that size is
+#: what killed a real job: it arrived at 462_352 faces, and post-processing plus
+#: Phase 3's repair and the printability voxel pass never finished. Asking the
+#: endpoint to decimate costs nothing extra and happens before the download.
+DEFAULT_DECIMATION_TARGET = 200_000
+
 #: Per-request HTTP timeout. Submit and poll are both small JSON calls; only the
 #: *job* is slow, and that is handled by polling rather than one long request.
 HTTP_TIMEOUT = 60.0
@@ -116,6 +123,15 @@ class PixazoBackend(SculptorBackend):
     MODEL_VERSION = MODEL_SLUG
     BACKEND = "hosted_api"
 
+    #: Environment kill switch. Any truthy value refuses to construct this backend,
+    #: which is what keeps a test run — or a stray automated trigger — from spending
+    #: money. It is an environment variable rather than a Python-level patch on
+    #: purpose: the API server launches Phase 2 as a *subprocess* (and on a Mac, inside
+    #: a container), so a monkeypatch in the parent process would not reach the code
+    #: that actually places the call. `server.app` forwards this variable across both
+    #: boundaries.
+    KILL_SWITCH_ENV = "P2P_DISABLE_PAID_BACKENDS"
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -127,9 +143,19 @@ class PixazoBackend(SculptorBackend):
         shape_steps: int | None = None,
         ss_guidance: float | None = None,
         shape_guidance: float | None = None,
-        decimation_target: int | None = None,
+        decimation_target: int | None = DEFAULT_DECIMATION_TARGET,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
+        disabled = os.environ.get(self.KILL_SWITCH_ENV, "").strip().lower()
+        if disabled and disabled not in ("0", "false", "no"):
+            raise SculptorError(
+                f"The 'pixazo' backend is disabled by {self.KILL_SWITCH_ENV}="
+                f"{disabled!r}. It bills €"
+                f"{PRICE_EUR_PER_GENERATION:.2f} per generation, so it refuses to run "
+                "rather than spend money in an environment that asked it not to. "
+                f"Unset {self.KILL_SWITCH_ENV} to allow paid generations."
+            )
+
         self.api_key = api_key or os.environ.get("PIXAZO_API_KEY")
         if not self.api_key:
             raise SculptorError(
@@ -346,6 +372,8 @@ class PixazoBackend(SculptorBackend):
         except requests.exceptions.RequestException as exc:
             raise SculptorError(f"Could not download the generated mesh: {exc}") from exc
 
+        self._cache_glb(response.content)
+
         loaded = trimesh.load(
             io.BytesIO(response.content), file_type="glb", process=False
         )
@@ -359,6 +387,27 @@ class PixazoBackend(SculptorBackend):
                 f"Generated GLB held no usable geometry ({len(response.content)} bytes)"
             )
         return loaded
+
+    def _cache_glb(self, payload: bytes) -> None:
+        """Write the purchased GLB to the job's artifact directory, if there is one.
+
+        Called the instant the bytes arrive, before parsing or post-processing. Those
+        steps can fail — a real job died in post-processing holding a COMPLETED,
+        already-billed 462k-face mesh that existed only in memory, and re-running it
+        meant paying again. Caching first turns that into a retry from disk.
+
+        Never raises: a cache miss must not cost the caller the mesh it just bought.
+        """
+        if not self.artifact_dir:
+            return
+        name = f"pixazo_{self.last_request_id or 'generation'}.glb"
+        try:
+            target = Path(self.artifact_dir) / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+            logger.info("Cached purchased GLB (%.1f KB) to %s", len(payload) / 1024, target)
+        except Exception as exc:
+            logger.warning("Could not cache the generated GLB: %s", exc)
 
     # ── Reconstruction ───────────────────────────────────────────────────────
 
@@ -375,13 +424,18 @@ class PixazoBackend(SculptorBackend):
         started = time.time()
         request_id = self._submit(self._resolve_image_url(image_path))
         self.last_request_id = request_id
+
+        # Booked here, at the moment the gateway accepts the request — not after the
+        # mesh arrives. The charge is incurred on acceptance: a generation that is
+        # queued and then times out, or whose download fails, has still been paid
+        # for. Recording the cost only on success made every such job read as free
+        # and understated real spend, which is the opposite of what a column named
+        # `generation_cost_eur` is for. What was *delivered* is answered by whether
+        # the job has a mesh, not by whether it has a cost.
+        self.last_generation_cost_eur = PRICE_EUR_PER_GENERATION
+
         mesh_url = self._await_result(request_id)
         mesh = self._download_mesh(mesh_url)
-
-        # Only now: a submit that never completed is not a generation that was
-        # delivered, and recording a charge for one would overstate the pilot's cost
-        # per usable mesh.
-        self.last_generation_cost_eur = PRICE_EUR_PER_GENERATION
 
         logger.info(
             "Received %d faces from Pixazo in %.1fs (request=%s, up_axis=%s)",

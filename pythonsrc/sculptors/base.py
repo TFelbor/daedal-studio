@@ -54,6 +54,13 @@ class SculptorBackend(ABC):
     MODEL_NAME: str = "unknown"
     MODEL_VERSION: str | None = None
     BACKEND: str = "local"
+
+    #: Where the current job's artifacts belong, set by `generate_mesh` before
+    #: `reconstruct` runs. A backend that *pays* for its geometry should write the raw
+    #: response here the moment it arrives: post-processing can fail, and an artifact
+    #: that only ever existed in memory has to be bought a second time. None when the
+    #: caller drives `reconstruct` directly.
+    artifact_dir: Path | None = None
     #: Charge for the most recent generation, in **euro**. Left None by backends
     #: that are not billed per call; a hosted backend sets it after each request.
     last_generation_cost_eur: float | None = None
@@ -116,6 +123,7 @@ class SculptorBackend(ABC):
         if not image_path.exists():
             raise SculptorError(f"Blueprint image not found: {image_path}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.artifact_dir = output_path.parent
 
         logger.info("Sculptor backend '%s' — processing %s", self.describe(), image_path)
         mesh = self.reconstruct(image_path)

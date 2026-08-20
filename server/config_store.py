@@ -44,12 +44,25 @@ class ConfigStore:
         db_dir = os.path.dirname(self.db_path)
         self.key_path = os.path.join(db_dir, ".config_key")
 
-        # Migrate key from old repo-root location if present
+        # Migrate key from old repo-root location if present.
+        #
+        # Only into the DEFAULT database directory. This is a one-way `rename`, so
+        # running it against an arbitrary override destroys the only copy of the key
+        # that decrypts the real app_config table: a test suite pointing
+        # TELEMETRY_DB_PATH at a temp dir would move the key there and take every
+        # stored secret with it when the directory was cleaned up. The legacy location
+        # only ever corresponded to the default one, so that is the only destination
+        # the migration was ever correct for.
         old_key_path = os.path.join(
             os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
             ".config_key"
         )
-        if not os.path.exists(self.key_path) and os.path.exists(old_key_path):
+        migrating_into_default = os.path.dirname(get_default_db_path()) == db_dir
+        if (
+            migrating_into_default
+            and not os.path.exists(self.key_path)
+            and os.path.exists(old_key_path)
+        ):
             os.makedirs(os.path.dirname(self.key_path), exist_ok=True)
             os.rename(old_key_path, self.key_path)
             logger.info("Migrated .config_key from repo root to DB directory")

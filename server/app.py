@@ -398,6 +398,15 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 docker_env_args.extend(["-e", f"P2P_FIRMWARE={pipeline_env['P2P_FIRMWARE']}"])
             if "P2P_API_URL" in pipeline_env:
                 docker_env_args.extend(["-e", f"P2P_API_URL={pipeline_env['P2P_API_URL']}"])
+            # Forward the paid-backend kill switch across the container boundary.
+            # Phase 2's hosted backend bills per call and runs *inside* the container,
+            # so a guard that only exists in this process cannot stop it. `compose run`
+            # passes nothing from the host environment unless it is named here.
+            if "P2P_DISABLE_PAID_BACKENDS" in pipeline_env:
+                docker_env_args.extend([
+                    "-e",
+                    f"P2P_DISABLE_PAID_BACKENDS={pipeline_env['P2P_DISABLE_PAID_BACKENDS']}",
+                ])
                 
             if strategy == "mps_native":
                 if not skip_viz:

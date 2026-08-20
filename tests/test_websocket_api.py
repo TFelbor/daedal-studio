@@ -1,3 +1,18 @@
+# NOTE: this file is a manual smoke script, not a pytest module — pytest collects it
+# and finds no `test_*` functions, so its only real entry point is
+# `python tests/test_websocket_api.py`, which never loads tests/conftest.py and therefore misses the
+# database isolation there. Unguarded, it inserts a fixed-id job row straight into the developer's real
+# telemetry database.
+# Redirect the database before importing server.app, which builds a ConfigStore at
+# import time.
+import os as _os
+import tempfile as _tempfile
+
+_os.environ.setdefault(
+    "TELEMETRY_DB_PATH",
+    _os.path.join(_tempfile.mkdtemp(prefix="p2p-smoke-"), "telemetry.db"),
+)
+
 import json
 import asyncio
 from fastapi.testclient import TestClient
