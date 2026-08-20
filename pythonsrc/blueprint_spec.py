@@ -21,11 +21,16 @@ SEED_SPACE = 2 ** 32
 def engineer_prompt(prompt: str) -> str:
     """Wrap a user prompt in the clay-render keywords Phase 2 depends on.
 
-    TripoSR infers shape from shading, so the blueprint has to look like a matte studio
-    render rather than a photograph. The user never sees this string, which is exactly
-    why it has to be recorded: the prompt on the telemetry row is not the prompt the
-    model received, and a change to this wrapper would otherwise be invisible in the
-    dataset — every result before and after it would look like the same experiment.
+    Phase 2 reconstructs a single object cut out from its background, so the blueprint
+    has to look like one matte studio render rather than a photograph of a scene. This
+    wrapper survived the move from TripoSR to TRELLIS.2 but the reason changed:
+    TripoSR needed the shading, whereas TRELLIS.2 needs a clean subject its background
+    remover can isolate and no second object to choose between.
+
+    The user never sees this string, which is exactly why it has to be recorded: the
+    prompt on the telemetry row is not the prompt the model received, and a change to
+    this wrapper would otherwise be invisible in the dataset — every result before and
+    after it would look like the same experiment.
 
     Args:
         prompt: The user's prompt.

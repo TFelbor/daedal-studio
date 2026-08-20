@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Prompt2Print (p2p-mesh) is a fully-local pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TripoSR), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. All pipeline phases can run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
+Prompt2Print (p2p-mesh) is a pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
+
+**Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs either in-process on a CUDA host or in a GPU worker the rest of the pipeline reaches over HTTP. See **Sculptor** below.
 
 ## Build & Run Commands
 
@@ -12,7 +14,7 @@ Prompt2Print (p2p-mesh) is a fully-local pipeline that converts a natural langua
 # Python tests (default: skip slow/integration markers)
 pytest tests/ -v
 pytest tests/ -m "slow and real_printer"     # requires real/simulated printer
-pytest tests/ -m "slow and full_pipeline"    # requires FLUX + TripoSR GPU
+pytest tests/ -m "slow and full_pipeline"    # requires FLUX + a CUDA GPU or sculptor worker
 
 # Single test file
 pytest tests/test_db.py -v
@@ -27,6 +29,10 @@ docker compose -f infra/docker-compose.yml build              # build all images
 docker compose -f infra/docker-compose.yml up api-server      # start API server + UI
 docker compose -f infra/docker-compose.yml -f infra/docker-compose.gpu.yml up api-server  # with GPU
 docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a vase" --print --start-print
+
+# Phase 2 GPU worker — run this on a CUDA host, not the dev machine
+docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
+curl -s http://<gpu-host>:8100/health | python -m json.tool   # check before submitting jobs
 
 # Makefile shortcuts
 make build                     # docker compose build
@@ -45,10 +51,14 @@ cp pythonsrc/config.template.py pythonsrc/config.py  # if running natively (not 
 
 The core pipeline runs 5 phases sequentially. Phase banners (`[P2P] ═══ PHASE N START/PASS/FAIL ...`) are parsed by the server to emit WebSocket progress updates. The pipeline writes a `.status` file per job to `data/logs/{job_id}.status`.
 
-Execution strategies are auto-detected by `platform_utils.py`:
-- `mps_native` — macOS with Apple Silicon (Phase 1 native, Phases 2-5 in Docker)
+Execution strategies are auto-detected by `platform_utils.py`. These decide **Phase 1's**
+placement only:
+- `mps_native` — macOS with Apple Silicon (Phase 1 native, Phases 3-5 in Docker)
 - `nvidia_docker` — NVIDIA GPU available in Docker
 - `cpu_docker` — CPU-only Docker fallback
+
+Phase 2's placement is a *separate* decision made by `sculptors.resolve_backend_name`, because
+`platform_utils` knows nothing about the worker URL that makes a GPU-less host viable.
 
 Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate artifacts.
 
@@ -60,6 +70,80 @@ the UI progress bar all key off phases 1–5, so renumbering would change what e
 job's telemetry row. Scoring is **advisory** — a low score never blocks a print unless
 `--min-printability SCORE` is passed, and a crash in the scorer is logged and skipped rather than
 failing the job.
+
+### Sculptor — Phase 2 (pythonsrc/sculptors/)
+
+Image→3D reconstruction with **TRELLIS.2-4B**. `pythonsrc/sculptor.py` is a thin facade over
+the package, kept so `from sculptor import create_sculptor`, the Phase 2 container entrypoint
+and the CLI all have one stable name.
+
+Two backends run the *same* model; which one runs is a deployment detail, not a difference in
+output:
+
+- **`trellis2`** — in-process. Requires CUDA, ~24 GB VRAM, and `$TRELLIS2_REPO_PATH` pointing at
+  a TRELLIS.2 checkout (upstream is not pip-installable).
+- **`remote`** — posts the blueprint to a GPU worker (`services/trellis2_worker/`) and gets raw
+  geometry back. This is how a Mac or a CPU-only Linux box reaches the model.
+
+`create_sculptor()` / `resolve_backend_name()` resolve `auto` as: `remote` if
+`$P2P_SCULPTOR_REMOTE_URL` is set (an explicit configuration outranks a local GPU that may be
+busy with Phase 1), else `trellis2` if CUDA is visible, else **raise**. There is deliberately no
+fallback: silently producing a mesh from something other than the model you asked for is worse
+than failing, and there is no CPU implementation to fall back *to*.
+
+- **Shape-only path.** `Trellis2Backend` drives the pipeline stages itself
+  (`get_cond` → `sample_sparse_structure` → `sample_shape_slat[_cascade]` → `decode_shape_slat`)
+  rather than calling `pipeline.run()`, which would also sample a texture latent. An FDM printer
+  consumes geometry alone, so this saves roughly 40% of GPU time, keeps the texture DiT and
+  decoder from being downloaded at all (`SHAPE_ONLY_MODELS` narrows `model_names_to_load`), and
+  — see Licensing — never touches a rasterizer.
+- **TRELLIS.2 is already Z-up**, unlike TripoSR. Its orbit cameras use `[0,0,1]` as up and
+  `o_voxel.postprocess.to_glb` swaps Y/Z on the way out precisely because glTF is Y-up and the
+  model's frame is not. So `up_axis = "z"` and no rotation is applied. Getting this wrong is
+  silent: the print simply comes out lying on its side.
+- **Smoothing defaults to 0.** Sharp features are the reason to run this model; Taubin smoothing
+  subdivides and rounds exactly the edges O-Voxel recovers. `default_smooth_iterations` is a
+  per-backend value, and `--smooth N` opts back in.
+- **Decimation happens twice, on purpose.** `cumesh` simplifies on the GPU to
+  `gpu_simplify_target` (200k) before the mesh is ever materialised as NumPy — a 1024³
+  reconstruction is millions of faces, and CPU-decimating that costs minutes — then the shared
+  CPU pass takes it to `--faces`.
+- **Post-processing is shared and lives client-side** (`SculptorBackend.postprocess`):
+  Z-up rotation, largest-component pruning, optional smoothing, decimation, export. The worker
+  returns *raw* geometry so there is exactly one implementation regardless of where inference
+  ran, and so GPU seconds are not billed for CPU work. The frame comes back in the
+  `X-P2P-Up-Axis` header, which is what makes that split safe rather than an assumption.
+- **`generation_params()` is the backend's own business.** Each backend reports its knobs so the
+  pipeline never has to know which ones a given backend has. `remote` renames the wire field
+  `seed` to `mesh_seed` on the way out: it shares a telemetry column with local runs, and one
+  field under two names is a column nobody can query.
+- **Background removal is upstream's** — BiRefNet (`ZhengPeng7/BiRefNet`, MIT) inside
+  `preprocess_image`, which premultiplies the cut-out the way the model was trained. Phase 2 no
+  longer uses `rembg`/u2net; that was a TripoSR grey-composite trick for shape-from-shading and
+  it would fight this model's own preprocessing.
+- **New CLI/API knobs**: `--sculptor-backend`, `--pipeline-type`
+  (`512`|`1024`|`1024_cascade`|`1536_cascade`), `--mesh-seed`, `--smooth`. `--mesh-seed` is
+  *not* `--seed`: one reproduces the blueprint, the other the reconstruction, and a single value
+  for both would make it impossible to re-sculpt one image two ways. `POST /jobs` accepts
+  `pipeline_type` and `mesh_seed`.
+
+### Sculptor worker (services/trellis2_worker/)
+
+FastAPI service holding one backend resident on a GPU. `GET /health` (no auth — a readiness
+probe requiring a secret is one nobody runs) reports the loaded model and free VRAM;
+`POST /sculpt` takes a multipart image plus optional `backend`/`pipeline_type`/`seed` and returns
+mesh bytes with `X-P2P-Up-Axis`, `X-P2P-Model`, `X-P2P-Model-Version`, `X-P2P-Mesh-Format`.
+
+- Requests are **serialised** under one lock: the GPU cannot serve two 4B-parameter
+  reconstructions, and `pipeline_type`/`seed` overrides are applied to the *shared instance* and
+  restored in a `finally`. A leaked override would silently change every later job's geometry,
+  long after the request that set it.
+- A request naming a different backend is **refused (409)**, not served by the loaded one — the
+  telemetry row would otherwise name a model that never ran.
+- A preload failure is logged, not fatal: the worker then answers `/health` with the reason,
+  which beats a container that exits on startup.
+- Built by `infra/docker/trellis2-worker.Dockerfile` (CUDA 12.4 devel). `TORCH_CUDA_ARCH_LIST`
+  must match the deployment GPU or the compiled kernels will not load.
 
 ### Server (server/app.py)
 
@@ -128,7 +212,7 @@ FastAPI application with:
   column per signal, so the pilot's response-rate query needs no migration. `download_count` and
   `parent_job_id` are denormalised onto `print_job` for the common query.
 - **Generation provenance + pre-print quality on `PrintJob`**: `generation_model`,
-  `generation_model_version`, `generation_backend` (`local` / `hosted_api`), `generation_params`,
+  `generation_model_version`, `generation_backend` (see below), `generation_params`,
   `generation_cost_usd`, `generation_duration_s`, `mesh_features`, `printability_score`,
   `printability_verdict`, `printability_report`. All optional, so pre-existing rows stay valid, and
   `db.init_schema()` adds the columns to older databases via `ALTER TABLE`. These exist because
@@ -136,10 +220,16 @@ FastAPI application with:
   mesh or what the call cost. Write them with `db.update_job_generation()` and
   `db.update_job_printability()` — both skip `None` arguments, so cost arriving after the model
   name does not erase it.
-- **Swapping the image-to-3D model** (e.g. TripoSR → TRELLIS.2 on fal.ai): set `MODEL_NAME`,
-  `MODEL_VERSION`, `BACKEND` and `last_generation_cost_usd` on the sculptor object.
-  `pipeline._record_generation()` reads them off it after Phase 2, so a pay-per-generation backend
-  needs no pipeline change to get its cost and latency recorded per job.
+- **`generation_backend` has four values, not two**: `local`, `remote_worker`, `hosted_api`,
+  `unknown`. `remote_worker` is a self-hosted GPU worker: nothing is billed per call, so
+  `generation_cost_usd` stays None while `generation_duration_s` legitimately includes upload and
+  queueing. Folding it into `local` makes both numbers unreadable; folding it into `hosted_api`
+  implies a cost that does not exist.
+- **Swapping the image-to-3D model** (e.g. TRELLIS.2 self-hosted → TRELLIS.2 on fal.ai): set
+  `MODEL_NAME`, `MODEL_VERSION`, `BACKEND` and `last_generation_cost_usd` on the sculptor object,
+  and report its knobs from `generation_params()`. `pipeline._record_generation()` reads all of it
+  off the instance after Phase 2, so a pay-per-generation backend needs no pipeline change to get
+  its cost and latency recorded per job.
 - **DB** (`db.py`): SQLite wrapper with thread-safe locking; `check_same_thread=False` for use across asyncio tasks. Path default: `~/.p2p-mesh/telemetry.db` or `TELEMETRY_DB_PATH` env var
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
@@ -231,10 +321,10 @@ Key pipeline paths: `data/inputs/` (blueprint), `data/outputs/{job_id}/` (per-jo
 ## Licensing Constraints
 
 The project ships under Apache-2.0 (`LICENSE`), and every dependency is tracked in
-`THIRD-PARTY-NOTICES.md`. Three rules keep that grant coherent — all three have already been
-violated once, so treat them as load-bearing rather than aspirational:
+`THIRD-PARTY-NOTICES.md`. Four rules keep that grant coherent — the first three have already
+been violated once, so treat them as load-bearing rather than aspirational:
 
-- **Never import a GPL/AGPL library in-process.** `pymeshfix` was removed for exactly this:
+- **Never import a GPL/AGPL library in-process** — nor a "source-available, non-commercial" one. `pymeshfix` was removed for exactly this:
   it wraps MeshFix (Attene/IMATI-GE-CNR), whose terms additionally require a negotiated
   contract for commercial use. `Engineer.repair_mesh` now composes trimesh (MIT) for surface
   closing with `manifold3d` (Apache-2.0) for the manifoldness guarantee and boolean union.
@@ -244,16 +334,30 @@ violated once, so treat them as load-bearing rather than aspirational:
   written source offer lives in `THIRD-PARTY-NOTICES.md`.
 - **Model weights carry licences independent of the library that loads them.** `rembg` is MIT
   but its *default* model became BRIA RMBG-2.0, which requires a paid commercial agreement.
-  Hence `rembg==2.0.69` is pinned **and** `sculptor.REMBG_MODEL` names `u2net` (Apache-2.0)
-  explicitly. Both controls are required — a version pin alone does not survive a bump.
+  This is why `rembg` was pinned to `2.0.69` **and** `u2net` named explicitly while TripoSR was
+  Phase 2. `rembg` is now gone (TRELLIS.2 does its own background removal with an explicitly
+  named MIT model), so the pin is gone too — **do not reintroduce `rembg` without restoring both
+  controls.** The live instance of this rule is now TRELLIS.2's BiRefNet, named in upstream's
+  `pipeline.json` rather than resolved from a default, and loaded with `trust_remote_code=True`.
+- **Never install nvdiffrast or nvdiffrec.** Upstream TRELLIS.2's documented install line asks
+  for both, and both are under the **NVIDIA Source Code License — non-commercial research only**.
+  They are the same class of hazard as `pymeshfix`, and harder to spot because GitHub reports the
+  licence as `Other` rather than as copyleft. Phase 2 avoids them structurally, not by
+  remembering: the shape-only path never calls `o_voxel.postprocess.to_glb()` (the only thing on
+  the image→3D path that rasterizes), `trellis2/pipelines/__init__.py` resolves submodules lazily
+  so the texturing pipeline and renderers are never imported, and the worker image simply does not
+  install them. If a future feature needs textured output, the rasterizer must come from a
+  permissive backend (PyTorch3D, BSD-3-Clause) — never from nvdiffrast.
 
 When adding or bumping a dependency, check the package licence *and* any weights it downloads
 at runtime, then update `THIRD-PARTY-NOTICES.md`.
 
 ## Important Constraints
 
-- The `PYTORCH_ENABLE_MPS_FALLBACK=1` env var must be set **before** any `import torch` — this is why `pipeline.py` sets it at the very top before other imports
+- The `PYTORCH_ENABLE_MPS_FALLBACK=1` env var must be set **before** any `import torch` — this is why `pipeline.py` sets it at the very top before other imports. It is a Phase 1 concern only now; Phase 2 is CUDA-only and never runs on MPS.
+- `Trellis2Backend.__init__` likewise sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` and `OPENCV_IO_ENABLE_OPENEXR=1` before the extensions load, matching upstream's own entry points
 - `pythonsrc/config.py` is gitignored and must be created from `config.template.py` for native (non-Docker) runs
 - `data/` directories including logs, inputs, outputs are all runtime-only and gitignored
 - Phase 1 (FLUX) on Docker/CPU takes ~84 minutes; native macOS MPS is ~30 seconds — the MPS-native path is the primary dev workflow on Mac
-- Docker images are `linux/amd64` only; on Apple Silicon, Docker Desktop emulates via Rosetta 2
+- Docker images are `linux/amd64` only; on Apple Silicon, Docker Desktop emulates via Rosetta 2. The one exception is `trellis2-worker.Dockerfile`, which is built against a CUDA devel image and only runs on an NVIDIA host
+- Phase 2 has **no CPU path at all**. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5

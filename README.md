@@ -18,7 +18,8 @@ This project is built for developers and makers who want a fully local AI-to-phy
 | Component         | Location          | Technology        | Purpose                          |
 |-------------------|-------------------|-------------------|----------------------------------|
 | Visualizer        | `pythonsrc/`      | FLUX.2-klein-4B   | Text → blueprint image           |
-| Sculptor          | `pythonsrc/`      | TripoSR           | Image → 3D mesh                  |
+| Sculptor          | `pythonsrc/sculptors/` | TRELLIS.2-4B | Image → 3D mesh                  |
+| Sculptor worker   | `services/trellis2_worker/` | FastAPI + CUDA | Serves TRELLIS.2 to GPU-less hosts |
 | Engineer          | `pythonsrc/`      | manifold3d/trimesh | Mesh repair + scaling            |
 | Slicer            | `pythonsrc/`      | CuraEngine        | Mesh → G-code                    |
 | Operators         | `pythonsrc/operators/` | REST/HTTP      | Printer control (OctoPrint/Klipper/Bambu stub) |
@@ -226,7 +227,7 @@ pytest tests/ -m "slow and full_pipeline"
 ### ✅ Completed — Proof of Concept & MVP Foundation
 
 - [x] **Phase 1: Visualizer** — Text-to-image blueprinting (FLUX.2-klein-4B, MPS acceleration)
-- [x] **Phase 2: Sculptor** — Neural 3D reconstruction & Taubin smoothing (TripoSR)
+- [x] **Phase 2: Sculptor** — Neural 3D reconstruction (TRELLIS.2-4B, shape-only O-Voxel path), in-process on CUDA or via a GPU worker
 - [x] **Phase 3: Engineer** — Automated mesh repair, scaling & orientation (manifold3d)
 - [x] **Phase 3.5: Slicer** — CuraEngine G-code generation with bundled printer profiles
 - [x] **Phase 4: Operator** — OctoPrint upload, pre-flight printer safety checks & job control
@@ -260,7 +261,7 @@ pytest tests/ -m "slow and full_pipeline"
 - [ ] **Local agent (Rust)** — Lightweight native bridge for mDNS printer discovery and direct G-code streaming; complements web UI without requiring full desktop app
 - [ ] **Physical printer validation** — End-to-end hardware test suite across Ender 3, Bambu X1C, and Prusa MK4
 - [ ] **Dataset pipeline** — Labeled failure-event export tooling; basis for supervised failure-prediction model
-- [ ] **Model quality gate** — Automated TripoSR output scoring (mesh validity, printability heuristics) before job proceeds to slicing
+- [ ] **Textured output** — GLB export with baked PBR materials, which TRELLIS.2 already produces and the shape-only path discards. Blocked on a permissively licensed rasterizer: upstream's `to_glb()` needs one, and nvdiffrast's licence is non-commercial (see `THIRD-PARTY-NOTICES.md`)
 - [ ] **User accounts + multi-tenant** — Auth layer (OAuth2/JWT), per-user job history, telemetry namespacing for B2B SaaS deployment
 
 ---

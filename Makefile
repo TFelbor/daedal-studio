@@ -12,12 +12,15 @@
 #   make phase1-native PROMPT="a vase"  # Run Phase 1 natively (macOS MPS)
 #   make pipeline-mac  PROMPT="a vase"  # Full pipeline on Mac
 #   make pipeline-gpu  PROMPT="a vase"  # Full pipeline with NVIDIA GPU
+#   make worker-build                   # Build the Phase 2 GPU worker (NVIDIA host)
+#   make worker-up                      # Start the Phase 2 GPU worker
+#   make worker-health                  # Check the worker is loaded and ready
 # ────────────────────────────────────────────────────────────────────────────
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,32 @@ down:
 logs:
 	docker compose -f $(COMPOSE_FILE) logs -f api-server
 
+# ── Phase 2 GPU worker (TRELLIS.2) ────────────────────────────────────────────
+# TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM, so these targets only work
+# on a CUDA host. Everything else in this file runs anywhere.
+#
+# TORCH_CUDA_ARCH_LIST must match the deployment GPU or the compiled kernels will
+# not load: 8.0=A100 8.6=A10G 8.9=L4 9.0=H100.
+#
+# Expect 30-60 min for the first build — the CUDA extensions compile from source.
+worker-build:
+	docker compose -f $(COMPOSE_FILE) --profile gpu-worker build trellis2-worker
+
+# Start the worker (weights download into the volume on first boot)
+worker-up:
+	docker compose -f $(COMPOSE_FILE) --profile gpu-worker up trellis2-worker
+
+worker-down:
+	docker compose -f $(COMPOSE_FILE) --profile gpu-worker down
+
+worker-logs:
+	docker compose -f $(COMPOSE_FILE) --profile gpu-worker logs -f trellis2-worker
+
+# Check the worker before submitting jobs: a failed preload shows up here rather
+# than as a failed Phase 2 several minutes into a run.
+worker-health:
+	curl -s $${P2P_SCULPTOR_REMOTE_URL:-http://localhost:8100}/health | python3 -m json.tool
+
 # ── Pipeline runs ─────────────────────────────────────────────────────────────
 
 # Run Phase 1 natively on macOS (MPS accelerated, ~30s)
@@ -60,7 +89,9 @@ pipeline-mac:
 		--skip-visualizer --blueprint data/inputs/blueprint.png \
 		--print --start-print
 
-# Full pipeline with NVIDIA GPU (Linux / Windows with NVIDIA Container Toolkit)
+# Full pipeline with NVIDIA GPU (Linux / Windows with NVIDIA Container Toolkit).
+# Phase 2 still goes through the worker — the pipeline-runner image carries no CUDA
+# extensions — so start it first (make worker-up) and set P2P_SCULPTOR_REMOTE_URL.
 pipeline-gpu:
 	@if [ -z "$(PROMPT)" ]; then echo "Usage: make pipeline-gpu PROMPT='a ceramic vase'"; exit 1; fi
 	docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_GPU) \

@@ -65,7 +65,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # ── Copy Python source ────────────────────────────────────────────────────────
-# Copy the full pythonsrc tree (includes tsr/, profiles/, config.template.py)
+# Copy the full pythonsrc tree (includes sculptors/, profiles/, config.template.py)
 COPY pythonsrc/ ./pythonsrc/
 COPY requirements.txt ./requirements.txt
 
@@ -74,7 +74,7 @@ COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
 RUN chmod +x /usr/local/bin/p2p-entrypoint
 
 # ── Create I/O directories ────────────────────────────────────────────────────
-RUN mkdir -p /app/inputs /app/outputs /models/flux /models/triposr
+RUN mkdir -p /app/inputs /app/outputs /models/flux /models/trellis2
 
 # ── Default command ────────────────────────────────────────────────────────────
 CMD ["python", "--version"]

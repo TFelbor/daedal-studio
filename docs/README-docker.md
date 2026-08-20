@@ -11,7 +11,7 @@ This guide explains how to build, run, and troubleshoot the **p2p-mesh pipeline*
 | Docker Engine | 24.x or later | Core container runtime |
 | Docker Compose plugin | v2.20 or later | Must be `docker compose` (not `docker-compose`) |
 | NVIDIA Container Toolkit | Latest | Optional. Required for GPU pass-through on Ubuntu/Windows |
-| Disk space | ≥ 30 GB | Models (FLUX + TripoSR weights) and images |
+| Disk space | ≥ 30 GB | Models (FLUX weights) and images. Add ~20 GB on the GPU host for TRELLIS.2-4B |
 | RAM | ≥ 16 GB | Minimum 8 GB for CPU-only runs |
 
 ---
@@ -24,7 +24,8 @@ The system is decomposed into highly modular services, allowing independent buil
 |------------------|-----------------------------|-------|----------------------------------|
 | pipeline-runner  | `infra/docker/pipeline.Dockerfile` | —     | Runs all 5 pipeline phases       |
 | phase1-visualizer| `infra/docker/phase1.Dockerfile`   | —     | FLUX text-to-image (standalone)  |
-| phase2-sculptor  | `infra/docker/phase2.Dockerfile`   | —     | TripoSR reconstruction           |
+| phase2-sculptor  | `infra/docker/phase2.Dockerfile`   | —     | TRELLIS.2 client (posts to the GPU worker) |
+| trellis2-worker  | `infra/docker/trellis2-worker.Dockerfile` | `gpu-worker` | TRELLIS.2-4B in-process (NVIDIA host only) |
 | phase3-engineer  | `infra/docker/phase3.Dockerfile`   | —     | Mesh repair + scaling            |
 | phase4-slicer    | `infra/docker/phase4.Dockerfile`   | —     | CuraEngine slicing               |
 | phase5-operator  | `infra/docker/phase5.Dockerfile`   | —     | OctoPrint/Klipper job dispatch   |
@@ -40,7 +41,7 @@ Persistent storage ensures weights don't re-download and outputs aren't lost acr
 | Volume Name          | Mount Point          | Contents                                    |
 |----------------------|----------------------|---------------------------------------------|
 | p2p-models-flux      | `/models/flux`       | FLUX.2-klein-4B weights (~16 GB)            |
-| p2p-models-triposr   | `/models/triposr`    | TripoSR weights                             |
+| p2p-models-trellis2  | `/models/trellis2`   | TRELLIS.2-4B weights (GPU worker only)      |
 | p2p-models-hf-cache  | `/models/hf_cache`   | HuggingFace hub cache                       |
 | p2p-inputs           | `/app/inputs`        | Blueprint images (pipeline input)           |
 | p2p-outputs          | `/app/outputs`       | Meshes, G-code (pipeline output)            |
@@ -59,7 +60,11 @@ These variables configure the `.env` file at the repository root.
 | `OCTOPRINT_API_KEY` | `""` | Yes | OctoPrint application key |
 | `CURA_ENGINE_PATH` | `CuraEngine` | No | Path to binary inside the container |
 | `FLUX_MODEL_PATH` | `/models/flux` | No | Path to cached FLUX weights |
-| `TRIPOSR_MODEL_PATH` | `/models/triposr` | No | Path to cached TripoSR weights |
+| `TRELLIS2_MODEL_PATH` | `/models/trellis2` | No | Path to cached TRELLIS.2 weights |
+| `P2P_SCULPTOR_BACKEND` | `auto` | No | `auto` \| `trellis2` \| `remote` |
+| `P2P_SCULPTOR_REMOTE_URL` | — | For `remote` | GPU worker root URL, e.g. `http://gpu-host:8100` |
+| `P2P_SCULPTOR_REMOTE_KEY` | — | No | Bearer token, if the worker sets `P2P_WORKER_API_KEY` |
+| `TRELLIS2_PIPELINE_TYPE` | `1024_cascade` | No | `512` \| `1024` \| `1024_cascade` \| `1536_cascade` |
 | `PYTORCH_ENABLE_MPS_FALLBACK` | `1` | No | CPU fallback for macOS MPS operations |
 | `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
 | `TRANSFORMERS_CACHE` | `/models/hf_cache` | No | Alias for HF_HOME |
@@ -98,14 +103,37 @@ docker run --rm \
 ```
 
 ### Phase 2 — Sculptor
+
+Two containers, on two machines. TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of
+VRAM and four compiled CUDA extensions with no CPU kernels, so the model lives in
+the worker image and the client posts to it.
+
+**On the GPU host** — start the worker (weights download on first boot):
+```bash
+docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
+
+# Confirm it is ready before submitting jobs; a failed preload shows up here
+# rather than as a failed Phase 2 four minutes in.
+curl -s http://localhost:8100/health | python -m json.tool
+```
+
+**On the pipeline host** — point the client at it:
 ```bash
 docker run --rm \
-    -v p2p-models-triposr:/models/triposr \
     -v p2p-inputs:/app/inputs \
     -v p2p-outputs:/app/outputs \
+    -e P2P_SCULPTOR_BACKEND=remote \
+    -e P2P_SCULPTOR_REMOTE_URL=http://gpu-host:8100 \
     p2p-phase2-sculptor:latest \
     --blueprint /app/inputs/blueprint.png --output /app/outputs/raw_mesh.obj
 ```
+
+If the pipeline host *is* the GPU host, the shape is the same — run the worker and
+point the client at `http://localhost:8100`. The client and the worker stay separate
+containers even then, because the CPU images deliberately carry no torch and no CUDA
+extensions; that separation is what keeps them portable and what keeps the
+non-commercially-licensed renderer packages out of them entirely (see
+[`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md)).
 
 ### Phase 3 — Engineer
 ```bash
@@ -157,7 +185,10 @@ You can pass these flags to the `pipeline-runner` or `pipeline.py` script to byp
 | Flag | Example | Description |
 |------|---------|-------------|
 | `--skip-visualizer` | `--skip-visualizer --blueprint /app/inputs/img.png` | Skips Phase 1; requires a provided image. |
-| `--skip-sculptor` | `--skip-sculptor --mesh /app/outputs/mesh.obj` | Skips Phase 2; requires a provided mesh. |
+| `--skip-sculptor` | `--skip-sculptor --mesh /app/outputs/mesh.obj` | Skips Phase 2; requires a provided mesh. The way to work on Phases 3-5 without a GPU. |
+| `--sculptor-backend` | `--sculptor-backend remote` | Where Phase 2 runs: `auto`, `trellis2` or `remote`. |
+| `--pipeline-type` | `--pipeline-type 1536_cascade` | TRELLIS.2 voxel resolution. Higher is finer and slower. |
+| `--mesh-seed` | `--mesh-seed 7` | Reconstruction seed. Distinct from `--seed`, which is Phase 1's. |
 | `--skip-engineer` | `--skip-engineer` | Skips Phase 3 repairs and scaling. |
 | `--skip-slicer` | `--skip-slicer` | Skips Phase 4 G-code slicing. |
 | `--print` / `--start-print` | `--print --start-print` | Opts in to Phase 5 execution (dispatch). |

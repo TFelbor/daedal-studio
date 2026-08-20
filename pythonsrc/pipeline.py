@@ -7,6 +7,7 @@ Chains Phases 1→2→3→4→5 in a single command:
     python pythonsrc/pipeline.py "a miniature chess knight" --target-mm 80 --hollow
     python pythonsrc/pipeline.py --skip-visualizer --blueprint /app/inputs/blueprint.png
     python pythonsrc/pipeline.py --skip-sculptor   --mesh /app/outputs/test_mesh.obj
+    python pythonsrc/pipeline.py "a vase" --pipeline-type 1536_cascade --mesh-seed 7
 
 Phase 5 (Operator) is triggered with --print / --octoprint-url.
 Phase 4 (Slicer) converts the engineered .obj → .gcode before upload:
@@ -17,13 +18,22 @@ Phase 4 (Slicer) converts the engineered .obj → .gcode before upload:
 """
 
 # ── MPS fallback — MUST be set before any torch import ────────────────────────
-# Several MPS ops (e.g. upsample_bicubic2d used by TripoSR's ViT image
-# tokeniser) are not yet implemented on Apple Silicon. This flag makes PyTorch
-# silently fall back to CPU for those ops. It must be in the environment
-# *before* `import torch` is first executed in this process — hence it lives
-# here at the very top, ahead of all other imports.
+# Several MPS ops used by Phase 1's diffusion stack (e.g. upsample_bicubic2d) are
+# not yet implemented on Apple Silicon. This flag makes PyTorch silently fall back
+# to CPU for those ops. It must be in the environment *before* `import torch` is
+# first executed in this process — hence it lives here at the very top, ahead of
+# all other imports. Phase 2 does not need it: TRELLIS.2 is CUDA-only and never
+# runs on MPS at all.
 import os
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+# Phase 2's allocator setting, for the same reason and with a sharper deadline.
+# TRELLIS.2 moves 4B parameters on and off the GPU per stage, and expandable
+# segments are what keep that from fragmenting VRAM into an OOM. The CUDA caching
+# allocator reads this once, when it initialises on the first CUDA allocation —
+# which on a GPU host is Phase 1, long before the sculptor is constructed. Setting
+# it inside the backend would therefore be too late to have any effect.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import os
 import sys
@@ -87,9 +97,12 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
 def _record_generation(args, model, model_version, backend, params, cost_usd, duration_s) -> None:
     """Persist which model produced this job's mesh, and what it cost.
 
-    A hosted, pay-per-generation backend (fal.ai TRELLIS.2) makes cost and latency
-    per-generation facts that cannot be reconstructed later, and a model swap otherwise
-    mixes two populations in one dataset with nothing to tell them apart.
+    A hosted, pay-per-generation backend (e.g. TRELLIS.2 on fal.ai) makes cost and
+    latency per-generation facts that cannot be reconstructed later, and a model swap
+    otherwise mixes two populations in one dataset with nothing to tell them apart.
+    The same applies to *where* a self-hosted model ran: a `remote_worker` job's
+    duration includes upload and queueing, so mixing it with `local` timings without
+    a label makes both meaningless.
 
     Reads its values off the sculptor when present, so swapping in a new backend means
     setting MODEL_NAME / MODEL_VERSION / BACKEND / last_generation_cost_usd on it rather
@@ -97,9 +110,9 @@ def _record_generation(args, model, model_version, backend, params, cost_usd, du
 
     Args:
         args: Parsed CLI arguments; nothing is recorded without --job-id.
-        model: Model name, e.g. "TripoSR" or "TRELLIS.2".
+        model: Model name, e.g. "TRELLIS.2".
         model_version: Version, revision or hosted endpoint id.
-        backend: "local" or "hosted_api".
+        backend: "local", "remote_worker" or "hosted_api".
         params: Generation settings used.
         cost_usd: Charge for this generation, if the backend bills per call.
         duration_s: Wall-clock generation seconds.
@@ -447,20 +460,36 @@ def run(args: argparse.Namespace) -> None:
     if not args.skip_sculptor:
         t0 = _phase_start(2)
         try:
-            from sculptor import P2PSculptor
+            from sculptor import create_sculptor
 
-            sculptor = P2PSculptor()
+            sculptor = create_sculptor(
+                args.sculptor_backend,
+                pipeline_type=args.pipeline_type,
+                seed=args.mesh_seed,
+            )
+            print(f"[P2P] Sculptor backend: {sculptor.describe()}", flush=True)
             sculptor.generate_mesh(
                 image_path=blueprint_path,
                 output_path=raw_mesh_path,
                 target_faces=args.faces,
+                smooth_iterations=args.smooth,
             )
             _record_generation(
                 args,
-                model=getattr(sculptor, "MODEL_NAME", "TripoSR"),
+                model=getattr(sculptor, "MODEL_NAME", "TRELLIS.2"),
                 model_version=getattr(sculptor, "MODEL_VERSION", None),
                 backend=getattr(sculptor, "BACKEND", "local"),
-                params={"target_faces": args.faces, "target_mm": args.target_mm, "hollow": args.hollow},
+                # The backend reports its own sampler settings; the pipeline adds
+                # only what it owns. Both matter: sampler settings change the
+                # geometry, and nothing after the fact says which resolution or
+                # seed produced a given mesh.
+                params={
+                    **sculptor.generation_params(),
+                    "smooth_iterations": args.smooth,
+                    "target_faces": args.faces,
+                    "target_mm": args.target_mm,
+                    "hollow": args.hollow,
+                },
                 cost_usd=getattr(sculptor, "last_generation_cost_usd", None),
                 duration_s=round(time.time() - t0, 2),
             )
@@ -772,8 +801,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # Phase 2 options
-    p2 = parser.add_argument_group("Phase 2 — Sculptor")
-    p2.add_argument("--faces", type=int, default=5_000, metavar="N", help="Target face count after decimation")
+    p2 = parser.add_argument_group("Phase 2 — Sculptor (TRELLIS.2)")
+    p2.add_argument("--faces", type=int, default=5_000, metavar="N", help="Target face count after decimation; 0 disables it")
+    p2.add_argument(
+        "--sculptor-backend",
+        default=None,
+        choices=["auto", "trellis2", "remote"],
+        help="Where reconstruction runs: trellis2 in-process (needs a CUDA GPU), "
+             "remote via a GPU worker, or auto (default: $P2P_SCULPTOR_BACKEND, else auto)",
+    )
+    p2.add_argument(
+        "--pipeline-type",
+        default=None,
+        choices=["512", "1024", "1024_cascade", "1536_cascade"],
+        help="TRELLIS.2 voxel resolution — higher captures finer detail at more "
+             "GPU time (default: 1024_cascade)",
+    )
+    p2.add_argument(
+        "--mesh-seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Sampling seed for reconstruction; the same seed and blueprint "
+             "reproduce the same mesh. Distinct from --seed, which is Phase 1's.",
+    )
+    p2.add_argument(
+        "--smooth",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Taubin smoothing passes. Defaults to 0 for TRELLIS.2 — smoothing "
+             "rounds off exactly the sharp features the model recovers.",
+    )
 
     # Phase 3 options
     p3 = parser.add_argument_group("Phase 3 — Engineer")

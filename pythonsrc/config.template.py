@@ -67,16 +67,24 @@ OCTOPRINT_API_KEY: str = os.environ.get("OCTOPRINT_API_KEY", "")
 
 # ── AI Model Paths ─────────────────────────────────────────────────────────
 # Paths to model weight directories. Override via environment variables.
-# In Docker: these map to named volumes mounted at /models/flux and /models/triposr.
+# In Docker: these map to named volumes mounted at /models/flux and /models/trellis2.
 FLUX_MODEL_PATH: str = os.environ.get(
     "FLUX_MODEL_PATH",
     str(Path(__file__).parent / "models" / "flux"),
 )
 
-TRIPOSR_MODEL_PATH: str = os.environ.get(
-    "TRIPOSR_MODEL_PATH",
-    str(Path(__file__).parent / "models" / "TripoSR"),
+# TRELLIS.2-4B weights (Phase 2 — Sculptor). Only read by the process that runs
+# the model: on a host without an NVIDIA GPU, Phase 2 goes through the GPU worker
+# and this path is never touched. See pythonsrc/sculptors/.
+TRELLIS2_MODEL_PATH: str = os.environ.get(
+    "TRELLIS2_MODEL_PATH",
+    str(Path(__file__).parent / "models" / "TRELLIS.2"),
 )
+
+# Path to the TRELLIS.2 source checkout. The upstream repo is not pip-installable,
+# so it is cloned alongside this project; empty means "look in the usual places"
+# (./TRELLIS.2, ../TRELLIS.2, /opt/TRELLIS.2).
+TRELLIS2_REPO_PATH: str = os.environ.get("TRELLIS2_REPO_PATH", "")
 
 # ── Canonical I/O Directories ──────────────────────────────────────────────
 # Always relative to repo root (/app in Docker)

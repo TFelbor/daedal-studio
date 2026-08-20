@@ -10,8 +10,13 @@
 #     and targeted testing of one phase at a time.
 #   - The pipeline image provides a single container that can run the full chain
 #     (pipeline.py), removing the need for inter-container communication.
-#   - When you replace a phase (e.g. swap TripoSR), rebuild phase2.Dockerfile
-#     and this pipeline.Dockerfile; the others stay untouched.
+#   - When you replace a phase, rebuild that phase's Dockerfile and this one;
+#     the others stay untouched.
+#
+# Phase 2 note: TRELLIS.2 is CUDA-only, so the *model* is not in this image. This
+# image carries the sculptor client, which posts the blueprint to a GPU worker
+# (services/trellis2_worker) and post-processes the mesh it returns. Set
+# P2P_SCULPTOR_REMOTE_URL to point at one; see infra/docker/trellis2-worker.Dockerfile.
 #
 # Build (standalone):
 #   docker build -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline .
@@ -23,7 +28,8 @@ LABEL description="p2p-mesh Pipeline Runner — all phases (1–5) in one contai
 
 # ── Model paths ───────────────────────────────────────────────────────────────
 ENV FLUX_MODEL_PATH=/models/flux \
-    TRIPOSR_MODEL_PATH=/models/triposr \
+    TRELLIS2_MODEL_PATH=/models/trellis2 \
+    P2P_SCULPTOR_BACKEND=auto \
     HF_HOME=/models/hf_cache \
     TRANSFORMERS_CACHE=/models/hf_cache \
     CURA_ENGINE_PATH=CuraEngine
@@ -65,22 +71,12 @@ RUN pip install --no-cache-dir \
         "huggingface_hub>=0.24.0" \
         "hf_transfer>=0.1.6"
 
-# 3. Phase 2 deps (TripoSR)
+# 3. Phase 2 deps (TRELLIS.2 sculptor client)
+# Just an HTTP client and trimesh — the 4B-parameter model and its CUDA
+# extensions live in the worker image, not here.
 RUN pip install --no-cache-dir \
         "einops>=0.8.0" \
-        "omegaconf>=2.3.0" \
-        "rembg==2.0.69" \
-        "onnxruntime>=1.15.0"
-
-# System build deps for torchmcubes C extension
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git ninja-build \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install torchmcubes from source (not on PyPI as a wheel)
-RUN pip install git+https://github.com/tatsy/torchmcubes.git@3381600ddc3d2e4d74222f8495866be5fafbace4
-
-RUN pip install --no-cache-dir PyMCubes
+        "omegaconf>=2.3.0"
 
 # 4. Phase 3 deps (manifold3d / trimesh)
 RUN pip install --no-cache-dir \

@@ -454,9 +454,9 @@ class TelemetryDB:
 
         Args:
             job_id: The job to update.
-            model: Model name, e.g. "TripoSR" or "TRELLIS.2".
+            model: Model name, e.g. "TRELLIS.2".
             model_version: Version, revision or endpoint id.
-            backend: "local", "hosted_api" or "unknown".
+            backend: "local", "remote_worker", "hosted_api" or "unknown".
             params: Generation settings used.
             cost_usd: Charge for this generation, for pay-per-generation endpoints.
             duration_s: Wall-clock generation time in seconds.

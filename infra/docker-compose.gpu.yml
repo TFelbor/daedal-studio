@@ -10,12 +10,17 @@
 #   - NVIDIA GPU driver installed on the host
 #   - NVIDIA Container Toolkit (nvidia-docker2) installed:
 #       https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-#   - CUDA-capable GPU (compute capability >= 6.0 recommended for FLUX/TripoSR)
+#   - CUDA-capable GPU (compute capability >= 6.0 for FLUX; >= 8.0 and ~24 GB
+#     VRAM for TRELLIS.2)
 #
 # Notes:
 #   - Only phases 1 and 2 (visualizer + sculptor) are GPU-heavy.
 #     Phases 3–5 run fine on CPU and are not overridden here.
 #   - The pipeline-runner image also gets GPU access for full end-to-end runs.
+#   - Giving phase2-sculptor a GPU does NOT make it run TRELLIS.2 in-process:
+#     that image deliberately carries no torch and no CUDA extensions. To run the
+#     model locally, use the trellis2-worker service (--profile gpu-worker),
+#     which is built against the CUDA image and compiles the extensions.
 # ────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -29,13 +34,13 @@ services:
       # Disable MPS fallback when a real CUDA GPU is available
       PYTORCH_ENABLE_MPS_FALLBACK: "0"
 
-  # ── Phase 2: Sculptor — GPU enabled ───────────────────────────────────────
+  # ── Phase 2: Sculptor client — GPU passed through ──────────────────────────
+  # Harmless but not sufficient on its own; see the note above.
   phase2-sculptor:
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       CUDA_VISIBLE_DEVICES: "0"
-      PYTORCH_ENABLE_MPS_FALLBACK: "0"
 
   # ── Pipeline Runner — GPU enabled ─────────────────────────────────────────
   pipeline-runner:

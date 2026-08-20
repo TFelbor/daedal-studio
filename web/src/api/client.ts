@@ -99,10 +99,24 @@ export interface JobRequest {
   seed?: number;
   parent_job_id?: string;
   regeneration_reason?: string;
+  /** TRELLIS.2 voxel resolution for Phase 2. Omit for the server default. */
+  pipeline_type?: PipelineType;
+  /**
+   * Seed for the reconstruction — *not* `seed`, which seeds the blueprint.
+   * They are separate so one image can be re-sculpted more than one way.
+   */
+  mesh_seed?: number;
 }
 
 /** Filament types the mass estimate has a density for. */
 export const MATERIAL_TYPES = ['PLA', 'PETG', 'ABS', 'TPU', 'ASA', 'Nylon'] as const;
+
+/**
+ * TRELLIS.2 voxel resolutions, cheapest first. Higher resolutions resolve finer
+ * detail at more GPU time; `1024_cascade` is the default.
+ */
+export const PIPELINE_TYPES = ['512', '1024', '1024_cascade', '1536_cascade'] as const;
+export type PipelineType = (typeof PIPELINE_TYPES)[number];
 
 export interface PendingFeedbackJob {
   job_id: string;

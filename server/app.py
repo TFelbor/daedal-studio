@@ -150,6 +150,12 @@ class JobRequest(BaseModel):
     seed: Optional[int] = None
     parent_job_id: Optional[str] = None
     regeneration_reason: Optional[str] = None
+    # Phase 2 reconstruction settings. Both change the geometry, so both are
+    # recorded onto the job's `generation_params` rather than staying implicit.
+    pipeline_type: Optional[str] = Field(
+        None, pattern="^(512|1024|1024_cascade|1536_cascade)$"
+    )
+    mesh_seed: Optional[int] = None
 
 
 class OutcomeRequest(BaseModel):
@@ -333,6 +339,13 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         pipeline_args.extend(["--seed", str(request.seed)])
     if request.material_type:
         pipeline_args.extend(["--material-type", request.material_type])
+    # Phase 2's own seed and resolution. `--mesh-seed` is deliberately not `--seed`:
+    # one reproduces the blueprint, the other the reconstruction, and a single value
+    # for both would make it impossible to re-sculpt one image two ways.
+    if request.pipeline_type:
+        pipeline_args.extend(["--pipeline-type", request.pipeline_type])
+    if request.mesh_seed is not None:
+        pipeline_args.extend(["--mesh-seed", str(request.mesh_seed)])
 
     if request.print:
         pipeline_args.append("--print")

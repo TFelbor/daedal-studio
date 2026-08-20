@@ -20,10 +20,16 @@ def _docker_has_nvidia_runtime() -> bool:
         return False
 
 def get_execution_strategy() -> Literal["mps_native", "nvidia_docker", "cpu_docker"]:
-    """Detect the best available execution strategy for Phase 1 and Phase 2.
+    """Detect the best available execution strategy for Phase 1.
 
     Evaluates system capabilities to choose between native Apple Silicon MPS,
     NVIDIA GPU Docker, or CPU Docker fallback.
+
+    This does *not* decide where Phase 2 runs. TRELLIS.2 is CUDA-only, so
+    `cpu_docker` and `mps_native` hosts cannot run it in-process at all and reach
+    it through the GPU worker instead. That choice belongs to
+    `sculptors.resolve_backend_name`, which reads a worker URL this function knows
+    nothing about.
 
     Returns:
         The selected execution strategy ("mps_native", "nvidia_docker", or "cpu_docker").

@@ -10,7 +10,11 @@ We use the state-of-the-art **FLUX.2-klein-4B** model to generate a clay-rendere
 ## Phase 2: Sculptor
 **Input**: 2D Blueprint Image  
 **Output**: Raw 3D Mesh (.obj)  
-The system uses **TripoSR** to perform neural implicit surface extraction, turning the 2D image into a full 3D mesh. We then apply Taubin smoothing to reduce noise.
+The system uses **TRELLIS.2-4B** to turn the 2D image into a full 3D mesh. Rather than extracting an iso-surface from a field, it reconstructs into a sparse **O-Voxel** latent, which keeps sharp edges and thin walls instead of smoothing them away — so unlike the previous marching-cubes model, no smoothing pass is applied afterwards.
+
+Only the shape half of the model runs: TRELLIS.2 can also generate PBR textures, but an FDM printer consumes geometry alone, so the texture stages are skipped entirely.
+
+TRELLIS.2 needs an NVIDIA GPU with about 24 GB of VRAM. On a machine without one, this phase runs on a separate GPU worker that the rest of the pipeline reaches over HTTP.
 
 ## Phase 3: Engineer
 **Input**: Raw 3D Mesh  

@@ -5,6 +5,31 @@
 > directional — actual costs will require benchmarking on chosen infrastructure.
 > Last updated: July 2026
 
+> ⚠️ **Every Phase 2 figure below is stale as of 2026-08-20.** They were measured
+> against **TripoSR**, which has been replaced by **TRELLIS.2-4B**. The two are not
+> comparable and the difference cuts both ways, so nothing here can be adjusted by a
+> multiplier — Phase 2 needs re-benchmarking end to end:
+>
+> - **A10G (24 GB) is now the floor, not a comfortable choice.** TRELLIS.2 is a 4B
+>   model needing ~24 GB of VRAM against TripoSR's ~3 GB. The "always-hot VRAM"
+>   sizing and the assumption that FLUX and the sculptor can share one GPU both need
+>   rechecking.
+> - **Inference is much faster.** Upstream reports 512³ ≈ 3s, 1024³ ≈ 17s and
+>   1536³ ≈ 60s on an H100 for shape *and* material. Prompt2Print runs the shape-only
+>   path, roughly the first of those two numbers (≈ 2s / 10s / 35s), against
+>   TripoSR's ~110-140s. Per-job GPU seconds should fall sharply.
+> - **Weight loading and cold starts get worse.** 4B parameters is a much larger
+>   download and a much longer load than TripoSR's, which dominates the serverless
+>   cold-pool model rather than the inference figures.
+> - **`--pipeline-type` is now the main cost lever**, replacing "marching cubes
+>   resolution". It is a genuine quality/cost dial: `512`, `1024`, `1024_cascade`
+>   (default), `1536_cascade`.
+> - **A new deployment shape exists.** Phase 2 can run in a separate GPU worker
+>   (`services/trellis2_worker/`) while Phases 1 and 3–5 run on cheap CPU, which is a
+>   different cost structure from one GPU box running everything.
+>
+> Treat the tables below as the TripoSR-era baseline they are.
+
 ---
 
 ## 1. Executive Summary

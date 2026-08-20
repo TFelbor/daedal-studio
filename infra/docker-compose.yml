@@ -56,7 +56,10 @@ services:
       - phase1
       - all
 
-  # ── Phase 2: Sculptor (TripoSR 2D→3D) ────────────────────────────────────
+  # ── Phase 2: Sculptor client (TRELLIS.2 2D→3D) ───────────────────────────
+  # The model itself is not in this image — TRELLIS.2 is CUDA-only. This service
+  # posts the blueprint to the trellis2-worker below (or to any worker reachable
+  # at P2P_SCULPTOR_REMOTE_URL) and post-processes the mesh that comes back.
   phase2-sculptor:
     platform: linux/amd64
     build:
@@ -69,21 +72,63 @@ services:
       - path: ../.env
         required: false
     environment:
-      TRIPOSR_MODEL_PATH: /models/triposr
-      U2NET_HOME: /models/u2net
+      P2P_SCULPTOR_BACKEND: ${P2P_SCULPTOR_BACKEND:-auto}
+      P2P_SCULPTOR_REMOTE_URL: ${P2P_SCULPTOR_REMOTE_URL:-}
+      P2P_SCULPTOR_REMOTE_KEY: ${P2P_SCULPTOR_REMOTE_KEY:-}
+      TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
+      TRELLIS2_MODEL_PATH: /models/trellis2
       HF_HOME: /models/hf_cache
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
-      PYTORCH_ENABLE_MPS_FALLBACK: "1"
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
-      - p2p-models-triposr:/models/triposr
-      - p2p-models-u2net:/models/u2net
+      - p2p-models-trellis2:/models/trellis2
       - p2p-models-cache:/models/hf_cache
     profiles:
       - phase2
       - all
+
+  # ── Phase 2 GPU worker (TRELLIS.2-4B, in-process) ────────────────────────
+  # Behind its own profile because it is the one service that cannot start
+  # without an NVIDIA GPU and the Container Toolkit. Run it on the GPU host:
+  #   docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
+  # Then point the pipeline at it via P2P_SCULPTOR_REMOTE_URL.
+  #
+  # Set TORCH_CUDA_ARCH_LIST to the deployment GPU or the compiled kernels will
+  # not load: 8.0=A100 8.6=A10G 8.9=L4 9.0=H100.
+  trellis2-worker:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: infra/docker/trellis2-worker.Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+        TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST:-8.0;8.6;8.9;9.0}
+        TRELLIS2_REPO: ${TRELLIS2_REPO:-https://github.com/microsoft/TRELLIS.2.git}
+        TRELLIS2_REF: ${TRELLIS2_REF:-main}
+    image: p2p-trellis2-worker:latest
+    runtime: nvidia
+    ports:
+      - "8100:8100"
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      P2P_WORKER_API_KEY: ${P2P_WORKER_API_KEY:-}
+      P2P_WORKER_BACKEND: trellis2
+      P2P_WORKER_PRELOAD: ${P2P_WORKER_PRELOAD:-true}
+      TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
+      TRELLIS2_MODEL_PATH: /models/trellis2
+      HF_HOME: /models/hf_cache
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - p2p-models-trellis2:/models/trellis2
+      - p2p-models-cache:/models/hf_cache
+    profiles:
+      - gpu-worker
 
   # ── Phase 3: Engineer (manifold3d + trimesh, repair + scale) ─────────────
   phase3-engineer:
@@ -177,8 +222,11 @@ services:
         required: false
     environment:
       FLUX_MODEL_PATH: /models/flux
-      TRIPOSR_MODEL_PATH: /models/triposr
-      U2NET_HOME: /models/u2net
+      TRELLIS2_MODEL_PATH: /models/trellis2
+      P2P_SCULPTOR_BACKEND: ${P2P_SCULPTOR_BACKEND:-auto}
+      P2P_SCULPTOR_REMOTE_URL: ${P2P_SCULPTOR_REMOTE_URL:-}
+      P2P_SCULPTOR_REMOTE_KEY: ${P2P_SCULPTOR_REMOTE_KEY:-}
+      TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
       HF_HOME: /models/hf_cache
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
@@ -196,8 +244,7 @@ services:
       - ~/.p2p-mesh:/root/.p2p-mesh
       - p2p-telemetry:/app/telemetry
       - p2p-models-flux:/models/flux
-      - p2p-models-triposr:/models/triposr
-      - p2p-models-u2net:/models/u2net
+      - p2p-models-trellis2:/models/trellis2
       - p2p-models-cache:/models/hf_cache
     # Add extra_hosts so the container can reach OctoPrint on the host machine.
     # This is needed on Linux; on macOS/Windows it works automatically.
@@ -248,10 +295,8 @@ volumes:
   # AI model weights — survive image rebuilds (see .gitignore: *.ckpt, *.safetensors)
   p2p-models-flux:
     name: p2p-models-flux
-  p2p-models-triposr:
-    name: p2p-models-triposr
-  p2p-models-u2net:
-    name: p2p-models-u2net
+  p2p-models-trellis2:
+    name: p2p-models-trellis2
   # Shared HuggingFace cache — avoids re-downloading tokenisers / configs
   p2p-models-cache:
     name: p2p-models-hf-cache

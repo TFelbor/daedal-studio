@@ -1,15 +1,21 @@
 # ────────────────────────────────────────────────────────────────────────────
-# phase2.Dockerfile — Sculptor (TripoSR, 2D → 3D reconstruction)
+# phase2.Dockerfile — Sculptor client (TRELLIS.2 image → 3D)
 #
-# Inherits the base layer and adds:
-#   - PyTorch (CPU by default; GPU via compose override)
-#   - trimesh, PIL, einops, omegaconf (TripoSR deps)
-#   - rembg (background removal used in pre-processing)
-#   - torchmcubes (Marching Cubes, required by TripoSR mesh extraction)
-#   - fast-simplification (mesh decimation)
+# Phase 2 runs TRELLIS.2-4B, which needs an NVIDIA GPU with ~24 GB of VRAM and
+# four compiled CUDA extensions. That does not fit this project's linux/amd64
+# CPU image family, so the model is NOT in here. This image is the *client*: it
+# posts the blueprint to a GPU worker and post-processes the mesh that comes back.
 #
-# Model weights are NOT baked in — stored in a named volume at
-# /models/triposr and expected to be pre-populated or downloaded on first run.
+#   worker image:  infra/docker/trellis2-worker.Dockerfile  (CUDA, GPU host)
+#   worker code:   services/trellis2_worker/
+#
+# Point it at a worker and it runs anywhere:
+#   P2P_SCULPTOR_BACKEND=remote
+#   P2P_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
+#
+# On a host that *does* have an NVIDIA GPU and the extensions installed, set
+# P2P_SCULPTOR_BACKEND=trellis2 and TRELLIS2_REPO_PATH to run in-process
+# instead — or just use the worker image, which already has all of it.
 #
 # Build (standalone):
 #   docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor .
@@ -17,12 +23,15 @@
 
 FROM p2p-base:latest AS phase2-sculptor
 
-LABEL description="p2p-mesh Phase 2 — Sculptor (TripoSR 2D→3D)"
+LABEL description="p2p-mesh Phase 2 — Sculptor (TRELLIS.2 client)"
 
-# ── Model paths ───────────────────────────────────────────────────────────────
-ENV TRIPOSR_MODEL_PATH=/models/triposr \
-    HF_HOME=/models/hf_cache \
-    TRANSFORMERS_CACHE=/models/hf_cache
+# ── Configuration ─────────────────────────────────────────────────────────────
+# `auto` resolves to `remote` when a worker URL is set. With neither a worker nor
+# a CUDA GPU the backend fails at startup with an actionable message rather than
+# producing a mesh from something that is not the model you asked for.
+ENV P2P_SCULPTOR_BACKEND=auto \
+    TRELLIS2_MODEL_PATH=/models/trellis2 \
+    HF_HOME=/models/hf_cache
 
 # ── System dependencies for mesh processing ───────────────────────────────────
 RUN apt-get update && \
@@ -33,37 +42,17 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ───────────────────────────────────────────────────────
+# No torch: the client never runs a network. It uploads an image, receives
+# geometry and does trimesh work on the CPU. Keeping torch out is what makes this
+# image small enough to be worth having separately from the worker.
 RUN pip install --no-cache-dir \
-        torch==2.5.1 \
-        torchvision==0.20.1 \
-        torchaudio==2.5.1 \
-        --index-url https://download.pytorch.org/whl/cpu
-
-RUN pip install --no-cache-dir \
-        "transformers<4.45.0" \
-        "einops>=0.8.0" \
-        "omegaconf>=2.3.0" \
         "trimesh>=4.0.0" \
+        "manifold3d>=3.0.0" \
         "Pillow>=10.0.0" \
         "numpy>=1.24.0" \
-        "rembg==2.0.69" \
-        "onnxruntime>=1.15.0" \
-        "fast-simplification>=0.1.6" \
-        "huggingface_hub>=0.24.0" \
-        "safetensors>=0.4.0" \
-        "scipy>=1.11.0"
-
-# ── torchmcubes: build from source (no pre-built wheel for linux/cpu) ─────────
-# This is a C++/CUDA extension required by TripoSR's mesh extraction.
-# System build deps for torchmcubes C extension
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git ninja-build \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install torchmcubes from source (not on PyPI as a wheel)
-RUN pip install git+https://github.com/tatsy/torchmcubes.git@3381600ddc3d2e4d74222f8495866be5fafbace4
-
-RUN pip install --no-cache-dir PyMCubes
+        "scipy>=1.11.0" \
+        "requests>=2.31.0" \
+        "fast-simplification>=0.1.6"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/local/bin/p2p-entrypoint", "python", "pythonsrc/sculptor.py"]

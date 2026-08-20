@@ -45,18 +45,27 @@ class PrintJob:
 
     # ── Generation provenance ─────────────────────────────────────────────────
     # Which model produced the mesh, and what it cost. Retro-labelling this is
-    # impossible: once a print is done, nothing records whether its mesh came from
-    # TripoSR locally or a hosted TRELLIS.2 call, so a model swap silently mixes two
-    # populations in the same dataset. All fields are optional so old rows stay valid.
+    # impossible: once a print is done, nothing records which model made its mesh or
+    # where that model ran, so a model swap silently mixes two populations in the
+    # same dataset. All fields are optional so old rows stay valid.
 
     generation_model: str | None = None
-    """Image-to-3D model that produced the mesh, e.g. "TripoSR" or "TRELLIS.2"."""
+    """Image-to-3D model that produced the mesh, e.g. "TRELLIS.2"."""
 
     generation_model_version: str | None = None
     """Model version, revision or endpoint id, e.g. "fal-ai/trellis-2"."""
 
-    generation_backend: Literal["local", "hosted_api", "unknown"] | None = None
-    """Where inference ran — locally, or behind a paid hosted API."""
+    generation_backend: (
+        Literal["local", "remote_worker", "hosted_api", "unknown"] | None
+    ) = None
+    """Where inference ran.
+
+    ``local`` is in-process. ``remote_worker`` is a self-hosted GPU worker reached
+    over HTTP (`services/trellis2_worker`) — distinct from ``hosted_api`` because
+    nothing is billed per call, so ``generation_cost_usd`` stays None while
+    ``generation_duration_s`` legitimately includes upload and queueing. Folding the
+    two together would make both numbers unreadable.
+    """
 
     generation_params: Dict[str, Any] | None = None
     """Generation settings (steps, target faces, resolution, target size, hollow…)."""
