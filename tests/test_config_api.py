@@ -1,3 +1,18 @@
+# NOTE: this file is a manual smoke script, not a pytest module — pytest collects it
+# and finds no `test_*` functions, so its only real entry point is
+# `python tests/test_config_api.py`, which never loads tests/conftest.py and therefore misses the
+# database isolation there. Unguarded, it overwrites the developer's real HF_TOKEN with "test123" and deletes
+# their MOONRAKER_URL row from the encrypted config store.
+# Redirect the database before importing server.app, which builds a ConfigStore at
+# import time.
+import os as _os
+import tempfile as _tempfile
+
+_os.environ.setdefault(
+    "TELEMETRY_DB_PATH",
+    _os.path.join(_tempfile.mkdtemp(prefix="p2p-smoke-"), "telemetry.db"),
+)
+
 import os
 from fastapi.testclient import TestClient
 from server.app import app

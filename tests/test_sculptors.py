@@ -36,6 +36,11 @@ SCULPTOR_ENV_VARS = (
     "P2P_PIXAZO_GATEWAY",
     "P2P_PIXAZO_IMAGE_BASE_URL",
     "P2P_PIXAZO_UP_AXIS",
+    # conftest sets this suite-wide so no test can spend money. These tests only
+    # *construct* the backend and stub its HTTP, so they opt out — deliberately and
+    # locally. `test_kill_switch_refuses_to_construct_the_paid_backend` below is the
+    # one that asserts the switch itself works.
+    "P2P_DISABLE_PAID_BACKENDS",
 )
 
 
@@ -608,9 +613,18 @@ def test_generation_params_records_both_the_request_and_what_was_sent(clean_env)
     assert params["price_eur"] == 0.32
 
 
-def test_unset_knobs_are_absent_from_the_payload_not_null(pixazo):
-    """A null would override the endpoint's documented default with nothing."""
-    payload = pixazo._payload("https://example.test/b.png")
+def test_unset_knobs_are_absent_from_the_payload_not_null(clean_env):
+    """A null would override the endpoint's documented default with nothing.
+
+    `decimation_target` is passed explicitly as None here because the backend now
+    defaults it to 200k — see `test_decimation_target_is_capped_by_default`. What is
+    under test is that an *unset* knob is omitted, not sent as null.
+    """
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    backend = PixazoBackend(decimation_target=None)
+    payload = backend._payload("https://example.test/b.png")
     assert payload == {"image_url": "https://example.test/b.png", "resolution": 1024}
 
 
@@ -645,8 +659,8 @@ def test_a_public_base_url_is_used_when_configured(clean_env, blueprint):
     assert url == f"https://cdn.test/bp/{blueprint.name}"
 
 
-def test_cost_is_unset_until_a_generation_actually_delivers(pixazo, blueprint):
-    """A submit that never completed is not a mesh, and must not book a charge."""
+def test_a_rejected_submit_books_no_charge(pixazo, blueprint):
+    """Nothing was accepted, so nothing was billed."""
     def _boom(_url):
         raise SculptorError("submit failed")
 
@@ -654,6 +668,24 @@ def test_cost_is_unset_until_a_generation_actually_delivers(pixazo, blueprint):
     with pytest.raises(SculptorError):
         pixazo.reconstruct(blueprint)
     assert pixazo.last_generation_cost_eur is None
+
+
+def test_an_accepted_submit_books_the_charge_even_if_it_never_delivers(pixazo, blueprint):
+    """The gateway bills on acceptance, so a later timeout is still money spent.
+
+    Recording the cost only on success made every failed-after-submit job read as
+    free — understating real spend in exactly the column that exists to measure it.
+    """
+    pixazo._submit = lambda _url: "req-timeout"
+
+    def _never(_rid):
+        raise SculptorError("did not finish within 600s")
+
+    pixazo._await_result = _never
+    with pytest.raises(SculptorError):
+        pixazo.reconstruct(blueprint)
+    assert pixazo.last_generation_cost_eur == 0.32
+    assert pixazo.last_request_id == "req-timeout"
 
 
 def test_cost_is_recorded_once_a_mesh_comes_back(pixazo, blueprint):
@@ -716,3 +748,94 @@ def test_the_output_mesh_url_is_read_from_media_url(pixazo, monkeypatch):
         {"status": "COMPLETED", "output": {"media_url": ["https://cdn.test/out.glb"]}},
     )
     assert pixazo._await_result("req-1") == "https://cdn.test/out.glb"
+
+
+def test_kill_switch_refuses_to_construct_the_paid_backend(clean_env):
+    """The suite-wide guard against accidental spending must actually bite.
+
+    Set by `conftest.pytest_configure`, forwarded into the pipeline container by
+    `server.app`, and honoured here — an environment that asked not to be billed
+    gets an error instead of a EUR 0.32 charge.
+    """
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", "1")
+    with pytest.raises(SculptorError, match="disabled by P2P_DISABLE_PAID_BACKENDS"):
+        PixazoBackend()
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", ""])
+def test_kill_switch_falsey_values_do_not_disable(clean_env, value):
+    """`P2P_DISABLE_PAID_BACKENDS=0` must mean enabled, not "the string is truthy"."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", value)
+    assert PixazoBackend().name == "pixazo"
+
+
+def test_kill_switch_is_checked_before_the_api_key(clean_env):
+    """Order matters: a disabled environment must not report a missing-key error.
+
+    Reporting "set PIXAZO_API_KEY" to someone who deliberately disabled the backend
+    invites them to fix the wrong thing — by adding a key, which is how the spending
+    starts.
+    """
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", "1")
+    with pytest.raises(SculptorError, match="disabled by P2P_DISABLE_PAID_BACKENDS"):
+        PixazoBackend()
+
+
+def test_decimation_target_is_capped_by_default(clean_env):
+    """The endpoint defaults to 500k faces; a real job died on 462k."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend, DEFAULT_DECIMATION_TARGET
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    backend = PixazoBackend()
+    assert backend.decimation_target == DEFAULT_DECIMATION_TARGET == 200_000
+    assert backend._payload("https://x/y.png")["decimation_target"] == 200_000
+
+
+def test_purchased_glb_is_cached_before_post_processing(clean_env, blueprint, tmp_path):
+    """A billed artifact must reach disk before anything that can fail touches it."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    backend = PixazoBackend()
+
+    mesh = trimesh.creation.box(extents=(1, 10, 1))
+    glb = mesh.export(file_type="glb")
+
+    backend._submit = lambda _url: "req-42"
+    backend._await_result = lambda _rid: "https://cdn.test/out.glb"
+
+    def _fake_download(url):
+        # Stands in for the real download, which caches the bytes the moment they
+        # land — before parsing, and before postprocess can fail.
+        backend._cache_glb(glb)
+        return mesh
+
+    backend._download_mesh = _fake_download
+    out = tmp_path / "job" / "raw_mesh.obj"
+    backend.generate_mesh(blueprint, out, target_faces=0)
+
+    cached = list((tmp_path / "job").glob("pixazo_*.glb"))
+    assert cached, "purchased GLB was not cached"
+    assert cached[0].name == "pixazo_req-42.glb"
+    assert cached[0].read_bytes() == glb
+
+
+def test_caching_failure_never_loses_the_bought_mesh(clean_env):
+    """A cache miss must not raise — the caller already paid for these bytes."""
+    from pythonsrc.sculptors.pixazo import PixazoBackend
+
+    clean_env.setenv("PIXAZO_API_KEY", "key-123")
+    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    backend = PixazoBackend()
+    backend.artifact_dir = "/proc/nonexistent/definitely-not-writable"
+    backend._cache_glb(b"bytes")  # must not raise

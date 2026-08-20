@@ -47,6 +47,11 @@ if [ -f .env ]; then
 HF_TOKEN
 HUGGINGFACE_HUB_TOKEN
 PIXAZO_API_KEY
+# The kill switch must travel with the key that enables spending. Carrying
+# PIXAZO_API_KEY but not this one meant setting P2P_DISABLE_PAID_BACKENDS=1 in .env
+# had no effect on anything launched natively — the guard was silently inert exactly
+# where someone would reach for it.
+P2P_DISABLE_PAID_BACKENDS
 OCTOPRINT_API_KEY
 P2P_SCULPTOR_BACKEND
 P2P_SCULPTOR_REMOTE_URL

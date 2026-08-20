@@ -395,6 +395,10 @@ def run(args: argparse.Namespace) -> None:
     gcode_path = outputs_dir / "engineered_mesh.gcode"
 
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
+    # True only when the blueprint had to be fabricated below. Phase 2 consults it
+    # before handing the image to a backend that charges per generation.
+    blueprint_is_placeholder = False
+
     if not args.skip_visualizer:
         if not args.prompt:
             logger.error("A --prompt is required unless --skip-visualizer is set.")
@@ -437,6 +441,10 @@ def run(args: argparse.Namespace) -> None:
                 from PIL import Image
                 img = Image.new('RGB', (512, 512), color=(73, 109, 137))
                 img.save(blueprint_path)
+                # This placeholder is a flat blue rectangle. It exists so Phases 3-5
+                # can be exercised without Phase 1 — never as something worth
+                # reconstructing. Phase 2 refuses to spend money on it below.
+                blueprint_is_placeholder = True
             except Exception as e:
                 logger.error("Failed to generate fallback blueprint: %s", e)
                 sys.exit(1)
@@ -459,6 +467,7 @@ def run(args: argparse.Namespace) -> None:
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
         t0 = _phase_start(2)
+        sculptor = None
         try:
             from sculptor import create_sculptor
 
@@ -468,6 +477,20 @@ def run(args: argparse.Namespace) -> None:
                 seed=args.mesh_seed,
             )
             print(f"[P2P] Sculptor backend: {sculptor.describe()}", flush=True)
+
+            # Never pay to reconstruct the placeholder. A backend that bills per call
+            # turns a missing blueprint from a harmless dev convenience into a charge
+            # for a flat blue rectangle — which is exactly what happened, repeatedly,
+            # when an unmocked test triggered the pipeline. Free backends may proceed:
+            # the placeholder is still useful for exercising Phases 3-5.
+            if blueprint_is_placeholder and getattr(sculptor, "BACKEND", "") == "hosted_api":
+                raise RuntimeError(
+                    f"Refusing to spend money reconstructing a placeholder blueprint. "
+                    f"The '{sculptor.name}' backend bills per generation and "
+                    f"{blueprint_path} was auto-generated because no real blueprint "
+                    "existed. Provide a blueprint, drop --skip-visualizer so Phase 1 "
+                    "makes one, or pass --skip-sculptor to skip reconstruction."
+                )
             sculptor.generate_mesh(
                 image_path=blueprint_path,
                 output_path=raw_mesh_path,
@@ -495,6 +518,33 @@ def run(args: argparse.Namespace) -> None:
             )
             _phase_pass(2, t0, str(raw_mesh_path))
         except Exception as exc:
+            # Persist whatever provenance the backend accumulated before it failed.
+            # A hosted generation is billed the moment the gateway accepts it, so a
+            # Phase 2 that dies in polling, download or post-processing has still
+            # spent money — and without this the charge and the request_id die with
+            # the process, leaving no record of the spend and no handle to re-fetch
+            # the artifact that was paid for. Best-effort: a telemetry failure must
+            # not replace the real error with its own.
+            if sculptor is not None:
+                try:
+                    _record_generation(
+                        args,
+                        model=getattr(sculptor, "MODEL_NAME", None),
+                        model_version=getattr(sculptor, "MODEL_VERSION", None),
+                        backend=getattr(sculptor, "BACKEND", None),
+                        params={
+                            **sculptor.generation_params(),
+                            "phase2_failed": True,
+                            "phase2_error": str(exc)[:500],
+                        },
+                        cost_eur=getattr(sculptor, "last_generation_cost_eur", None),
+                        duration_s=round(time.time() - t0, 2),
+                    )
+                except Exception as record_exc:
+                    logger.warning(
+                        "Could not record provenance for the failed Phase 2: %s",
+                        record_exc,
+                    )
             _phase_fail(2, t0, exc)
     else:
         logger.info("Skipping Phase 2 — using existing mesh: %s", raw_mesh_path)

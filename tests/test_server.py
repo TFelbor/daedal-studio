@@ -85,6 +85,7 @@ from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 client = TestClient(app)
 
@@ -139,7 +140,16 @@ def test_get_job_telemetry_empty_samples():
     assert response.status_code == 200
     assert response.json() == []
 
-def test_post_jobs_triggers_background(printer_configured):
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_post_jobs_triggers_background(mock_run_pipeline, printer_configured):
+    """POST /jobs must schedule the pipeline — without actually running it.
+
+    Unpatched, this test really did run it. `_run_pipeline` shells out to
+    `docker compose run pipeline-runner`, Phase 2 resolves to the hosted Pixazo
+    backend, and every `pytest tests/` run billed EUR 0.32 to reconstruct a dummy
+    blueprint. Patching the coroutine keeps the assertion honest — that the endpoint
+    *schedules* the work — while making the paid call unreachable.
+    """
     response = client.post("/jobs", json={
         "prompt": "Test background trigger",
         "printer_id": "default",
@@ -150,4 +160,5 @@ def test_post_jobs_triggers_background(printer_configured):
     })
     assert response.status_code == 202
     assert "job_id" in response.json()
+    mock_run_pipeline.assert_called_once()
 
