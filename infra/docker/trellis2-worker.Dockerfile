@@ -85,6 +85,16 @@ RUN git clone --recursive https://github.com/JeffreyXiang/FlexGEMM.git /tmp/Flex
 
 RUN pip install --no-cache-dir /opt/TRELLIS.2/o-voxel --no-build-isolation
 
+# ── Renderers: deliberately absent ────────────────────────────────────────────
+# Upstream's documented install line is `setup.sh --basic --flash-attn --cumesh
+# --o-voxel --nvdiffrast --nvdiffrec`. The last two flags are omitted on purpose:
+# both packages are under the NVIDIA Source Code License (non-commercial research
+# only), and installing either would put that restriction on a distributed image
+# and break this project's Apache-2.0 grant. The shape-only sculptor path never
+# rasterizes, so nothing here needs them. Do not add them to make textured output
+# work — use a permissively licensed rasterizer (PyTorch3D, BSD-3-Clause).
+# Enforced by tests/test_licensing_guards.py. See THIRD-PARTY-NOTICES.md.
+
 # ── Worker service ────────────────────────────────────────────────────────────
 RUN pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart
 

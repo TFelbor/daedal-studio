@@ -269,3 +269,23 @@ pytest tests/ -m "slow and full_pipeline"
 ## License
 
 This project is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+
+Third-party components, model weights and the obligations they carry are tracked in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). Two of those obligations are
+worth stating here, because they constrain what a deployment may do:
+
+**Built with DINOv3.** Phase 2's image conditioning uses DINOv3
+(`facebook/dinov3-vitl16-pretrain-lvd1689m`), © Meta Platforms, Inc., licensed
+under the [DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/).
+Commercial use is permitted; attribution is mandatory, the Acceptable Use Policy
+and trade-control terms apply, and **the weights must not be baked into a
+distributed image** — that would turn a use into a redistribution.
+
+**Two upstream defaults are deliberately not used.** TRELLIS.2's documented
+install line asks for `nvdiffrast` and `nvdiffrec` (NVIDIA Source Code License,
+non-commercial); the shape-only path never rasterizes, and neither package is
+installed. Its checkpoint configures background removal as `briaai/RMBG-2.0`
+(CC BY-NC 4.0); `pythonsrc/sculptors/background.py` substitutes MIT BiRefNet
+weights before the pipeline loads. Both substitutions are enforced by
+[`tests/test_licensing_guards.py`](tests/test_licensing_guards.py) — read it before
+changing either.
