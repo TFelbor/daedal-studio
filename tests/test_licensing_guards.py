@@ -320,3 +320,54 @@ def test_notices_review_date_is_iso_formatted():
     notices = (REPO_ROOT / "THIRD-PARTY-NOTICES.md").read_text()
     match = re.search(r"Last reviewed:\s*(\d{4}-\d{2}-\d{2})", notices)
     assert match, "THIRD-PARTY-NOTICES.md must carry a 'Last reviewed: YYYY-MM-DD' line"
+
+
+# ── Deny-list normalisation ───────────────────────────────────────────────────
+#
+# The deny-list used to compare the raw configured string while `_load` fetched
+# `model_id.partition("@")[0]`. Pinning a revision — which .env.template recommends —
+# therefore produced a value that passed the guard and downloaded the CC BY-NC
+# weights anyway. These pin the normalisation that closed that.
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "briaai/RMBG-2.0",
+        "briaai/RMBG-1.4",
+        "briaai/RMBG-2.0@abc123def",      # pinned revision — the documented form
+        "briaai/RMBG-2.0@main",
+        "BriaAI/RMBG-2.0",                # HF resolves org names case-insensitively
+        "  briaai/RMBG-2.0  ",
+    ],
+)
+def test_encumbered_matte_ids_are_denied_however_they_are_spelled(model_id):
+    from pythonsrc.sculptors.background import denied_matte_repo
+
+    assert denied_matte_repo(model_id) is True
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    ["ZhengPeng7/BiRefNet", "ZhengPeng7/BiRefNet@v1.0", None, ""],
+)
+def test_permissive_matte_ids_are_not_denied(model_id):
+    from pythonsrc.sculptors.background import denied_matte_repo
+
+    assert denied_matte_repo(model_id) is False
+
+
+def test_a_pinned_encumbered_revision_is_refused_at_construction(monkeypatch):
+    """The exact bypass: .env.template tells you to pin a revision."""
+    import importlib
+
+    monkeypatch.setenv("P2P_BIREFNET_MODEL_ID", "briaai/RMBG-2.0@abc123def")
+    import pythonsrc.sculptors.background as bg
+
+    bg = importlib.reload(bg)
+    try:
+        with pytest.raises(Exception, match="non-commercial"):
+            bg.PermissiveBiRefNet()
+    finally:
+        monkeypatch.delenv("P2P_BIREFNET_MODEL_ID", raising=False)
+        importlib.reload(bg)

@@ -63,6 +63,30 @@ NON_COMMERCIAL_MATTE_MODEL_IDS = frozenset(
     }
 )
 
+
+def denied_matte_repo(model_id: str | None) -> bool:
+    """Is `model_id` one of the non-commercial matte repos, however it is spelled?
+
+    Compare on the *repo*, not the raw configured string. `_load` fetches
+    ``model_id.partition("@")[0]``, so a deny-list consulted on the raw value checks
+    something the loader never uses: `.env.template` recommends pinning a revision,
+    and `briaai/RMBG-2.0@<sha>` therefore passed the guard and then downloaded the
+    CC BY-NC weights regardless. Hugging Face resolves org and repo names
+    case-insensitively, so this does too — a guard that `BriaAI/RMBG-2.0` slips past
+    is not a guard.
+    """
+    if not model_id:
+        return False
+    repo = model_id.partition("@")[0].strip().strip("/").lower()
+    return repo in _DENIED_MATTE_REPOS
+
+
+#: Deny-list normalised the same way `denied_matte_repo` normalises its argument.
+_DENIED_MATTE_REPOS = frozenset(
+    m.partition("@")[0].strip().strip("/").lower()
+    for m in NON_COMMERCIAL_MATTE_MODEL_IDS
+)
+
 #: Working resolution BiRefNet was trained at. The mask is resized back afterwards.
 _MATTE_RESOLUTION = 1024
 
@@ -105,7 +129,7 @@ class PermissiveBiRefNet:
         if model_name and model_name != self.model_id:
             level = (
                 logging.WARNING
-                if model_name in NON_COMMERCIAL_MATTE_MODEL_IDS
+                if denied_matte_repo(model_name)
                 else logging.INFO
             )
             logger.log(
@@ -115,11 +139,11 @@ class PermissiveBiRefNet:
                 model_name,
                 (
                     " (non-commercial licence — see THIRD-PARTY-NOTICES.md)"
-                    if model_name in NON_COMMERCIAL_MATTE_MODEL_IDS
+                    if denied_matte_repo(model_name)
                     else ""
                 ),
             )
-        if self.model_id in NON_COMMERCIAL_MATTE_MODEL_IDS:
+        if denied_matte_repo(self.model_id):
             raise SculptorError(
                 f"Refusing to load '{self.model_id}' for background removal: it is "
                 "licensed for non-commercial use only. Unset or correct "
