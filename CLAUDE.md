@@ -258,6 +258,19 @@ FastAPI application with:
   query time is whatever the file says today, not what the job printed with; "the printer
   finished" is not "the part survived". When adding a signal, ask when it stops being
   recoverable — that is when it must be written.
+- **Seeing the capture path** (`pythonsrc/telemetry/trace.py`):
+  `python -m pythonsrc.telemetry.trace <job_id|prefix>` renders one job's row as the nine
+  writes that filled it, in write order, each annotated with the `TelemetryDB` method and
+  call site that performs it, and each column marked written / placeholder / expected-null.
+  `--list` indexes recent jobs with a coverage count, `--latest` takes the newest, `--json`
+  emits a per-stage coverage map, `--db` accepts a `telemetry.db.backup-*` snapshot. The
+  connection is opened `mode=ro`: the database has exactly one writer by design, and an
+  inspection tool holding a writable handle is one `commit` away from being the second.
+  `STAGES` in that module is the map, and `tests/test_telemetry_trace.py` asserts it against
+  the live schema — the union of its columns must equal `print_job`'s exactly, in both
+  directions, with each column claimed by one stage. **Adding a capture column means adding
+  it to `STAGES`**, or the suite fails; that guard is the only reason the map is still true
+  a month after it was written.
 - **Blueprint provenance (Phase 1)**: `blueprint_model`, `blueprint_model_version`,
   `blueprint_seed`, `blueprint_prompt_engineered`, `blueprint_params`, `blueprint_sha256`,
   `blueprint_duration_s`. Kept under a `blueprint_` prefix rather than merged into
