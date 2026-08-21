@@ -124,6 +124,24 @@ def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | 
 
     return firmware, base_url, api_key
 
+def job_status_from_outcome(outcome: str | None, started_at) -> str:
+    """Map a stored outcome onto the synthetic status the API exposes.
+
+    One function for every endpoint: the list and detail views previously mapped
+    `failure` to opposite statuses ("completed" vs "failed"). A job awaiting a
+    human verdict has finished as far as the software is concerned, so it maps to
+    "completed" — the pending state is carried by `awaiting_verdict` rather than
+    by overloading a status string every consumer already switches on.
+    """
+    if outcome == "unknown":
+        return "running" if started_at else "queued"
+    if outcome in ("success", "awaiting_verdict"):
+        return "completed"
+    if outcome == "cancelled":
+        return "cancelled"
+    return "failed"
+
+
 def get_resolved_strategy() -> str:
     override = config_store.get("EXECUTION_STRATEGY_OVERRIDE")
     if override and override in ("mps_native", "nvidia_docker", "cpu_docker"):
@@ -706,20 +724,7 @@ async def get_job(job_id: str):
             except Exception:
                 pass
 
-    # Determine synthetic status based on outcome. A job awaiting a human verdict has
-    # finished as far as the software is concerned, so it maps to "completed" — the
-    # pending state is carried by `awaiting_verdict` rather than by overloading a
-    # status string every consumer already switches on.
-    current_status = "queued"
-    if job.outcome == "unknown":
-        if job.started_at:
-            current_status = "running"
-    elif job.outcome in ("success", "awaiting_verdict"):
-        current_status = "completed"
-    elif job.outcome == "cancelled":
-        current_status = "cancelled"
-    else:
-        current_status = "failed"
+    current_status = job_status_from_outcome(job.outcome, job.started_at)
 
     return JobStatusResponse(
         job_id=job.job_id,
@@ -967,24 +972,13 @@ async def cancel_job(job_id: str):
     profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
     try:
         if os.path.exists(profile_path):
-            with open(profile_path, "r") as f:
-                profile_data = json.load(f)
-                
-            firmware = profile_data.get("firmware", "octoprint")
-            base_url = profile_data.get("base_url", "http://localhost:5001")
-            api_key = profile_data.get("api_key")
-            
-            if firmware == "octoprint":
-                base_url = config_store.get("OCTOPRINT_URL") or base_url
-                api_key = config_store.get("OCTOPRINT_API_KEY") or api_key
-            elif firmware == "moonraker":
-                base_url = config_store.get("MOONRAKER_URL") or base_url
-            elif firmware == "bambu":
-                base_url = config_store.get("BAMBU_IP") or base_url
-                api_key = config_store.get("BAMBU_ACCESS_CODE") or api_key
-            
+            firmware, base_url, api_key = resolve_printer_target(profile_path)
             from pythonsrc.operators import PrinterFactory
-            op = PrinterFactory.create(firmware=firmware, base_url=base_url, api_key=api_key)
+            op = PrinterFactory.create(
+                firmware=firmware,
+                base_url=base_url or "http://localhost:5001",
+                api_key=api_key,
+            )
             # Try to cancel
             try:
                 op.cancel_print()
@@ -992,8 +986,12 @@ async def cancel_job(job_id: str):
                 logger.warning(f"Could not cancel print on printer: {e}")
     except Exception as e:
         logger.warning(f"Error instantiating printer factory during cancel: {e}")
-        
-    db.update_job_outcome(job_id, "cancelled", datetime.now(timezone.utc))
+
+    # A machine-sourced write: it must never clobber a verdict a human already gave.
+    db.update_job_outcome_verdict(
+        job_id, "cancelled", source="machine",
+        completed_at=datetime.now(timezone.utc),
+    )
     db.close()
     
     await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "cancelled"}})
@@ -1019,24 +1017,13 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
         raise HTTPException(status_code=400, detail="Printer profile not found")
         
     try:
-        with open(profile_path, "r") as f:
-            profile_data = json.load(f)
-            
-        firmware = profile_data.get("firmware", "octoprint")
-        base_url = profile_data.get("base_url", "http://localhost:5001")
-        api_key = profile_data.get("api_key")
-        
-        if firmware == "octoprint":
-            base_url = config_store.get("OCTOPRINT_URL") or base_url
-            api_key = config_store.get("OCTOPRINT_API_KEY") or api_key
-        elif firmware == "moonraker":
-            base_url = config_store.get("MOONRAKER_URL") or base_url
-        elif firmware == "bambu":
-            base_url = config_store.get("BAMBU_IP") or base_url
-            api_key = config_store.get("BAMBU_ACCESS_CODE") or api_key
-        
+        firmware, base_url, api_key = resolve_printer_target(profile_path)
         from pythonsrc.operators import PrinterFactory
-        op = PrinterFactory.create(firmware=firmware, base_url=base_url, api_key=api_key)
+        op = PrinterFactory.create(
+            firmware=firmware,
+            base_url=base_url or "http://localhost:5001",
+            api_key=api_key,
+        )
         
         if request.action == "pause":
             op.pause_print()
@@ -1113,13 +1100,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     jobs = []
     for row in rows:
         job_outcome = row['outcome']
-        if job_outcome == "unknown":
-            status_val = "running"
-        elif job_outcome == "cancelled":
-            status_val = "cancelled"
-        else:
-            status_val = "completed"
-            
+        status_val = job_status_from_outcome(job_outcome, row['started_at'])
         keys = row.keys()
         jobs.append({
             "job_id": row['job_id'],
@@ -1475,8 +1456,9 @@ async def report_outcome(job_id: str, request: OutcomeRequest) -> Dict[str, Any]
             event_id=str(uuid.uuid4()),
             job_id=job_id,
             detected_at=datetime.now(timezone.utc),
-            gcode_line=samples[0].gcode_line if samples else None,
-            z_height_mm=samples[0].z_height_mm if samples else None,
+            # get_samples returns oldest-first; the failure happened at the newest.
+            gcode_line=samples[-1].gcode_line if samples else None,
+            z_height_mm=samples[-1].z_height_mm if samples else None,
             failure_type=request.failure_type or "unknown",
             source="manual",
             notes=request.notes,
@@ -1614,6 +1596,11 @@ async def reveal_config(key: str):
 async def test_connection(req: TestConnectionRequest):
     """Test connection to a specific service."""
     service = req.service.lower()
+    if service == "klipper":
+        # The UI sends firmware names; Moonraker is the HTTP API fronting Klipper.
+        # Same alias PrinterFactory accepts — without it every Klipper printer
+        # reads "Offline" forever.
+        service = "moonraker"
     stored = config_store.get_all()
     
     import time

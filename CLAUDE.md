@@ -162,9 +162,12 @@ Auth is `Ocp-Apim-Subscription-Key`, not a bearer token.
   `1024_cascade` and `1024` both send `resolution=1024`. `generation_params()` records *both* the
   requested pipeline type and the resolution sent, because a collapsed cascade is not the same
   experiment as a native run and nothing after the fact could tell them apart.
-- **The charge is booked only after a mesh arrives** (`last_generation_cost_eur`), not at submit.
-  A queued call that never delivered is not a mesh, and counting it would overstate cost per
-  usable mesh — the number the pilot is actually trying to learn.
+- **The charge is booked the moment the gateway accepts the request**
+  (`last_generation_cost_eur`), not when a mesh arrives. An accepted generation may be billed
+  even if polling times out or the download fails, so booking on delivery would understate
+  spend. The failure path persists the cost *and* the `request_id` — the manual-recovery
+  handle — to telemetry even when Phase 2 fails, so cost per usable mesh stays computable
+  from `phase2_failed` in `generation_params`.
 - Unset knobs are **omitted** from the payload rather than sent as null, so the endpoint applies
   its own documented defaults.
 

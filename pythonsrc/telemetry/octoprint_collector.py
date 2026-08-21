@@ -126,7 +126,9 @@ class OctoPrintCollector:
             try:
                 async with aiohttp.ClientSession() as session:
                     logger.info(f"Connecting to OctoPrint SockJS websocket at {ws_url}")
-                    async with session.ws_connect(ws_url) as ws:
+                    # heartbeat keeps a half-open TCP connection from silently
+                    # stalling telemetry for the rest of the print.
+                    async with session.ws_connect(ws_url, heartbeat=30) as ws:
                         self._backoff = 1.0
                         logger.info("OctoPrint SockJS WebSocket connected.")
 
@@ -210,7 +212,8 @@ class OctoPrintCollector:
 
         temps_data = payload.get("temps", [])
         if isinstance(temps_data, list) and len(temps_data) > 0:
-            temps_data = temps_data[0]
+            # The history buffer arrives oldest-first; the newest entry is last.
+            temps_data = temps_data[-1]
         elif not isinstance(temps_data, dict):
             temps_data = {}
 

@@ -35,7 +35,6 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # it inside the backend would therefore be too late to have any effect.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import os
 import sys
 import time
 import json
@@ -72,7 +71,6 @@ CURRENT_JOB_ID = None
 
 def _write_status(phase_num: int, status: str, error: str = None) -> None:
     if not CURRENT_JOB_ID:
-        print(f"DEBUG: CURRENT_JOB_ID is None! sys.argv={sys.argv}")
         return
     log_dir_env = os.environ.get("P2P_LOGS_DIR")
     log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
@@ -719,7 +717,6 @@ def run(args: argparse.Namespace) -> None:
                 logger.info("Starting print…")
                 op.start_print(gcode_path.name)
 
-                import asyncio
                 from pythonsrc.telemetry.db import TelemetryDB
                 from pythonsrc.telemetry.detector import attach_detector
                 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
@@ -813,7 +810,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Paths
     paths = parser.add_argument_group("paths")
-    paths.add_argument("--workspace", default=".", metavar="DIR", help="Project root (data/inputs/ and data/outputs/ live here)")
     paths.add_argument("--blueprint", metavar="PATH", help="Override blueprint image path")
     paths.add_argument("--mesh", metavar="PATH", help="Override raw mesh path")
     
