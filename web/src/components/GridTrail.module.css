@@ -1,0 +1,21 @@
+/* Sits over the drawn surface, never in front of the pointer. */
+.layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The lit cell is the surface's own module, inked in the accent — one tint, one
+   hairline, the same pair every other mark on the bench uses. */
+.cell {
+  fill: var(--accent-tint);
+  stroke: var(--accent-line);
+  stroke-width: 1;
+}
