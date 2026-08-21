@@ -50,6 +50,17 @@ def main():
         # the BasePrinterOperator contract and raises TypeError on other firmwares.
         op.upload_file(args.gcode_path, filename)
 
+        # The dispatch moment is the only moment the target URL is true — this is
+        # what later distinguishes simulator telemetry from real hardware.
+        try:
+            from pythonsrc.telemetry.db import TelemetryDB as _DispatchDB
+
+            _ddb = _DispatchDB()
+            _ddb.update_job_dispatch(args.job_id, printer_url=base_url)
+            _ddb.close()
+        except Exception as exc:
+            logger.warning(f"Could not record the dispatch target: {exc}")
+
         if args.start_print:
             logger.info("Starting print...")
             op.start_print(filename)
@@ -67,10 +78,13 @@ def main():
                 parsed = urlparse(base_url)
                 port = parsed.port or (443 if parsed.scheme == "https" else 80)
                 
+                # Stamp started_at — not completed_at, which this used to write:
+                # `update_job_outcome`'s second timestamp is the *completion*
+                # column, so every print marked its finish at the moment it began.
                 job = db.get_job(args.job_id)
                 if job and job.outcome == 'unknown' and not job.started_at:
                     import datetime
-                    db.update_job_outcome(args.job_id, 'unknown', datetime.datetime.now(datetime.timezone.utc))
+                    db.update_job_start_time(args.job_id, datetime.datetime.now(datetime.timezone.utc))
 
                 collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
                 await collector.start()

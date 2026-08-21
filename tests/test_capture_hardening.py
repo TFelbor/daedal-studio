@@ -160,3 +160,130 @@ def test_writes_for_existing_job_still_succeed(db):
     db.record_job_event("real-job", "download")
     assert len(db.get_samples("real-job")) == 1
     assert len(db.get_job_events("real-job")) == 1
+
+
+# ── Blueprint provenance survives the process boundary ─────────────────────
+#
+# The primary Mac workflow runs Phase 1 as a separate native process
+# (visualizer.py) and the pipeline with --skip-visualizer, which used to record
+# only the image hash: seed, prompt, model, params all NULL for every job on
+# that path. The sidecar is how the BlueprintResult crosses the boundary.
+
+def _blueprint_result(tmp_path):
+    from pythonsrc.blueprint_spec import BlueprintResult
+
+    image = tmp_path / "blueprint.png"
+    image.write_bytes(b"\x89PNG fake image bytes")
+    return image, BlueprintResult(
+        path=image,
+        seed=1234567,
+        prompt="a vase",
+        engineered_prompt="3d blender render of a vase, ...",
+        params={"num_inference_steps": 4, "guidance_scale": 3.5},
+        duration_s=31.2,
+        model_id="black-forest-labs/FLUX.2-klein-4B",
+    )
+
+
+def test_sidecar_round_trips_the_blueprint_result(tmp_path):
+    from pythonsrc.blueprint_spec import read_sidecar, write_sidecar
+
+    image, result = _blueprint_result(tmp_path)
+    write_sidecar(result)
+
+    loaded = read_sidecar(image)
+    assert loaded is not None
+    assert loaded.seed == 1234567
+    assert loaded.engineered_prompt == result.engineered_prompt
+    assert loaded.params == result.params
+    assert loaded.model_id == result.model_id
+    assert loaded.duration_s == 31.2
+
+
+def test_sidecar_for_a_replaced_image_is_rejected(tmp_path):
+    """The blueprint path is shared; a stale sidecar describing an image that has
+    since been overwritten must not attribute the old seed to the new image."""
+    from pythonsrc.blueprint_spec import read_sidecar, write_sidecar
+
+    image, result = _blueprint_result(tmp_path)
+    write_sidecar(result)
+    image.write_bytes(b"a different image entirely")
+
+    assert read_sidecar(image) is None
+
+
+def test_missing_sidecar_reads_as_none(tmp_path):
+    from pythonsrc.blueprint_spec import read_sidecar
+
+    image = tmp_path / "blueprint.png"
+    image.write_bytes(b"img")
+    assert read_sidecar(image) is None
+
+
+# ── Phase 3 reports what it actually did ───────────────────────────────────
+
+def test_engineer_exposes_a_repair_report(tmp_path):
+    import numpy as np
+    import trimesh
+
+    from pythonsrc.engineer import Engineer
+
+    # A closed sphere with one tetrahedral fin: three non-manifold edges, the
+    # defect the repair chain exists for.
+    sphere = trimesh.creation.icosphere(subdivisions=2)
+    vertices, faces = sphere.vertices.copy(), sphere.faces.copy()
+    a, b, c = faces[0]
+    apex = len(vertices)
+    vertices = np.vstack([vertices, [vertices[[a, b, c]].mean(axis=0) * 1.4]])
+    finned = trimesh.Trimesh(
+        vertices=vertices,
+        faces=np.vstack([faces, [[a, b, apex], [b, c, apex], [c, a, apex]]]),
+        process=False,
+    )
+    raw = tmp_path / "raw.obj"
+    finned.export(str(raw))
+
+    eng = Engineer()
+    eng.process(input_path=raw, output_path=tmp_path / "out.obj", target_mm=50.0)
+
+    report = eng.last_report
+    assert report is not None
+    assert report["repair_method"] in {"manifold", "trimesh_fallback", "voxel_remesh"}
+    assert report["scale_factor"] == pytest.approx(50.0 / finned.extents.max(), rel=0.2)
+    assert report["hollowed"] is False
+    assert "faces_dropped" in report
+    assert "close_rounds" in report
+    assert report["watertight_after"] is True
+
+
+# ── Run context is written by the pipeline ─────────────────────────────────
+
+def test_resolve_git_sha_finds_this_repo():
+    import re
+
+    from pythonsrc import pipeline
+
+    sha = pipeline._resolve_git_sha()
+    assert sha is not None
+    assert re.fullmatch(r"[0-9a-f]{7,40}", sha)
+
+
+def test_record_run_context_writes_the_row(tmp_path, monkeypatch):
+    import argparse
+
+    from pythonsrc import pipeline
+
+    monkeypatch.setenv("TELEMETRY_DB_PATH", str(tmp_path / "ctx.db"))
+    handle = TelemetryDB()
+    handle.init_schema()
+    handle.insert_job(_job("ctx-job"))
+    handle.close()
+
+    args = argparse.Namespace(job_id="ctx-job")
+    pipeline._record_run_context(args, used_reference_assets=True)
+
+    handle = TelemetryDB()
+    job = handle.get_job("ctx-job")
+    handle.close()
+    assert job.used_reference_assets == 1
+    assert job.git_sha is not None
