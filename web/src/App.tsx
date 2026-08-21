@@ -6,6 +6,7 @@ import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
 import { WaitingStatesGallery } from './pages/WaitingStatesGallery';
 import { OutcomeFeedback } from './components/OutcomeFeedback';
+import { GridTrail } from './components/GridTrail';
 import { engineLabel, engineStatusClass, useEngineStatus } from './hooks/useEngineStatus';
 import logo from './assets/p2p-logo.png';
 import styles from './App.module.css';
@@ -72,6 +73,9 @@ function App() {
     <BrowserRouter>
       <Navigation />
       <main className="surface">
+        {/* The surface grid is drawn in CSS; this only lights the module under the
+            pointer, and only where the surface is bare. */}
+        <GridTrail />
         {/* Sits in the shell rather than on one page: a user who finished a print and
             navigated elsewhere is exactly the person we need an answer from. */}
         <OutcomeFeedback />
