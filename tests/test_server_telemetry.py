@@ -19,6 +19,10 @@ def clear_db():
     cursor = db.conn.cursor()
     cursor.execute("DELETE FROM failure_event")
     cursor.execute("DELETE FROM telemetry_sample")
+    # job_event and the collector claim table reference print_job too, and
+    # foreign keys are enforced — children go first.
+    cursor.execute("DELETE FROM job_event")
+    cursor.execute("DELETE FROM telemetry_collector_claim")
     cursor.execute("DELETE FROM print_job")
     db.conn.commit()
     db.close()

@@ -94,6 +94,12 @@ _PRINT_JOB_EXTRA_COLUMNS = {
     # Human-reported outcome.
     "outcome_source": "TEXT",
     "outcome_reported_at": "TEXT",
+    # Run context and dispatch provenance.
+    "git_sha": "TEXT",
+    "used_reference_assets": "INTEGER",
+    "dispatched_printer_url": "TEXT",
+    "repair_report": "TEXT",
+    "print_duration_s": "REAL",
 }
 
 # The subset stored as JSON text and decoded back into dicts on read.
@@ -106,6 +112,7 @@ _PRINT_JOB_JSON_COLUMNS = (
     "repaired_mesh_features",
     "slice_stats",
     "process_params",
+    "repair_report",
 )
 
 
@@ -297,6 +304,12 @@ class TelemetryDB:
             # Flush to disk on every commit. Write volume here is a sample every
             # couple of seconds, so the cost is irrelevant next to losing the row.
             cursor.execute("PRAGMA synchronous = FULL")
+            # SQLite defaults this to OFF, which made every REFERENCES clause in the
+            # schema decorative — the root cause of the orphaned-events incident that
+            # count_orphaned_job_events() measures. Per-connection, so it must be set
+            # here and not in init_schema. Existing orphans are unaffected (the check
+            # runs on write); new child rows for a job that does not exist are refused.
+            cursor.execute("PRAGMA foreign_keys = ON")
 
     def integrity_check(self, max_errors: int = 10) -> list[str]:
         """Check the database for structural damage.
@@ -675,6 +688,7 @@ class TelemetryDB:
         raw_features: dict | None = None,
         repaired_sha256: str | None = None,
         repaired_features: dict | None = None,
+        repair_report: dict | None = None,
     ) -> None:
         """Record the mesh before and after repair.
 
@@ -688,13 +702,69 @@ class TelemetryDB:
             raw_features: Geometry features of the raw mesh.
             repaired_sha256: Hash of the engineered mesh.
             repaired_features: Geometry features of the engineered mesh.
+            repair_report: What repair actually did — which path ran, how many
+                rounds, whether the volumetric remesh fired, the scale factor.
         """
         self._update_job_columns(job_id, {
             "raw_mesh_sha256": raw_sha256,
             "raw_mesh_features": _dump_json(raw_features),
             "repaired_mesh_sha256": repaired_sha256,
             "repaired_mesh_features": _dump_json(repaired_features),
+            "repair_report": _dump_json(repair_report),
         })
+
+    def update_job_run_context(
+        self,
+        job_id: str,
+        git_sha: str | None = None,
+        used_reference_assets: bool | None = None,
+    ) -> None:
+        """Record which code ran this job and whether its inputs were real.
+
+        `used_reference_assets=False` is written as 0, not skipped: "the pipeline
+        confirmed no fixture was substituted" is information, and leaving it NULL
+        would make a verified-real run indistinguishable from a pre-migration row.
+
+        Args:
+            job_id: The job to update.
+            git_sha: Short commit hash of the running code.
+            used_reference_assets: Whether the bundled dev-reference assets were
+                substituted for a missing blueprint or mesh.
+        """
+        self._update_job_columns(job_id, {
+            "git_sha": git_sha,
+            "used_reference_assets": (
+                None if used_reference_assets is None else int(used_reference_assets)
+            ),
+        })
+
+    def update_job_dispatch(self, job_id: str, printer_url: str | None = None) -> None:
+        """Record the printer base URL the G-code was actually sent to.
+
+        Captured at the moment of dispatch because that is the only moment it is
+        true: profiles are resolved on read and edited in place, so nothing else
+        can later say whether a row's telemetry came from the simulator on
+        localhost:5001 or from real hardware.
+
+        Args:
+            job_id: The job to update.
+            printer_url: The target's base URL as dispatched.
+        """
+        self._update_job_columns(job_id, {"dispatched_printer_url": printer_url})
+
+    def update_job_print_duration(self, job_id: str, duration_s: float | None) -> None:
+        """Record the printer-reported print duration at its terminal event.
+
+        Deliberately not routed through `update_job_outcome_verdict`: the
+        machine-never-overwrites-human guard there would discard the duration
+        whenever a person answered before the printer's terminal event arrived,
+        and the duration is a measurement, not a verdict.
+
+        Args:
+            job_id: The job to update.
+            duration_s: Seconds the printer says the print ran.
+        """
+        self._update_job_columns(job_id, {"print_duration_s": duration_s})
 
     def update_job_slice(
         self,
