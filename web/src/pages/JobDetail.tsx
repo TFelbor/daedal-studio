@@ -1,20 +1,73 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { createJob, getJob } from '../api/client';
-import type { JobStatusResponse, FailureEvent } from '../api/client';
-import { PhaseProgress } from '../components/PhaseProgress';
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { ArrowLeft, Download, Loader2, Printer, RefreshCw } from 'lucide-react';
+import { createJob, getJob, getJobTelemetry, reportOutcome } from '../api/client';
+import type { FailureEvent, JobStatusResponse, TelemetrySample } from '../api/client';
+import { PhaseProgress, derivePhases } from '../components/PhaseProgress';
 import { PrintabilityCard } from '../components/PrintabilityCard';
-import { TelemetryChart } from '../components/TelemetryChart';
-import { GCodeViewer } from '../components/GCodeViewer';
 import { FailureButton } from '../components/FailureButton';
-import { PrinterStatus } from '../components/PrinterStatus';
+import { MeshViewer } from '../components/MeshViewer';
 import { PrinterStateCard } from '../components/PrinterStateCard';
 import { ServicePlaceholder } from '../components/ServicePlaceholder';
-import { ArrowLeft, Download, Loader2, AlertTriangle, Printer, RefreshCw } from 'lucide-react';
+import { Blueprint, Marks } from '../components/Blueprint';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
-import './JobDetail.css';
 import styles from './JobDetail.module.css';
+
+/** A job in one of these states will not change again on its own. */
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+const POLL_ACTIVE_MS = 5_000;
+/** A settled job is still polled, but slowly: only a human verdict can change it now. */
+const POLL_SETTLED_MS = 30_000;
+
+/**
+ * Firmware name → the service `/config/test-connection` actually knows about.
+ *
+ * Klipper speaks over Moonraker, which is the name the endpoint takes. Bambu has no
+ * probe at all, so it maps to null and the check is skipped rather than sent and
+ * reported as "Offline" forever.
+ */
+const CONNECTION_SERVICE: Record<string, string | null> = {
+  octoprint: 'octoprint',
+  klipper: 'moonraker',
+  moonraker: 'moonraker',
+  bambu: null,
+};
+
+type Connection = 'checking' | 'online' | 'offline' | 'unchecked';
+
+const CONNECTION_PILL: Record<Connection, { className: string; label: string }> = {
+  checking: { className: 'status status-run', label: 'Checking' },
+  online: { className: 'status status-ok', label: 'Online' },
+  offline: { className: 'status status-bad', label: 'Offline' },
+  unchecked: { className: 'status status-off', label: 'Not checked' },
+};
+
+function statusPill(job: JobStatusResponse): { className: string; label: string } {
+  if (job.outcome === 'success') return { className: 'status status-ok', label: 'Success' };
+  if (job.outcome === 'awaiting_verdict') return { className: 'status status-ok', label: 'Awaiting verdict' };
+  if (job.outcome === 'failure') return { className: 'status status-bad', label: 'Failure' };
+  if (job.status === 'cancelled') return { className: 'status status-off', label: 'Cancelled' };
+  if (job.status === 'failed') return { className: 'status status-bad', label: 'Failed' };
+  if (job.status === 'running') return { className: 'status status-run', label: 'Running' };
+  return { className: 'status status-off', label: 'Queued' };
+}
+
+function clockTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function stamp(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export function JobDetail() {
   const { id } = useParams<{ id: string }>();
@@ -22,10 +75,113 @@ export function JobDetail() {
   const [loading, setLoading] = useState(true);
   const [failureEvents, setFailureEvents] = useState<FailureEvent[]>([]);
   const [printerConfigured, setPrinterConfigured] = useState(false);
-  const [printerStatus, setPrinterStatus] = useState('Checking...');
+  const [connection, setConnection] = useState<Connection>('checking');
   const [printing, setPrinting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [blueprintOk, setBlueprintOk] = useState(true);
+  const [verdictBusy, setVerdictBusy] = useState<'success' | 'failure' | null>(null);
+  const [verdictError, setVerdictError] = useState<string | null>(null);
+  const [fallbackTelemetry, setFallbackTelemetry] = useState<TelemetrySample[]>([]);
   const navigate = useNavigate();
+
+  const { telemetrySamples, printerState, printerMeta } = useJobWebSocket(job ? job.job_id : null);
+
+  const fetchJob = async () => {
+    if (!id) return;
+    try {
+      const data = await getJob(id);
+      setJob(data);
+      if (data.outcome === 'failure' || data.outcome === 'cancelled') {
+        fetch(`/jobs/${id}/failure`)
+          .then(res => res.json())
+          .then((events: FailureEvent[]) => setFailureEvents(events))
+          .catch(() => {});
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setBlueprintOk(true);
+    setFallbackTelemetry([]);
+    fetchJob();
+    getConfig()
+      .then(data => {
+        const isConfigured = !!(
+          data['MOONRAKER_URL']?.value ||
+          data['OCTOPRINT_URL']?.value ||
+          data['BAMBU_IP']?.value
+        );
+        setPrinterConfigured(isConfigured);
+      })
+      .catch(() => {});
+  }, [id]);
+
+  const settled = job ? TERMINAL_STATUSES.has(job.status) : false;
+
+  // A finished job cannot advance a phase, so the 5s poll would be pure noise.
+  // It keeps ticking slowly because a human verdict can still land on it.
+  useEffect(() => {
+    if (!id) return;
+    const intervalId = setInterval(fetchJob, settled ? POLL_SETTLED_MS : POLL_ACTIVE_MS);
+    return () => clearInterval(intervalId);
+  }, [id, settled]);
+
+  useEffect(() => {
+    const firmware = job?.printer_firmware;
+    if (!firmware) return;
+    const service = CONNECTION_SERVICE[firmware.toLowerCase()] ?? null;
+    if (!service) {
+      setConnection('unchecked');
+      return;
+    }
+    let cancelled = false;
+    setConnection('checking');
+    testConnection(service)
+      .then(res => {
+        if (!cancelled) setConnection(res.success ? 'online' : 'offline');
+      })
+      .catch(() => {
+        if (!cancelled) setConnection('offline');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.printer_firmware]);
+
+  // Live samples arrive over the WebSocket; a job that finished before the page
+  // opened has none, so its history is read back once from the REST endpoint.
+  const hasLiveTelemetry = telemetrySamples.length > 0;
+
+  useEffect(() => {
+    if (!id || hasLiveTelemetry) return;
+    let cancelled = false;
+    getJobTelemetry(id)
+      .then(rows => {
+        if (!cancelled) setFallbackTelemetry(rows);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [id, hasLiveTelemetry]);
+
+  const samples = hasLiveTelemetry ? telemetrySamples : fallbackTelemetry;
+
+  const temperature = useMemo(() => {
+    const series = samples
+      .filter(s => s.hotend_actual_c != null)
+      .map(s => ({ at: new Date(s.sampled_at).getTime(), hotend: s.hotend_actual_c as number }));
+    if (series.length === 0) return null;
+    let peak = series[0].hotend;
+    for (const point of series) if (point.hotend > peak) peak = point.hotend;
+    let target: number | null = null;
+    for (const s of samples) if (s.hotend_target_c != null) target = s.hotend_target_c;
+    return { series, peak, target };
+  }, [samples]);
 
   /**
    * Start a fresh job from this one, carrying the link between them.
@@ -62,47 +218,6 @@ export function JobDetail() {
     }
   };
 
-  const { telemetrySamples, printerState, printerMeta } = useJobWebSocket(job ? job.job_id : null);
-  const latestZHeight = telemetrySamples.length > 0 ? telemetrySamples[telemetrySamples.length - 1].z_height_mm : null;
-
-  const fetchJob = async () => {
-    if (!id) return;
-    try {
-      const data = await getJob(id);
-      setJob(data);
-      if (data.outcome === 'failure' || data.outcome === 'cancelled') {
-        fetch(`/jobs/${id}/failure`)
-          .then(res => res.json())
-          .then((events: FailureEvent[]) => setFailureEvents(events))
-          .catch(() => {});
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchJob();
-    getConfig().then(data => {
-      const isConfigured = !!(data['MOONRAKER_URL']?.value || data['OCTOPRINT_URL']?.value || data['BAMBU_IP']?.value);
-      setPrinterConfigured(isConfigured);
-    }).catch(() => {});
-    const intervalId = setInterval(fetchJob, 5000);
-    return () => clearInterval(intervalId);
-  }, [id]);
-
-  useEffect(() => {
-    if (job?.printer_firmware) {
-      testConnection(job.printer_firmware)
-        .then(res => {
-          setPrinterStatus(res.success ? 'Online' : 'Offline');
-        })
-        .catch(() => setPrinterStatus('Offline'));
-    }
-  }, [job?.printer_firmware]);
-
   const handlePrint = async () => {
     if (!job) return;
     setPrinting(true);
@@ -113,226 +228,407 @@ export function JobDetail() {
         throw new Error(err.detail || 'Failed to dispatch print');
       }
       alert('Print job dispatched successfully!');
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to dispatch print');
     } finally {
       setPrinting(false);
     }
   };
 
+  /**
+   * Record the one signal the machine cannot produce.
+   *
+   * The printer reaching the end of the file is not the part surviving, so only a
+   * person can close this out. Answering costs one tap on purpose.
+   */
+  const handleVerdict = async (verdict: 'success' | 'failure') => {
+    if (!job) return;
+    setVerdictBusy(verdict);
+    setVerdictError(null);
+    try {
+      await reportOutcome(job.job_id, { verdict });
+      await fetchJob();
+    } catch (err) {
+      setVerdictError(err instanceof Error ? err.message : 'Could not save that');
+    } finally {
+      setVerdictBusy(null);
+    }
+  };
+
   if (loading || !job) {
     return (
-      <div className={styles.loading}>
-        <Loader2 className="spinner" size={32} />
-        <p>Loading job details...</p>
+      <div className="sheet">
+        <div className={styles.loading}>
+          <Loader2 className="spin" size={28} strokeWidth={1.5} />
+          <span className="label">Loading job</span>
+        </div>
       </div>
     );
   }
 
+  const phases = derivePhases(job);
   const isCompleted = job.status === 'completed' || job.outcome === 'success';
-  const hasReachedPhase5 = job.current_phase?.phase >= 5 || (job.outcome === 'failure' && job.current_phase?.phase >= 5);
-  const showPrintMonitoring = job.status === 'running' || isCompleted || hasReachedPhase5;
-
-  // Determine firmware type — prefer WebSocket meta, fallback to REST response
   const firmware = printerMeta.service || job.printer_firmware || 'octoprint';
   const machineName = printerMeta.machineName || job.machine_name;
   const layerHeightMm = printerMeta.layerHeightMm || job.layer_height_mm;
-  const isOctoprint = firmware === 'octoprint';
-  const isKlipperOrBambu = firmware === 'klipper' || firmware === 'bambu';
+  const printerStateText: string = printerState?.state?.text
+    ? String(printerState.state.text).toLowerCase()
+    : job.status;
+  const pill = statusPill(job);
+  const connectionPill = CONNECTION_PILL[connection];
+
+  /**
+   * Whether there is a print on the machine right now.
+   *
+   * Not simply `status === 'running'`: the pipeline exits 0 the moment phase 5
+   * dispatches the file, so a job whose outcome is already `awaiting_verdict` reads
+   * as "completed" while the printer still has an hour of part to lay down — which
+   * is precisely the window in which someone reaches for Cancel. The printer's own
+   * flags settle it, and a genuinely finished job reports neither.
+   */
+  const printerBusy = Boolean(
+    printerState?.state?.flags?.printing || printerState?.state?.flags?.paused,
+  );
+  const printIsLive = job.status === 'running' || printerBusy;
+
+  // Only OctoPrint streams printer state; the other stacks dispatch and go quiet, so
+  // they get the panel that says so rather than one stuck on "has not reported yet".
+  // `moonraker` is folded into `klipper` because the config store persists the former
+  // while the profiles use the latter.
+  const streamsState = firmware === 'octoprint';
+  const quietService: 'klipper' | 'bambu' | null =
+    firmware === 'bambu'
+      ? 'bambu'
+      : firmware === 'klipper' || firmware === 'moonraker'
+        ? 'klipper'
+        : null;
+
+  const layers =
+    job.layer_count != null
+      ? `${job.layer_count}${layerHeightMm ? ` · ${layerHeightMm} mm` : ''}`
+      : null;
+  const filament =
+    job.filament_used_g != null
+      ? `${job.filament_used_g.toFixed(1)} g${job.support_filament_mm3 ? ' incl. supports' : ''}`
+      : null;
+  const material = [job.material_type, job.material_brand, job.material_colour]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <div className={styles.container}>
-      <Link to="/dashboard" className={styles.backLink}>
-        <ArrowLeft size={16} /> Back to Dashboard
-      </Link>
-      
-      <div className={styles.header}>
-        <div>
-          <h2 className={styles.title}>{job.prompt}</h2>
-          <p className={styles.subtitle}>Job ID: {job.job_id}</p>
-        </div>
-        
-        {isCompleted && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <a href={`/jobs/${job.job_id}/download`} className="btn btn-primary" download>
-              <Download size={16} /> Download G-Code
-            </a>
-            {printerConfigured && (
-              <button 
-                className="btn btn-primary" 
-                onClick={handlePrint} 
-                disabled={printing}
-                style={{ backgroundColor: 'var(--accent-color)', borderColor: 'var(--accent-color)' }}
+    <div className="sheet">
+      <div className={styles.page}>
+        <Link to="/dashboard" className={styles.backLink}>
+          <ArrowLeft size={14} strokeWidth={1.5} /> Dashboard
+        </Link>
+
+        <div className={styles.header}>
+          <div>
+            <div className={styles.identity}>
+              <span className={pill.className}>{pill.label}</span>
+              <span className={styles.jobId}>{job.job_id}</span>
+            </div>
+            <h1 className={styles.title}>{job.prompt}</h1>
+          </div>
+
+          <div className={styles.actions}>
+            {isCompleted && (
+              <a href={`/jobs/${job.job_id}/download`} className="btn btn-secondary" download>
+                <Download size={14} strokeWidth={1.5} /> G-code
+              </a>
+            )}
+            {job.status !== 'running' && (
+              // Regenerating is an implicit judgement on this result. Routing it through
+              // here rather than the blank new-job form is what makes the lineage
+              // recordable at all.
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleRegenerate}
+                disabled={regenerating}
               >
-                {printing ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />}
-                {printing ? ' Dispatching...' : ' Print'}
+                {regenerating ? (
+                  <Loader2 size={14} className="spin" strokeWidth={1.5} />
+                ) : (
+                  <RefreshCw size={14} strokeWidth={1.5} />
+                )}
+                Regenerate
+              </button>
+            )}
+            {isCompleted && printerConfigured && (
+              <button
+                type="button"
+                className="btn btn-primary blueprint marked-accent"
+                onClick={handlePrint}
+                disabled={printing}
+              >
+                <Marks />
+                {printing ? (
+                  <Loader2 size={16} className="spin" strokeWidth={1.5} />
+                ) : (
+                  <Printer size={16} strokeWidth={1.5} />
+                )}
+                {printing ? 'Dispatching' : 'Print again'}
               </button>
             )}
           </div>
-        )}
-      </div>
-
-      <div className={styles.grid}>
-        <div className={styles.mainCol}>
-          <PhaseProgress jobId={job.job_id} />
-          <PrintabilityCard jobId={job.job_id} />
-          {showPrintMonitoring && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', minHeight: '350px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <TelemetryChart jobId={job.job_id} data={telemetrySamples} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className={`card ${styles.chartCard}`} style={{ flex: 1, padding: 0 }}>
-                  <GCodeViewer jobId={job.job_id} zHeightMm={latestZHeight} />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
-        
-        <div className={styles.sideCol}>
-          <PrinterStatus
-            printerId={job.printer_id || 'Printer'}
-            firmware={firmware}
-            status={printerStatus}
-            machineName={machineName}
-          />
-          
-          {isOctoprint && (
-            <PrinterStateCard
-              jobId={job.job_id}
-              printerState={printerState}
-              startedAt={job.started_at}
-              layerHeightMm={layerHeightMm}
-            />
-          )}
 
-          {isKlipperOrBambu && (
-            <ServicePlaceholder service={firmware as 'klipper' | 'bambu'} />
-          )}
-          
-          <div className={`card ${styles.detailsCard}`}>
-            <h3>Job Details</h3>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Status</span>
-              <span className={`badge ${job.outcome === 'success' ? 'badge-success' : job.outcome === 'failure' ? 'badge-failure' : job.status === 'running' ? 'badge-running' : 'badge-queued'}`}>
-                {job.outcome !== 'unknown' ? job.outcome : job.status}
+        <div className={styles.grid}>
+          <div className={styles.mainCol}>
+            <PhaseProgress jobId={job.job_id} />
+
+            <div className={styles.figures}>
+              <div className={styles.figure}>
+                <span className={`label ${styles.blockLabel}`}>Blueprint</span>
+                <Blueprint tone="accent" className={styles.frame}>
+                  {blueprintOk ? (
+                    <img
+                      className={styles.frameImage}
+                      src={`/jobs/${job.job_id}/blueprint`}
+                      alt={`Blueprint for “${job.prompt}”`}
+                      onError={() => setBlueprintOk(false)}
+                    />
+                  ) : (
+                    <span className={styles.frameEmpty}>
+                      The blueprint appears here after phase 1
+                    </span>
+                  )}
+                </Blueprint>
+              </div>
+
+              <div className={styles.figure}>
+                <span className={`label ${styles.blockLabel}`}>Mesh</span>
+                <Blueprint tone="accent" className={styles.frame}>
+                  <div className={styles.frameSlot}>
+                    <MeshViewer jobId={job.job_id} status={job.status} phases={phases} />
+                  </div>
+                </Blueprint>
+              </div>
+            </div>
+
+            <PrintabilityCard
+              jobId={job.job_id}
+              supportFilamentMm3={job.support_filament_mm3}
+            />
+
+            <div>
+              <span className={`label ${styles.blockLabel}`}>
+                Hotend temperature · whole print
               </span>
+              {temperature ? (
+                <Blueprint className={styles.chartFrame}>
+                  <div className={styles.chart}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={temperature.series}
+                        margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
+                      >
+                        <XAxis dataKey="at" hide />
+                        <YAxis hide domain={['dataMin - 5', 'dataMax + 5']} />
+                        <Area
+                          type="monotone"
+                          dataKey="hotend"
+                          dot={false}
+                          activeDot={false}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className={styles.chartCaption}>
+                    <span>{clockTime(temperature.series[0].at)}</span>
+                    <span className={styles.chartCaptionMid}>
+                      {temperature.target != null
+                        ? `target ${temperature.target.toFixed(0)} °C · peak ${temperature.peak.toFixed(1)} °C`
+                        : `peak ${temperature.peak.toFixed(1)} °C`}
+                    </span>
+                    <span>
+                      {clockTime(temperature.series[temperature.series.length - 1].at)}
+                    </span>
+                  </div>
+                </Blueprint>
+              ) : (
+                <div className="empty">
+                  <span>No temperature readings for this job</span>
+                  <span>The hotend charts here once the printer starts reporting</span>
+                </div>
+              )}
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.detailLabel}>Started</span>
-              <span>{job.started_at ? new Date(job.started_at).toLocaleString() : '\u2014'}</span>
-            </div>
-            {job.completed_at && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Completed</span>
-                <span>{new Date(job.completed_at).toLocaleString()}</span>
-              </div>
+          </div>
+
+          <div className={styles.sideCol}>
+            {/* A live print leads the column: progress, ETA and the pause/cancel
+                controls are what someone opening this page mid-print came for. On a
+                finished job neither panel renders and the record leads instead. */}
+            {printIsLive && streamsState && (
+              <PrinterStateCard
+                jobId={job.job_id}
+                printerState={printerState}
+                startedAt={job.started_at}
+                layerHeightMm={layerHeightMm}
+              />
             )}
-            {job.material_type && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Material</span>
-                <span>{[job.material_type, job.material_brand, job.material_colour].filter(Boolean).join(' · ')}</span>
+            {printIsLive && quietService && <ServicePlaceholder service={quietService} />}
+
+            <Blueprint className={styles.panel}>
+              <span className={`label ${styles.blockLabel}`}>Record</span>
+              <div className={styles.recordRows}>
+                <div className={styles.recordRow}>
+                  <span className={styles.recordKey}>Started</span>
+                  <span className={styles.recordValue}>{stamp(job.started_at)}</span>
+                </div>
+                <div className={styles.recordRow}>
+                  <span className={styles.recordKey}>Completed</span>
+                  <span className={styles.recordValue}>{stamp(job.completed_at)}</span>
+                </div>
+                {material && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Material</span>
+                    <span className={styles.recordValue}>{material}</span>
+                  </div>
+                )}
+                {job.blueprint_seed != null && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Seed</span>
+                    <span className={`${styles.recordValue} ${styles.recordMono}`}>
+                      {job.blueprint_seed}
+                    </span>
+                  </div>
+                )}
+                {layers && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Layers</span>
+                    <span className={styles.recordValue}>{layers}</span>
+                  </div>
+                )}
+                {filament && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Filament</span>
+                    <span className={styles.recordValue}>{filament}</span>
+                  </div>
+                )}
+                {job.estimated_print_time_s != null && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Estimated time</span>
+                    <span className={styles.recordValue}>
+                      {Math.round(job.estimated_print_time_s / 60)} min
+                    </span>
+                  </div>
+                )}
+                {job.outcome_source && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Outcome reported by</span>
+                    {/* "machine" means the printer reached the end of the file, which is
+                        not the same as the part surviving. Worth showing plainly. */}
+                    <span className={styles.recordValue}>
+                      {job.outcome_source === 'user' ? 'a person' : 'the printer'}
+                    </span>
+                  </div>
+                )}
+                {job.parent_job_id && (
+                  <div className={styles.recordRow}>
+                    <span className={styles.recordKey}>Regenerated from</span>
+                    <Link
+                      to={`/dashboard/${job.parent_job_id}`}
+                      className={`${styles.recordValue} ${styles.recordMono}`}
+                    >
+                      {job.parent_job_id.slice(0, 8)}
+                    </Link>
+                  </div>
+                )}
               </div>
-            )}
-            {job.blueprint_seed != null && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Seed</span>
-                <span style={{ fontFamily: 'monospace' }}>{job.blueprint_seed}</span>
+            </Blueprint>
+
+            <Blueprint className={styles.panel}>
+              <span className={`label ${styles.blockLabel}`}>Printer</span>
+              <div className={styles.printerRow}>
+                <div>
+                  <div className="subheading">{machineName || job.printer_id || 'Printer'}</div>
+                  <div className={styles.printerMeta}>
+                    {firmware} · {printerStateText}
+                  </div>
+                </div>
+                <span className={connectionPill.className}>{connectionPill.label}</span>
               </div>
-            )}
-            {job.estimated_print_time_s != null && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Est. print time</span>
-                <span>{Math.round(job.estimated_print_time_s / 60)} min</span>
-              </div>
-            )}
-            {job.filament_used_g != null && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Filament</span>
-                <span>
-                  {job.filament_used_g.toFixed(1)} g
-                  {job.support_filament_mm3 ? ` (incl. supports)` : ''}
-                </span>
-              </div>
-            )}
-            {job.layer_count != null && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Layers</span>
-                <span>{job.layer_count}</span>
-              </div>
-            )}
-            {job.outcome_source && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Outcome reported by</span>
-                {/* "machine" means the printer reached the end of the file, which is
-                    not the same as the part surviving. Worth showing plainly. */}
-                <span>{job.outcome_source === 'user' ? 'a person' : 'the printer'}</span>
-              </div>
-            )}
-            {job.parent_job_id && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailLabel}>Regenerated from</span>
-                <Link to={`/dashboard/${job.parent_job_id}`}>{job.parent_job_id.slice(0, 8)}</Link>
-              </div>
+            </Blueprint>
+
+            {job.awaiting_verdict && (
+              <Blueprint className={styles.panel}>
+                <span className={`label ${styles.blockLabel}`}>How did it come out?</span>
+                <p className={styles.verdictText}>
+                  The printer says it finished. Only you can say whether the part survived.
+                </p>
+                <div className={styles.verdictActions}>
+                  <button
+                    type="button"
+                    className="btn btn-ok"
+                    onClick={() => handleVerdict('success')}
+                    disabled={verdictBusy !== null}
+                  >
+                    {verdictBusy === 'success' ? (
+                      <Loader2 size={14} className="spin" strokeWidth={1.5} />
+                    ) : null}
+                    Part is good
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => handleVerdict('failure')}
+                    disabled={verdictBusy !== null}
+                  >
+                    {verdictBusy === 'failure' ? (
+                      <Loader2 size={14} className="spin" strokeWidth={1.5} />
+                    ) : null}
+                    It failed
+                  </button>
+                </div>
+                {verdictError && (
+                  <div className={`notice ${styles.verdictNotice}`}>{verdictError}</div>
+                )}
+              </Blueprint>
             )}
 
             {job.status === 'running' && (
-              <div className={styles.failureSection}>
-                <hr className={styles.divider} />
+              <Blueprint className={styles.panel}>
+                <span className={`label ${styles.blockLabel}`}>Something going wrong?</span>
+                <p className={styles.verdictText}>
+                  Reporting it now records the layer height and G-code line the print reached.
+                </p>
                 <FailureButton jobId={job.job_id} onReported={fetchJob} />
-              </div>
+              </Blueprint>
             )}
 
-            {job.status !== 'running' && (
-              <div className={styles.failureSection}>
-                <hr className={styles.divider} />
-                {/* Regenerating is an implicit judgement on this result. Routing it
-                    through here rather than the blank new-job form is what makes the
-                    lineage recordable at all. */}
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                >
-                  {regenerating ? <Loader2 size={16} className="spinner" /> : <RefreshCw size={16} />}
-                  Regenerate
-                </button>
-              </div>
+            {failureEvents.length > 0 && (
+              <Blueprint className={styles.panel}>
+                <span className={`label ${styles.blockLabel}`}>Failure events</span>
+                <div className={styles.failureRows}>
+                  {failureEvents.map(evt => (
+                    <div key={evt.event_id} className={styles.failureRow}>
+                      <div className={styles.failureHead}>
+                        <span className={styles.failureType}>
+                          {evt.failure_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className={styles.failureWhen}>
+                          {stamp(evt.detected_at)}
+                        </span>
+                      </div>
+                      <div className={styles.failureMeta}>
+                        {[
+                          evt.source,
+                          evt.z_height_mm != null ? `z ${evt.z_height_mm.toFixed(1)} mm` : null,
+                          evt.gcode_line != null ? `line ${evt.gcode_line}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                      {evt.notes && <div className={styles.failureNotes}>{evt.notes}</div>}
+                    </div>
+                  ))}
+                </div>
+              </Blueprint>
             )}
           </div>
-
-          {failureEvents.length > 0 && (
-            <div className={`card ${styles.detailsCard}`}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-color)' }}>
-                <AlertTriangle size={18} /> Failure Events
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {failureEvents.map(evt => (
-                  <div key={evt.event_id} style={{
-                    padding: '12px', backgroundColor: 'var(--surface-color)', borderRadius: 'var(--border-radius)',
-                    border: '1px solid var(--border-color)', fontSize: '14px'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 600, textTransform: 'capitalize', color: 'var(--accent-color)' }}>
-                        {evt.failure_type.replace(/_/g, ' ')}
-                      </span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                        {new Date(evt.detected_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={{ color: 'var(--text-secondary)' }}>
-                      Source: <span style={{ fontWeight: 500 }}>{evt.source}</span>
-                      {evt.z_height_mm != null && <> | Z: {evt.z_height_mm?.toFixed(1)}mm</>}
-                      {evt.gcode_line != null && <> | Line: {evt.gcode_line}</>}
-                    </div>
-                    {evt.notes && <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>"{evt.notes}"</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,8 @@
-.container {
-  max-width: 1200px;
+/* Job detail — the record of one job, and what to do next.
+   Every colour, face and rule width here is a token from global.css. */
+
+.page {
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -8,93 +11,332 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem;
-  color: var(--text-secondary);
+  gap: 14px;
+  padding: 120px 0;
+  color: var(--ink-42);
+  font-size: 13px;
 }
 
 .backLink {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  font-weight: 500;
+  gap: 8px;
+  margin-bottom: 22px;
+  font-size: 12.5px;
+  color: var(--ink-50);
+  transition: color 0.15s ease;
 }
+
+.backLink:hover {
+  color: var(--ink);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 2rem;
+  align-items: flex-end;
+  gap: 32px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 24px;
+  margin-bottom: 34px;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.jobId {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-35);
+  overflow-wrap: anywhere;
 }
 
 .title {
-  font-size: 2rem;
-  margin-bottom: 0.25rem;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 40px;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  max-width: 720px;
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  font-family: monospace;
-  font-size: 0.9rem;
-  margin: 0;
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: none;
 }
+
+/* ── Two-column body ────────────────────────────────────────────────────── */
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2rem;
+  grid-template-columns: 1fr 400px;
+  gap: 44px;
+  align-items: start;
 }
 
 .mainCol {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 38px;
   min-width: 0;
 }
 
 .sideCol {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 26px;
+  min-width: 0;
 }
 
-.detailsCard {
+.blockLabel {
+  display: block;
+  margin-bottom: 16px;
+}
+
+/* ── Blueprint + mesh figures ───────────────────────────────────────────── */
+
+.figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+}
+
+.figure {
+  min-width: 0;
+}
+
+/* No `overflow: hidden` here: the registration marks straddle the border at -4px
+   and clipping the frame would cut them off. Anything that could overflow is
+   clipped by its own slot instead. The min-height is a floor for narrow columns,
+   which would otherwise squeeze the mesh viewport below its own minimum. */
+.frame {
+  aspect-ratio: 1;
+  min-height: 300px;
+  background: var(--void);
+}
+
+.frameImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.frameSlot {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.frameEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 22px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-28);
+}
+
+/* ── Temperature chart ──────────────────────────────────────────────────── */
+
+.chartFrame {
+  padding: 18px 20px 12px;
+}
+
+.chart {
+  width: 100%;
+  height: 130px;
+}
+
+/* Recharts paints its defaults as presentation attributes, so these rules win
+   without needing a hex anywhere in the component. */
+.chart :global(.recharts-area-area) {
+  fill: var(--accent);
+  fill-opacity: 0.08;
+}
+
+.chart :global(.recharts-area-curve) {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+}
+
+.chartCaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-35);
+}
+
+.chartCaptionMid {
+  text-align: center;
+}
+
+/* ── Side panels ────────────────────────────────────────────────────────── */
+
+.panel {
+  padding: 20px 22px;
+}
+
+.recordRows {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
 }
 
-.detailsCard h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.1rem;
+.recordRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule-sub);
+  font-size: 13.5px;
 }
 
-.detailRow {
+.recordRows > .recordRow:last-child {
+  border-bottom: none;
+}
+
+.recordKey {
+  color: var(--ink-50);
+  flex: none;
+}
+
+.recordValue {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.recordMono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.printerRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.9rem;
+  gap: 16px;
 }
 
-.detailLabel {
-  color: var(--text-secondary);
-  font-weight: 500;
+.printerMeta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-42);
+  margin-top: 2px;
 }
 
-.divider {
-  border: 0;
-  height: 1px;
-  background-color: var(--border-color);
-  margin: 1.5rem 0 1rem;
+.verdictText {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-58);
+  margin-bottom: 14px;
 }
 
-.failureSection {
+.verdictActions {
+  display: flex;
+  gap: 8px;
+}
+
+.verdictActions > button {
+  flex: 1;
+}
+
+.verdictNotice {
+  margin-top: 12px;
+}
+
+/* ── Failure events ─────────────────────────────────────────────────────── */
+
+.failureRows {
   display: flex;
   flex-direction: column;
 }
 
-@media (max-width: 768px) {
+.failureRow {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-sub);
+}
+
+.failureRows > .failureRow:last-child {
+  border-bottom: none;
+}
+
+.failureHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.failureType {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--bad-ink);
+  text-transform: capitalize;
+}
+
+.failureWhen {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-35);
+  white-space: nowrap;
+}
+
+.failureMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-42);
+  margin-top: 4px;
+}
+
+.failureNotes {
+  font-size: 13px;
+  color: var(--ink-58);
+  margin-top: 5px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 1000px) {
   .grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .title {
+    font-size: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  .figures {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -1,67 +1,67 @@
-/* The outcome prompt.
- *
- * Designed for one-tap answering: the two verdict buttons are the largest targets on
- * the card, and nothing between seeing the card and answering it requires reading.
- * Failure detail is progressive — it appears only after someone has already said the
- * print failed, so the cheap answer is never gated behind the detailed one.
- */
-
+/* The verdict banner. It sits in the app shell above every page, so it is drawn as
+   a plate laid on the surface: darker ground, one accent rule along the top edge to
+   claim attention without shouting. */
 .banner {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--highlight-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-md);
-  margin-bottom: 1.5rem;
-  overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+  border-top: 2px solid var(--accent);
+  background: var(--void);
 }
 
 .header {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.9rem 1.1rem;
-  width: 100%;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-primary);
-  font: inherit;
+  gap: 14px;
+  padding: 14px 40px;
   text-align: left;
+  color: var(--ink);
+  background: none;
 }
 
 .header:hover {
-  background: var(--surface-muted);
+  background: rgba(242, 240, 237, 0.02);
 }
 
 .headerIcon {
-  color: var(--highlight-color);
-  flex-shrink: 0;
+  flex: none;
+  color: var(--accent);
 }
 
 .headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
 
 .headerTitle {
+  font-family: var(--font-heading);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 18px;
+  letter-spacing: 0.01em;
 }
 
 .headerSub {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-top: 0.15rem;
+  font-size: 13px;
+  color: var(--ink-50);
 }
 
 .list {
-  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
 }
 
+/* One card per print. Hairline-separated rows rather than stacked boxes: the list
+   is usually short and reads better as a register than as a set of cards. */
 .card {
-  padding: 1rem 1.1rem;
-  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  padding: 18px 40px;
+  border-bottom: 1px solid var(--rule-sub);
 }
 
 .card:last-child {
@@ -70,121 +70,121 @@
 
 .cardHead {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.85rem;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 220px;
 }
 
 .prompt {
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  font-size: 15px;
+  color: var(--ink);
 }
 
 .meta {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-35);
 }
 
 .actions {
   display: flex;
-  gap: 0.6rem;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
-/* Verdict buttons carry the weight: they are what the card is for. */
 .verdict {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.6rem 1.1rem;
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  background: var(--surface-color);
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.verdict:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--ink-80);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
 .verdict:disabled {
-  opacity: 0.55;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .clean {
-  border-color: #16a34a;
-  color: #16a34a;
+  border-color: var(--ok-line);
+  color: var(--ok);
 }
 
 .clean:hover:not(:disabled) {
-  background: #16a34a;
-  color: #fff;
+  background: rgba(79, 174, 127, 0.08);
+  border-color: var(--ok);
 }
 
 .failed {
-  border-color: var(--danger-color);
-  color: var(--danger-color);
+  border-color: rgba(217, 86, 79, 0.4);
+  color: var(--bad);
 }
 
 .failed:hover:not(:disabled) {
-  background: var(--danger-color);
-  color: #fff;
+  background: var(--bad-tint);
+  border-color: var(--bad);
 }
 
-/* Skip is deliberately quiet but present. A declined prompt is a measurement; hiding
- * the option would only turn it into an unanswered one. */
+/* Skipping is a recorded answer, not a dismissal, so it stays a real button —
+   quieter than the verdicts but not hidden. */
 .skip {
-  border-color: transparent;
-  color: var(--text-secondary);
-  font-weight: 500;
+  border-color: var(--rule);
+  color: var(--ink-50);
 }
 
 .skip:hover:not(:disabled) {
-  background: var(--surface-muted);
+  color: var(--ink);
+  border-color: var(--rule-strong);
 }
 
 .detail {
-  margin-top: 0.9rem;
-  padding-top: 0.9rem;
-  border-top: 1px dashed var(--border-color);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 12px;
+  flex-basis: 100%;
+  padding-top: 4px;
 }
 
 .detailRow {
   display: flex;
-  gap: 0.6rem;
   flex-wrap: wrap;
   align-items: center;
+  gap: 12px;
 }
 
 .detailLabel {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.error {
-  margin-top: 0.6rem;
-  font-size: 0.82rem;
-  color: var(--danger-color);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 237, 0.45);
 }
 
 .thanks {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  color: #16a34a;
-  font-size: 0.9rem;
+  gap: 9px;
+  font-family: var(--font-heading);
   font-weight: 600;
+  font-size: 16px;
+  color: var(--ok);
+}
+
+.error {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--bad-ink);
+}
+
+@media (max-width: 720px) {
+  .header,
+  .card {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }

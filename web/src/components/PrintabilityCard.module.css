@@ -1,203 +1,154 @@
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  min-width: 0;
-}
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
+/* Pre-print geometry score: the label and the score on one ruled line, then the
+   three figures that decide whether it prints. */
 
 .title {
-  font-size: 1.25rem;
-  margin: 0;
-}
-
-.subtitle {
-  margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-
-.scoreBlock {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  border-bottom-color: var(--rule-strong);
+  margin-bottom: 2px;
 }
 
 .score {
-  font-size: 2.5rem;
-  font-weight: 700;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 20px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
 }
 
 .scoreMax {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--ink-35);
+  margin-left: 2px;
+}
+
+.scoreReady {
+  color: var(--ok);
+}
+
+/* No amber in the palette, and the accent is reserved for actions — so a risky
+   verdict takes the softened bad ink rather than borrowing the action colour. */
+.scoreRisky {
+  color: var(--bad-ink);
+}
+
+.scoreBad {
+  color: var(--bad);
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0;
+  color: var(--ink-42);
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cell {
+  padding: 16px;
+  border-left: 1px solid var(--rule-row);
+  min-width: 0;
+}
+
+.cell:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.cell:last-child {
+  padding-right: 0;
+}
+
+.figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
-.verdict {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  font-size: 0.75rem;
-  font-weight: 600;
+.cellLabel {
+  font-size: 11px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-/* Signature: one bar whose segments are as wide as each check's weight in the
-   score, so the picture and the arithmetic are the same thing. */
-.ribbon {
-  display: flex;
-  width: 100%;
-  height: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--surface-muted);
-  border: 1px solid var(--border-color);
-}
-
-.segment {
-  min-width: 2px;
-  transition: opacity 0.2s ease-in-out;
-}
-
-.segment:hover,
-.segment:focus-visible {
-  opacity: 0.7;
-  outline: none;
-}
-
-.ribbonLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.legendSwatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  flex-shrink: 0;
+  color: var(--ink-42);
+  margin-top: 4px;
 }
 
 .checks {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
   list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule-sub);
 }
 
 .check {
-  display: grid;
-  grid-template-columns: 1.25rem minmax(0, 1fr);
-  gap: 0.625rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: var(--border-radius);
-  background: var(--surface-muted);
-  border: 1px solid transparent;
-}
-
-.checkCritical {
-  border-color: var(--accent-color);
-}
-
-.checkIcon {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding-top: 0.125rem;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-sub);
+}
+
+.checkText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .checkName {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: 0;
+  font-size: 14px;
 }
 
 .checkDetail {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin: 0.125rem 0 0;
+  font-size: 12.5px;
+  color: var(--ink-50);
   overflow-wrap: anywhere;
 }
 
-.muted {
-  opacity: 0.65;
-}
-
-.toggle {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--cta-color);
-  cursor: pointer;
-}
-
-.toggle:hover {
-  text-decoration: underline;
-}
-
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
-  padding-top: 0.25rem;
-}
-
-.feature {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-.featureLabel {
-  font-size: 0.6875rem;
+.checkStatus {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
-.featureValue {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.statusPass {
+  color: var(--ok);
 }
 
-.empty {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin: 0;
+.statusWarn {
+  color: var(--bad-ink);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .segment {
-    transition: none;
+.statusFail {
+  color: var(--bad);
+}
+
+.statusSkipped {
+  color: var(--ink-35);
+}
+
+/* Three 24px figures stop fitting side by side long before the page does, and the
+   page body must never scroll sideways. */
+@media (max-width: 540px) {
+  .figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cell {
+    padding: 14px 0;
+    border-left: none;
+    border-top: 1px solid var(--rule-row);
+  }
+
+  .cell:first-child {
+    border-top: none;
   }
 }

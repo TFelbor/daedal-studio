@@ -1,4 +1,4 @@
-import { Wifi, WifiOff } from 'lucide-react';
+import { Blueprint } from './Blueprint';
 import styles from './PrinterStatus.module.css';
 
 interface PrinterStatusProps {
@@ -8,30 +8,37 @@ interface PrinterStatusProps {
   machineName?: string | null;
 }
 
-const SERVICE_CONFIG: Record<string, { label: string; icon: string; accentClass: string }> = {
-  octoprint: { label: 'OctoPrint', icon: '\ud83d\udc19', accentClass: 'octoprint' },
-  klipper: { label: 'Klipper', icon: '\u2699\ufe0f', accentClass: 'klipper' },
-  bambu: { label: 'Bambu Lab', icon: '\ud83c\udf8b', accentClass: 'bambu' },
-};
+/**
+ * Pill tone for a reachability word.
+ *
+ * A colour here always means state — never that something can be clicked — so this
+ * only ever returns one of the status classes.
+ */
+function toneFor(status: string): string {
+  const word = status.toLowerCase();
+  if (word === 'online') return 'status-ok';
+  if (word === 'offline') return 'status-bad';
+  return 'status-off';
+}
 
+/** The machine a job is pointed at: what it is called, which stack, whether it answers. */
 export function PrinterStatus({ printerId, firmware, status = 'Online', machineName }: PrinterStatusProps) {
-  const config = SERVICE_CONFIG[firmware] || { label: firmware, icon: '\ud83d\udda8\ufe0f', accentClass: 'default' };
-  const isOnline = status.toLowerCase() === 'online';
   const displayName = machineName || printerId;
+  // The mono line carries the identity the pill cannot: which firmware, which target.
+  const detail = displayName === printerId
+    ? firmware.toLowerCase()
+    : `${firmware.toLowerCase()} · ${printerId}`;
 
   return (
-    <div className={`card ${styles.statusCard} ${styles[config.accentClass] || ''}`}>
-      <div className={styles.serviceRow}>
-        <span className={styles.serviceIcon}>{config.icon}</span>
-        <div className={styles.serviceInfo}>
-          <span className={styles.serviceLabel}>{config.label}</span>
-          <span className={styles.printerName}>{displayName}</span>
+    <Blueprint className={styles.block}>
+      <div className="label">Printer</div>
+      <div className={styles.row}>
+        <div className={styles.identity}>
+          <div className={`subheading ${styles.name}`} title={displayName}>{displayName}</div>
+          <div className={`mono ${styles.meta}`}>{detail}</div>
         </div>
-        <div className={`${styles.statusIndicator} ${isOnline ? styles.online : styles.offline}`}>
-          {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-          <span>{status}</span>
-        </div>
+        <span className={`status ${toneFor(status)}`}>{status}</span>
       </div>
-    </div>
+    </Blueprint>
   );
 }

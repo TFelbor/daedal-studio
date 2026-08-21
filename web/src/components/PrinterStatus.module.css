@@ -1,82 +1,27 @@
-.statusCard {
-  position: relative;
-  overflow: hidden;
+/* The printer block: a framed line drawing, not a filled panel. */
+
+.block {
+  padding: 20px 22px;
 }
 
-.statusCard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background-color: var(--text-secondary);
-}
-
-.octoprint::before {
-  background-color: #4caf50;
-}
-
-.klipper::before {
-  background-color: #ff9800;
-}
-
-.bambu::before {
-  background-color: #2196f3;
-}
-
-.serviceRow {
+.row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
 }
 
-.serviceIcon {
-  font-size: 1.75rem;
-  line-height: 1;
-}
-
-.serviceInfo {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+.identity {
   min-width: 0;
 }
 
-.serviceLabel {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-}
-
-.printerName {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.statusIndicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.2rem 0.5rem;
-  border-radius: 9999px;
-  white-space: nowrap;
-}
-
-.online {
-  color: #2e7d32;
-  background-color: #e8f5e9;
-}
-
-.offline {
-  color: #c62828;
-  background-color: #ffebee;
+.meta {
+  margin-top: 3px;
 }

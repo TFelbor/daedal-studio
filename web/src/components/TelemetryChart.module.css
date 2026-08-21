@@ -1,79 +1,124 @@
-.chartCard {
+/* Live telemetry: a framed panel — head, a band of figure cells, then the plot.
+   Every colour the chart draws with is set here rather than passed to Recharts as a
+   prop, because a CSS rule beats an SVG presentation attribute and a token cannot be
+   written into one. */
+
+.panel {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  height: auto;
-  min-height: 400px;
+  min-width: 0;
 }
 
-.header {
+.head {
+  padding: 20px 22px 18px;
+}
+
+/* The chart's key, in the block title rather than under the plot: it belongs with
+   the name of the thing, and it costs the plot no height. */
+.legend {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.title {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.statsContainer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  padding: 1rem;
-  background-color: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.statItem {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 80px;
-}
-
-.statLabel {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
-
-.statValue {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: flex;
-  align-items: baseline;
-  gap: 0.25rem;
-}
-
-.statValue span {
-  font-size: 0.85rem;
-  font-weight: normal;
-  color: var(--text-secondary);
-}
-
-.chartContainer {
-  flex: 1;
-  min-height: 300px;
-}
-
-.empty, .error {
   align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  height: 400px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.error {
-  color: var(--danger-color);
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+  white-space: nowrap;
 }
 
-.iconEmpty {
-  opacity: 0.5;
-  margin-bottom: 1rem;
+.swatch {
+  width: 13px;
+  height: 1px;
+  flex: none;
+}
+
+.swatchHotend { background: var(--accent); }
+.swatchBed { background: var(--ink-58); }
+.swatchZ { background: var(--ink-28); }
+
+/* Figure cells. `.plate` supplies the grid; these tighten it so five readings fit
+   one row on a wide column and wrap cleanly on a narrow one. Doubled selectors so
+   the shared defaults cannot win on source order. */
+.figures.figures {
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.figures > .cell {
+  padding: 15px 18px;
+  border-left: 1px solid var(--rule);
+}
+
+.figures > .cell:first-child {
+  border-left: none;
+}
+
+.figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.unit {
+  font-style: normal;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-42);
+  margin-left: 5px;
+}
+
+/* The plot. `min-width: 0` is load-bearing: without it ResponsiveContainer keeps its
+   last measured width inside a grid column and pushes the page sideways. */
+.chart {
+  flex: 1;
+  min-width: 0;
+  min-height: 260px;
+  padding: 16px 18px 14px 8px;
+}
+
+.chart :global(.recharts-cartesian-grid-horizontal line),
+.chart :global(.recharts-cartesian-grid-vertical line) {
+  stroke: var(--rule-sub);
+}
+
+.chart :global(.recharts-cartesian-axis-line),
+.chart :global(.recharts-cartesian-axis-tick-line) {
+  stroke: var(--rule);
+}
+
+.chart :global(.recharts-cartesian-axis-tick-value) {
+  fill: var(--ink-35);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.cursor {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+/* Series: the accent marks the reading the operator watches; the other two are ink,
+   because a status colour here would read as a state it is not reporting. */
+.seriesHotend :global(.recharts-line-curve) {
+  stroke: var(--accent);
+}
+
+.seriesBed :global(.recharts-line-curve) {
+  stroke: var(--ink-58);
+}
+
+.seriesZ :global(.recharts-line-curve) {
+  stroke: var(--ink-28);
 }

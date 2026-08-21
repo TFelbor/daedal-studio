@@ -1,34 +1,22 @@
-.container {
-  margin-top: 1rem;
-}
+/* Reporting a failure while the print is still on the bed. */
 
 .form {
-  border-color: var(--danger-color);
-  background-color: #fffafb;
-  max-width: 400px;
-}
-
-.title {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: var(--danger-color);
+  padding: 18px 20px;
 }
 
 .field {
-  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.field label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--text-secondary);
+.error {
+  margin-bottom: 16px;
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
+  gap: 8px;
 }

@@ -1,50 +1,63 @@
+/* Prompt2Print — the app in the language of the marketing site.
+   Near-black ground, one orange for actions, condensed display type over Barlow,
+   hairline rules and registration marks. Every colour, face and rule width below is
+   a token: pages must not hard-code a hex.
+
+   This is a single-theme design. The ground is the identity, so there is no light
+   variant to fall back to — see .stitch.md. */
+
 :root {
-  --bg-color: #f5f7fb;
-  --surface-color: #ffffff;
-  --surface-muted: #eef3ff;
-  --text-primary: #1f2937;
-  --text-secondary: #5b6472;
-  --primary-color: #334155;
-  --secondary-color: #7c8aa5;
-  --accent-color: #bc3823;
-  --accent-hover: #9e2d1d;
-  --cta-color: #2f6fed;
-  --highlight-color: #f59e0b;
-  --danger-color: #dc3545;
-  --danger-hover: #b92d3b;
-  --border-color: rgba(15, 23, 42, 0.72);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 12px 24px rgba(15, 23, 42, 0.08);
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --border-radius: 12px;
-  --transition: all 0.2s ease-in-out;
-}
+  /* Ground — three steps, darkest at the page edge */
+  --void: #0d0d0d;
+  --ground: #171717;
+  --raised: #1e1e1e;
 
-[data-theme='dark'] {
-  --bg-color: #0b1220;
-  --surface-color: #111827;
-  --surface-muted: #1a2436;
-  --text-primary: #e5edf8;
-  --text-secondary: #9aa8bb;
-  --primary-color: #dfe7f3;
-  --secondary-color: #8ea0bc;
-  --accent-color: #ff7a59;
-  --accent-hover: #ff977f;
-  --cta-color: #61a5ff;
-  --highlight-color: #fbbf24;
-  --danger-color: #ff6b6b;
-  --danger-hover: #ff8e8e;
-  --border-color: rgba(148, 163, 184, 0.72);
-  --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.35);
-  --shadow-md: 0 16px 30px rgba(2, 6, 23, 0.5);
-}
+  /* Ink, and the alpha ladder every muted text step comes from */
+  --ink: #f2f0ed;
+  --ink-80: rgba(242, 240, 237, 0.8);
+  --ink-58: rgba(242, 240, 237, 0.58);
+  --ink-50: rgba(242, 240, 237, 0.5);
+  --ink-42: rgba(242, 240, 237, 0.42);
+  --ink-35: rgba(242, 240, 237, 0.35);
+  --ink-28: rgba(242, 240, 237, 0.28);
 
-html {
-  background-color: var(--bg-color);
-  color-scheme: light;
-}
+  /* Action. The only saturated colour that is ever clickable. */
+  --accent: #eb8724;
+  --accent-press: #c26f18;
+  --accent-hover: #f7a24c;
+  /* Ink for text sitting *on* the accent fill — near-black, not the page ground,
+     so the filled button keeps its contrast against its own colour. */
+  --on-accent: #141414;
+  --accent-tint: rgba(235, 135, 36, 0.1);
+  --accent-line: rgba(235, 135, 36, 0.45);
+  --accent-mark: rgba(235, 135, 36, 0.7);
 
-html[data-theme='dark'] {
+  /* Status only — never used for actions, so a colour always means state */
+  --ok: #4fae7f;
+  --run: #5c9ce6;
+  --bad: #d9564f;
+  --bad-ink: #e0837c;
+  --ok-line: rgba(79, 174, 127, 0.4);
+  --run-line: rgba(92, 156, 230, 0.35);
+  --bad-line: rgba(217, 86, 79, 0.45);
+  --bad-tint: rgba(217, 86, 79, 0.07);
+  --run-tint: rgba(92, 156, 230, 0.04);
+
+  /* Rules. Four weights, in descending emphasis. */
+  --rule-strong: rgba(242, 240, 237, 0.2);
+  --rule: rgba(242, 240, 237, 0.13);
+  --rule-row: rgba(242, 240, 237, 0.1);
+  --rule-sub: rgba(242, 240, 237, 0.08);
+  --field-line: rgba(242, 240, 237, 0.18);
+
+  --font-heading: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The 56px module the app surface is drawn on. */
+  --module: 56px;
+  --nav-height: 64px;
+
   color-scheme: dark;
 }
 
@@ -52,15 +65,25 @@ html[data-theme='dark'] {
   box-sizing: border-box;
 }
 
+html {
+  background: var(--void);
+}
+
 body {
   margin: 0;
-  padding: 0;
   min-height: 100vh;
-  font-family: var(--font-family);
-  background: var(--bg-color);
-  color: var(--text-primary);
-  line-height: 1.5;
-  transition: background-color var(--transition), color var(--transition);
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 img,
@@ -74,181 +97,585 @@ input,
 textarea,
 select {
   font: inherit;
+  color: inherit;
 }
 
 button {
   cursor: pointer;
   border: none;
-}
-
-#root {
-  min-height: 100vh;
+  background: none;
 }
 
 a {
-  color: var(--cta-color);
+  color: var(--accent);
   text-decoration: none;
 }
 
 a:hover {
-  text-decoration: underline;
+  color: var(--accent-hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(235, 135, 36, 0.28);
 }
 
 h1,
 h2,
 h3,
-h4,
-h5,
-h6 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
-  line-height: 1.2;
+h4 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 p {
-  margin-top: 0;
+  margin: 0;
 }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
+/* ── The drawn surface ────────────────────────────────────────────────────────
+   Every page body sits on this: the near-black ground with the 56px module
+   ruled faintly onto it. */
+
+.surface {
+  flex: 1;
+  background-color: var(--ground);
+  background-image: linear-gradient(rgba(242, 240, 237, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 240, 237, 0.022) 1px, transparent 1px);
+  background-size: var(--module) var(--module);
 }
 
-.card {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-sm);
-  padding: 1.5rem;
-  transition: var(--transition);
+.sheet {
+  padding: 44px 48px 60px;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-md);
+@media (max-width: 720px) {
+  .sheet {
+    padding: 28px 20px 44px;
+  }
 }
+
+/* ── Type roles ───────────────────────────────────────────────────────────── */
+
+.display {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.display-lg {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: clamp(38px, 4.6vw, 60px);
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+}
+
+.heading {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 24px;
+}
+
+.subheading {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: 0.01em;
+}
+
+/* Micro-label: the uppercase, wide-tracked line that titles every block. */
+.label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+}
+
+.label-tight {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-35);
+}
+
+.label-accent {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-42);
+}
+
+.lede {
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: var(--ink-58);
+}
+
+/* The accent rule + kicker that opens a page or a hero block. */
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.eyebrow::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+/* A block title with a rule under it. */
+.block-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 11px;
+  margin-bottom: 16px;
+}
+
+/* ── Blueprint frame ──────────────────────────────────────────────────────────
+   The wireframe object: square corners, hairline border, and four registration
+   marks straddling the corners. Rendered by <Blueprint>; never hand-write the
+   marks. Dropping the marks from a framed element is the one thing this system
+   asks you not to do. */
+
+.blueprint {
+  position: relative;
+  border: 1px solid var(--rule);
+}
+
+.blueprint > .corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  color: var(--ink-28);
+  pointer-events: none;
+}
+
+.blueprint > .corner::before,
+.blueprint > .corner::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+}
+
+.blueprint > .corner::before {
+  left: 0;
+  top: 3px;
+  width: 7px;
+  height: 1px;
+}
+
+.blueprint > .corner::after {
+  left: 3px;
+  top: 0;
+  width: 1px;
+  height: 7px;
+}
+
+.blueprint > .tl { left: -4px; top: -4px; }
+.blueprint > .tr { right: -4px; top: -4px; }
+.blueprint > .bl { left: -4px; bottom: -4px; }
+.blueprint > .br { right: -4px; bottom: -4px; }
+
+.blueprint.marked-accent > .corner { color: var(--accent-mark); }
+.blueprint.marked-run > .corner { color: rgba(92, 156, 230, 0.6); }
+
+/* ── Actions ──────────────────────────────────────────────────────────────────
+   The solid accent fill is the one filled object on the board. Everything else
+   is an outline. */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  border-radius: 10px;
+  gap: 9px;
+  padding: 12px 22px;
   border: 1px solid transparent;
-  font-size: 0.9rem;
+  border-radius: 0;
+  font-family: var(--font-heading);
   font-weight: 600;
-  transition: var(--transition);
-}
-
-.btn:hover {
-  text-decoration: none;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .btn-primary {
-  background: var(--accent-color);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.btn-primary:hover {
-  background: var(--accent-hover);
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-press);
 }
 
 .btn-secondary {
-  background: var(--surface-color);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+  border-color: var(--rule-strong);
+  color: var(--ink-80);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13.5px;
+  padding: 11px 20px;
 }
 
-.btn-secondary:hover {
-  background: var(--surface-muted);
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn-danger {
-  background: var(--danger-color);
-  color: #fff;
+  border-color: rgba(217, 86, 79, 0.4);
+  color: var(--bad);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13.5px;
+  padding: 11px 20px;
 }
 
-.btn-danger:hover {
-  background: var(--danger-hover);
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--bad);
+  background: var(--bad-tint);
 }
 
-.input {
+.btn-ok {
+  border-color: var(--ok-line);
+  color: var(--ok);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 13px;
+  padding: 10px 16px;
+}
+
+.btn-ok:hover:not(:disabled) {
+  background: rgba(79, 174, 127, 0.08);
+  border-color: var(--ok);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-block {
   width: 100%;
-  padding: 0.8rem 0.9rem;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-color);
-  color: var(--text-primary);
-  transition: var(--transition);
 }
 
-.input::placeholder {
-  color: var(--text-secondary);
-}
+/* ── Status ───────────────────────────────────────────────────────────────────
+   A dot plus a wide-tracked word. The dot carries the colour so the label stays
+   readable at 11px. */
 
-.input:focus {
-  outline: none;
-  border-color: var(--cta-color);
-  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.18);
-}
-
-.badge {
+.status {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  gap: 7px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  border: 1px solid transparent;
+  white-space: nowrap;
 }
 
-.badge-queued,
-.badge-completed,
-.badge-success,
-.badge-failure,
-.badge-failed,
-.badge-running {
-  background: var(--surface-muted);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+.status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 
-.badge-running {
-  color: var(--cta-color);
-  border-color: rgba(47, 111, 237, 0.35);
+.status-ok { color: var(--ok); }
+.status-run { color: var(--run); }
+.status-bad { color: var(--bad); }
+.status-off { color: var(--ink-35); }
+
+.status-run::before {
+  animation: p2p-pulse 1.6s infinite;
 }
 
-.badge-failure,
-.badge-failed {
-  color: var(--danger-color);
-  border-color: rgba(220, 53, 69, 0.35);
+@keyframes p2p-pulse {
+  0% { opacity: 0.35; }
+  50% { opacity: 1; }
+  100% { opacity: 0.35; }
 }
 
-.badge-success,
-.badge-completed {
-  color: var(--highlight-color);
-  border-color: rgba(245, 158, 11, 0.35);
+/* Three pulsing squares: the running-phase marker. */
+.running-dots {
+  display: inline-flex;
+  gap: 3px;
 }
 
-.theme-toggle {
-  align-self: center;
-  min-width: 110px;
+.running-dots > i {
+  width: 4px;
+  height: 4px;
+  background: var(--run);
+  animation: p2p-pulse 1.2s infinite;
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
+.running-dots > i:nth-child(2) { animation-delay: 0.2s; }
+.running-dots > i:nth-child(3) { animation-delay: 0.4s; }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
+@media (prefers-reduced-motion: reduce) {
+  .status-run::before,
+  .running-dots > i {
+    animation: none;
   }
-  to {
-    transform: rotate(360deg);
-  }
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field > label,
+.field-label {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 237, 0.45);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  border: 1px solid var(--field-line);
+  border-radius: 0;
+  background: rgba(13, 13, 13, 0.5);
+  color: var(--ink);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  transition: border-color 0.15s ease;
+}
+
+.textarea {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: rgba(242, 240, 237, 0.32);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.hint {
+  font-size: 12.5px;
+  color: rgba(242, 240, 237, 0.4);
+}
+
+/* Segmented control — equal cells divided by hairlines, no radius. */
+.seg {
+  display: flex;
+  border: 1px solid rgba(242, 240, 237, 0.14);
+}
+
+.seg > *:not(.corner) {
+  flex: 1;
+  padding: 11px 18px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 237, 0.45);
+  border-left: 1px solid rgba(242, 240, 237, 0.14);
+  background: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.seg > *:not(.corner):first-child {
+  border-left: none;
+}
+
+.seg > *:not(.corner):hover {
+  color: var(--ink);
+}
+
+.seg > .is-active {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* ── Notices ──────────────────────────────────────────────────────────────── */
+
+.notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--bad-line);
+  background: var(--bad-tint);
+  padding: 13px 15px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--bad-ink);
+}
+
+.notice svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ── Spec plate ───────────────────────────────────────────────────────────────
+   Big condensed numerals in equal cells behind one frame — the dashboard counts
+   and the printability figures both use it.
+
+   Put `.plate` on a plain div *inside* a <Blueprint>, never on the Blueprint
+   itself: the corner marks are children too, and cell rules would size them into
+   boxes. The `:not(.corner)` guards below stop the worst of that if it happens
+   anyway, but the inner-div form is the intended one. */
+
+.plate {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.plate > *:not(.corner) {
+  padding: 26px 28px;
+  border-left: 1px solid var(--rule);
+}
+
+.plate > *:not(.corner):first-child {
+  border-left: none;
+}
+
+.plate-figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 52px;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+
+.plate-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+  margin-top: 10px;
+}
+
+/* ── Hairline table ───────────────────────────────────────────────────────────
+   No cell borders, no zebra: rows are separated by one rule and nothing else.
+   Grid columns are set per table by the page that owns it. */
+
+.rows-head {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(242, 240, 237, 0.4);
+}
+
+.row {
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--rule-row);
+  transition: background-color 0.15s ease;
+}
+
+.row-link:hover {
+  background: rgba(242, 240, 237, 0.02);
+}
+
+/* ── Numbered phase rows ──────────────────────────────────────────────────────
+   Used wherever the five phases are listed. The number is information — the
+   pipeline is genuinely ordered — so it carries the accent or the state colour. */
+
+.phase-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: baseline;
+  gap: 0 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rule-row);
+}
+
+.phase-num {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.phase-num-done { color: var(--ok); }
+.phase-num-run { color: var(--run); }
+.phase-num-idle { color: rgba(242, 240, 237, 0.3); }
+
+/* ── Log block ────────────────────────────────────────────────────────────── */
+
+.log {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.85;
+  color: var(--ink-42);
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px dashed rgba(242, 240, 237, 0.14);
+  padding: 26px;
+  font-size: 12px;
+  color: var(--ink-35);
+  text-align: center;
+}
+
+/* Wide content scrolls inside its own box; the page body never scrolls sideways. */
+.scroll-x {
+  overflow-x: auto;
+}
+
+.spin {
+  animation: p2p-spin 1s linear infinite;
+}
+
+@keyframes p2p-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
 }

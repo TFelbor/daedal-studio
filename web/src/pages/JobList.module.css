@@ -1,17 +1,265 @@
-.container {
-  max-width: 1000px;
-  margin: 0 auto;
+/* Dashboard — the counts as one spec plate, the history as a hairline table.
+ *
+ * global.css owns the primitives (.plate, .rows-head, .row, .status, .seg); this
+ * file owns only the column geometry and the two states the primitives have no
+ * variant for. Where a selector is qualified by its element type (`div.stats`,
+ * `a.jobRow`) that is deliberate: it out-specifies the global default it replaces
+ * rather than relying on which stylesheet the bundler happens to emit last.
+ */
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-bottom: 30px;
 }
 
-.title {
-  font-size: 2rem;
+.kicker {
+  margin-bottom: 10px;
+}
+
+/* .seg's children flex to equal widths, which would stretch the control across the
+   whole head. Here it sizes to its labels instead. */
+.filters {
+  flex: none;
+}
+
+.filters > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ── Counts ─────────────────────────────────────────────────────────────────── */
+
+.statsFrame {
+  margin-bottom: 44px;
+}
+
+div.stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Keeps a long count from widening its own cell out of the four-up rhythm. */
+.statCell {
+  min-width: 0;
+}
+
+.figureOk { color: var(--ok); }
+.figureBad { color: var(--bad); }
+.figureRun { color: var(--run); }
+
+/* ── History table ──────────────────────────────────────────────────────────── */
+
+.headRow,
+a.jobRow {
+  display: grid;
+  grid-template-columns: 56px 1fr 150px 130px 110px 96px;
+  gap: 0 20px;
+}
+
+/* A row is a link, so the global anchor colour has to be undone in both states —
+   the cells below set their own ink. */
+a.jobRow,
+a.jobRow:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tableBusy {
+  opacity: 0.55;
+}
+
+.thumbCell {
+  display: block;
+}
+
+/* Stands in for the blueprint: the list response carries no image, so the cell is
+   drawn rather than loaded. Its frame turns blue while the job is live. */
+.thumb {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--rule);
+  background: linear-gradient(150deg, var(--raised), var(--void));
+}
+
+.thumbRun {
+  border-color: var(--run-line);
+}
+
+.promptCell {
+  display: block;
+  min-width: 0;
+}
+
+.promptText,
+.promptSub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.promptText {
+  font-size: 15.5px;
+  color: var(--ink);
+}
+
+.promptSub {
+  margin-top: 3px;
+}
+
+/* Three cells that are their own grid columns on a wide screen and one wrapped
+   line once the row stacks. */
+.metaGroup {
+  display: contents;
+}
+
+.cell {
+  display: block;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-58);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellMono {
+  font-family: var(--font-mono);
+}
+
+.statusCell {
+  justify-self: end;
+}
+
+/* Awaiting a human verdict is a state, not an action, so it takes a status colour
+   and not the accent — the accent only ever means "you can act here". The hollow
+   dot is what separates it from Running, whose dot is solid and pulses. */
+.statusAwaiting {
+  color: var(--run);
+}
+
+span.statusAwaiting::before {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+
+/* ── Footer, states ─────────────────────────────────────────────────────────── */
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 26px;
+  font-size: 12.5px;
+  color: var(--ink-42);
+}
+
+.pager {
+  display: flex;
+  gap: 2px;
+}
+
+.pageBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--rule);
+  color: var(--ink-80);
+  font-size: 12.5px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.pageBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pageBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.error {
+  margin-bottom: 24px;
 }
 
 .loading {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem;
-  color: var(--text-secondary);
+  gap: 10px;
+  padding: 44px 0;
+  font-size: 13px;
+  color: var(--ink-42);
+}
+
+.emptyAction {
+  margin-top: 14px;
+}
+
+/* ── Stacked rows ────────────────────────────────────────────────────────────
+   Below this width the six columns cannot hold a prompt, so the row folds into
+   thumbnail + prompt + status over one muted meta line. The page body never
+   scrolls sideways. */
+
+@media (max-width: 820px) {
+  .headRow {
+    display: none;
+  }
+
+  a.jobRow {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    row-gap: 8px;
+  }
+
+  .thumbCell {
+    grid-row: 1 / span 2;
+  }
+
+  .promptCell {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .promptText {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  span.metaGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .statusCell {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  div.stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Wrapping the plate leaves cell 3 with a stray left hairline and no rule
+     between the two rows. */
+  div.statCell:nth-child(3) {
+    border-left: none;
+  }
+
+  div.statCell:nth-child(3),
+  div.statCell:nth-child(4) {
+    border-top: 1px solid var(--rule);
+  }
 }
