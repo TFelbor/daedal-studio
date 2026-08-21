@@ -27,6 +27,18 @@ from trimesh.graph import connected_components
 
 logger = logging.getLogger("p2p.sculptor")
 
+#: Face budget after decimation, when the caller does not name one.
+#:
+#: Derived from what the printer can actually express rather than picked round. A
+#: 50 mm model has roughly 5,000 mm² of surface; 100,000 faces puts the average edge
+#: near 0.3 mm, which is already below the 0.4 mm nozzle and the 0.2 mm layer — more
+#: detail than the machine can lay down. The previous default of 5,000 gave ~1.4 mm
+#: edges, three and a half nozzle widths, so TRELLIS.2's 195k-face output arrived
+#: visibly faceted and every model looked far worse than the preview that produced
+#: it. Repair costs about 6 s at this budget against Phase 2's 220 s, so the ceiling
+#: is detail the print cannot show, not time.
+DEFAULT_TARGET_FACES = 100_000
+
 
 class SculptorError(RuntimeError):
     """Raised when a backend cannot produce a mesh."""
@@ -101,7 +113,7 @@ class SculptorBackend(ABC):
         image_path: str | Path,
         output_path: str | Path,
         *,
-        target_faces: int = 5_000,
+        target_faces: int = DEFAULT_TARGET_FACES,
         smooth_iterations: int | None = None,
     ) -> Path:
         """Reconstruct, post-process for printing, and export a mesh.
@@ -150,7 +162,7 @@ class SculptorBackend(ABC):
         self,
         mesh: trimesh.Trimesh,
         *,
-        target_faces: int = 5_000,
+        target_faces: int = DEFAULT_TARGET_FACES,
         smooth_iterations: int | None = None,
     ) -> trimesh.Trimesh:
         """Make raw network output printable: Z-up, single body, smooth, decimated.

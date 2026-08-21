@@ -55,6 +55,8 @@ try:
 except ImportError:
     from pythonsrc.config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR
 
+from pythonsrc.sculptors.base import DEFAULT_TARGET_FACES
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.pipeline")
 
@@ -134,6 +136,47 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
     with open(status_file, "a") as f:
         f.write(json.dumps(record) + "\n")
         f.flush()
+
+
+#: Brim width when the measured first-layer footprint is too small. Cura's own
+#: default, and about 20 extruded lines at a 0.4mm nozzle.
+BRIM_WIDTH_MM = 8.0
+
+
+def _adhesion_args(report) -> list[str]:
+    """Slice with a brim when the part's own footprint will not hold it down.
+
+    The bundled definition slices with a *skirt*, which primes the nozzle and
+    touches nothing: it contributes no adhesion at all. That is fine for a part
+    with a flat base and useless for anything standing on a small one — a real job
+    reached the plate with a 6mm² footprint against the 25mm² the process profile
+    wants, and `bed_contact` had been warning about exactly that while the slicer
+    ignored it.
+
+    A brim is the right mechanism rather than a modelled plinth: it is one flat
+    ring of material around the first layer, it peels off, and it does not alter
+    the object someone asked for. Generated base geometry would print a part that
+    is not the part they requested, and would still have to be cut off.
+
+    Switched on from the measurement rather than always, because a brim on a part
+    that does not need one is wasted filament and a finishing job.
+
+    Args:
+        report: The printability report, or None when scoring was skipped.
+
+    Returns:
+        CuraEngine arguments, empty when the footprint is already sufficient.
+    """
+    if report is None:
+        return []
+    bed = next((c for c in report.checks if c.check == "bed_contact"), None)
+    if bed is None or bed.status == "pass":
+        return []
+    logger.info(
+        "Adding a %.0fmm brim — %s", BRIM_WIDTH_MM, bed.detail,
+    )
+    print(f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm (small first-layer footprint)", flush=True)
+    return ["-s", "adhesion_type=brim", "-s", f"brim_width={BRIM_WIDTH_MM}"]
 
 
 def _record_generation(args, model, model_version, backend, params, cost_eur, duration_s) -> None:
@@ -716,6 +759,7 @@ def run(args: argparse.Namespace) -> None:
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
+                extra_args=_adhesion_args(printability_report),
             )
             _record_slice(args, gcode_path, time.time() - t0, status="success")
             _phase_pass(4, t0, str(gcode_path))
@@ -901,7 +945,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Phase 2 options
     p2 = parser.add_argument_group("Phase 2 — Sculptor (TRELLIS.2)")
-    p2.add_argument("--faces", type=int, default=5_000, metavar="N", help="Target face count after decimation; 0 disables it")
+    p2.add_argument("--faces", type=int, default=DEFAULT_TARGET_FACES, metavar="N", help="Target face count after decimation; 0 disables it")
     p2.add_argument(
         "--sculptor-backend",
         default=None,

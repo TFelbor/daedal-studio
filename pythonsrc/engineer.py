@@ -9,7 +9,11 @@ import logging
 import os
 import sys
 from pathlib import Path
-from config import OUTPUTS_DIR
+
+try:
+    from config import OUTPUTS_DIR
+except ImportError:  # pragma: no cover - depends on how the caller set sys.path
+    from pythonsrc.config import OUTPUTS_DIR  # type: ignore[no-redef]
 
 import numpy as np
 import manifold3d  # Apache-2.0 — guaranteed-manifold kernel; version 3.5.x
@@ -210,48 +214,37 @@ class Engineer:
     # ── Orient ────────────────────────────────────────────────────────────────
     def orient_for_print(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
-        Centre the mesh at the origin and orient it so that the *largest flat
-        face* (i.e. the axis with the greatest extent) sits on the build plate
-        (Z = 0 after centring).
+        Centre the mesh over the origin in X/Y and sit it on the build plate.
 
-        Strategy:
-        1. Find which axis (X/Y/Z) has the *smallest* extent — that is the
-           natural "up" or "flat" axis.
-        2. If that axis is already Z, nothing to do.
-        3. Otherwise rotate so the smallest-extent axis maps to Z, keeping
-           handedness intact via a proper rotation matrix.
-        4. Translate so the bottom of the mesh sits on Z = 0.
+        **It deliberately does not rotate.** It used to: it took the axis with the
+        *smallest* extent to be the "flat" one and rotated that onto Z. For anything
+        that stands up — a figurine, a bust, a raccoon on a skateboard — the
+        thinnest axis is left-to-right, so every such model was laid on its side.
+        The docstring claimed the opposite of the code ("the axis with the greatest
+        extent"), which is how it went unnoticed; a real job produced a raw mesh
+        with its widest cross-section at the bottom and an engineered mesh with the
+        widest cross-section at the top.
+
+        The rotation was not merely inverted, it was unnecessary. Phase 2 already
+        knows which way is up: every sculptor backend declares an ``up_axis`` and
+        ``SculptorBackend.postprocess`` rotates the raw output to Z-up on the
+        strength of it. A bounding box cannot recover that — a sphere has no up, and
+        a figurine's tallest axis is only *usually* its vertical one — so
+        re-deriving orientation here could only ever discard information that was
+        already correct.
+
+        Choosing a better *print* orientation (minimising overhangs or support
+        volume) is a real optimisation, but it is a search over candidate rotations
+        scored against the process profile, not an argmin over three numbers. Until
+        that exists, the honest thing is to keep the orientation the model was
+        generated in.
         """
         oriented = mesh.copy()
 
-        # Centre at origin first
-        centroid = oriented.bounds.mean(axis=0)
-        oriented.apply_translation(-centroid)
-
-        extents = oriented.bounds[1] - oriented.bounds[0]  # (dx, dy, dz)
-        flat_axis = int(np.argmin(extents))  # axis with smallest extent → the "flat" face
-
-        if flat_axis != 2:
-            # Build a rotation that maps flat_axis → Z (axis 2)
-            # We use the cross-product to construct an orthonormal frame.
-            src = np.eye(3)[flat_axis]   # e.g. [1,0,0] or [0,1,0]
-            dst = np.array([0.0, 0.0, 1.0])
-            axis = np.cross(src, dst)
-            axis_norm = np.linalg.norm(axis)
-            if axis_norm < 1e-8:
-                # src and dst are anti-parallel (flat_axis==2 already handled)
-                axis = np.array([1.0, 0.0, 0.0])
-                angle = np.pi
-            else:
-                axis = axis / axis_norm
-                angle = np.arccos(np.clip(np.dot(src, dst), -1.0, 1.0))
-            R = trimesh.transformations.rotation_matrix(angle, axis)
-            oriented.apply_transform(R)
-            logger.debug("Rotated %.1f° around %s to align flat axis to Z", np.degrees(angle), axis)
-
-        # Translate so the bottom sits on Z = 0
-        z_min = oriented.bounds[0][2]
-        oriented.apply_translation([0.0, 0.0, -z_min])
+        # Centre in X/Y only. Z is not centred: Z=0 is the build plate, not the
+        # middle of the part.
+        centre = oriented.bounds.mean(axis=0)
+        oriented.apply_translation([-centre[0], -centre[1], -oriented.bounds[0][2]])
         return oriented
 
     # ── Hollow (voxel-based shell, Strategy A) ────────────────────────────────

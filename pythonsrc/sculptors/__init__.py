@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import os
 
-from .base import SculptorBackend, SculptorError
+from .base import DEFAULT_TARGET_FACES, SculptorBackend, SculptorError
 
 logger = logging.getLogger("p2p.sculptor")
 
@@ -39,6 +39,7 @@ DEFAULT_BACKEND = "auto"
 
 __all__ = [
     "BACKENDS",
+    "DEFAULT_TARGET_FACES",
     "DEFAULT_BACKEND",
     "SculptorBackend",
     "SculptorError",
