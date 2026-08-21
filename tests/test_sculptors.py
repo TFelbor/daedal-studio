@@ -729,6 +729,9 @@ def _stub_requests(monkeypatch, body):
 
     class _Response:
         status_code = 200
+        # A real requests.Response carries this, and the backend branches on it.
+        ok = True
+        text = ""
 
         def raise_for_status(self):
             pass
@@ -855,3 +858,151 @@ def test_caching_failure_never_loses_the_bought_mesh(clean_env):
     backend = PixazoBackend()
     backend.artifact_dir = "/proc/nonexistent/definitely-not-writable"
     backend._cache_glb(b"bytes")  # must not raise
+
+
+def _minimal_glb_bytes() -> bytes:
+    """A real GLB carrying a fully metallic PBR material, as Pixazo returns."""
+    import trimesh
+    from trimesh.visual.material import PBRMaterial
+
+    mesh = trimesh.creation.box(extents=(1, 1, 1))
+    mesh.visual = trimesh.visual.TextureVisuals(
+        material=PBRMaterial(metallicFactor=1.0, roughnessFactor=1.0)
+    )
+    return trimesh.Scene(mesh).export(file_type="glb")
+
+
+# ── Pixazo resilience: a paid generation must not be lost to a blip ───────────
+#
+# These pin the fix for a real incident. A generation was submitted and billed,
+# the first status poll came back `500 Server Error`, the backend raised, and
+# Phase 2 failed — while the generation completed normally and sat on Pixazo's
+# side, still downloadable days later. One transient response must never orphan a
+# mesh that has already been paid for.
+
+
+def _stub_request_sequence(monkeypatch, get_results):
+    """Stub `requests` so successive GETs return/raise the given results in order.
+
+    Each entry is either `(status_code, body)` or an exception instance to raise.
+    Returns a list that records one entry per GET, so a test can assert that a
+    permanent failure was *not* retried.
+    """
+    import sys
+
+    import requests as real
+
+    calls = []
+    remaining = list(get_results)
+
+    class _Response:
+        def __init__(self, status_code, body):
+            self.status_code = status_code
+            self._body = body
+            self.text = str(body)
+            self.content = body if isinstance(body, bytes) else b""
+
+        @property
+        def ok(self):
+            return self.status_code < 400
+
+        def raise_for_status(self):
+            if not self.ok:
+                raise real.exceptions.HTTPError(f"{self.status_code} Server Error")
+
+        def json(self):
+            return self._body
+
+    def fake_get(*args, **kwargs):
+        calls.append(args[0] if args else kwargs.get("url"))
+        result = remaining.pop(0) if remaining else (200, {"status": "PROCESSING"})
+        if isinstance(result, Exception):
+            raise result
+        return _Response(*result)
+
+    stub = types.SimpleNamespace(
+        get=fake_get,
+        post=lambda *a, **k: _Response(200, {}),
+        exceptions=real.exceptions,
+    )
+    monkeypatch.setitem(sys.modules, "requests", stub)
+    return calls
+
+
+@pytest.fixture
+def instant_polls(monkeypatch):
+    """Collapse the poll interval so these tests do not sleep."""
+    monkeypatch.setattr("pythonsrc.sculptors.pixazo.POLL_INTERVAL_SECONDS", 0)
+
+
+def test_a_transient_poll_failure_is_retried_instead_of_losing_a_paid_mesh(
+    pixazo, monkeypatch, instant_polls
+):
+    calls = _stub_request_sequence(
+        monkeypatch,
+        [
+            (500, {"detail": "internal"}),
+            (200, {"status": "COMPLETED", "output": {"media_url": ["https://cdn.test/out.glb"]}}),
+        ],
+    )
+    assert pixazo._await_result("req-1") == "https://cdn.test/out.glb"
+    assert len(calls) == 2, "the 500 should have been retried, not raised"
+
+
+def test_a_connection_drop_while_polling_is_retried(pixazo, monkeypatch, instant_polls):
+    import requests
+
+    calls = _stub_request_sequence(
+        monkeypatch,
+        [
+            requests.exceptions.ConnectionError("connection reset by peer"),
+            (200, {"status": "COMPLETED", "output": {"media_url": ["https://cdn.test/out.glb"]}}),
+        ],
+    )
+    assert pixazo._await_result("req-1") == "https://cdn.test/out.glb"
+    assert len(calls) == 2
+
+
+def test_a_rejected_poll_fails_immediately_without_burning_the_deadline(
+    pixazo, monkeypatch, instant_polls
+):
+    """401/403/404 mean the request is wrong; retrying it cannot help."""
+    calls = _stub_request_sequence(monkeypatch, [(401, {"detail": "bad key"})])
+    with pytest.raises(SculptorError, match="401"):
+        pixazo._await_result("req-1")
+    assert len(calls) == 1, "an auth failure must not be retried"
+
+
+def test_the_timeout_message_says_the_generation_is_recoverable(
+    pixazo, monkeypatch, instant_polls
+):
+    """A lost mesh is retrievable by request id, so the error has to say so."""
+    _stub_request_sequence(monkeypatch, [(200, {"status": "PROCESSING"})])
+    monkeypatch.setattr(pixazo, "timeout", 0)
+    with pytest.raises(SculptorError) as excinfo:
+        pixazo._await_result("req-abc")
+    assert "req-abc" in str(excinfo.value)
+
+
+def test_a_transient_download_failure_is_retried(pixazo, monkeypatch, instant_polls):
+    glb = _minimal_glb_bytes()
+    calls = _stub_request_sequence(
+        monkeypatch,
+        [(503, b""), (200, glb)],
+    )
+    mesh = pixazo._download_mesh("https://cdn.test/out.glb")
+    assert len(mesh.faces) > 0
+    assert len(calls) == 2
+
+
+def test_the_metallic_material_pixazo_returns_is_discarded(pixazo, monkeypatch, instant_polls):
+    """Pixazo ships `metallicFactor: 1.0`; this pipeline is shape-only.
+
+    Carrying a fully metallic PBR material downstream makes every model render as
+    polished chrome, and it is meaningless for an FDM print.
+    """
+    _stub_request_sequence(monkeypatch, [(200, _minimal_glb_bytes())])
+    mesh = pixazo._download_mesh("https://cdn.test/out.glb")
+    material = getattr(mesh.visual, "material", None)
+    metallic = getattr(material, "metallicFactor", None) if material else None
+    assert not metallic, f"expected no metallic material, got {metallic}"

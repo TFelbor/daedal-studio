@@ -90,13 +90,14 @@ export function MeshViewer({ jobId, phases }: MeshViewerProps) {
     controls.autoRotate = true;
     controls.autoRotateSpeed = 1.4;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    // Neutral, soft lighting. An accent-tinted fill used to sit here, and on a
+    // white surface it read as warm metal — the model is meant to look like matte
+    // clay, which is also what the blueprint stage promises.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.55);
     keyLight.position.set(12, 24, 14);
     scene.add(keyLight);
-    // A warm kicker from below-left, tinted with the interface accent so the part
-    // sits in the same light as the rest of the app.
-    const fillLight = new THREE.DirectionalLight(new THREE.Color(token('--accent', '#eb8724')), 0.28);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.22);
     fillLight.position.set(-16, -8, -10);
     scene.add(fillLight);
 
@@ -140,10 +141,14 @@ export function MeshViewer({ jobId, phases }: MeshViewerProps) {
             geometry.scale(scale, scale, scale);
           }
 
+          // Fully dielectric and almost fully rough: printed plastic, not chrome.
+          // Any metalness at all puts a specular sheen on a white surface that
+          // reads as metal, which is not what will come off the bed.
           const material = new THREE.MeshStandardMaterial({
             color: token('--ink', '#f2f0ed'),
-            roughness: 0.62,
-            metalness: 0.05,
+            roughness: 0.95,
+            metalness: 0,
+            flatShading: false,
           });
           mesh = new THREE.Mesh(geometry, material);
           scene.add(mesh);

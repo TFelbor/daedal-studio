@@ -1629,6 +1629,42 @@ async def test_connection(req: TestConnectionRequest):
                 resp = await client.get(f"{url.rstrip('/')}/printer/info")
                 resp.raise_for_status()
                 
+            elif service == "bambu":
+                # Bambu speaks MQTT over TLS on 8883 in LAN mode, so there is no
+                # HTTP endpoint to GET. A TCP connect proves the printer is on the
+                # network and listening, which is a real check — but it does not
+                # validate the access code, and the message says so rather than
+                # implying the credentials are good.
+                host = stored.get("BAMBU_IP")
+                if not host:
+                    return {"success": False, "message": "BAMBU_IP not configured", "latency_ms": None}
+                if not stored.get("BAMBU_CODE"):
+                    return {
+                        "success": False,
+                        "message": "No LAN access code yet — find it on the printer under Settings → Network.",
+                        "latency_ms": None,
+                    }
+
+                host = host.replace("mqtts://", "").replace("https://", "").split("/")[0].split(":")[0]
+                try:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(host, 8883), timeout=5.0
+                    )
+                    writer.close()
+                    await writer.wait_closed()
+                except (asyncio.TimeoutError, OSError) as exc:
+                    return {
+                        "success": False,
+                        "message": f"No answer from {host}:8883 — is the printer on and in LAN mode? ({exc})",
+                        "latency_ms": None,
+                    }
+
+                return {
+                    "success": True,
+                    "message": f"{host} is reachable on port 8883. The access code is not verified until a print is sent.",
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                }
+
             elif service == "huggingface":
                 token = stored.get("HF_TOKEN")
                 if not token:

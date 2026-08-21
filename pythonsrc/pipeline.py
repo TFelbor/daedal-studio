@@ -69,6 +69,42 @@ _PHASE_NAMES = {
 
 CURRENT_JOB_ID = None
 
+#: The fabricated stand-in blueprint: a flat rectangle written when Phase 1 is
+#: skipped and no real blueprint exists, so Phases 3-5 can still be exercised.
+_PLACEHOLDER_SIZE = (512, 512)
+_PLACEHOLDER_COLOUR = (73, 109, 137)
+
+
+def _write_placeholder_blueprint(path: Path) -> None:
+    from PIL import Image
+
+    Image.new("RGB", _PLACEHOLDER_SIZE, color=_PLACEHOLDER_COLOUR).save(path)
+
+
+def _blueprint_is_placeholder(path: Path) -> bool:
+    """True when this image is the fabricated stand-in, not a real blueprint.
+
+    Detected by content rather than by remembering that we just wrote it, because
+    the placeholder goes to the *shared* blueprint path and then persists. The next
+    run finds a file that exists, has no way to tell it from a real render, and
+    happily sends a flat blue rectangle to a backend that bills per generation —
+    which is exactly how that happened repeatedly.
+
+    Pixels rather than a hash so the check survives a Pillow upgrade re-encoding
+    the same image differently.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            if img.size != _PLACEHOLDER_SIZE:
+                return False
+            colours = img.convert("RGB").getcolors(maxcolors=2)
+    except Exception:
+        return False
+
+    return bool(colours) and len(colours) == 1 and colours[0][1] == _PLACEHOLDER_COLOUR
+
 def _write_status(phase_num: int, status: str, error: str = None) -> None:
     if not CURRENT_JOB_ID:
         return
@@ -434,22 +470,31 @@ def run(args: argparse.Namespace) -> None:
     else:
         logger.info("Skipping Phase 1 — using existing blueprint: %s", blueprint_path)
         if not blueprint_path.exists() and not args.skip_sculptor:
-            logger.warning("Blueprint not found, generating a dummy fallback image...")
+            logger.warning("Blueprint not found, generating a flat stand-in image...")
             try:
-                from PIL import Image
-                img = Image.new('RGB', (512, 512), color=(73, 109, 137))
-                img.save(blueprint_path)
-                # This placeholder is a flat blue rectangle. It exists so Phases 3-5
-                # can be exercised without Phase 1 — never as something worth
-                # reconstructing. Phase 2 refuses to spend money on it below.
-                blueprint_is_placeholder = True
+                _write_placeholder_blueprint(blueprint_path)
             except Exception as e:
                 logger.error("Failed to generate fallback blueprint: %s", e)
                 sys.exit(1)
 
+        # Checked by content every time, not just when this run wrote it: a
+        # placeholder left behind by an earlier run is still a placeholder, and
+        # Phase 2 must refuse to pay for it below.
+        if blueprint_path.exists():
+            blueprint_is_placeholder = _blueprint_is_placeholder(blueprint_path)
+            if blueprint_is_placeholder:
+                logger.warning(
+                    "%s is the flat stand-in blueprint, not a real render. Phases 3-5 "
+                    "can run on it; reconstruction of it is refused for any backend "
+                    "that charges per generation.",
+                    blueprint_path,
+                )
+
     # Snapshot the blueprint this job actually used. Phase 1 may run natively and
     # write the shared data/inputs/blueprint.png, so copy it in for provenance.
-    if args.job_id and blueprint_path.exists():
+    # A placeholder is not provenance — snapshotting it just fills data/outputs with
+    # identical flat rectangles, which is what it used to do.
+    if args.job_id and blueprint_path.exists() and not blueprint_is_placeholder:
         try:
             import shutil
             shutil.copy2(blueprint_path, outputs_dir / "blueprint.png")

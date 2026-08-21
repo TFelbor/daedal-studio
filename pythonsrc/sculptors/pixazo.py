@@ -71,6 +71,20 @@ HTTP_TIMEOUT = 60.0
 TERMINAL_OK = "COMPLETED"
 TERMINAL_BAD = ("ERROR", "FAILED", "CANCELLED")
 
+#: Statuses worth retrying. A 5xx is the gateway having a bad moment and 429 is rate
+#: limiting; both pass. Anything else in the 4xx range means *our* request is wrong,
+#: and repeating it only burns the deadline.
+#:
+#: This list is not defensive programming, it is an incident: a submitted and billed
+#: generation was lost because the first status poll returned 500. The generation
+#: itself completed and was still downloadable days later — the only thing that
+#: failed was our willingness to ask twice.
+RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+#: Attempts for the final download. The mesh is already paid for by this point, so
+#: giving up on one dropped connection is the most expensive possible failure.
+DOWNLOAD_ATTEMPTS = 3
+
 #: `pipeline_type` is this project's vocabulary, shared across all three backends.
 #: The hosted API has no cascade sampler, so both cascade settings collapse onto
 #: their target resolution. The mapping is lossy in one direction only — a
@@ -332,17 +346,53 @@ class PixazoBackend(SculptorBackend):
         last_status = None
 
         while True:
+            transient: str | None = None
+            body: dict | None = None
+
             try:
                 response = requests.get(
                     status_url, headers=self._headers(), timeout=HTTP_TIMEOUT
                 )
-                response.raise_for_status()
             except requests.exceptions.RequestException as exc:
-                raise SculptorError(
-                    f"Polling Pixazo generation {request_id} failed: {exc}"
-                ) from exc
+                # A reset or timeout says nothing about the generation, which is
+                # already running and already billed.
+                transient = f"{type(exc).__name__}: {exc}"
+            else:
+                if response.status_code in RETRYABLE_STATUS:
+                    transient = f"HTTP {response.status_code}"
+                elif not response.ok:
+                    raise SculptorError(
+                        f"Pixazo rejected the status request for {request_id}: "
+                        f"HTTP {response.status_code} {response.text[:200]}"
+                    )
+                else:
+                    try:
+                        body = response.json()
+                    except ValueError as exc:
+                        # A proxy error page rather than the gateway's own answer.
+                        transient = f"unparseable response: {exc}"
 
-            body = response.json()
+            if transient is not None:
+                if time.monotonic() >= deadline:
+                    raise SculptorError(
+                        f"Gave up polling Pixazo generation {request_id} after "
+                        f"{self.timeout:.0f}s (last problem: {transient}). The "
+                        "generation was accepted and billed, and may well have "
+                        "completed — its result stays retrievable by that request id."
+                    )
+                logger.warning(
+                    "Pixazo status poll for %s failed (%s) — retrying; the "
+                    "generation is already paid for.",
+                    request_id,
+                    transient,
+                )
+                time.sleep(POLL_INTERVAL_SECONDS)
+                continue
+
+            if body is None:  # unreachable, but not via an assert: -O strips those
+                raise SculptorError(
+                    f"Pixazo status poll for {request_id} produced no body"
+                )
             status = (body.get("status") or "").upper()
             if status != last_status:
                 logger.info("Pixazo generation %s — %s", request_id, status or "?")
@@ -374,17 +424,41 @@ class PixazoBackend(SculptorBackend):
         """Fetch the generated GLB and load it as a single mesh."""
         import requests
 
-        try:
-            response = requests.get(url, timeout=HTTP_TIMEOUT * 5)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as exc:
-            raise SculptorError(f"Could not download the generated mesh: {exc}") from exc
+        payload: bytes | None = None
+        last_problem = "unknown"
 
-        self._cache_glb(response.content)
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            try:
+                response = requests.get(url, timeout=HTTP_TIMEOUT * 5)
+            except requests.exceptions.RequestException as exc:
+                last_problem = f"{type(exc).__name__}: {exc}"
+            else:
+                if response.ok:
+                    payload = response.content
+                    break
+                last_problem = f"HTTP {response.status_code}"
+                if response.status_code not in RETRYABLE_STATUS:
+                    raise SculptorError(
+                        f"Could not download the generated mesh: {last_problem}"
+                    )
 
-        loaded = trimesh.load(
-            io.BytesIO(response.content), file_type="glb", process=False
-        )
+            if attempt < DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "Download of the generated mesh failed (%s) — retrying (%d/%d).",
+                    last_problem, attempt, DOWNLOAD_ATTEMPTS,
+                )
+                time.sleep(POLL_INTERVAL_SECONDS)
+
+        if payload is None:
+            raise SculptorError(
+                f"Could not download the generated mesh after {DOWNLOAD_ATTEMPTS} "
+                f"attempts: {last_problem}. The generation is paid for and remains "
+                f"retrievable as request {self.last_request_id}."
+            )
+
+        self._cache_glb(payload)
+
+        loaded = trimesh.load(io.BytesIO(payload), file_type="glb", process=False)
         # The endpoint returns a textured GLB, so the scene may carry more than one
         # geometry. Concatenating before `postprocess` runs is what lets the shared
         # largest-component pass see the whole thing.
@@ -392,8 +466,15 @@ class PixazoBackend(SculptorBackend):
             loaded = loaded.to_mesh()
         if loaded is None or len(getattr(loaded, "faces", ())) == 0:
             raise SculptorError(
-                f"Generated GLB held no usable geometry ({len(response.content)} bytes)"
+                f"Generated GLB held no usable geometry ({len(payload)} bytes)"
             )
+
+        # Drop the material. Pixazo returns `metallicFactor: 1.0`, which renders every
+        # model as polished chrome and means nothing to a slicer — this pipeline is
+        # shape-only, so the surface appearance is not ours to carry. Keeping it also
+        # leaks a metallic PBR material into anything that later re-exports the mesh.
+        loaded.visual = trimesh.visual.ColorVisuals(mesh=loaded)
+
         return loaded
 
     def _cache_glb(self, payload: bytes) -> None:
