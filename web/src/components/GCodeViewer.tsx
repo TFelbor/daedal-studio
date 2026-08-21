@@ -180,7 +180,9 @@ export function GCodeViewer({
     let timeoutId = 0;
 
     const load = () => {
-      fetch(`/jobs/${jobId}/download`)
+      // preview=1: this fetch renders the toolpath, it is not a person keeping
+      // the file — without the flag every mount booked a download event.
+      fetch(`/jobs/${jobId}/download?preview=1`)
         .then(res => {
           if (!res.ok) throw new Error('not ready');
           return res.text();

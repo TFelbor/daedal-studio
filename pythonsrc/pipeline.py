@@ -276,6 +276,48 @@ def _record_generation(args, model, model_version, backend, params, cost_eur, du
         logger.warning("Could not record generation provenance: %s", exc)
 
 
+def _resolve_git_sha() -> str | None:
+    """The commit of the code running this job, or None when unknowable.
+
+    Delegates to the shared torch-free helper so the server (which stamps
+    `$P2P_GIT_SHA` into container subprocesses) and the pipeline resolve the
+    value the same way.
+    """
+    from pythonsrc.telemetry.run_context import resolve_git_sha
+
+    return resolve_git_sha()
+
+
+def _record_run_context(args, used_reference_assets: bool) -> None:
+    """Persist which code ran this job and whether its inputs were real.
+
+    The fixture flag exists only in this process's head: the output directory's
+    `dev-` prefix says it on disk, but nothing queryable said it in the database,
+    so a training query could not exclude fixture runs without comparing hashes
+    by hand. False is recorded too — "verified real" is not the same row state as
+    "predates the column".
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        used_reference_assets: Whether a bundled dev-reference asset stands in
+            for a phase's output on this run.
+    """
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        db = TelemetryDB()
+        db.update_job_run_context(
+            args.job_id,
+            git_sha=_resolve_git_sha(),
+            used_reference_assets=used_reference_assets,
+        )
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record run context: %s", exc)
+
+
 def _file_sha256(path) -> str | None:
     """Hash a file's contents.
 
@@ -333,7 +375,7 @@ def _record_blueprint(args, blueprint_path, result=None) -> None:
         logger.warning("Could not record blueprint provenance: %s", exc)
 
 
-def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
+def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path, repair_report=None) -> None:
     """Persist a before/after description of the mesh around repair.
 
     Repair is the pipeline's least observable step: it can rescue a broken mesh or
@@ -348,6 +390,8 @@ def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
         args: Parsed CLI arguments; nothing is recorded without --job-id.
         raw_mesh_path: The sculptor's output, before repair.
         repaired_mesh_path: The engineer's output, after repair.
+        repair_report: `Engineer.last_report` — which repair path ran and the
+            scale factor applied, previously visible only in the log.
     """
     if not args.job_id:
         return
@@ -380,6 +424,7 @@ def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
             raw_features=raw_features,
             repaired_sha256=repaired_hash,
             repaired_features=repaired_features,
+            repair_report=repair_report,
         )
         db.close()
     except Exception as exc:  # noqa: BLE001
@@ -431,7 +476,7 @@ def _record_printability_failure(args, outputs_dir, exc) -> None:
         logger.warning("Could not persist the printability failure: %s", db_exc)
 
 
-def _record_slice(args, gcode_path, duration_s, status="success", error=None) -> None:
+def _record_slice(args, gcode_path, duration_s, status="success", error=None, extra_args=None) -> None:
     """Persist the slicer's verdict and its material estimates.
 
     Called on failure as well as success: "this mesh could not be sliced" is a result,
@@ -447,6 +492,9 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
         duration_s: Wall-clock slicing seconds.
         status: "success", "failed" or "skipped".
         error: Slicer error text, when it failed.
+        extra_args: CuraEngine overrides this run added (e.g. the brim decision).
+            Recorded because the profile alone no longer describes the slice, and
+            "did the adhesion brim help" is a question the dataset must answer.
     """
     if not args.job_id:
         return
@@ -469,6 +517,10 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Could not parse G-code statistics: %s", exc)
 
+        stats_payload = stats.to_dict() if stats else {}
+        if extra_args:
+            stats_payload["slicer_overrides"] = list(extra_args)
+
         db = TelemetryDB()
         db.update_job_slice(
             args.job_id,
@@ -481,7 +533,7 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
             filament_used_g=getattr(stats, "filament_used_g", None),
             support_filament_mm3=getattr(stats, "support_filament_mm3", None),
             layer_count=getattr(stats, "layer_count", None),
-            stats=stats.to_dict() if stats else None,
+            stats=stats_payload or None,
         )
         db.close()
 
@@ -633,6 +685,18 @@ def run(args: argparse.Namespace) -> None:
     final_mesh_path = outputs_dir / "engineered_mesh.obj"
     gcode_path = outputs_dir / "engineered_mesh.gcode"
 
+    # Written before any phase runs: the fixture decision and the code version are
+    # facts about this run, not about any phase's outcome, and a run that dies in
+    # Phase 1 should still be excludable from (or attributable in) the dataset.
+    if args.job_id:
+        _record_run_context(
+            args,
+            used_reference_assets=(
+                outputs_dir.name.startswith(DEV_OUTPUT_PREFIX)
+                or _will_use_reference_assets(args, blueprint_path, [raw_mesh_path])
+            ),
+        )
+
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
     # True when the blueprint is a stand-in rather than a render. Phase 2 consults it
     # before handing the image to a backend that charges per generation.
@@ -707,11 +771,24 @@ def run(args: argparse.Namespace) -> None:
         except Exception as exc:
             logger.warning("Could not snapshot blueprint for job %s: %s", args.job_id, exc)
 
-    # A skipped Phase 1 has no seed or prompt to record, but the image still needs
-    # identifying — without a hash there is nothing to distinguish two runs that were
-    # handed different blueprints.
+    # A skipped Phase 1 usually still has full provenance to record: the primary Mac
+    # workflow runs the visualizer natively and it leaves a sidecar beside the PNG.
+    # Reading it back is what stops every job on that path from recording NULL for
+    # seed, prompt and model. When there is no (valid) sidecar the hash alone is
+    # recorded — it is the only thing that identifies a user-supplied blueprint.
     if args.skip_visualizer and blueprint_path.exists():
-        _record_blueprint(args, blueprint_path, None)
+        try:
+            from blueprint_spec import read_sidecar
+        except ImportError:
+            from pythonsrc.blueprint_spec import read_sidecar
+
+        sidecar_result = read_sidecar(blueprint_path)
+        if sidecar_result is not None:
+            print(
+                f"[P2P] Blueprint provenance restored from sidecar (seed {sidecar_result.seed})",
+                flush=True,
+            )
+        _record_blueprint(args, blueprint_path, sidecar_result)
 
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
@@ -817,7 +894,7 @@ def run(args: argparse.Namespace) -> None:
             hollow=args.hollow,
             wall_thickness=args.wall,
         )
-        _record_mesh_lineage(args, raw_mesh_path, final_mesh_path)
+        _record_mesh_lineage(args, raw_mesh_path, final_mesh_path, eng.last_report)
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:
         _phase_fail(3, t0, exc)
@@ -913,12 +990,16 @@ def run(args: argparse.Namespace) -> None:
             )
             # Slicer (CuraEngine) needs .stl, Engineer outputs both .obj and .stl
             stl_mesh_path = final_mesh_path.with_suffix(".stl")
+            slicer_overrides = _adhesion_args(printability_report)
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
-                extra_args=_adhesion_args(printability_report),
+                extra_args=slicer_overrides,
             )
-            _record_slice(args, gcode_path, time.time() - t0, status="success")
+            _record_slice(
+                args, gcode_path, time.time() - t0,
+                status="success", extra_args=slicer_overrides,
+            )
             _phase_pass(4, t0, str(gcode_path))
         except Exception as exc:
             # Recorded before _phase_fail, which exits the process. A mesh that could
@@ -942,7 +1023,11 @@ def run(args: argparse.Namespace) -> None:
             
             firmware = os.environ.get("P2P_FIRMWARE", profile_data.get("firmware", "octoprint"))
             base_url = os.environ.get("P2P_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
-            
+
+            # Recorded before the Docker rewrite below: host.docker.internal is a
+            # container artifact, not the address anyone configured.
+            dispatch_url = base_url
+
             # Rewrite localhost if running inside docker so it can reach the host
             if "localhost" in base_url or "127.0.0.1" in base_url:
                 if os.path.exists("/.dockerenv"):
@@ -967,6 +1052,19 @@ def run(args: argparse.Namespace) -> None:
             op.upload_file(str(gcode_path), gcode_path.name)
             logger.info(f"Upload complete — file available on {firmware}.")
 
+            # The dispatch moment is the only moment the target URL is true: profiles
+            # are resolved on read and edited in place, and this URL is what later
+            # distinguishes simulator telemetry from real-hardware telemetry.
+            if args.job_id:
+                try:
+                    from pythonsrc.telemetry.db import TelemetryDB as _DispatchDB
+
+                    _ddb = _DispatchDB()
+                    _ddb.update_job_dispatch(args.job_id, printer_url=dispatch_url)
+                    _ddb.close()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not record the dispatch target: %s", exc)
+
             if args.start_print:
                 logger.info("Starting print…")
                 op.start_print(gcode_path.name)
@@ -982,13 +1080,18 @@ def run(args: argparse.Namespace) -> None:
                     parsed = urlparse(base_url)
                     port = parsed.port or (443 if parsed.scheme == "https" else 80)
                     
-                    # Ensure job exists in DB
+                    # A CLI-launched job may have a row with no start time. Stamp
+                    # started_at — not completed_at, which this used to write:
+                    # `update_job_outcome`'s second timestamp is the *completion*
+                    # column, so every print marked its finish at the moment it began.
                     job = db.get_job(args.job_id)
                     if job and job.outcome == 'unknown' and not job.started_at:
-                        import datetime
-                        db.update_job_outcome(args.job_id, 'unknown', datetime.datetime.now(datetime.timezone.utc))
+                        db.update_job_start_time(args.job_id, datetime.now(timezone.utc))
 
-                    collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
+                    collector = OctoPrintCollector(
+                        parsed.hostname or "localhost", port, api_key or "",
+                        args.job_id, db, gcode_filename=gcode_path.name,
+                    )
                     await collector.start()
 
                     # Consume the collector's samples so automated failure detection

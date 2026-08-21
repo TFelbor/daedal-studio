@@ -363,3 +363,87 @@ async def test_outcome_write_failure_does_not_break_the_socket(memory_db, caplog
 
     assert "awaiting_verdict" in caplog.text
     assert "unable to open database file" in caplog.text
+
+
+# ── Capture hardening: what the socket carries and the DB never kept ──────────
+
+
+@pytest.mark.asyncio
+async def test_file_position_is_recorded_from_the_current_frame(memory_db):
+    """progress.filepos is on the wire in the very frame the collector forwards
+    to the browser; the sample column used to be hardcoded to None."""
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    payload = {
+        "currentZ": 3.2,
+        "temps": [{"tool0": {"actual": 210.0, "target": 210.0}, "bed": {"actual": 60.0, "target": 60.0}}],
+        "progress": {"completion": 41.0, "filepos": 123456},
+        "state": {"flags": {"printing": True}},
+    }
+    await collector._on_current(payload)
+    samples = memory_db.get_samples("test-job-123")
+    assert samples[-1].gcode_line == 123456
+
+
+@pytest.mark.asyncio
+async def test_print_done_records_the_actual_duration_and_a_terminal_event(memory_db):
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    await collector._on_event({
+        "type": "PrintDone",
+        "payload": {"name": "engineered_mesh.gcode", "time": 5423.5},
+    })
+    job = memory_db.get_job("test-job-123")
+    assert job.outcome == "awaiting_verdict"
+    assert job.print_duration_s == 5423.5
+
+    events = memory_db.get_job_events("test-job-123", kind="printer_terminal")
+    assert len(events) == 1
+    assert events[0].detail["event"] == "PrintDone"
+
+
+@pytest.mark.asyncio
+async def test_failure_reason_is_kept_in_the_terminal_event(memory_db):
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    await collector._on_event({
+        "type": "PrintFailed",
+        "payload": {"name": "engineered_mesh.gcode", "time": 90.0, "reason": "cancelled"},
+    })
+    events = memory_db.get_job_events("test-job-123", kind="printer_terminal")
+    assert events[0].detail["reason"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_pause_and_resume_are_recorded_as_events(memory_db):
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    await collector._on_event({"type": "PrintPaused", "payload": {"name": "engineered_mesh.gcode"}})
+    await collector._on_event({"type": "PrintResumed", "payload": {"name": "engineered_mesh.gcode"}})
+    assert len(memory_db.get_job_events("test-job-123", kind="print_paused")) == 1
+    assert len(memory_db.get_job_events("test-job-123", kind="print_resumed")) == 1
+    # Neither touches the outcome.
+    assert memory_db.get_job("test-job-123").outcome == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_an_event_for_someone_elses_file_is_not_this_jobs_outcome(memory_db):
+    """The socket reports every print on the machine, not just ours. A PrintDone
+    for a file this job never uploaded must not settle this job's row."""
+    collector = OctoPrintCollector(
+        "localhost", 5000, "key", "test-job-123", memory_db,
+        gcode_filename="engineered_mesh.gcode",
+    )
+    await collector._on_event({
+        "type": "PrintDone",
+        "payload": {"name": "benchy.gcode", "time": 100.0},
+    })
+    job = memory_db.get_job("test-job-123")
+    assert job.outcome == "unknown"
+    assert job.print_duration_s is None
+
+
+@pytest.mark.asyncio
+async def test_a_stood_down_collector_does_not_write_outcomes(memory_db):
+    """_on_event used to skip the claim check, so a collector that lost the
+    single-writer claim still mutated the print_job row."""
+    memory_db.try_claim_collector("test-job-123", "rival-process")
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    await collector._on_event({"type": "PrintFailed", "payload": {"time": 10.0}})
+    assert memory_db.get_job("test-job-123").outcome == "unknown"

@@ -11,7 +11,8 @@
 
 set -e
 
-PROMPT="${1:?Usage: bash infra/scripts/run_phase1_native.sh \"your prompt here\"}"
+PROMPT="${1:?Usage: bash infra/scripts/run_phase1_native.sh \"your prompt here\" [extra visualizer args]}"
+shift  # anything after the prompt (e.g. --seed N, --steps N) is forwarded verbatim
 OUTPUT="data/inputs/blueprint.png"
 
 # Ensure output directory exists
@@ -20,7 +21,8 @@ mkdir -p data/inputs
 echo "[p2p] Running Phase 1 natively on Mac (MPS accelerated)..."
 python pythonsrc/visualizer.py --prompt "$PROMPT" \
     --verbose \
-    --output "$OUTPUT"
+    --output "$OUTPUT" \
+    "$@"
 
 echo "[p2p] Blueprint saved to: $OUTPUT"
 echo "[p2p] Now run Phases 2-5 in Docker:"

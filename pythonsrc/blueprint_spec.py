@@ -9,9 +9,14 @@ that impossible on any machine without the Phase 1 environment installed.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
+import logging
 import random
 from pathlib import Path
 from typing import Any, Dict
+
+logger = logging.getLogger("p2p.blueprint_spec")
 
 # Upper bound for a generated seed. torch accepts a much wider range, but 2**32 keeps
 # the value readable, JSON-safe and re-enterable by hand.
@@ -87,3 +92,118 @@ class BlueprintResult:
 
     model_id: str
     """The model that produced the image."""
+
+
+# ── Provenance sidecar ────────────────────────────────────────────────────────
+#
+# The primary Mac workflow runs Phase 1 as its own native process and the rest of
+# the pipeline in Docker with --skip-visualizer. The BlueprintResult — seed,
+# engineered prompt, conditioning — used to die with the visualizer process, so
+# every job on that path recorded only an image hash. The sidecar is how the
+# result crosses the process boundary: the visualizer writes it next to the PNG,
+# the pipeline reads it back and records it as if Phase 1 had run in-process.
+
+SIDECAR_SUFFIX = ".provenance.json"
+
+
+def sidecar_path_for(image_path: str | Path) -> Path:
+    """Where an image's provenance sidecar lives.
+
+    Args:
+        image_path: The blueprint PNG.
+
+    Returns:
+        The sidecar path, e.g. `blueprint.provenance.json` beside `blueprint.png`.
+    """
+    image_path = Path(image_path)
+    return image_path.with_name(image_path.stem + SIDECAR_SUFFIX)
+
+
+def file_sha256(path: str | Path) -> str | None:
+    """Hash a file's contents, or None when it cannot be read."""
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError as exc:
+        logger.warning("Could not hash %s: %s", path, exc)
+        return None
+
+
+def write_sidecar(result: BlueprintResult) -> Path | None:
+    """Write a blueprint's provenance next to its image.
+
+    The image's hash is stored inside, because the blueprint path is *shared*:
+    the next run may overwrite the PNG and leave the sidecar behind, and a seed
+    attributed to an image it did not produce is worse than no seed at all.
+
+    Args:
+        result: The visualizer's result for the image at `result.path`.
+
+    Returns:
+        The sidecar path written, or None when writing failed (best-effort:
+        provenance must never fail a generation that succeeded).
+    """
+    sidecar = sidecar_path_for(result.path)
+    try:
+        payload = {
+            "image_sha256": file_sha256(result.path),
+            "seed": result.seed,
+            "prompt": result.prompt,
+            "engineered_prompt": result.engineered_prompt,
+            "params": result.params,
+            "duration_s": result.duration_s,
+            "model_id": result.model_id,
+        }
+        with open(sidecar, "w") as handle:
+            json.dump(payload, handle, indent=2)
+        return sidecar
+    except OSError as exc:
+        logger.warning("Could not write the blueprint sidecar %s: %s", sidecar, exc)
+        return None
+
+
+def read_sidecar(image_path: str | Path) -> BlueprintResult | None:
+    """Read an image's provenance sidecar, if it describes *this* image.
+
+    Args:
+        image_path: The blueprint PNG.
+
+    Returns:
+        The reconstructed BlueprintResult, or None when there is no sidecar,
+        it is unreadable, or it was written for a different image than the one
+        now sitting at the path.
+    """
+    sidecar = sidecar_path_for(image_path)
+    if not sidecar.exists():
+        return None
+    try:
+        with open(sidecar) as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError) as exc:
+        logger.warning("Ignoring unreadable blueprint sidecar %s: %s", sidecar, exc)
+        return None
+
+    recorded = payload.get("image_sha256")
+    if not recorded or recorded != file_sha256(image_path):
+        logger.warning(
+            "Ignoring stale blueprint sidecar %s — it describes a different image.",
+            sidecar,
+        )
+        return None
+
+    try:
+        return BlueprintResult(
+            path=Path(image_path),
+            seed=int(payload["seed"]),
+            prompt=payload.get("prompt", ""),
+            engineered_prompt=payload.get("engineered_prompt", ""),
+            params=payload.get("params") or {},
+            duration_s=float(payload.get("duration_s") or 0.0),
+            model_id=payload.get("model_id", ""),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("Ignoring malformed blueprint sidecar %s: %s", sidecar, exc)
+        return None

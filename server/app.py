@@ -11,6 +11,7 @@ import sys
 import uuid
 import platform
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,7 @@ from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample, 
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.telemetry.detector import attach_detector
+from pythonsrc.telemetry.run_context import resolve_git_sha
 from pythonsrc.operators import PrinterFactory
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
 import httpx
@@ -529,11 +531,107 @@ def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float
     return data, nozzle
 
 
-#: How many rotating snapshots of the telemetry database to keep.
+#: How many rotating snapshots of the telemetry database to keep locally.
+#: Overridable with $P2P_DB_BACKUP_COPIES — five restarts in five minutes used to
+#: discard every older snapshot, because rotation is by count, not age.
 DB_BACKUP_COPIES = 5
+
+#: How many mirrored snapshots to keep in $P2P_DB_BACKUP_MIRROR_DIR.
+DB_BACKUP_MIRROR_COPIES = 10
+
+#: Default minutes between periodic snapshots. The startup snapshot alone let a
+#: long-running server accumulate unbacked-up writes indefinitely.
+DB_BACKUP_INTERVAL_MIN = 360.0
 
 #: Set when the last startup integrity check found damage, so `/health` can say so.
 database_problems: list[str] = []
+
+#: The daemon thread mirroring the latest snapshot, when a mirror is configured.
+#: Module-level so tests (and a curious operator) can join it; the serving path
+#: never does.
+last_mirror_thread: Optional[threading.Thread] = None
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def backup_interval_s(env: dict | None = None) -> Optional[float]:
+    """Seconds between periodic database snapshots, or None to disable.
+
+    Args:
+        env: Environment mapping; defaults to os.environ.
+
+    Returns:
+        The interval in seconds; 0 or negative disables the loop; an unparseable
+        value falls back to the default rather than silently disabling backups.
+    """
+    raw = (env if env is not None else os.environ).get("P2P_DB_BACKUP_INTERVAL_MIN")
+    try:
+        minutes = float(raw) if raw is not None else DB_BACKUP_INTERVAL_MIN
+    except (TypeError, ValueError):
+        minutes = DB_BACKUP_INTERVAL_MIN
+    if minutes <= 0:
+        return None
+    return minutes * 60.0
+
+
+def _mirror_snapshot_sync(snapshot: Path, mirror_dir: Path) -> None:
+    """Copy one finished snapshot into the mirror directory and prune old copies.
+
+    Runs on a daemon thread only. The intended mirror is a cloud-synced folder
+    (Google Drive File Provider), and every filesystem call against that mount can
+    block for seconds to minutes — measured: a directory listing hanging 10+
+    seconds. Nothing here may ever run on the event loop or the startup path.
+
+    The copy goes to a `.part` name first and is renamed into place, so the sync
+    client never uploads a torn file; the source is an already-closed snapshot
+    produced by SQLite's online backup API, so reading it needs no locks.
+
+    Args:
+        snapshot: The local snapshot file to mirror.
+        mirror_dir: The mirror directory, e.g. the Drive data-collection folder.
+    """
+    import shutil
+
+    try:
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        staged = mirror_dir / (snapshot.name + ".part")
+        shutil.copyfile(snapshot, staged)
+        os.replace(staged, mirror_dir / snapshot.name)
+
+        prefix = snapshot.name.split(".backup-")[0]
+        copies = sorted(mirror_dir.glob(f"{prefix}.backup-*"))
+        keep = _env_int("P2P_DB_BACKUP_MIRROR_COPIES", DB_BACKUP_MIRROR_COPIES)
+        for stale in copies[:-keep] if keep > 0 else []:
+            stale.unlink(missing_ok=True)
+        logger.info("Mirrored database snapshot to %s", mirror_dir / snapshot.name)
+    except Exception as exc:  # noqa: BLE001 — the mirror is best-effort by design
+        logger.warning("Could not mirror the database snapshot to %s: %s", mirror_dir, exc)
+
+
+def _mirror_snapshot(snapshot: Optional[Path]) -> None:
+    """Kick off the background mirror of a verified snapshot, when configured.
+
+    `$P2P_DB_BACKUP_MIRROR_DIR` unset means no mirroring at all — the mirror is
+    switched on deliberately, once the telemetry is worth keeping, not by default.
+    """
+    global last_mirror_thread
+    last_mirror_thread = None
+    mirror_dir = os.environ.get("P2P_DB_BACKUP_MIRROR_DIR")
+    if not mirror_dir or snapshot is None:
+        return
+    thread = threading.Thread(
+        target=_mirror_snapshot_sync,
+        args=(snapshot, Path(mirror_dir)),
+        daemon=True,
+        name="db-backup-mirror",
+    )
+    last_mirror_thread = thread
+    thread.start()
 
 
 def check_database_health(db: TelemetryDB) -> list[str]:
@@ -573,20 +671,78 @@ def check_database_health(db: TelemetryDB) -> list[str]:
         )
         return problems
 
+    snapshot: Optional[Path] = None
     try:
         source = Path(db.db_path)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        db.backup_to(source.with_name(f"{source.name}.backup-{stamp}"))
+        snapshot = db.backup_to(source.with_name(f"{source.name}.backup-{stamp}"))
 
-        # Oldest first, so the newest DB_BACKUP_COPIES survive.
+        # Oldest first, so the newest copies survive.
+        keep = _env_int("P2P_DB_BACKUP_COPIES", DB_BACKUP_COPIES)
         snapshots = sorted(source.parent.glob(f"{source.name}.backup-*"))
-        for stale in snapshots[:-DB_BACKUP_COPIES]:
-            stale.unlink(missing_ok=True)
+        for stale in snapshots[:-keep] if keep > 0 else []:
+            if stale != snapshot:
+                stale.unlink(missing_ok=True)
     except Exception as exc:
         # A failed backup is not a reason to refuse to start.
         logger.warning("Could not snapshot the telemetry database: %s", exc)
 
+    # Off the serving path, off this thread: the mirror target may be a cloud
+    # mount that blocks for seconds at a time.
+    _mirror_snapshot(snapshot)
+
     return problems
+
+
+#: Handle for the periodic snapshot loop, cancelled at shutdown.
+_db_backup_task: Optional[asyncio.Task] = None
+
+
+async def _periodic_db_backup(interval_s: float) -> None:
+    """Re-verify and snapshot the database on a cadence.
+
+    The startup snapshot alone meant a server that stays up for a week backs up
+    nothing written in that week. The integrity check walks every page, so it runs
+    in a worker thread; a failure is logged and the loop keeps its schedule.
+
+    Args:
+        interval_s: Seconds between snapshots.
+    """
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            db = TelemetryDB()
+            try:
+                await asyncio.to_thread(check_database_health, db)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Periodic database snapshot failed: %s", exc)
+
+
+@app.post("/system/database/backup")
+async def trigger_database_backup() -> Dict[str, Any]:
+    """Take a verified snapshot now — the manual "flash" before risky work.
+
+    Runs the same integrity-gated path as startup and the periodic loop: a corrupt
+    database is reported, never snapshotted, so damage cannot launder itself into
+    the backup rotation or the mirror.
+
+    Returns:
+        The health verdict and whether a mirror directory is configured.
+    """
+    db = TelemetryDB()
+    try:
+        problems = await asyncio.to_thread(check_database_health, db)
+    finally:
+        db.close()
+    return {
+        "healthy": not problems,
+        "problems": problems,
+        "mirroring": bool(os.environ.get("P2P_DB_BACKUP_MIRROR_DIR")),
+    }
 
 
 @app.on_event("startup")
@@ -619,12 +775,24 @@ def startup_event():
     for k, v in config_store.get_all().items():
         os.environ[k] = v
 
+    # Snapshots on a cadence, not just at startup. $P2P_DB_BACKUP_INTERVAL_MIN=0
+    # disables the loop.
+    global _db_backup_task
+    interval = backup_interval_s()
+    if interval:
+        _db_backup_task = asyncio.get_event_loop().create_task(
+            _periodic_db_backup(interval)
+        )
+        logger.info("Periodic database snapshots every %.0f min", interval / 60)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Handle application shutdown events.
 
     Gracefully stops all active telemetry collectors.
     """
+    if _db_backup_task:
+        _db_backup_task.cancel()
     for detector_task in active_detectors.values():
         detector_task.cancel()
     active_detectors.clear()
@@ -642,7 +810,7 @@ LOG_FLUSH_INTERVAL_S = 0.12
 LOG_BATCH_MAX = 40
 
 
-async def _stream_output(process, log_file_obj, job_id: str):
+async def _stream_output(process, log_file_obj, job_id: str, on_phase=None):
     import re
     phase_re = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
     phase_names = {1: "Visualizer", 2: "Sculptor", 3: "Engineer", 4: "Slicer", 5: "Operator"}
@@ -727,10 +895,90 @@ async def _stream_output(process, log_file_obj, job_id: str):
                         "ts": datetime.now(timezone.utc).isoformat()
                     }
                 })
+                if on_phase is not None:
+                    try:
+                        await on_phase(phase_num, status)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Phase hook failed for job %s: %s", job_id, exc)
     finally:
         flusher_task.cancel()
         # The tail matters most — it is whatever the pipeline said before it stopped.
         await flush()
+
+def _attach_job_telemetry(job_id: str, firmware: str, base_url: str, api_key) -> None:
+    """Start the server-side collector and detector for a job that is now printing.
+
+    Called when Phase 5 actually begins, not at job creation. Started at creation,
+    the collector wrote roughly one idle-printer sample per second under this job's
+    id for the entire pipeline duration — hours of temperature readings from a
+    machine printing nothing, indistinguishable from print telemetry.
+
+    Args:
+        job_id: The job now being printed.
+        firmware: The printer firmware, deciding which collector fits.
+        base_url: The printer's base URL, reachable from this host process.
+        api_key: The printer's API key, when it has one.
+    """
+    if job_id in active_collectors:
+        return
+
+    collector = None
+    if firmware in ("klipper", "moonraker"):
+        ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
+        if not ws_url.endswith("/websocket"):
+            ws_url = ws_url.rstrip("/") + "/websocket"
+        collector = MoonrakerCollector(ws_url, job_id, TelemetryDB())
+    elif firmware == "octoprint":
+        parsed = urlparse(base_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 80
+        collector = OctoPrintCollector(
+            host, port, api_key or "", job_id, TelemetryDB(),
+            # The pipeline always uploads under this name; events for any other
+            # file are another print's and must not settle this job.
+            gcode_filename="engineered_mesh.gcode",
+        )
+    elif firmware == "bambu":
+        logger.warning("Telemetry not yet available for Bambu")
+
+    if collector:
+        active_collectors[job_id] = collector
+        asyncio.create_task(collector.start())
+
+        # Consume the collector's samples — without this, automated failure
+        # detection never runs. Whichever collector process wins the telemetry
+        # claim is the one whose queue receives samples.
+        try:
+            operator = PrinterFactory.create(firmware, base_url, api_key)
+        except Exception as e:
+            operator = None
+            logger.warning(f"No operator for detector ({firmware}): {e}")
+        active_detectors[job_id] = attach_detector(collector, TelemetryDB(), operator)
+
+        # These two are the background machinery that was completely silent: a job
+        # whose collector never claimed the row, or whose detector had no operator
+        # and therefore could not evaluate half its rules, looked identical to a
+        # healthy one from the log.
+        activity.action(
+            "telemetry attached",
+            [
+                ("job", job_id[:8]),
+                ("collector", type(collector).__name__),
+                ("firmware", firmware),
+                ("detector", "armed" if operator else "no operator — progress rules off"),
+            ],
+            outcome="sampling; the single-writer claim is taken on the first sample",
+            status="ok" if operator else "warn",
+            level="INFO" if operator else "WARNING",
+            source="telemetry",
+        )
+    else:
+        activity.event(
+            f"no telemetry collector for firmware {firmware!r} · job {job_id[:8]}",
+            level="WARNING",
+            source="telemetry",
+        )
+
 
 async def _run_pipeline(job_id: str, request: JobRequest):
     repo_root = Path(__file__).parent.parent
@@ -793,6 +1041,23 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         firmware, url, key = resolve_printer_target(profile_path)
         pipeline_env["P2P_FIRMWARE"] = firmware
 
+        # Kept before the Docker rewrite below: the server-side collector connects
+        # from this host, where localhost is still localhost.
+        collector_url = url or "http://localhost:5001"
+        collector_key = key
+
+        async def on_phase(phase_num: int, phase_status: str) -> None:
+            # Attach telemetry when the print actually starts. Attached at job
+            # creation, the collector spent the whole pipeline writing idle-printer
+            # samples under this job's id.
+            if phase_num == 5 and phase_status == "running" and request.print:
+                _attach_job_telemetry(job_id, firmware, collector_url, collector_key)
+
+        # Stamp the code version into the container, which carries no .git.
+        git_sha = resolve_git_sha()
+        if git_sha:
+            pipeline_env["P2P_GIT_SHA"] = git_sha
+
         if url:
             # If pipeline is running in docker and the URL is localhost, rewrite it
             if "localhost" in url or "127.0.0.1" in url:
@@ -828,12 +1093,19 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     "-e",
                     f"P2P_DISABLE_PAID_BACKENDS={pipeline_env['P2P_DISABLE_PAID_BACKENDS']}",
                 ])
+            if "P2P_GIT_SHA" in pipeline_env:
+                docker_env_args.extend(["-e", f"P2P_GIT_SHA={pipeline_env['P2P_GIT_SHA']}"])
                 
             if strategy == "mps_native":
                 if not skip_viz:
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "running", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
 
                     phase1_cmd = ["bash", "infra/scripts/run_phase1_native.sh", request.prompt]
+                    # Forwarded so a user-chosen seed reaches the native process —
+                    # it used to be silently dropped on this path, recorded nowhere
+                    # and used never.
+                    if request.seed is not None:
+                        phase1_cmd.extend(["--seed", str(request.seed)])
                     process1 = await asyncio.create_subprocess_exec(
                         *phase1_cmd,
                         stdout=asyncio.subprocess.PIPE,
@@ -906,7 +1178,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 env=pipeline_env
             )
             active_pipelines[job_id] = process
-            await _stream_output(process, f, job_id)
+            await _stream_output(process, f, job_id, on_phase=on_phase)
             await process.wait()
             returncode = process.returncode
             
@@ -1086,58 +1358,9 @@ async def create_job(request: JobRequest):
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record regenerate event: %s", exc)
 
-    if request.print:
-        collector = None
-        if firmware in ("klipper", "moonraker"):
-            ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
-            if not ws_url.endswith("/websocket"):
-                ws_url = ws_url.rstrip("/") + "/websocket"
-            collector = MoonrakerCollector(ws_url, job_id, TelemetryDB())
-        elif firmware == "octoprint":
-            parsed = urlparse(base_url)
-            host = parsed.hostname or "localhost"
-            port = parsed.port or 80
-            collector = OctoPrintCollector(host, port, api_key or "", job_id, TelemetryDB())
-        elif firmware == "bambu":
-            logger.warning("Telemetry not yet available for Bambu")
-
-        if collector:
-            active_collectors[job_id] = collector
-            asyncio.create_task(collector.start())
-
-            # Consume the collector's samples — without this, automated failure
-            # detection never runs. Whichever collector process wins the telemetry
-            # claim is the one whose queue receives samples.
-            try:
-                operator = PrinterFactory.create(firmware, base_url, api_key)
-            except Exception as e:
-                operator = None
-                logger.warning(f"No operator for detector ({firmware}): {e}")
-            active_detectors[job_id] = attach_detector(collector, TelemetryDB(), operator)
-
-            # These two are the background machinery that was completely silent: a job
-            # whose collector never claimed the row, or whose detector had no operator
-            # and therefore could not evaluate half its rules, looked identical to a
-            # healthy one from the log.
-            activity.action(
-                "telemetry attached",
-                [
-                    ("job", job_id[:8]),
-                    ("collector", type(collector).__name__),
-                    ("firmware", firmware),
-                    ("detector", "armed" if operator else "no operator — progress rules off"),
-                ],
-                outcome="sampling; the single-writer claim is taken on the first sample",
-                status="ok" if operator else "warn",
-                level="INFO" if operator else "WARNING",
-                source="telemetry",
-            )
-        else:
-            activity.event(
-                f"no telemetry collector for firmware {firmware!r} · job {job_id[:8]}",
-                level="WARNING",
-                source="telemetry",
-            )
+    # The telemetry collector is deliberately *not* started here. Job creation is
+    # hours before anything prints; `_run_pipeline` attaches it when the Phase 5
+    # banner arrives, so a job's samples begin when its print does.
 
     db.close()
 
@@ -1352,11 +1575,16 @@ async def get_printer_info(job_id: str):
     }
 
 @app.get("/jobs/{job_id}/download")
-async def download_job_output(job_id: str):
+async def download_job_output(job_id: str, preview: bool = False):
     """Download the final .gcode output file for a completed print job.
 
     Args:
         job_id: The unique identifier of the print job.
+        preview: True when the caller is a UI component fetching the bytes to
+            *render* them (the toolpath viewer polls this endpoint automatically).
+            A preview serves the same file but records nothing — the download
+            event exists to mean "a person chose to keep this", and a component
+            mount is not a person.
 
     Returns:
         A FileResponse streaming the generated .gcode file.
@@ -1389,12 +1617,15 @@ async def download_job_output(job_id: str):
 
     # A download is the clearest signal that a result was worth keeping, and it is
     # unrecoverable after the fact — recorded before the bytes stream, since the
-    # response is lazy and may be abandoned mid-flight.
-    try:
-        db.record_job_event(job_id, "download", {"artifact": "engineered_mesh.gcode"})
-        db.increment_download_count(job_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not record download event for %s: %s", job_id, exc)
+    # response is lazy and may be abandoned mid-flight. Preview fetches are served
+    # and not counted: the toolpath viewer retries this endpoint every few seconds
+    # until it answers, which made download_count a render counter.
+    if not preview:
+        try:
+            db.record_job_event(job_id, "download", {"artifact": "engineered_mesh.gcode"})
+            db.increment_download_count(job_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record download event for %s: %s", job_id, exc)
     db.close()
 
     def iterfile():
@@ -1511,6 +1742,11 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         })
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not record the dispatch confirmation for %s: %s", job_id, exc)
+
+    # Onto the row as well as into the event: the URL confirmed here is the only
+    # thing that later distinguishes simulator telemetry from real hardware, and a
+    # query cannot be expected to dig it out of an event's JSON detail.
+    db.update_job_dispatch(job_id, printer_url=target["base_url"])
 
     # Dispatched is not printed. The file leaving for a machine settles nothing about the
     # part, so the row goes to awaiting_verdict and a person closes it out later.
@@ -1804,7 +2040,10 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     cursor.execute(global_counts_query)
     global_counts = cursor.fetchall()
     
-    stats = {"total": 0, "running": 0, "completed": 0, "failed": 0, "awaiting_verdict": 0}
+    stats = {
+        "total": 0, "running": 0, "completed": 0, "failed": 0,
+        "awaiting_verdict": 0, "dev": 0, "declined": 0,
+    }
     for row in global_counts:
         outcome = row['outcome']
         c = row['count']
@@ -1817,6 +2056,11 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             # Its own bucket: counting an unconfirmed print as a failure would be as
             # wrong as counting it as a success.
             stats["awaiting_verdict"] += c
+        elif outcome in ("dev", "declined"):
+            # Not failures. A developer honestly marking a test run as `dev`, or a
+            # user asking not to be asked again, used to increment the failed
+            # counter the pilot is judged by.
+            stats[outcome] += c
         else:
             stats["failed"] += c
 
@@ -1960,22 +2204,28 @@ async def create_failure_event(job_id: str, request: FailureRequest) -> Dict[str
         A dictionary representation of the recorded FailureEvent.
     """
     db = TelemetryDB()
-    samples = db.get_samples(job_id, limit=50)
-    
-    event_id = str(uuid.uuid4())
-    event = FailureEvent(
-        event_id=event_id,
-        job_id=job_id,
-        detected_at=datetime.now(timezone.utc),
-        gcode_line=samples[0].gcode_line if samples else None,
-        z_height_mm=samples[0].z_height_mm if samples else None,
-        failure_type=request.failure_type,
-        source="manual",
-        notes=request.notes,
-        snapshot=[s.to_dict() for s in samples]
-    )
-    db.insert_failure_event(event)
-    db.close()
+    try:
+        if not db.get_job(job_id):
+            raise HTTPException(status_code=404, detail="Job not found")
+        samples = db.get_samples(job_id, limit=50)
+
+        event_id = str(uuid.uuid4())
+        event = FailureEvent(
+            event_id=event_id,
+            job_id=job_id,
+            detected_at=datetime.now(timezone.utc),
+            # get_samples returns oldest-first; the failure happened at the newest.
+            # samples[0] here recorded a Z from the very start of the print.
+            gcode_line=samples[-1].gcode_line if samples else None,
+            z_height_mm=samples[-1].z_height_mm if samples else None,
+            failure_type=request.failure_type,
+            source="manual",
+            notes=request.notes,
+            snapshot=[s.to_dict() for s in samples]
+        )
+        db.insert_failure_event(event)
+    finally:
+        db.close()
     return event.to_dict()
 
 @app.get("/jobs/{job_id}/failure")
@@ -2279,6 +2529,9 @@ async def feedback_stats() -> Dict[str, Any]:
     return {
         "prompts_shown": prompted,
         "outcomes_reported": funnel["answered"],
+        # An explicit "don't ask me again". A response, but not an answer about a
+        # part — kept out of the response rate and reported on its own.
+        "declined": funnel["declined"],
         "prompts_dismissed": funnel["dismissed"],
         "unanswered": funnel["unanswered"],
         # Includes verdicts given without a prompt, e.g. straight from a job page.

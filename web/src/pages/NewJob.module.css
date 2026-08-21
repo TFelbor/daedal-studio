@@ -443,6 +443,25 @@
   inset: 0;
   padding: var(--stage-inset);
   box-sizing: border-box;
+  /* The handoff: keyed on the active tab in the TSX, so a stage change remounts
+     this element and the new output drifts in from upstream. */
+  animation: p2p-arrive var(--motion-move) var(--motion-ease) both;
+}
+
+/* The carriage pass. One accent line across the stage's top rule, left to
+   right, at the moment of a handoff — the single orchestrated gesture of the
+   running view. Remounted with the stage body, so it fires once per advance. */
+.handoff {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: p2p-sweep 480ms var(--motion-ease) both;
+  z-index: 5;
+  pointer-events: none;
 }
 
 /* Sits above the artifact so the frame always says which phase drew it. */
@@ -481,6 +500,8 @@
   margin-top: 16px;
   border-top: 1px solid var(--rule);
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Brought in by the slice arriving, so it rises with it. */
+  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
 }
 
 .sliceEmpty {
@@ -500,6 +521,7 @@
   margin-top: 22px;
   border-top: 1px solid var(--rule);
   padding-top: 18px;
+  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
 }
 
 .processLog {
@@ -553,6 +575,9 @@
   align-items: center;
   font-size: 11px;
   color: var(--ink-28);
+  /* Keyed on the phase status in the TSX: a mark that changes (— to dots to
+     check) rises in rather than snapping. */
+  animation: p2p-rise var(--motion-quick) var(--motion-ease) both;
 }
 
 /* Status colours, never action colours: a failed phase is red, not orange. */
@@ -625,5 +650,17 @@
 
   .tabs {
     overflow-x: auto;
+  }
+}
+
+/* The whole handoff vocabulary dies here, not just softens: an arrival that
+   still fades is still motion. */
+@media (prefers-reduced-motion: reduce) {
+  .stageBody,
+  .handoff,
+  .slicePlateGrid,
+  .meshQuality,
+  .railMark {
+    animation: none;
   }
 }

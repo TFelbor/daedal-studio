@@ -19,13 +19,20 @@ from config import INPUTS_DIR
 # so the pipeline, the server and the tests can use them without the Phase 1 stack.
 # Re-exported here because this is where callers expect to find them.
 try:
-    from blueprint_spec import SEED_SPACE, BlueprintResult, engineer_prompt, resolve_seed
+    from blueprint_spec import (
+        SEED_SPACE,
+        BlueprintResult,
+        engineer_prompt,
+        resolve_seed,
+        write_sidecar,
+    )
 except ImportError:
     from pythonsrc.blueprint_spec import (
         SEED_SPACE,
         BlueprintResult,
         engineer_prompt,
         resolve_seed,
+        write_sidecar,
     )
 
 logger = logging.getLogger("p2p.visualizer")
@@ -130,7 +137,7 @@ class Visualizer:
         image.save(str(output_path))
         elapsed = time.time() - start
         logger.info("Blueprint saved to %s (seed %d, %.2fs)", output_path, seed, elapsed)
-        return BlueprintResult(
+        result = BlueprintResult(
             path=output_path,
             seed=seed,
             prompt=prompt,
@@ -139,6 +146,11 @@ class Visualizer:
             duration_s=elapsed,
             model_id=self.model_id,
         )
+        # The primary Mac workflow runs this in its own process and the pipeline
+        # with --skip-visualizer; without the sidecar the seed and conditioning
+        # die with this process and the job records NULL provenance.
+        write_sidecar(result)
+        return result
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

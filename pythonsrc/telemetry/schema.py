@@ -250,6 +250,38 @@ class PrintJob:
     outcome_reported_at: datetime | None = None
     """When a human recorded their verdict."""
 
+    # ── Run context and dispatch provenance ───────────────────────────────────
+    # Which code produced this row, whether the inputs were real, and which machine
+    # actually received the G-code. None can be recovered after the fact: the working
+    # tree moves on, the fixture flag lives only in the pipeline's own head, and the
+    # printer URL is resolved from a profile someone will edit next week.
+
+    git_sha: str | None = None
+    """Short git commit of the code that ran this job. A change to the prompt
+    template, the repair kernel or the scoring weights silently mixes populations
+    in the dataset unless rows can be split by code version."""
+
+    used_reference_assets: int | None = None
+    """1 when the pipeline substituted the bundled dev-reference blueprint/mesh
+    (see `_will_use_reference_assets`), 0 when it confirmed real inputs, None on
+    rows from before this column existed. A fixture run must be excludable from
+    any training query without comparing hashes by hand."""
+
+    dispatched_printer_url: str | None = None
+    """The printer base URL the G-code was actually sent to, captured at the moment
+    of dispatch. This is what distinguishes a simulator print (localhost:5001) from
+    real hardware — `printer_id` is a constant and profiles are resolved on read."""
+
+    repair_report: Dict[str, Any] | None = None
+    """What Phase 3 actually did to the mesh: which repair path ran, how many close
+    rounds, whether the volumetric remesh fired, and the scale factor applied.
+    Without it, "did voxel remeshing hurt outcomes" is unanswerable."""
+
+    print_duration_s: float | None = None
+    """Actual wall-clock print duration as reported by the printer at its terminal
+    event. The slicer's `estimated_print_time_s` is a prediction; this is the
+    measurement it must be judged against."""
+
     def __post_init__(self):
         """Validate the instantiated PrintJob fields.
 
@@ -493,6 +525,14 @@ JOB_EVENT_KINDS = (
     "outcome_prompt_dismissed",
     "outcome_reported",
     "dispatch_confirmed",
+    # Printer lifecycle, written by the collector as the events arrive on the
+    # socket. Sparse and discrete, so rows rather than sample columns: a pause is
+    # a fact about the print ("someone intervened at layer 40") that no success
+    # metric can reconstruct later, and the terminal event's detail carries the
+    # firmware's own reason string, which exists only in that one payload.
+    "print_paused",
+    "print_resumed",
+    "printer_terminal",
 )
 """Recognised `JobEvent.kind` values.
 

@@ -66,6 +66,14 @@
      landed in three different places depending on which page you were looking at. */
   --rail: 380px;
 
+  /* Motion. One vocabulary, one direction: the pipeline is a production line
+     reading left to right, and every artifact arrives from upstream. These are
+     the only durations and the only easing the app animates with — a second
+     timing system is how motion stops reading as one machine. */
+  --motion-quick: 150ms;
+  --motion-move: 360ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
   color-scheme: dark;
 }
 
@@ -727,9 +735,16 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
+/* Status colour changes drift rather than snap, so the rail reads as the line
+   advancing instead of repainting. */
+.phase-num { transition: color var(--motion-move) var(--motion-ease); }
 .phase-num-done { color: var(--ok); }
 .phase-num-run { color: var(--run); }
 .phase-num-idle { color: rgba(242, 240, 237, 0.3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .phase-num { transition: none; }
+}
 
 /* ── Log block ────────────────────────────────────────────────────────────── */
 
@@ -775,4 +790,27 @@ p {
 
 @media (prefers-reduced-motion: reduce) {
   .spin { animation: none; }
+}
+
+/* ── Handoff motion ──────────────────────────────────────────────────────────
+   The three entrances of the one-directional flow. `p2p-arrive` is how a phase
+   output takes the stage — a short drift continuing the line's left-to-right
+   travel, never a slide from off-screen. `p2p-rise` is for the blocks a new
+   output brings with it (the quality card, the slice figures, the dispatch
+   gate). `p2p-sweep` draws the handoff itself: one accent pass along a rule,
+   left to right, like a carriage crossing a plotter. */
+@keyframes p2p-arrive {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes p2p-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes p2p-sweep {
+  0% { transform: scaleX(0); opacity: 1; }
+  70% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
 }

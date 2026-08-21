@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { cssToken } from '../theme';
+import { cssToken, prefersReducedMotion } from '../theme';
 import { WaitingStage } from './WaitingStage';
 import styles from './MeshViewer.module.css';
 
@@ -86,7 +86,9 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.autoRotate = true;
+    // Drawn surfaces gate their own motion — the CSS media query cannot reach
+    // a WebGL canvas. The model still orbits by hand.
+    controls.autoRotate = !prefersReducedMotion();
     controls.autoRotateSpeed = 1.4;
 
     // Neutral, soft lighting. An accent-tinted fill used to sit here, and on a
