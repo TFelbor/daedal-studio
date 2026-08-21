@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { getJobPrintability } from '../api/client';
 import type { PrintabilityCheck, PrintabilityReport } from '../api/client';
+import { BootMark } from './BootMark';
 import styles from './PrintabilityCard.module.css';
 
 interface PrintabilityCardProps {
@@ -88,8 +88,7 @@ export function PrintabilityCard({ jobId, supportFilamentMm3 }: PrintabilityCard
           <span className="label">Printability</span>
         </div>
         <div className={styles.pending}>
-          <Loader2 size={14} className="spin" strokeWidth={1.5} />
-          <span className="label">Reading the report</span>
+          <BootMark size={22} label="Reading the report" />
         </div>
       </div>
     );

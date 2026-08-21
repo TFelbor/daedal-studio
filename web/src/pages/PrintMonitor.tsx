@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight } from 'lucide-react';
+import { BootMark } from '../components/BootMark';
 import { listJobs, getPrinterInfo, type PrintJob, type PrinterInfo } from '../api/client';
 import { getSimulatorStatus, type SimulatorStatus } from '../api/config';
 import { Blueprint, Marks } from '../components/Blueprint';
@@ -179,10 +180,7 @@ export function PrintMonitor() {
       </header>
 
       {loading && (
-        <div className="empty">
-          <Loader2 size={16} strokeWidth={1.5} className="spin" />
-          <span>Looking for prints in progress.</span>
-        </div>
+        <BootMark block label="Looking for prints in progress" />
       )}
 
       {!loading && error && (

@@ -8,6 +8,37 @@ import dataclasses
 from datetime import datetime
 from typing import Literal, Dict, Any, Type, TypeVar
 
+#: Every value `PrintJob.outcome` may hold.
+#:
+#: Most describe what happened to the part. Four do not, and the distinction matters
+#: when querying:
+#:
+#: - ``unknown`` — the pipeline has not finished. This is a *sentinel*, not a verdict:
+#:   the API maps it back to "running", so nothing settled may ever be written as
+#:   ``unknown``.
+#: - ``awaiting_verdict`` — the printer reached the end of the file and no human has
+#:   said whether the part survived.
+#: - ``dev`` — a developer's test run. Settled, and deliberately **excluded from
+#:   analysis**: verifying a pipeline change by printing a cube must not land in the
+#:   column the pilot's success rate is computed from.
+#: - ``declined`` — the user was asked, asked again, and does not want to be asked
+#:   about this print. Distinct from never being asked (no ``outcome_prompt_shown``
+#:   event) and from a single skip (``outcome_prompt_dismissed``).
+VALID_OUTCOMES = frozenset({
+    "success",
+    "failure",
+    "cancelled",
+    "unknown",
+    "awaiting_verdict",
+    "dev",
+    "declined",
+})
+
+#: Outcomes that are not evidence about a printed part, and must be filtered out of
+#: any success-rate or failure-mode query.
+NON_EVIDENCE_OUTCOMES = frozenset({"unknown", "awaiting_verdict", "dev", "declined"})
+
+
 @dataclasses.dataclass
 class PrintJob:
     """Represents a print job in the telemetry system."""
@@ -225,8 +256,7 @@ class PrintJob:
         Raises:
             ValueError: If the outcome field is not a valid predefined state.
         """
-        valid_outcomes = {"success", "failure", "cancelled", "unknown", "awaiting_verdict"}
-        if self.outcome not in valid_outcomes:
+        if self.outcome not in VALID_OUTCOMES:
             raise ValueError(f"Invalid outcome: {self.outcome}")
         if self.outcome_source is not None and self.outcome_source not in {"machine", "user"}:
             raise ValueError(f"Invalid outcome_source: {self.outcome_source}")
@@ -345,6 +375,35 @@ class TelemetrySample:
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['sampled_at'] = datetime.fromisoformat(s)
         return cls(**d)
+#: Every value `FailureEvent.failure_type` may hold.
+#:
+#: The first five are the `AnomalyDetector`'s own rule names, and the human-reported
+#: list in the UI reuses them deliberately: when the detector fires and a person
+#: agrees, both records must use the same word, or "how often is the detector right"
+#: cannot be answered with a query.
+#:
+#: The rest are reported by people only. ``other`` is the escape hatch, and it is the
+#: one value that means nothing on its own — a report carrying it is expected to carry
+#: ``notes`` as well, which is where the actual failure mode is written.
+VALID_FAILURE_TYPES = frozenset({
+    # Detector rules
+    "thermal_runaway",
+    "layer_shift",
+    "clog",
+    "adhesion",
+    "extrusion_issue",
+    # Human-reported only
+    "detached",
+    "supports",
+    "surface",
+    "dimensional",
+    "filament_out",
+    "user_cancelled",
+    "other",
+    "unknown",
+})
+
+
 @dataclasses.dataclass
 class FailureEvent:
     """Represents a failure event detected during a print job."""
@@ -387,8 +446,7 @@ class FailureEvent:
         Raises:
             ValueError: If failure_type or source is not a valid value.
         """
-        valid_types = {"thermal_runaway", "layer_shift", "clog", "adhesion", "extrusion_issue", "user_cancelled", "unknown"}
-        if self.failure_type not in valid_types:
+        if self.failure_type not in VALID_FAILURE_TYPES:
             raise ValueError(f"Invalid failure_type: {self.failure_type}")
         valid_sources = {"manual", "automated"}
         if self.source not in valid_sources:

@@ -1,0 +1,56 @@
+.block {
+  border-top: 1px solid var(--rule);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  color: var(--ink-42);
+  transition: color 0.15s ease;
+}
+
+.toggle:hover {
+  color: var(--accent);
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.count {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-35);
+}
+
+/* A fixed height, not `max-height`: the panel must not resize as lines arrive, or the
+   page reflows several times a second and every control under it walks down the
+   screen. Horizontal overflow scrolls inside the box — a long docker line must never
+   make the page scroll sideways. */
+.stream {
+  height: 220px;
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  background: var(--void);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--ink-58);
+  white-space: pre;
+  tab-size: 4;
+  overscroll-behavior: contain;
+}

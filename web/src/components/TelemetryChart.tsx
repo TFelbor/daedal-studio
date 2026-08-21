@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { TelemetrySample } from '../api/client';
 import { Blueprint } from './Blueprint';
+import { DeadChannel } from './DeadChannel';
 import styles from './TelemetryChart.module.css';
 
 export interface TelemetryChartProps {
@@ -76,10 +77,11 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
             <h3 className="subheading">Live telemetry</h3>
             <span className="status status-off">No samples</span>
           </div>
-          <div className="empty">
-            <span>Nothing has been reported yet.</span>
-            <span>Hotend and bed temperatures, Z height, fan and speed appear here as the printer samples them.</span>
-          </div>
+          {/* Not "nothing here": the channel is open and listening, which is a
+              different fact from a broken panel and the one worth showing. */}
+          <DeadChannel height={132}>
+            Hotend, bed, Z height, fan and speed appear here as the printer samples them
+          </DeadChannel>
         </div>
       </Blueprint>
     );

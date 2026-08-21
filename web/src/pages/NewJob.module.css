@@ -412,17 +412,14 @@
   font-family: var(--font-mono);
 }
 
-/* Slice tab: the figures the slicer produced, centred in the frame. */
-.slicePlate {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 20px;
-}
-
+/* Slice tab: the toolpath fills the frame; its figures sit below it. */
+/* The figures now sit below the frame rather than inside it, so they need their own
+   top rule and margin. Three equal columns, matching the phase row. */
 .slicePlateGrid {
   width: 100%;
+  margin-top: 16px;
+  border-top: 1px solid var(--rule);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .sliceEmpty {
@@ -434,6 +431,10 @@
   text-align: center;
   font-size: 12.5px;
   color: var(--ink-35);
+}
+
+.processLog {
+  margin-top: 26px;
 }
 
 /* ── Running: the rail ───────────────────────────────────────────────────── */
@@ -498,8 +499,8 @@
   color: var(--bad);
 }
 
+/* DeadChannel takes its own height prop; the rail only owns the gap above it. */
 .railEmpty {
-  height: 120px;
   margin-top: 14px;
 }
 

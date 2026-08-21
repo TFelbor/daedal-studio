@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BootMark } from '../components/BootMark';
 import { listJobs } from '../api/client';
 import type { PaginatedJobs } from '../api/client';
 import { Blueprint } from '../components/Blueprint';
@@ -203,10 +204,7 @@ export function JobList() {
       )}
 
       {loading && jobs.length === 0 ? (
-        <div className={styles.loading}>
-          <Loader2 size={18} strokeWidth={1.5} className="spin" />
-          <span>Loading jobs</span>
-        </div>
+        <BootMark block label="Reading the job log" />
       ) : jobs.length === 0 ? (
         <div className="empty">
           {statusFilter === 'all' ? (

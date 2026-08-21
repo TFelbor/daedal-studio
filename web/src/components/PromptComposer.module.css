@@ -1,0 +1,147 @@
+/* Animated on max-height rather than on `height: auto` or `grid-template-rows: 0fr`.
+   The first cannot be interpolated at all; the second only became animatable
+   recently, and this has to open smoothly in whatever browser the workshop machine
+   happens to run. The ceiling is generous — the panel never reaches it — so the
+   easing curve stays on the visible part of the travel. */
+.shell {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-6px);
+  transition: max-height 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.shellOpen {
+  max-height: 420px;
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transition: none;
+  }
+}
+
+.inner {
+  padding: 20px 0 4px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.close {
+  display: inline-flex;
+  padding: 4px;
+  color: var(--ink-35);
+  transition: color 0.15s ease;
+}
+
+.close:hover {
+  color: var(--accent);
+}
+
+.frame {
+  border-color: var(--field-line);
+  /* The sunken ground the other inputs use: the void at half alpha. */
+  background: rgba(13, 13, 13, 0.5);
+  padding: 18px 18px 14px;
+  transition: border-color 0.15s ease;
+}
+
+.frame:focus-within {
+  border-color: var(--accent);
+}
+
+.input {
+  width: 100%;
+  min-height: 92px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+  resize: none;
+}
+
+.input::placeholder {
+  color: var(--ink-35);
+}
+
+.input:disabled {
+  opacity: 0.45;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule-row);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-35);
+}
+
+.error {
+  color: var(--bad-ink);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid var(--rule-strong);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-50);
+}
+
+.right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Held in the layout at zero opacity rather than mounted on demand, so its arrival
+   does not shift the button beside it. */
+.counter {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-35);
+  opacity: 0;
+  transition: opacity 180ms ease, color 180ms ease;
+}
+
+.counterShown {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.go {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+.go:disabled {
+  opacity: 0.4;
+}

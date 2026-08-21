@@ -1,0 +1,77 @@
+.section {
+  margin-bottom: 52px;
+}
+
+.sectionHead {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 26px;
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+}
+
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.panelMeta {
+  font-size: 10.5px;
+  color: var(--ink-35);
+}
+
+/* The live stage's own box, so the drawn states are reviewed at the size and on the
+   ground they actually ship on. Mirrors NewJob's `.stage`. */
+.stage {
+  --stage-inset: 40px;
+  position: relative;
+  height: 340px;
+  overflow: hidden;
+  background-color: var(--raised);
+  background-image: linear-gradient(rgba(242, 240, 237, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 240, 237, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.stageLabel {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--ink-35);
+  pointer-events: none;
+}
+
+.block {
+  background-color: var(--void);
+}
+
+.inlineRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+}
+
+.caption {
+  margin: 18px 0 0;
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-50);
+}

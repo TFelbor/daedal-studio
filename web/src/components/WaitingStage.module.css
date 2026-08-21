@@ -1,0 +1,110 @@
+/* Fills whatever frame hosts it. The host owns the border, the registration marks
+   and the ruled ground — this is only the drawing and its two captions, so the same
+   component can sit in the live stage, in a figure on the job record, or in a rail. */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  overflow: hidden;
+}
+
+/* Overlay mode: fills the host frame exactly.
+   `width`/`height` are reset to auto on purpose. The base `.stage` sets them to 100%,
+   and an absolutely positioned box given both `width` and `left`/`right` is
+   over-constrained — CSS keeps `left` and `width` and throws `right` away. That is
+   what put the drawing off-centre and stopped the drafting head's rule short of the
+   bottom edge: the canvas was one padding-width narrower and shorter than the frame,
+   offset into it, while everything measured itself against the frame.
+   No bleed is needed here. A host's padding does not constrain an absolutely
+   positioned child — the containing block is the padding box — so `inset: 0` already
+   reaches the frame's own edges. */
+.fill {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+/* `grab` rather than `default`: the drawing answers to the same drag the finished
+   artifact will, and the cursor is how anyone finds that out. */
+.canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+/* 20px on all four sides, so the four captions box the drawing symmetrically and sit
+   on the same gutter as the host's own phase label. */
+.label {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--ink-35);
+  pointer-events: none;
+}
+
+.status {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  /* Both gutters, so a long line ellipsises inside the frame instead of running out
+     under its edge — which is how "AWAITING PHASE 01" came to render as "ITING PHASE 01". */
+  max-width: calc(100% - 40px);
+  pointer-events: none;
+}
+
+.line,
+.lineIdle {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Accent means work is happening. A phase that has not started gets ink, not accent,
+   because the accent in this app means "live" and would read as a lie here. */
+.line {
+  color: var(--accent);
+}
+
+.lineIdle {
+  color: var(--ink-35);
+}
+
+.hint {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-28);
+  pointer-events: none;
+}
+
+/* On a narrow stage the hint and the status line collide; the status line is the one
+   carrying information, so the hint goes. */
+@media (max-width: 560px) {
+  .hint {
+    display: none;
+  }
+}

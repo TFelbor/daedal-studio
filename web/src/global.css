@@ -418,6 +418,18 @@ p {
   100% { opacity: 0.35; }
 }
 
+/* The boot mark: the identity drawing itself, used wherever the app is reading its
+   own state. See BootMark.tsx — this is the one place the logo animates. */
+@keyframes p2p-boot-fill {
+  0% { opacity: 0; }
+  20%, 100% { opacity: 1; }
+}
+
+@keyframes p2p-boot-draw {
+  0%, 14% { stroke-dashoffset: 1; }
+  68%, 100% { stroke-dashoffset: 0; }
+}
+
 /* Three pulsing squares: the running-phase marker. */
 .running-dots {
   display: inline-flex;
