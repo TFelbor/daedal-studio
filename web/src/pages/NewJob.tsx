@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Check, ChevronDown, Layers, Maximize2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Layers, Maximize2, RotateCcw } from 'lucide-react';
 import { Blueprint, Marks } from '../components/Blueprint';
 import { BlueprintPreview } from '../components/BlueprintPreview';
 import { DeadChannel } from '../components/DeadChannel';
@@ -19,6 +19,7 @@ import { createJob, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
 import type { JobStatusResponse, TelemetrySample } from '../api/client';
 import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
+import { closeSocket } from '../api/ws';
 import { useActivityFeed } from '../hooks/useActivityFeed';
 import styles from './NewJob.module.css';
 
@@ -128,6 +129,34 @@ const MARK_LABEL: Record<PhaseStatus['status'], string> = {
   pending: 'Pending',
 };
 
+/**
+ * The job this tab is watching.
+ *
+ * Session storage rather than local storage, because the scope is exactly right: it
+ * survives a reload, which is the thing the dispatch gate has to survive, and it does
+ * not follow the user into a new tab that asked for the composer. Nothing depends on
+ * it — a browser that refuses storage loses a convenience, not a job — so both sides
+ * swallow their errors.
+ */
+const WATCHED_JOB_KEY = 'p2p.watchedJob';
+
+function rememberWatchedJob(jobId: string | null): void {
+  try {
+    if (jobId) sessionStorage.setItem(WATCHED_JOB_KEY, jobId);
+    else sessionStorage.removeItem(WATCHED_JOB_KEY);
+  } catch {
+    /* private mode, or storage disabled entirely */
+  }
+}
+
+function recallWatchedJob(): string | null {
+  try {
+    return sessionStorage.getItem(WATCHED_JOB_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function NewJob() {
   const [prompt, setPrompt] = useState('');
   const [materialType, setMaterialType] = useState('PLA');
@@ -210,35 +239,64 @@ export function NewJob() {
   }, [jobId]);
 
   /**
-   * Re-attach on mount — to a running job, or to one holding at the dispatch gate.
+   * Re-attach on mount — to a live pipeline, or to the job *this tab* left at the gate.
    *
-   * The second case is what makes the confirmation step survive a reload. A job that
-   * has been sliced and not sent has finished as far as the pipeline is concerned, so
-   * it does not appear in the running list, and before this the pending decision simply
-   * vanished on refresh and the part was never printed.
+   * Two rules, and both of them are about not stealing the landing page.
+   *
+   * A row is checked before it is believed: `status === 'running'` rather than "the
+   * list returned something". `GET /jobs` used to answer an unrecognised `status`
+   * filter with every job, newest first, so a browser one deploy ahead of the server
+   * was handed a finished job here and the composer never appeared again — which is
+   * the bug this replaced. The server refuses that filter now; this side stops
+   * trusting the shape of the answer either way.
+   *
+   * The dispatch gate is re-attached by id from session storage, not by asking for the
+   * newest unsent job. "Sliced and not sent" is not a time-bounded state — one job
+   * nobody ever confirmed would own the landing page indefinitely — and the reload it
+   * has to survive is a reload of *this* tab. Other people's unsent jobs are reachable
+   * from the dashboard, where the row says "To send".
    */
   useEffect(() => {
     let cancelled = false;
+    const watched = recallWatchedJob();
 
     const attach = (job: { job_id: string; prompt: string }, live: boolean) => {
       if (cancelled) return;
       setAttachedAt(Date.now());
       setJobId(job.job_id);
       setPrompt(job.prompt);
+      rememberWatchedJob(job.job_id);
       if (live) connectWebSocket(job.job_id);
       else getJob(job.job_id).then(setCurrentJob).catch(() => {});
     };
 
     listJobs(1, 0, 'running')
       .then(data => {
-        if (data.jobs && data.jobs.length > 0) {
-          attach(data.jobs[0], true);
+        const live = data.jobs?.[0];
+        if (live && live.status === 'running') {
+          attach(live, true);
           return null;
         }
-        return listJobs(1, 0, 'awaiting_dispatch');
+        if (!watched) return null;
+        return getJob(watched).catch(() => {
+          // The remembered job is gone. Forget it rather than looking it up, and
+          // failing, on every load for the rest of the session.
+          rememberWatchedJob(null);
+          return null;
+        });
       })
-      .then(waiting => {
-        if (waiting?.jobs && waiting.jobs.length > 0) attach(waiting.jobs[0], false);
+      .then(held => {
+        if (cancelled || !held) return;
+        if (held.dispatch_state !== 'awaiting_confirmation') {
+          // It was sent, or it never got far enough to be sendable. Either way this
+          // tab is not watching it any more.
+          rememberWatchedJob(null);
+          return;
+        }
+        setAttachedAt(Date.now());
+        setJobId(held.job_id);
+        setPrompt(held.prompt);
+        setCurrentJob(held);
       })
       .catch(err => {
         console.error('Failed to look for a job to attach to on mount', err);
@@ -253,7 +311,7 @@ export function NewJob() {
     // Confirming a dispatch reconnects, so this can be called with a socket already
     // open. Closing the old one first is what stops two sockets writing the same state,
     // and every handler below checks it is still the current one before doing so.
-    wsRef.current?.close();
+    closeSocket(wsRef.current);
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/jobs/${id}`;
@@ -405,10 +463,40 @@ export function NewJob() {
 
   useEffect(() => {
     return () => {
-      if (wsRef.current) wsRef.current.close();
+      closeSocket(wsRef.current);
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, []);
+
+  /**
+   * Stop watching this job and go back to the composer.
+   *
+   * `jobId` used to be a one-way latch: nothing anywhere called `setJobId(null)`, so
+   * once a tab attached to a job — by starting one, or by the mount re-attach above —
+   * the landing page was unreachable for the life of that tab. "New job" opens the
+   * inline composer beside the running job, which is the right control while something
+   * is printing and the wrong one when the job on screen finished two days ago.
+   *
+   * This leaves the job alone. It is still running, still listed, still dispatchable
+   * from the dashboard; this tab has simply stopped looking at it.
+   */
+  const leaveJob = () => {
+    reportUi('job view', 'returned to composer');
+    closeSocket(wsRef.current);
+    wsRef.current = null;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    rememberWatchedJob(null);
+    tabPinnedRef.current = false;
+    setActiveTab('blueprint');
+    setComposerOpen(false);
+    setWsConnected(false);
+    setSubmitError(null);
+    // The `!jobId` effect clears the phases, the job and the buffers.
+    setJobId(null);
+  };
 
   const isRunning = jobId !== null;
   /**
@@ -503,6 +591,7 @@ export function NewJob() {
       setAttachedAt(Date.now());
       setNow(Date.now());
       setJobId(data.job_id);
+      rememberWatchedJob(data.job_id);
 
       // Initial phase running
       setPhases(PIPELINE.map((p, i) => ({
@@ -826,6 +915,14 @@ export function NewJob() {
       <div className={styles.jobHeader}>
         <div className={styles.jobHeadLeft}>
           <div className={styles.jobIdRow}>
+            <button
+              type="button"
+              className={styles.leaveBtn}
+              onClick={leaveJob}
+              title="Stop watching this job — it keeps running"
+            >
+              <ArrowLeft size={12} strokeWidth={1.5} aria-hidden="true" /> Composer
+            </button>
             <span className="label">{headLabel}</span>
             <span className="mono">{jobId.slice(0, 8)}</span>
             {!wsConnected && jobActive && <span className="status status-off">Polling</span>}

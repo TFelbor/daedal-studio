@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TelemetrySample } from '../api/client';
+import { closeSocket } from '../api/ws';
 
 export interface PrinterMeta {
   service: string | null;
@@ -126,7 +127,7 @@ export function useJobWebSocket(jobId: string | null) {
 
     return () => {
       mounted = false;
-      ws.close();
+      closeSocket(ws);
     };
   }, [jobId]);
 
