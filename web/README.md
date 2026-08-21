@@ -71,4 +71,3 @@ export default defineConfig([
   },
 ])
 ```
-Test for PR automation
