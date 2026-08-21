@@ -8,9 +8,11 @@ without either a CUDA host or a self-hosted worker, a hosted call is the only pa
 to Phase 2.
 
 It is also the only backend that costs money — €0,32 per generation — which is why
-`BACKEND` is `hosted_api` and `last_generation_cost_eur` is set after every
-successful call. Once a print is finished nothing else records what its mesh cost,
-so the charge is written at the one moment it is knowable.
+`BACKEND` is `hosted_api` and `last_generation_cost_eur` is booked the moment the
+gateway *accepts* a request, not when the mesh arrives: an accepted generation may
+be billed even if polling times out or the download fails, so booking on delivery
+would understate spend. The cost and `request_id` (the manual-recovery handle) are
+persisted even when Phase 2 fails.
 
 ## Two things differ from the self-hosted backends
 
@@ -191,6 +193,12 @@ class PixazoBackend(SculptorBackend):
         self.up_axis = (
             os.environ.get("P2P_PIXAZO_UP_AXIS") or type(self).up_axis
         ).strip().lower()
+        if self.up_axis not in ("y", "z"):
+            # Validated here, before any submit: postprocess would catch it too,
+            # but only after a paid generation had already been billed.
+            raise SculptorError(
+                f"Invalid P2P_PIXAZO_UP_AXIS '{self.up_axis}' — expected 'y' or 'z'."
+            )
 
         #: Set after each successful generation, read off the instance by
         #: `pipeline._record_generation`.

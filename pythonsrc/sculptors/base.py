@@ -181,8 +181,10 @@ class SculptorBackend(ABC):
         if axis == "z":
             return mesh
         if axis == "y":
+            # +π/2 about X maps glTF's +Y (up) onto +Z. The sign is load-bearing:
+            # −π/2 yields identical extents but puts +Y at −Z — upside-down prints.
             mesh.apply_transform(
-                trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0])
+                trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0])
             )
             return mesh
         raise SculptorError(

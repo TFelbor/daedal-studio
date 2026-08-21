@@ -47,14 +47,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN_RENDERER_PACKAGES = ("nvdiffrast", "nvdiffrec")
 
 #: Files that install things. A prohibited package appearing in any of them is a
-#: licence change, not a build tweak.
+#: licence change, not a build tweak. Dockerfiles are discovered rather than
+#: enumerated so a new or renamed image cannot slip past the guard.
 INSTALL_MANIFESTS = (
     "requirements-base.txt",
     "requirements-linux.txt",
     "requirements-mac.txt",
     "requirements.txt",
-    "infra/docker/trellis2-worker.Dockerfile",
-    "infra/docker/base.Dockerfile",
+    *sorted(
+        str(path.relative_to(REPO_ROOT))
+        for path in (REPO_ROOT / "infra" / "docker").glob("*.Dockerfile")
+    ),
 )
 
 

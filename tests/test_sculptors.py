@@ -147,6 +147,22 @@ def test_y_up_backend_output_is_rotated_to_z_up(blueprint, tmp_path):
     assert np.allclose(trimesh.load(out).extents, [1, 1, 10])
 
 
+def test_y_up_rotation_maps_plus_y_to_plus_z(blueprint, tmp_path):
+    """glTF +Y (up) must land on +Z, not −Z.
+
+    Extents cannot see this: a flipped rotation sign produces identical extents
+    while every Y-up part prints standing on its head. A mesh occupying only
+    positive Y must come back occupying only positive Z.
+    """
+    tall = trimesh.creation.box(extents=(1, 10, 1))
+    tall.apply_translation([0, 5, 0])  # occupy y ∈ [0, 10]: entirely "up"
+    out = tmp_path / "mesh.obj"
+    RecordingBackend(tall, up_axis="y").generate_mesh(blueprint, out, target_faces=0)
+    loaded = trimesh.load(out)
+    assert loaded.vertices[:, 2].min() >= -1e-6
+    assert np.isclose(loaded.vertices[:, 2].max(), 10.0)
+
+
 def test_z_up_backend_output_is_left_alone(blueprint, tmp_path):
     """TRELLIS.2 is already Z-up; rotating it would be the bug."""
     tall = trimesh.creation.box(extents=(1, 1, 10))
