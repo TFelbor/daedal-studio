@@ -323,3 +323,82 @@ async def test_multiple_jobs_isolation(mock_db):
     assert event.job_id == "job_2"
     assert event.failure_type == "thermal_runaway"
     assert isinstance(event, FailureEvent)
+
+
+# ── Heating up is not thermal runaway ────────────────────────────────────────
+#
+# A real job was labelled "thermal runaway / automated / Triggered by rule
+# thermal_runaway" seconds after Phase 5 dispatched it, and the operator then
+# cancelled it by hand. Nothing was wrong with the printer: a cold hotend climbing
+# toward 210 C is, sample for sample, indistinguishable from a hotend that cannot
+# hold 210 C — unless the rule looks at whether the gap is closing. This was the
+# only rule of the five with no state gate and no trend test.
+
+
+@pytest.mark.asyncio
+async def test_a_cold_hotend_warming_up_is_not_thermal_runaway(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    # The ramp that triggered it in production: ambient to near-target.
+    for actual in (25, 60, 95, 130, 165):
+        await queue.put(make_sample(hotend_target=210, hotend_actual=actual))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_a_heater_that_stalls_below_target_is_still_thermal_runaway(mock_db):
+    """The gap has to be *closing*. A heater stuck 40 C short is a real fault."""
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    for _ in range(5):
+        await queue.put(make_sample(hotend_target=210, hotend_actual=170))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 1
+    assert mock_db.insert_failure_event.call_args[0][0].failure_type == "thermal_runaway"
+
+
+@pytest.mark.asyncio
+async def test_a_hotend_falling_away_from_target_is_thermal_runaway(mock_db):
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    # All five already below target-25; the gap widens sample over sample.
+    for actual in (180, 175, 170, 165, 160):
+        await queue.put(make_sample(hotend_target=210, hotend_actual=actual))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_job_accrues_no_automated_failures(mock_db):
+    """Once a human has cancelled, the printer cooling down is not a fault report."""
+    job_mock = MagicMock()
+    job_mock.outcome = "cancelled"
+    mock_db.get_job.return_value = job_mock
+
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    for _ in range(5):
+        await queue.put(make_sample(hotend_target=210, hotend_actual=170))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 0

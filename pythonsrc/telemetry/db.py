@@ -264,6 +264,105 @@ class TelemetryDB:
         self.conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False, timeout=10.0)
         self.conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
+        self._configure_connection()
+
+    def _configure_connection(self) -> None:
+        """Apply the durability pragmas. None of these were set before.
+
+        `busy_timeout` is set explicitly rather than relying on the `timeout=`
+        connect argument alone, so it survives anyone constructing a connection by
+        another route, and so the value is visible where the reasoning is.
+
+        **WAL is deliberately not enabled**, which is the opposite of the usual
+        advice for a multi-process SQLite database. `~/.p2p-mesh` is bind-mounted
+        into the containers (`~/.p2p-mesh:/root/.p2p-mesh`), and on macOS those
+        containers run inside a Linux VM — so the host process and the pipeline
+        container are, as far as file locking is concerned, two different machines
+        sharing a file over VirtioFS. SQLite's WAL requires shared memory between
+        every process touching the database and does not work across that boundary;
+        worse, the journal mode is persisted *in the file*, so switching it on from
+        the host would leave the container unable to open the database at all rather
+        than merely unable to lock it properly.
+
+        That boundary is also the likeliest explanation for the corruption this
+        guards against: `synchronous` was already FULL and there was no hot journal,
+        so it was not a crash mid-write — it was two writers whose locks did not see
+        each other. Pragmas cannot fix that; only one writer can. `integrity_check`
+        below exists so the next occurrence is noticed immediately instead of being
+        discovered by a query failing weeks later.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("PRAGMA busy_timeout = 10000")
+            # Flush to disk on every commit. Write volume here is a sample every
+            # couple of seconds, so the cost is irrelevant next to losing the row.
+            cursor.execute("PRAGMA synchronous = FULL")
+
+    def integrity_check(self, max_errors: int = 10) -> list[str]:
+        """Check the database for structural damage.
+
+        Args:
+            max_errors: Stop after this many problems.
+
+        Returns:
+            An empty list when the database is sound, otherwise the problems SQLite
+            reports — e.g. `Tree 4 page 4 cell 0: 2nd reference to page 44`, which is
+            what a page referenced by two b-trees looks like.
+
+            A database too damaged to answer the question at all reports that as a
+            problem rather than raising, because the caller's question — "is this
+            usable" — has the same answer either way.
+        """
+        try:
+            with self._lock:
+                rows = self.conn.execute(
+                    f"PRAGMA integrity_check({int(max_errors)})"
+                ).fetchall()
+        except sqlite3.DatabaseError as exc:
+            return [f"integrity_check could not run: {exc}"]
+
+        problems = [r[0] for r in rows if r[0] != "ok"]
+        return problems
+
+    def backup_to(self, destination: str | Path) -> Path:
+        """Copy the database to `destination` using SQLite's online backup API.
+
+        Copying the file with `cp` while another process is mid-transaction is one of
+        the ways to *produce* a corrupt database. The backup API takes the read lock
+        and copies page by page, so the result is a consistent snapshot even under
+        concurrent writes.
+
+        Another connection may be mid-write while this runs; that is the case the
+        backup API exists for. What it cannot survive is *this* connection holding an
+        open write transaction: the copy waits for a lock that only the caller can
+        release, and waits forever. That is refused up front, because a clear error
+        is worth more than a server that never finishes starting.
+
+        Args:
+            destination: Path to write the snapshot to. Parent dirs are created.
+
+        Returns:
+            The path written.
+
+        Raises:
+            RuntimeError: If this connection has an open transaction.
+        """
+        if self.conn.in_transaction:
+            raise RuntimeError(
+                "Cannot snapshot the database while this connection has an open "
+                "transaction — commit or roll back first. Backing up regardless "
+                "would block on a lock only this caller can release."
+            )
+
+        destination = Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            target = sqlite3.connect(str(destination))
+            try:
+                self.conn.backup(target)
+            finally:
+                target.close()
+        return destination
 
     def close(self) -> None:
         """Close the database connection."""

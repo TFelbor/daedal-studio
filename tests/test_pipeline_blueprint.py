@@ -63,3 +63,28 @@ def test_a_missing_or_unreadable_file_is_not_a_placeholder(tmp_path: Path):
     broken = tmp_path / "broken.png"
     broken.write_bytes(b"not an image")
     assert _blueprint_is_placeholder(broken) is False
+
+def test_the_placeholder_matches_the_shape_phase_1_produces():
+    """The stand-in occupies the same slot as a real blueprint, so it is the same size.
+
+    `Visualizer.generate_blueprint` defaults to 1024x1024. A half-size stand-in is
+    still square, but it renders at half the footprint in the UI's blueprint stage,
+    so the artifact visibly changes size when a real render replaces it.
+    """
+    from pythonsrc.pipeline import _PLACEHOLDER_SIZE
+
+    width, height = _PLACEHOLDER_SIZE
+    assert width == height, "the blueprint stage is square; the stand-in must be too"
+    assert _PLACEHOLDER_SIZE == (1024, 1024)
+
+
+def test_a_placeholder_written_at_the_old_size_is_still_recognised(tmp_path: Path):
+    """Changing the size must not un-recognise the placeholders already on disk.
+
+    The guard's entire purpose is that a stand-in left behind by an earlier run is
+    not mistaken for a real render and sent to a backend billed per generation.
+    Every placeholder written before this change is 512x512, and those files persist.
+    """
+    path = tmp_path / "blueprint.png"
+    Image.new("RGB", (512, 512), color=(73, 109, 137)).save(path)
+    assert _blueprint_is_placeholder(path) is True

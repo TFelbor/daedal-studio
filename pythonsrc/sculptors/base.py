@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from trimesh.graph import connected_components
 
 logger = logging.getLogger("p2p.sculptor")
 
@@ -167,12 +168,31 @@ class SculptorBackend(ABC):
             smooth_iterations = self.default_smooth_iterations
 
         logger.info("Optimising mesh topology…")
+        mesh = self._strip_appearance(mesh)
         mesh = self._to_z_up(mesh)
         mesh = self._largest_component(mesh)
         if smooth_iterations:
             mesh = self._smooth(mesh, smooth_iterations)
         if target_faces:
             mesh = self._decimate(mesh, target_faces)
+        return mesh
+
+    @staticmethod
+    def _strip_appearance(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Discard materials, textures and UVs. This pipeline is shape-only.
+
+        An FDM printer consumes geometry; nothing downstream — repair, printability,
+        slicing — reads appearance, and CuraEngine could not use it if it did. What
+        appearance does do is travel: Pixazo returns `metallicFactor: 1.0` with two
+        texture images, which renders every model as polished chrome in the viewer
+        and in anything the mesh is later re-exported to.
+
+        Done here rather than per backend so it holds for whichever backend ran, and
+        so a worker that starts returning textured geometry cannot reintroduce it.
+        """
+        if isinstance(getattr(mesh, "visual", None), trimesh.visual.ColorVisuals):
+            return mesh
+        mesh.visual = trimesh.visual.ColorVisuals(mesh=mesh)
         return mesh
 
     def _to_z_up(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -193,17 +213,37 @@ class SculptorBackend(ABC):
 
     @staticmethod
     def _largest_component(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
-        """Keep only the largest connected component, discarding floating debris."""
-        components = mesh.split(only_watertight=False)
+        """Keep only the biggest connected component, discarding floating debris.
+
+        "Biggest" is measured in faces, not in bounding-box size. Ranking by extent
+        loses the model to any scrap that happens to be elongated: a real job bought
+        a 196,733-face mesh and printed a 577-face sliver, because that sliver spanned
+        0.68 units against the body's 0.59 and therefore won on extents. Face count is
+        the property "which of these is the object" actually depends on.
+
+        Components are found on the face-adjacency graph rather than with
+        `mesh.split()`, which materialises every fragment as its own `Trimesh`. On the
+        mesh above that meant 6,195 of them, and building them all to throw 6,194 away
+        was enough to exhaust memory.
+        """
+        face_count = len(mesh.faces)
+        if face_count == 0:
+            return mesh
+
+        components = connected_components(
+            mesh.face_adjacency, nodes=np.arange(face_count)
+        )
         if len(components) <= 1:
             return mesh
-        kept = max(components, key=lambda m: m.extents.max())
+
+        kept = max(components, key=len)
         logger.debug(
-            "Discarded %d disconnected component(s) — kept %d faces",
+            "Discarded %d disconnected component(s) — kept %d of %d faces",
             len(components) - 1,
-            len(kept.faces),
+            len(kept),
+            face_count,
         )
-        return kept
+        return mesh.submesh([kept], append=True)
 
     @staticmethod
     def _smooth(mesh: trimesh.Trimesh, iterations: int) -> trimesh.Trimesh:

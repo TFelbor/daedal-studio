@@ -69,9 +69,17 @@ _PHASE_NAMES = {
 
 CURRENT_JOB_ID = None
 
-#: The fabricated stand-in blueprint: a flat rectangle written when Phase 1 is
+#: The fabricated stand-in blueprint: a flat square written when Phase 1 is
 #: skipped and no real blueprint exists, so Phases 3-5 can still be exercised.
-_PLACEHOLDER_SIZE = (512, 512)
+#: Matches `Visualizer.generate_blueprint`'s 1024x1024 default, because the stand-in
+#: fills the same slot a real render will: at half the size it occupied half the
+#: blueprint stage, and the artifact jumped in scale the moment Phase 1 ran.
+_PLACEHOLDER_SIZE = (1024, 1024)
+#: Sizes earlier versions wrote. Those files persist on the shared blueprint path,
+#: and the guard exists precisely so a stand-in from an earlier run is not mistaken
+#: for a real render and sent to a backend billed per generation — so growing the
+#: placeholder must not make the old ones invisible.
+_LEGACY_PLACEHOLDER_SIZES = ((512, 512),)
 _PLACEHOLDER_COLOUR = (73, 109, 137)
 
 
@@ -97,7 +105,7 @@ def _blueprint_is_placeholder(path: Path) -> bool:
         from PIL import Image
 
         with Image.open(path) as img:
-            if img.size != _PLACEHOLDER_SIZE:
+            if img.size != _PLACEHOLDER_SIZE and img.size not in _LEGACY_PLACEHOLDER_SIZES:
                 return False
             colours = img.convert("RGB").getcolors(maxcolors=2)
     except Exception:

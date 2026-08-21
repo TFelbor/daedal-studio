@@ -115,6 +115,25 @@ back *to*.
   `gpu_simplify_target` (200k) before the mesh is ever materialised as NumPy — a 1024³
   reconstruction is millions of faces, and CPU-decimating that costs minutes — then the shared
   CPU pass takes it to `--faces`.
+- **Appearance is discarded for every backend** (`SculptorBackend._strip_appearance`,
+  the first step of `postprocess`). Nothing after Phase 2 reads a material and CuraEngine
+  could not use one, but appearance travels: Pixazo returns `metallicFactor: 1.0` and two
+  texture images, which renders as polished chrome anywhere the mesh is opened. Held in the
+  shared path rather than per backend so a worker that starts returning textures cannot
+  reintroduce it. `pixazo._recache_clean_glb` then rewrites the cached GLB without it — the
+  raw purchased bytes are still cached first, because that is the copy that survives a crash
+  in parsing, but what is left on disk afterwards is geometry only.
+- **GLB vertices are welded before anything reads topology** (`pixazo._download_mesh`).
+  glTF cannot share a vertex between faces that disagree on a normal or a UV, so exporters
+  split them: a real mesh arrived with 143,783 vertices for 196,733 faces, 47,541 of them
+  duplicates lying on top of each other. Positions said closed surface, the index buffer said
+  confetti. `merge_vertices(merge_tex=True, merge_norm=True)` — the flags are what make it a
+  *positional* weld; without them trimesh honours the very attributes that caused the split.
+- **`_largest_component` ranks by face count, not bounding box.** Ranking by extent loses the
+  model to any scrap that happens to be elongated. Combined with the unwelded seams above,
+  one job bought a 196,733-face mesh and printed a 577-face sliver. Components come off the
+  face-adjacency graph rather than `mesh.split()`, which materialises every fragment — 6,195
+  of them on that mesh, enough to exhaust memory.
 - **Post-processing is shared and lives client-side** (`SculptorBackend.postprocess`):
   Z-up rotation, largest-component pruning, optional smoothing, decimation, export. The worker
   returns *raw* geometry so there is exactly one implementation regardless of where inference
@@ -204,6 +223,15 @@ FastAPI application with:
   streaming — the response is lazy and may be abandoned mid-flight.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[P2P]` banners from stdout for phase tracking
+- **Logging** (`server/logging_config.py`, called at import): the app had no handler,
+  level or format, so under uvicorn it inherited a root logger uvicorn never configures
+  and every `logger.info` was discarded. One stdout handler, severity in colour when the
+  output is a terminal (`$P2P_LOG_COLOR`, `$NO_COLOR`), level from `$P2P_LOG_LEVEL`.
+  A `log_requests` middleware logs one line per request with its duration, severity
+  following the status code, and demotes polled endpoints (`/health`, `/config`,
+  `/feedback/pending`, `/system/printer/status`, `GET /jobs/{id}`) to DEBUG.
+  **Uvicorn's access log is switched off** because it logged every request a second
+  time, at INFO, cancelling that demotion out; `$P2P_UVICORN_ACCESS_LOG=1` restores it.
 - **SPA serving**: catch-all route serves `web/dist/` — the React app must be pre-built before server start
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in SQLite (`app_config` table); encryption key at `.config_key` in repo root
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
@@ -303,6 +331,25 @@ FastAPI application with:
   telemetry volume in compose now, and `infra/scripts/patch_env.py`, which rewrote that
   variable back into `.env` on every run, has been deleted.
 
+  **It is checked and snapshotted at startup, and WAL is deliberately off.** The
+  database went corrupt once — `telemetry_sample`'s b-tree ended up with pages
+  referenced twice — and nothing noticed until a query answered `database disk image
+  is malformed`, by which point 346 rows were unreadable and their pages reused, so
+  `.recover` salvaged none of them. `synchronous` was already FULL and there was no
+  hot journal, so it was not a crash mid-write: `~/.p2p-mesh` is bind-mounted into
+  the containers, and on macOS those run in a Linux VM, so the host process and the
+  pipeline container are two machines sharing a file over VirtioFS — which SQLite
+  does not support for concurrent writers. **WAL would make that worse, not better**:
+  it needs shared memory between every writer, and the journal mode is persisted *in
+  the file*, so enabling it from the host would leave the container unable to open
+  the database at all. The real fix is one writer, which the existing
+  `internal_telemetry.send_internal_telemetry` relay already makes possible; until
+  then, `db.integrity_check()` runs in the server's startup event and logs loudly,
+  `GET /health` reports `database.healthy`, and `db.backup_to()` takes a rotating
+  snapshot (`DB_BACKUP_COPIES`) using SQLite's online backup API — **only when the
+  check passes**, so a corrupt file cannot launder itself through every slot. It
+  refuses rather than hangs if the caller holds an open transaction.
+
   `tests/test_single_database.py` is the regression guard: it fails if compose or
   `.env.template` starts pinning the variable again, or if a telemetry volume reappears.
 - **`job_event` has no foreign key onto `print_job`**, so deleting a job leaves its
@@ -330,7 +377,7 @@ FastAPI application with:
   so declining must be distinguishable from never being asked. `GET /feedback/stats` counts over
   prompted *jobs*, not raw events; dividing total reports by total prompts lets an unprompted
   verdict push the rate above 1.
-- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C` and actual more than 25°C below target for 5 consecutive samples), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → error/cancelled), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples). Each type fires at most once per job. Rules that read progress need an operator; rules that read `gcode_line` or `extrusion_factor_pct` are Klipper-only, since `OctoPrintCollector` leaves those fields None. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
+- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C`, actual more than 25°C below target for 5 consecutive samples, **and the gap not closing** — a cold hotend climbing to 210°C satisfies the first two conditions exactly, and used to be reported as a fault seconds after dispatch; the rule is also gated on the printer still printing, so a job someone cancelled stops accruing automated failures), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → error/cancelled), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples). Each type fires at most once per job. Rules that read progress need an operator; rules that read `gcode_line` or `extrusion_factor_pct` are Klipper-only, since `OctoPrintCollector` leaves those fields None. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
 
 ### Slice statistics (pythonsrc/gcode_stats.py)
 

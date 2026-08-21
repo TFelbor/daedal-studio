@@ -218,6 +218,9 @@ class PixazoBackend(SculptorBackend):
         #: `pipeline._record_generation`.
         self.last_generation_cost_eur: float | None = None
         self.last_request_id: str | None = None
+        #: Where `_cache_glb` put the purchased bytes, so `_recache_clean_glb` can
+        #: replace them with the same geometry minus its material.
+        self._cached_glb_path: Path | None = None
 
     def describe(self) -> str:
         return f"pixazo ({MODEL_SLUG}, resolution={self.resolution})"
@@ -473,7 +476,31 @@ class PixazoBackend(SculptorBackend):
         # model as polished chrome and means nothing to a slicer — this pipeline is
         # shape-only, so the surface appearance is not ours to carry. Keeping it also
         # leaks a metallic PBR material into anything that later re-exports the mesh.
+        # It goes *before* the weld below, because a vertex is only mergeable once
+        # nothing but its position distinguishes it.
         loaded.visual = trimesh.visual.ColorVisuals(mesh=loaded)
+
+        # Weld coincident vertices. glTF cannot share a vertex between faces that
+        # disagree on a normal or a UV, so an exporter splits them: the real mesh
+        # arrived with 143,783 vertices for 196,733 faces, 47,541 of them duplicates
+        # lying on top of each other. Positions alone say the surface is closed; the
+        # index buffer says it is confetti. Everything downstream reads topology —
+        # component pruning, repair, printability — so leaving the seams torn cost one
+        # job 99.7% of a purchased mesh, pruning a 196,733-face body down to a
+        # 577-face sliver that was then sliced and printed.
+        #
+        # `merge_tex`/`merge_norm` are what make this a *positional* weld. Without
+        # them trimesh honours the very attributes that caused the split, and merges
+        # almost nothing.
+        before = len(loaded.vertices)
+        loaded.merge_vertices(merge_tex=True, merge_norm=True)
+        if len(loaded.vertices) != before:
+            logger.info(
+                "Welded %d duplicate vertices from the GLB (%d → %d).",
+                before - len(loaded.vertices), before, len(loaded.vertices),
+            )
+
+        self._recache_clean_glb(loaded)
 
         return loaded
 
@@ -494,9 +521,43 @@ class PixazoBackend(SculptorBackend):
             target = Path(self.artifact_dir) / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
+            self._cached_glb_path = target
             logger.info("Cached purchased GLB (%.1f KB) to %s", len(payload) / 1024, target)
         except Exception as exc:
             logger.warning("Could not cache the generated GLB: %s", exc)
+
+    def _recache_clean_glb(self, mesh: trimesh.Trimesh) -> None:
+        """Rewrite the cached GLB without the material, once parsing has succeeded.
+
+        The raw bytes are cached first and unconditionally, because that is the copy
+        that survives a crash in parsing — see `_cache_glb`. But leaving them there
+        also leaves `metallicFactor: 1.0` and two texture images on disk, so the one
+        artifact a person actually opens is the chrome one, no matter what the
+        exported OBJ says. Rewriting it here keeps both properties: the purchase is
+        already safe by the time this runs, and what remains is the same geometry
+        with nothing this pipeline does not use.
+
+        Written to a sibling and moved into place, because a half-written export over
+        the only copy of a paid mesh is worse than a chrome one. Never raises, for the
+        same reason `_cache_glb` never does.
+        """
+        target = self._cached_glb_path
+        if not target:
+            return
+        staging = target.with_suffix(".glb.tmp")
+        try:
+            staging.write_bytes(trimesh.Scene(mesh).export(file_type="glb"))
+            staging.replace(target)
+            logger.info(
+                "Rewrote the cached GLB without its material (%.1f KB).",
+                target.stat().st_size / 1024,
+            )
+        except Exception as exc:
+            staging.unlink(missing_ok=True)
+            logger.warning(
+                "Could not rewrite the cached GLB without its material — the raw "
+                "purchased copy is intact at %s: %s", target, exc,
+            )
 
     # ── Reconstruction ───────────────────────────────────────────────────────
 
