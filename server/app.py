@@ -135,17 +135,23 @@ def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
     overwrite each other. Older jobs wrote to the flat ``data/outputs/`` layout, so that
     path is still accepted as a fallback for rows created before the change.
 
+    A debugging run that stood a bundled fixture in for Phase 1 or Phase 2 writes to
+    ``dev-{job_id}`` instead, so that directory is searched too — the prefix exists to
+    keep fabricated inputs out of the real namespace, not to hide the artifacts from the
+    endpoints that serve them.
+
     Args:
         job_id: The job whose artifact is wanted.
         filename: Artifact filename, e.g. "engineered_mesh.gcode".
 
     Returns:
-        The path to the artifact, or None if neither location has it.
+        The path to the artifact, or None if no location has it.
     """
     outputs = Path(__file__).parent.parent / "data" / "outputs"
-    per_job = outputs / job_id / filename
-    if per_job.exists():
-        return per_job
+    for directory in (outputs / job_id, outputs / f"dev-{job_id}"):
+        candidate = directory / filename
+        if candidate.exists():
+            return candidate
 
     legacy = outputs / filename
     if legacy.exists():
@@ -157,6 +163,96 @@ def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
             return shared_input
 
     return None
+
+
+def resolve_job_profile(job) -> tuple[str, str | None]:
+    """Find the printer profile a job's Phase 5 would use.
+
+    The job's own `profile_name` wins when it names a file that still exists, because
+    that is what the job was created against; the configured default is the fallback for
+    rows that stored "default". Returns the repo-relative name (what a person sees in
+    Settings) and the absolute path (what a subprocess needs).
+
+    Args:
+        job: A PrintJob row.
+
+    Returns:
+        A (relative_profile, absolute_path) tuple. The path is None when nothing exists.
+    """
+    repo_root = Path(__file__).parent.parent
+    for candidate in (job.profile_name, config_store.get("DEFAULT_PROFILE"),
+                      "pythonsrc/profiles/ender3.json"):
+        if not candidate or candidate == "default":
+            continue
+        path = repo_root / candidate
+        if path.exists():
+            return candidate, str(path)
+    return "", None
+
+
+def dispatch_target(job) -> dict:
+    """Describe, as of now, what pressing "Send to printer" would send this job to.
+
+    Resolved on read rather than frozen at job creation on purpose: the whole point of
+    showing it is that the person confirming can see the *current* target, including one
+    that changed in Settings since the job started.
+
+    Args:
+        job: A PrintJob row.
+
+    Returns:
+        A dict with the profile name, firmware, base URL and machine name.
+    """
+    profile, profile_path = resolve_job_profile(job)
+    firmware, base_url, _api_key = resolve_printer_target(profile_path)
+    machine_name = None
+    if profile_path:
+        try:
+            with open(profile_path, "r") as f:
+                machine_name = json.load(f).get("machine_name")
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "profile": profile,
+        "firmware": firmware,
+        "base_url": base_url,
+        "machine_name": machine_name,
+    }
+
+
+def dispatch_state(job, db: TelemetryDB) -> str:
+    """Where a job stands with respect to Phase 5.
+
+    Three states, and the middle one is the point: **a print does not leave for a
+    machine until a person confirms the target.** The pipeline is launched without
+    `--print`, so it stops after slicing; the job then sits in `awaiting_confirmation`
+    until `POST /jobs/{id}/print-dispatch` arrives with an explicit confirmation.
+
+    Derived rather than stored. The outcome column says what the software did, and a
+    job waiting on a human has not changed what the software did — the decision itself
+    is a `dispatch_confirmed` job event, which is where decisions live.
+
+    Args:
+        job: A PrintJob row.
+        db: An open database handle, used to look for the confirmation event.
+
+    Returns:
+        "dispatched", "awaiting_confirmation" or "not_ready".
+    """
+    if job.outcome == "awaiting_verdict":
+        return "dispatched"
+    try:
+        if db.get_job_events(job.job_id, kind="dispatch_confirmed"):
+            return "dispatched"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read dispatch events for %s: %s", job.job_id, exc)
+
+    # Only once nothing else is going to print it: a pipeline still running may have
+    # been launched with --print and would dispatch itself.
+    if job.outcome == "success" and job.slice_status == "success":
+        if resolve_job_artifact(job.job_id, "engineered_mesh.gcode") is not None:
+            return "awaiting_confirmation"
+    return "not_ready"
 
 
 def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | None, str | None]:
@@ -232,6 +328,37 @@ def _read_current_phase(job_id: str) -> dict | None:
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _append_phase_status(job_id: str, phase: int, status: str, error: str | None = None) -> None:
+    """Append one phase record to a job's `.status` file.
+
+    The pipeline owns this file for phases 1–4; Phase 5 now runs from the server, and
+    without a record here the rail would show phase 05 pending while a printer was
+    already extruding. Same shape as `pipeline._write_status` writes — the last line of
+    this file *is* `current_phase`.
+
+    Args:
+        job_id: The job the record belongs to.
+        phase: Phase number.
+        status: "running", "complete" or "error".
+        error: Optional failure detail.
+    """
+    log_dir = Path(__file__).parent.parent / "data" / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        record = {
+            "phase": phase,
+            "name": "operator" if phase == 5 else str(phase),
+            "status": status,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        if error is not None:
+            record["error"] = error
+        with open(log_dir / f"{job_id}.status", "a") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError as exc:
+        logger.warning("Could not write phase status for %s: %s", job_id, exc)
 
 
 def job_status_from_outcome(outcome: str | None, started_at) -> str:
@@ -368,6 +495,11 @@ class JobStatusResponse(BaseModel):
     layer_count: Optional[int] = None
     outcome_source: Optional[str] = None
     awaiting_verdict: bool = False
+    #: "not_ready" | "awaiting_confirmation" | "dispatched". See `dispatch_state`.
+    dispatch_state: str = "not_ready"
+    #: The printer this job's Phase 5 would go to, resolved now — the thing a person is
+    #: being asked to confirm. See `dispatch_target`.
+    dispatch_target: Optional[dict] = None
 
 
 def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float]]:
@@ -1029,8 +1161,11 @@ async def get_job(job_id: str):
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
+    # Phase 5 waits on a person. Derived on the open handle rather than from a second
+    # connection, and before the 404 so the row is read exactly once.
+    job_dispatch_state = dispatch_state(job, db) if job else "not_ready"
     db.close()
-    
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
@@ -1099,6 +1234,10 @@ async def get_job(job_id: str):
 
     current_status = job_status_from_outcome(job.outcome, job.started_at)
 
+    # The target is resolved on read too, so what a person confirms is the printer as it
+    # stands rather than as it was when the job was created.
+    job_dispatch_target = dispatch_target(job) if job_dispatch_state != "not_ready" else None
+
     return JobStatusResponse(
         job_id=job.job_id,
         status=current_status,
@@ -1131,6 +1270,8 @@ async def get_job(job_id: str):
         layer_count=job.layer_count,
         outcome_source=job.outcome_source,
         awaiting_verdict=job.outcome == "awaiting_verdict",
+        dispatch_state=job_dispatch_state,
+        dispatch_target=job_dispatch_target,
     )
 
 @app.get("/jobs/{job_id}/printer-info")
@@ -1267,59 +1408,199 @@ async def download_job_output(job_id: str):
     from fastapi.responses import StreamingResponse
     return StreamingResponse(iterfile(), media_type="text/plain", headers=headers)
 
+class DispatchRequest(BaseModel):
+    """A person's confirmation that this job may go to a machine.
+
+    `confirmed` is required to be true. It is not a formality: nothing else in the
+    system stops a print, so the flag is the gate, and a caller that cannot say a human
+    approved the dispatch is a caller that must not dispatch. The optional `profile` and
+    `base_url` are the target *as it was displayed* — when they are supplied and no
+    longer match what the server resolves, the answer is 409 rather than a print to a
+    machine nobody chose.
+    """
+    confirmed: bool = False
+    profile: Optional[str] = None
+    base_url: Optional[str] = None
+
+
 @app.post("/jobs/{job_id}/print-dispatch")
-async def print_dispatch(job_id: str):
-    """Trigger Phase 5 (Operator) only, using an already-sliced gcode file."""
+async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
+    """Run Phase 5 for an already-sliced job, once a person has confirmed the target.
+
+    The pipeline is launched without `--print`, so it stops after the slicer and the job
+    waits here. This is the human in the loop: the four checks below are the difference
+    between a confirmation step and a button.
+
+    Args:
+        job_id: The job to dispatch.
+        request: The confirmation, carrying the target the user was shown.
+
+    Returns:
+        A dict with the dispatch status and the target it went to.
+
+    Raises:
+        HTTPException: 404 unknown job; 400 unconfirmed or nothing to send; 409 when the
+            target moved under the user or the printer will not answer.
+    """
+    confirmation = request or DispatchRequest()
+    if not confirmation.confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="A print is only dispatched on an explicit confirmation. "
+                   "Review the printer and send it from the job view.",
+        )
+
     db = TelemetryDB()
     job = db.get_job(job_id)
-    db.close()
-    
     if not job:
+        db.close()
         raise HTTPException(status_code=404, detail="Job not found")
-        
-    repo_root = Path(__file__).parent.parent
+
+    state = dispatch_state(job, db)
+    if state == "dispatched":
+        db.close()
+        raise HTTPException(status_code=409, detail="This job has already been sent to a printer.")
+
     gcode_path = resolve_job_artifact(job_id, "engineered_mesh.gcode")
-
     if gcode_path is None:
-        raise HTTPException(status_code=400, detail="Gcode file not found. Complete phases 1-4 first.")
+        db.close()
+        raise HTTPException(status_code=400, detail="No G-code for this job. Complete phases 1–4 first.")
 
-    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
-    if not os.path.exists(profile_path):
+    target = dispatch_target(job)
+    profile_path = resolve_job_profile(job)[1]
+    if not profile_path:
+        db.close()
         raise HTTPException(status_code=400, detail="Configured printer profile not found.")
-        
+
+    # The target as shown, against the target as it stands. A profile swapped in Settings
+    # between the two is exactly the case this step exists to catch.
+    drifted = [
+        (name, shown, current)
+        for name, shown, current in (
+            ("profile", confirmation.profile, target["profile"]),
+            ("base_url", confirmation.base_url, target["base_url"]),
+        )
+        if shown and current and shown != current
+    ]
+    if drifted:
+        db.close()
+        changes = "; ".join(f"{name}: {shown} → {current}" for name, shown, current in drifted)
+        raise HTTPException(
+            status_code=409,
+            detail=f"The printer changed since you looked ({changes}). Check it and confirm again.",
+        )
+
+    # Asked, not assumed. A dead printer discovered here costs a click; discovered by the
+    # operator subprocess it costs a job that reads as dispatched and never printed.
+    probe = await printer_status()
+    if not probe.get("running"):
+        db.close()
+        raise HTTPException(
+            status_code=409,
+            detail="The printer did not answer. " + (probe.get("detail") or "Test the connection in Settings."),
+        )
+
+    repo_root = Path(__file__).parent.parent
+    try:
+        db.record_job_event(job_id, "dispatch_confirmed", {
+            "profile": target["profile"],
+            "firmware": target["firmware"],
+            "base_url": target["base_url"],
+            "machine_name": target["machine_name"],
+            "gcode": gcode_path.name,
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record the dispatch confirmation for %s: %s", job_id, exc)
+
+    # Dispatched is not printed. The file leaving for a machine settles nothing about the
+    # part, so the row goes to awaiting_verdict and a person closes it out later.
+    db.update_job_outcome_verdict(
+        job_id, "awaiting_verdict", source="machine", completed_at=datetime.now(timezone.utc)
+    )
+    db.close()
+
+    activity.action(
+        "print dispatch confirmed",
+        [
+            ("job", job_id[:8]),
+            ("profile", target["profile"]),
+            ("firmware", target["firmware"]),
+            ("printer", target["base_url"]),
+        ],
+        outcome="operator starting; the row is awaiting a human verdict",
+        status="ok",
+        source="operator",
+    )
+
+    log_dir = repo_root / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    _append_phase_status(job_id, 5, "running")
+    await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {
+        "phase": 5, "name": "Operator", "status": "running", "error": None,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }})
+
     try:
         cmd = [
             sys.executable,
             str(repo_root / "pythonsrc" / "run_operator.py"),
             "--job-id", job_id,
             "--gcode-path", str(gcode_path),
-            "--profile", profile_path
+            "--profile", profile_path,
         ]
-        
+
         env = os.environ.copy()
         octoprint_key = config_store.get("OCTOPRINT_API_KEY")
         if octoprint_key:
             env["OCTOPRINT_API_KEY"] = octoprint_key
+        # Without this the operator's telemetry collector has nowhere to relay samples,
+        # so the print runs with a live socket open and nothing on it.
+        env.setdefault("P2P_API_URL", "http://127.0.0.1:8000")
 
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=repo_root,
-            env=env
+            env=env,
         )
-        
-        # We don't block the API, but we track it or just let it finish.
-        # For simplicity, we could await it or just launch and return. The prompt says "runs operator subprocess"
-        # We'll just await it so we can return error if it fails, or since we have a WebSocket, we could just fire & forget.
-        # Let's fire & forget so the UI doesn't hang, but since it's just dispatch we can wait a bit or let it run.
-        # Let's fire and forget.
+
         async def _run():
-            await process.wait()
-            
+            """Follow the operator to its end, rather than firing and forgetting.
+
+            The old version launched it and returned. A dispatch that failed left the
+            job claiming to be printing, with the reason only in a subprocess nobody
+            was reading.
+            """
+            log_file = log_dir / f"{job_id}.log"
+            with open(log_file, "a") as handle:
+                handle.write(f"\n[dispatch] operator starting for {gcode_path.name}\n")
+                await _stream_output(process, handle, job_id)
+                await process.wait()
+                handle.write(f"[dispatch] operator exited with {process.returncode}\n")
+
+            failed = process.returncode != 0
+            _append_phase_status(job_id, 5, "error" if failed else "complete",
+                                 error=f"operator exited with {process.returncode}" if failed else None)
+            await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {
+                "phase": 5, "name": "Operator", "status": "error" if failed else "complete",
+                "error": f"The operator exited with {process.returncode}" if failed else None,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }})
+            if failed:
+                # The print never started, so the row must not sit in awaiting_verdict
+                # asking a person about a part that does not exist.
+                inner = TelemetryDB()
+                inner.update_job_outcome_verdict(
+                    job_id, "failure", source="machine",
+                    completed_at=datetime.now(timezone.utc),
+                )
+                inner.close()
+                await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "failure"}})
+
         asyncio.create_task(_run())
-        
-        return {"status": "dispatching"}
+
+        return {"status": "dispatching", "target": target}
     except Exception as e:
         logger.error(f"Error in print-dispatch: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1506,6 +1787,14 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         where_clause = "WHERE outcome IN ('failure', 'cancelled')"
     elif status == 'awaiting_verdict':
         where_clause = "WHERE outcome = 'awaiting_verdict'"
+    elif status == 'awaiting_dispatch':
+        # Sliced, finished, and never sent: the jobs whose Phase 5 is waiting on a
+        # person. Without this the confirmation step would not survive a page reload,
+        # which for a human-in-the-loop gate means it would not survive at all.
+        where_clause = (
+            "WHERE outcome = 'success' AND slice_status = 'success' "
+            "AND job_id NOT IN (SELECT job_id FROM job_event WHERE kind = 'dispatch_confirmed')"
+        )
 
     count_query = f"SELECT COUNT(*) FROM print_job {where_clause}"
     cursor.execute(count_query, params)
@@ -1536,7 +1825,12 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     cursor.execute(query, params)
     
     rows = cursor.fetchall()
-    
+
+    # Which of these have actually been sent. One query rather than one per row, and the
+    # only way a list row can tell "finished" from "finished and waiting on a person".
+    cursor.execute("SELECT DISTINCT job_id FROM job_event WHERE kind = 'dispatch_confirmed'")
+    dispatched = {r['job_id'] for r in cursor.fetchall()}
+
     jobs = []
     for row in rows:
         job_outcome = row['outcome']
@@ -1556,6 +1850,14 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             "material_type": row['material_type'] if 'material_type' in keys else None,
             "awaiting_verdict": job_outcome == "awaiting_verdict",
             "outcome_source": row['outcome_source'] if 'outcome_source' in keys else None,
+            # Sliced, finished, never sent: Phase 5 is waiting for someone to confirm the
+            # printer. Reported here so the dashboard can say so instead of calling it
+            # "Success" — nothing has been printed.
+            "awaiting_dispatch": (
+                job_outcome == "success"
+                and ('slice_status' in keys and row['slice_status'] == "success")
+                and row['job_id'] not in dispatched
+            ),
         })
     db.close()
     return {"jobs": jobs, "total": total, "limit": limit, "offset": offset, "stats": stats}

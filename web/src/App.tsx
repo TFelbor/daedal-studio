@@ -12,7 +12,7 @@ import logo from './assets/p2p-logo.png';
 import styles from './App.module.css';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'New job', match: (path: string) => path === '/' },
+  { to: '/', label: 'Create', match: (path: string) => path === '/' },
   { to: '/dashboard', label: 'Dashboard', match: (path: string) => path.startsWith('/dashboard') },
   { to: '/monitor', label: 'Monitor', match: (path: string) => path === '/monitor' },
   { to: '/setup', label: 'Settings', match: (path: string) => path === '/setup' },

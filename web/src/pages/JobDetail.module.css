@@ -68,7 +68,8 @@
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  /* One rail width across every scene that has one. See --rail. */
+  grid-template-columns: 1fr var(--rail);
   gap: 44px;
   align-items: start;
 }

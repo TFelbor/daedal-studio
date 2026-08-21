@@ -64,6 +64,31 @@ Phase 2's placement is a *separate* decision made by `sculptors.resolve_backend_
 
 Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate artifacts.
 
+**A skipped phase installs a real asset, and the output directory says so.** When Phase 1
+or Phase 2 is skipped with nothing real to work from, the pipeline copies in
+`pythonsrc/assets/dev_reference/{blueprint.png,raw_mesh.obj}` — actual outputs of job
+`ec076d7e`. It used to fabricate them: a flat blue rectangle and a 50mm
+`trimesh.creation.box`. The cube is watertight, convex and single-component, so
+`repair_mesh` had nothing to remove, `_largest_component` nothing to choose between, and
+the printability gate scored geometry no reconstruction produces; the reference mesh
+arrives with 138 non-manifold edges across 95 components, which is what those paths were
+written for. Such a run writes to **`data/outputs/dev-{job_id}`** — a mesh built from a
+fixture must not sit in the real namespace looking like one a model made.
+`resolve_job_artifact` searches both, so the endpoints still serve it.
+`_will_use_reference_assets` is the predicate, and it is deliberately narrower than "a
+phase was skipped": the primary Mac workflow always passes `--skip-visualizer` because
+Phase 1 just ran natively, and `--skip-sculptor --mesh real.obj` supplies its own. Only a
+*substitution* earns the prefix. `_blueprint_is_stand_in` recognises the reference
+blueprint by hash and the legacy flat rectangles by pixels — that guard is the only thing
+stopping a per-generation backend from being billed to reconstruct a fixture, and the old
+files persist on the shared blueprint path.
+
+**Phase 5 does not follow Phase 4 for a UI job.** `POST /jobs` from the web app sends
+`print: false, start_print: false`, so the pipeline stops after the slicer and the job
+waits for a person to confirm the printer — see **Dispatch gate** below. `--print
+--start-print` still dispatch immediately, which is what the CLI and any automation
+use: there is nobody to ask there.
+
 Between Phase 3 and Phase 4 the pipeline runs the **printability gate** (`pythonsrc/printability.py`).
 It is deliberately *not* a numbered phase: the `.status` protocol, the WebSocket phase updates and
 the UI progress bar all key off phases 1–5, so renumbering would change what every historical
@@ -71,7 +96,7 @@ the UI progress bar all key off phases 1–5, so renumbering would change what e
 `data/outputs/{job_id}/printability.json`, and persists score/verdict/features/report onto the
 job's telemetry row. Scoring is **advisory** — a low score never blocks a print unless
 `--min-printability SCORE` is passed, and a crash in the scorer is logged and skipped rather than
-failing the job.
+failing the job (but it is *recorded* — see the error envelope under **Printability**).
 
 ### Sculptor — Phase 2 (pythonsrc/sculptors/)
 
@@ -519,6 +544,17 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
 - Escape-hole detection finds components whose bounding box nests inside another's, which is
   exactly what `Engineer.hollow_mesh`'s voxel erosion produces: a sealed cavity. It is fatal only
   when the mesh was actually hollowed.
+- **A crash in the scorer is recorded, not swallowed.** Scoring never fails a job, which used to
+  mean a scorer exception left no trace at all: no artifact, no telemetry, and a UI that could not
+  tell "nothing measured this mesh" from "the measurement broke". Both rendered as the same empty
+  panel, and an empty quality panel reads as a clean one.
+  `pipeline._record_printability_failure()` now writes an **error envelope** —
+  `{job_id, evaluated_at, status: "error", error, error_type}` — to `printability.json` and to
+  `printability_report`, leaving `printability_score`/`printability_verdict` NULL because there is
+  no score and inventing one (0 for safety, 100 for convenience) would be a fabricated measurement.
+  It is written only when no report exists, so a failure *after* a good score cannot overwrite it.
+  `GET /jobs/{id}/printability` passes the envelope through; the UI distinguishes it from a report
+  by the absence of `checks` (`isPrintabilityReport`).
 
 ### Orientation and adhesion (Phase 3 → Phase 4)
 
@@ -564,6 +600,39 @@ check — not as a connection failure. Surfacing OctoPrint's stock Flask 403 bod
 ("You don't have the permission to access the requested resource") sent people looking
 at their network for a wrong API key.
 
+### Dispatch gate — Phase 5 waits on a person
+
+A print is the only step that heats a nozzle for hours, spends filament and cannot be undone,
+and it used to start on its own: the pipeline was launched with `--print --start-print`, so the
+first time anyone saw which machine a part was going to was in the past tense.
+
+- **The state is derived, not stored** (`server.dispatch_state`). `dispatched` when a
+  `dispatch_confirmed` job event exists or the outcome is `awaiting_verdict`;
+  `awaiting_confirmation` when the pipeline finished (`outcome == "success"`), the slice
+  succeeded and the G-code artifact is on disk; `not_ready` otherwise. No new outcome value and
+  no migration: the outcome column says what the *software* did, and "a person has not decided
+  yet" is a decision record, which is what `job_event` is for. Requiring `outcome == "success"`
+  is deliberate — a pipeline still running may have been launched with `--print` and would
+  dispatch itself.
+- **`POST /jobs/{id}/print-dispatch` requires `confirmed: true`.** Nothing else in the system
+  stops a print, so the flag *is* the gate and there is no unconfirmed code path left — the rail's
+  old "Print" button (which posted an empty body from `JobControlPanel`) is gone. The body also
+  carries the target **as it was displayed** (`profile`, `base_url`); when those no longer match
+  what the server resolves, the answer is **409**, because confirming a printer you are no longer
+  looking at is not confirming. The printer is then re-probed via `printer_status()` and a dead
+  one is 409'd *before* the operator subprocess runs.
+- **`dispatch_target` is resolved on read, not frozen at creation** — the point of showing it is
+  that it reflects a profile someone changed in Settings five minutes ago.
+- On confirmation the endpoint records the event, sets `awaiting_verdict` (dispatched is not
+  printed — see Telemetry), appends a phase-5 `running` record with `_append_phase_status` so the
+  rail moves, and **follows the operator to its exit** rather than firing and forgetting: a
+  non-zero exit writes phase 5 `error` and records `failure`, so a dispatch that never started
+  does not leave a row asking a person about a part that does not exist.
+- **`GET /jobs?status=awaiting_dispatch`** is what makes the step survive a page reload: such a
+  job is finished as far as the pipeline is concerned, so it is absent from the running list, and
+  the pending decision used to vanish on refresh. `NewJob` re-attaches to it on mount and the
+  dashboard marks the row `To send` (`awaiting_dispatch` per row) rather than `Success`.
+
 ### Printer Operators (pythonsrc/operators/)
 
 Abstract base class `BasePrinterOperator` defines: `connect()`, `upload_file()`, `start_print()`, `cancel_print()`, `pause_print()`, `resume_print()`, `get_printer_state()`. Shared code (`pipeline.py`, `run_operator.py`) must call these with the base signature only — `OctoPrintOperator.upload_file` accepts an extra `start_print` kwarg that no other operator has, and passing it raises `TypeError` on Klipper and Bambu (`tests/test_operator_contract.py` guards this). `PrinterFactory` accepts `moonraker` as an alias for `klipper`, because the UI and config store persist the former while profiles use the latter. `PrinterFactory.create(firmware, base_url, api_key)` returns the appropriate implementation. Profiles at `pythonsrc/profiles/*.json` specify `firmware`, `base_url`, and optionally `api_key`.
@@ -575,6 +644,35 @@ All images are pinned to `linux/amd64` (CuraEngine is only available as amd64 ap
 ### Frontend (web/)
 
 React 19 + Vite 8 + TypeScript 6. Dependencies: `react-router-dom` (routing), `recharts` (telemetry charts), `three` + `@types/three` (3D mesh viewer). Vite dev server proxies `/jobs` and `/health` to `localhost:8000`. Production build goes to `web/dist/` which is copied into the API server Docker image.
+
+Four layout rules are load-bearing enough to name, because breaking them is invisible in a
+diff and obvious on screen:
+
+- **`--gutter` and `--rail` are the page's symmetry lines** (`global.css`). Every full-width
+  edge — nav, footer, `.sheet`, the split cells, the job header, the stage, the rail, the
+  verdict banner, the dispatch gate — uses `var(--gutter)`, so the logo, the hero and the
+  credits stand on one line. They previously ranged 40–56px per scene, which read as a wobble
+  down the left side of the product. `--rail` is the one side-column width (was 380/400/400).
+- **`.surface` is a flex column and page roots take `flex: 1`.** A page must own the height
+  between the nav and the footer; `NewJob`'s split stopped at 620px, so its closing rule landed
+  mid-page with a band of bare grid beneath it. The idle split spends the extra height *above*
+  the composer (`.composeGroup { margin-top: auto }`) so the field and the printer plate sit on
+  the same closing rule.
+- **A framed field expresses focus once** (`.field-frame`). The frame *is* the input, so the
+  textarea's own `:focus-visible` ring — 2px of accent, 2px inside the frame — is suppressed and
+  the frame carries the state: accent at line strength, the ground opens, the registration marks
+  close in. Two nested orange rectangles around the biggest object on the page read as an alarm.
+- **Prompt fields do not resize and do not accept unbounded text.** `MAX_PROMPT_CHARS`
+  (`components/promptLimits.ts`) caps both fields with a counter that only appears near the
+  ceiling; `resize` is `none` and `PromptZoom` replaces the handle — the same text on a centred
+  plate, page dimmed shallowly. A resize grip asks the writer to do layout, and its uncapped
+  drag could push the submit button off screen.
+
+The running view's stage follows the pipeline: it advances to the mesh when Phase 3 completes
+and to the **toolpath as soon as the slice exists**, and the printability report is rendered
+under the mesh stage (`PrintabilityCard` with `pending` for the window where the mesh is done
+and the score is not). The G-code preview used to be duplicated in a 240px slot in the rail,
+which is not where a 200-layer toolpath is read.
 
 ## Configuration
 

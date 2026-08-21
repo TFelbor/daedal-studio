@@ -5,17 +5,25 @@
 
 /* ── Idle: the split ───────────────────────────────────────────────────────── */
 
+/* Fills the surface between the nav and the footer. It used to stop at 620px, so on
+   any screen taller than about 740px the closing rule landed mid-page with a band of
+   bare grid beneath it — the page read as unfinished rather than as composed. The
+   min-height stays as the floor for short viewports, where there is no slack to take. */
 .split {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  flex: 1;
   min-height: min(72vh, 620px);
   border-bottom: 1px solid var(--rule);
 }
 
+/* The horizontal padding is the shared gutter, not a clamp of its own: the hero's left
+   edge has to stand on the same line as the logo above it and the credits below it, and
+   a clamp that reached 56px on a wide screen put it 16px inside both. */
 .splitCell {
   display: flex;
   flex-direction: column;
-  padding: clamp(32px, 4.4vw, 64px) clamp(20px, 3.9vw, 56px) clamp(36px, 4.7vw, 68px);
+  padding: clamp(32px, 4.4vw, 64px) var(--gutter) clamp(36px, 4.7vw, 68px);
   min-width: 0;
 }
 
@@ -36,6 +44,15 @@
   margin-bottom: 36px;
 }
 
+/* Whatever height a tall screen adds to the cell is spent here, above the composer,
+   rather than below the button: the field and the printer plate opposite it then sit
+   on the same closing rule, which is the line that makes the two columns read as one
+   spread. `margin-top: auto` sits on the group rather than on the form because the
+   notices belong to the field they qualify. */
+.composeGroup {
+  margin-top: auto;
+}
+
 .notice {
   margin-bottom: 16px;
 }
@@ -49,19 +66,17 @@
    The Blueprint frame *is* the field, so the textarea inside it carries no
    border of its own — a second rule 18px inside the first reads as a mistake. */
 
+/* Border, ground and the whole focus treatment come from `.field-frame` in
+   global.css; this only sets the field's own metrics. */
 .promptFrame {
-  border-color: var(--field-line);
-  /* The same sunken ground `.input`/`.textarea` use in global.css — the void at
-     half alpha, which no single token spells. */
-  background: rgba(13, 13, 13, 0.5);
   padding: 18px 18px 14px;
   margin-bottom: 14px;
 }
 
-.promptFrame:focus-within {
-  border-color: var(--accent);
-}
-
+/* `resize: none`, deliberately. The handle had no ceiling — the field could be dragged
+   past the height of the window, pushing the button it belongs to off screen — and a
+   resize grip asks the writer to do layout as the price of seeing their own sentence.
+   The Expand control does that job properly: same text, reading size, centred. */
 .promptInput {
   width: 100%;
   min-height: 78px;
@@ -72,7 +87,7 @@
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.55;
-  resize: vertical;
+  resize: none;
 }
 
 .promptInput::placeholder {
@@ -98,6 +113,43 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Everything that qualifies the field rather than configures the job. */
+.footerRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Held in the layout at zero opacity so its arrival shifts nothing beside it. */
+.counter {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-35);
+  opacity: 0;
+  transition: opacity 180ms ease, color 180ms ease;
+}
+
+.counterShown {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.expand {
+  display: inline-flex;
+  padding: 4px;
+  color: var(--ink-35);
+  transition: color 0.15s ease;
+}
+
+.expand:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.expand:disabled {
+  opacity: 0.4;
 }
 
 .selectWrap {
@@ -238,7 +290,7 @@
   align-items: flex-end;
   gap: 24px 32px;
   flex-wrap: wrap;
-  padding: 26px 40px 18px;
+  padding: 26px var(--gutter) 18px;
   border-bottom: 1px solid var(--rule);
 }
 
@@ -299,14 +351,23 @@
 
 /* ── Running: stage + rail ────────────────────────────────────────────────── */
 
+/* The running view is the same story: header, composer and grid stacked, with the
+   grid taking the slack so the rail's bottom edge is the footer's top edge. */
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .liveGrid {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 1fr var(--rail);
+  flex: 1;
 }
 
 .stagePane {
   border-right: 1px solid var(--rule);
-  padding: 24px 40px 34px;
+  padding: 24px var(--gutter) 34px;
   min-width: 0;
 }
 
@@ -433,6 +494,14 @@
   color: var(--ink-35);
 }
 
+/* The printability block under the mesh stage. Ruled off above so it reads as a
+   verdict *on* the artifact rather than as the next section of the page. */
+.meshQuality {
+  margin-top: 22px;
+  border-top: 1px solid var(--rule);
+  padding-top: 18px;
+}
+
 .processLog {
   margin-top: 26px;
 }
@@ -443,7 +512,7 @@
   display: flex;
   flex-direction: column;
   gap: 26px;
-  padding: 24px 32px 34px;
+  padding: 24px var(--gutter) 34px;
   min-width: 0;
 }
 
@@ -539,11 +608,11 @@
   .stagePane {
     border-right: none;
     border-bottom: 1px solid var(--rule);
-    padding: 20px 20px 28px;
+    padding: 20px var(--gutter) 28px;
   }
 
   .jobHeader {
-    padding: 22px 20px 16px;
+    padding: 22px var(--gutter) 16px;
   }
 
   .jobTitle {
@@ -551,7 +620,7 @@
   }
 
   .rail {
-    padding: 22px 20px 30px;
+    padding: 22px var(--gutter) 30px;
   }
 
   .tabs {

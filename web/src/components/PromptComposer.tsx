@@ -2,19 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 import { Marks } from './Blueprint';
 import { reportUi } from '../api/activity';
+import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from './promptLimits';
 import styles from './PromptComposer.module.css';
-
-/**
- * Hard cap on a prompt.
- *
- * Enforced but not advertised. A counter sitting at `0 / 250` from the first keystroke
- * turns writing a sentence into filling in a form — it makes people count instead of
- * describe. So the limit is invisible until it is nearly relevant: `maxLength` stops
- * the 251st character, and the remaining-count only appears inside COUNTER_REVEAL of
- * the end, which is the first moment it is information rather than pressure.
- */
-const MAX_CHARS = 250;
-const COUNTER_REVEAL = 40;
 
 interface PromptComposerProps {
   open: boolean;
@@ -50,7 +39,7 @@ export function PromptComposer({ open, busy, error, onSubmit, onCancel }: Prompt
   }, [open]);
 
   const trimmed = value.trim();
-  const remaining = MAX_CHARS - value.length;
+  const remaining = MAX_PROMPT_CHARS - value.length;
   const canSubmit = trimmed.length > 0 && !busy;
 
   /**
@@ -93,13 +82,13 @@ export function PromptComposer({ open, busy, error, onSubmit, onCancel }: Prompt
           </button>
         </div>
 
-        <div className={`blueprint marked-accent ${styles.frame}`}>
+        <div className={`blueprint marked-accent field-frame ${styles.frame}`}>
           <Marks />
           <textarea
             ref={inputRef}
             className={styles.input}
             value={value}
-            maxLength={MAX_CHARS}
+            maxLength={MAX_PROMPT_CHARS}
             placeholder="Describe the next part the way you would describe it to someone…"
             aria-label="Describe the object to print"
             disabled={busy}
@@ -129,7 +118,7 @@ export function PromptComposer({ open, busy, error, onSubmit, onCancel }: Prompt
               )}
             </span>
             <span className={styles.right}>
-              {/* Appears only near the ceiling. See MAX_CHARS. */}
+              {/* Appears only near the ceiling. See MAX_PROMPT_CHARS. */}
               <span
                 className={
                   remaining <= COUNTER_REVEAL
