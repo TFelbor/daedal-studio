@@ -24,6 +24,7 @@ import logging
 try:
     from sculptors import (
         BACKENDS,
+        DEFAULT_TARGET_FACES,
         SculptorBackend,
         SculptorError,
         create_sculptor,
@@ -32,6 +33,7 @@ try:
 except ImportError:  # pragma: no cover - depends on how the caller set sys.path
     from pythonsrc.sculptors import (  # type: ignore[no-redef]
         BACKENDS,
+        DEFAULT_TARGET_FACES,
         SculptorBackend,
         SculptorError,
         create_sculptor,
@@ -42,6 +44,7 @@ logger = logging.getLogger("p2p.sculptor")
 
 __all__ = [
     "BACKENDS",
+    "DEFAULT_TARGET_FACES",
     "SculptorBackend",
     "SculptorError",
     "create_sculptor",
@@ -83,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--faces",
         type=int,
-        default=5_000,
+        default=DEFAULT_TARGET_FACES,
         help="Target face count after decimation; 0 disables decimation",
     )
     parser.add_argument(

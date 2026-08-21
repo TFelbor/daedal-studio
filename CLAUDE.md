@@ -156,6 +156,11 @@ back *to*.
   reshuffle fails the load instead of silently reverting. Covers `trellis2` *and* `remote` — the
   worker runs this same code. Does **not** cover `pixazo`: that is someone else's deployment,
   and therefore a contract question, not a code one.
+- **The face budget is 100,000** (`DEFAULT_TARGET_FACES`), not 5,000. Derived from what
+  the printer can express: a 50mm model has roughly 5,000mm² of surface, so 100k faces
+  puts the average edge near 0.3mm — already under the 0.4mm nozzle and 0.2mm layer. At
+  5,000 the edges were ~1.4mm, three and a half nozzle widths, and TRELLIS.2's 195k-face
+  output arrived visibly faceted. Repair costs ~6s at this budget against Phase 2's 220s.
 - **New CLI/API knobs**: `--sculptor-backend`, `--pipeline-type`
   (`512`|`1024`|`1024_cascade`|`1536_cascade`), `--mesh-seed`, `--smooth`. `--mesh-seed` is
   *not* `--seed`: one reproduces the blueprint, the other the reconstruction, and a single value
@@ -425,6 +430,25 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
 - Escape-hole detection finds components whose bounding box nests inside another's, which is
   exactly what `Engineer.hollow_mesh`'s voxel erosion produces: a sealed cavity. It is fatal only
   when the mesh was actually hollowed.
+
+### Orientation and adhesion (Phase 3 → Phase 4)
+
+- **`Engineer.orient_for_print` does not rotate.** It used to take the axis with the
+  *smallest* extent to be the flat one and rotate that onto Z, so anything that stands
+  up — the thinnest axis of a figurine is left-to-right — was laid on its side on every
+  job. Its docstring claimed the opposite of the code. The rotation was also
+  unnecessary: Phase 2 already knows which way is up from the backend's `up_axis`, and a
+  bounding box cannot recover that. It now centres in X/Y and sits the part on Z=0.
+  Choosing a better *print* orientation is a real optimisation, but it is a search over
+  candidate rotations scored against the process profile, not an argmin over three
+  numbers.
+- **Adhesion follows the measurement** (`pipeline._adhesion_args`). The bundled
+  definition slices with a skirt, which primes the nozzle and touches nothing. When
+  `bed_contact` does not pass, Phase 4 is given `-s adhesion_type=brim`. A brim rather
+  than modelled base geometry: it peels off, and it does not print a part other than the
+  one that was asked for. Note that `adhesion_type` in `pythonsrc/profiles/*.json` is
+  **not** read by the slicer — those are printer-connection profiles; CuraEngine's
+  settings come from the `-j` definitions and `-s` overrides.
 
 ### Printer Operators (pythonsrc/operators/)
 

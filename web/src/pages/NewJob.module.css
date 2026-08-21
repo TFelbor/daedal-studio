@@ -360,6 +360,8 @@
    artifact panel dropped into it needs no background of its own. A panel that
    *does* paint an opaque ground (the mesh viewer) simply covers this one. */
 .stage {
+  /* Label offset (20px) + its line-height, so the artifact clears it. */
+  --stage-inset: 40px;
   position: relative;
   height: clamp(320px, 52vh, 520px);
   overflow: hidden;
@@ -369,9 +371,17 @@
   background-size: 40px 40px;
 }
 
+/* The artifact is inset equally on all four sides, so a square blueprint sits in
+   the frame rather than bleeding off its top and bottom edges. With `inset: 0` and
+   no padding, a 1024x1024 render filled the stage's full height exactly, touched
+   both horizontal rules, and passed under the phase label in the top-left corner.
+   The inset is the label's own offset plus its line, so clearing the label and
+   centring the artifact are the same number. */
 .stageBody {
   position: absolute;
   inset: 0;
+  padding: var(--stage-inset);
+  box-sizing: border-box;
 }
 
 /* Sits above the artifact so the frame always says which phase drew it. */
