@@ -919,7 +919,11 @@ export function NewJob() {
 
           <Blueprint tone="accent" className={styles.stage}>
             <span className={styles.stageLabel}>PHASE {pad2(activeTabPhase)} · OUTPUT</span>
+            {/* Keyed on the tab so both remount at a handoff: the sweep crosses the
+                top rule, then the new output drifts in from upstream. */}
+            <span key={`sweep-${activeTab}`} className={styles.handoff} aria-hidden="true" />
             <div
+              key={activeTab}
               className={styles.stageBody}
               id="stage-panel"
               role="tabpanel"
@@ -1058,6 +1062,7 @@ export function NewJob() {
                 {/* The colour lives on this span so the icon keeps `currentColor`:
                     a CSS variable in an SVG attribute would not resolve. */}
                 <span
+                  key={p.status}
                   className={`${styles.railMark} ${MARK_CLASS[p.status]}`}
                   role="img"
                   aria-label={MARK_LABEL[p.status]}

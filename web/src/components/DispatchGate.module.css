@@ -6,6 +6,14 @@
   border-bottom: 1px solid var(--rule);
   background: var(--void);
   padding: 22px var(--gutter) 24px;
+  /* The last handoff on the line: the sliced job arrives at the person. */
+  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate {
+    animation: none;
+  }
 }
 
 .head {
