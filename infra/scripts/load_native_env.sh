@@ -8,17 +8,19 @@
 # `.env` is the *containers'* environment. Compose hands it to services whose
 # filesystem is the image's, so it legitimately holds absolute container paths:
 #
-#   TELEMETRY_DB_PATH=/app/telemetry/telemetry.db
+#   FLUX_MODEL_PATH=/models/flux
+#   HF_HOME=/models/hf_cache
 #
-# Exporting that into a process running natively on macOS points the server at
-# `/app`, which is the read-only root. `ConfigStore` then dies at import time with
+# Exporting one of those into a process running natively on macOS points it at a
+# directory that does not exist, or at `/`, which is read-only — a crash before
+# uvicorn ever binds a port.
 #
-#   OSError: [Errno 30] Read-only file system: '/app'
-#
-# before uvicorn ever binds a port. Worse than the crash: had `/app` been
-# writable, a native run would have silently used a *different, empty* telemetry
-# database than the one it has been writing to all along
-# (`~/.p2p-mesh/telemetry.db`), and no error would have said so.
+# `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` used to be the worst example, and
+# it is no longer in `.env` at all: the database is now the single host file
+# `~/.p2p-mesh/telemetry.db`, bind-mounted into the containers, so no execution mode
+# needs the variable. It was not just a crash risk — while it was set, container
+# runs and native runs used two *different* databases and nothing said so. See
+# "One database" in CLAUDE.md.
 #
 # So only keys that mean the same thing on both sides of the container boundary
 # are lifted across — credentials and backend selection. Every path is left at its
