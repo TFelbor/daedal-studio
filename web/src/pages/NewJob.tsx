@@ -888,6 +888,9 @@ export function NewJob() {
     .filter(Boolean)
     .join(' · ');
 
+  /** True when a bundled fixture stood in for Phase 1 or Phase 2. */
+  const usedFixtures = currentJob?.used_reference_assets === true;
+
   const activeTabPhase = STAGE_TABS.find(t => t.id === activeTab)?.phase ?? 1;
   const meshRepaired = phases.find(p => p.phase === 3)?.status === 'complete';
   const sliceReady = currentJob?.slice_status === 'success' || currentJob?.layer_count != null;
@@ -895,11 +898,22 @@ export function NewJob() {
 
   const caption: { left: string; right: string } = {
     blueprint: {
-      left: 'Blueprint drawn from the prompt',
-      right: currentJob?.blueprint_seed != null ? `seed ${currentJob.blueprint_seed}` : 'seed recorded when phase 01 runs',
+      // A fixture run must not caption a bundled image as a render of this prompt. The
+      // `dev-` directory prefix and `used_reference_assets` kept fixture runs out of the
+      // dataset; this is the same honesty on the page a person is looking at.
+      left: usedFixtures
+        ? 'Reference blueprint — a fixture, not a render of this prompt'
+        : 'Blueprint drawn from the prompt',
+      right: currentJob?.blueprint_seed != null
+        ? `seed ${currentJob.blueprint_seed}`
+        : usedFixtures
+          ? 'no seed — nothing was sampled'
+          : 'seed recorded when phase 01 runs',
     },
     mesh: {
-      left: 'Repaired geometry, scaled to the print bed',
+      left: usedFixtures
+        ? 'Reference mesh, repaired and scaled to the print bed'
+        : 'Repaired geometry, scaled to the print bed',
       right: meshRepaired ? '.OBJ' : 'awaiting phase 03',
     },
     slice: {
@@ -925,6 +939,14 @@ export function NewJob() {
             </button>
             <span className="label">{headLabel}</span>
             <span className="mono">{jobId.slice(0, 8)}</span>
+            {usedFixtures && (
+              <span
+                className={styles.fixtureTag}
+                title="Phase 1 or Phase 2 was skipped with nothing real to work from, so a bundled reference asset stood in. Nothing on this page came from a model."
+              >
+                Fixture inputs
+              </span>
+            )}
             {!wsConnected && jobActive && <span className="status status-off">Polling</span>}
           </div>
           <h1 className={styles.jobTitle}>{prompt || currentJob?.prompt}</h1>

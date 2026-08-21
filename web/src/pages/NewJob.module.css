@@ -251,6 +251,20 @@
   white-space: nowrap;
 }
 
+/* Says the inputs are fixtures. Boxed rather than coloured: this is not an error and
+   not a status, it is a label on the provenance of what is on screen. */
+.fixtureTag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-58);
+  white-space: nowrap;
+  padding: 2px 7px;
+  border: 1px solid var(--rule-strong);
+  cursor: help;
+}
+
 .printerBlock {
   margin-top: auto;
   padding-top: 38px;
