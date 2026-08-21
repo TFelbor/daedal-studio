@@ -94,6 +94,10 @@ export interface JobStatusResponse {
   outcome_source: string | null;
   /** The printer finished, but no human has confirmed the part survived. */
   awaiting_verdict: boolean;
+  /** A bundled fixture stood in for Phase 1 or Phase 2 — nothing here came from a
+   *  model. Null on rows written before the column existed, which is not the same
+   *  as a verified false. */
+  used_reference_assets: boolean | null;
   /** Where the job stands with Phase 5. See `dispatch_state` in server/app.py. */
   dispatch_state?: 'not_ready' | 'awaiting_confirmation' | 'dispatched';
   /** The printer a dispatch would go to, resolved when the job was read. */

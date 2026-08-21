@@ -129,6 +129,39 @@ def _install_dev_asset(source: Path, destination: Path, what: str) -> None:
     )
 
 
+def _should_install_reference_blueprint(args, blueprint_path: Path) -> bool:
+    """Whether this run needs the bundled blueprint stood in for Phase 1.
+
+    True when Phase 1 was skipped with nothing at that path — including when Phase 2 is
+    skipped as well. That last case used to be excluded (`and not args.skip_sculptor`),
+    on the reasoning that a skipped Phase 2 has nothing to hand the image to. It is the
+    commonest dev configuration there is: both `SKIP_VISUALIZER` and `SKIP_SCULPTOR` set
+    in the config store is how the UI runs Phases 3-5 on a machine with no GPU. Those
+    runs installed the reference mesh, no blueprint, and said nothing — exit 0, a `dev-`
+    directory holding `raw_mesh.obj` alone, an empty blueprint stage in the running view
+    and NULL for every Phase 1 provenance column. Phase 2 is not the blueprint's only
+    consumer.
+
+    False when `--mesh` supplied the geometry. That run is not a fixture run — nothing
+    in it came from `assets/dev_reference/`, so `_will_use_reference_assets` is False and
+    its outputs land in the real namespace. Standing a blueprint in there would put a
+    fabricated input beside real artifacts and record its hash as this job's Phase 1
+    provenance, which is the one thing the `dev-` prefix exists to prevent.
+
+    Args:
+        args: Parsed CLI arguments.
+        blueprint_path: Where Phase 1's output is expected.
+
+    Returns:
+        True if the bundled reference blueprint should be copied to `blueprint_path`.
+    """
+    if not args.skip_visualizer:
+        return False
+    if blueprint_path.exists():
+        return False
+    return not args.mesh
+
+
 def _blueprint_is_stand_in(path: Path) -> bool:
     """True when this image is a stand-in rather than something Phase 1 rendered.
 
@@ -738,12 +771,21 @@ def run(args: argparse.Namespace) -> None:
             _phase_fail(1, t0, exc)
     else:
         logger.info("Skipping Phase 1 — using existing blueprint: %s", blueprint_path)
-        if not blueprint_path.exists() and not args.skip_sculptor:
+        if _should_install_reference_blueprint(args, blueprint_path):
             try:
                 _install_dev_asset(DEV_REFERENCE_BLUEPRINT, blueprint_path, "blueprint")
             except Exception as e:
                 logger.error("Failed to install the reference blueprint: %s", e)
                 sys.exit(1)
+        elif not blueprint_path.exists():
+            # `--skip-sculptor --mesh real.obj` with no blueprint: legitimately nothing
+            # to show. Said out loud, because the running view's first stage will be
+            # empty and an unexplained empty stage reads as a broken pipeline.
+            logger.warning(
+                "No blueprint at %s and none will be installed — the mesh came from "
+                "--mesh, so there is no Phase 1 output to show or hash.",
+                blueprint_path,
+            )
 
         # Checked by content every time, not just when this run installed it: a stand-in
         # left behind by an earlier run is still a stand-in, and Phase 2 must refuse to

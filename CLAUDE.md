@@ -78,7 +78,29 @@ fixture must not sit in the real namespace looking like one a model made.
 `_will_use_reference_assets` is the predicate, and it is deliberately narrower than "a
 phase was skipped": the primary Mac workflow always passes `--skip-visualizer` because
 Phase 1 just ran natively, and `--skip-sculptor --mesh real.obj` supplies its own. Only a
-*substitution* earns the prefix. `_blueprint_is_stand_in` recognises the reference
+*substitution* earns the prefix.
+
+**Both phases skipped is the commonest dev configuration, and it used to get no
+blueprint at all.** `SKIP_VISUALIZER` + `SKIP_SCULPTOR` in the config store is how the
+UI runs Phases 3-5 on a machine with no GPU, and the install condition read `if not
+blueprint_path.exists() and not args.skip_sculptor` — withholding the image whenever
+Phase 2 was skipped too, on the reasoning that a skipped Phase 2 has nothing to hand it
+to. Phase 2 is not the blueprint's only consumer: it is the first thing the running view
+shows and its hash is the job's only Phase 1 provenance. Those runs exited 0 with a
+`dev-` directory holding `raw_mesh.obj` alone, an empty blueprint stage, NULL for every
+`blueprint_*` column, and nothing in the log saying so.
+`_should_install_reference_blueprint` is the decision now: skipped Phase 1, nothing at
+the path, **and no `--mesh`**. That last clause is the honest exception — a run that
+supplied its own geometry is not a fixture run, its outputs land in the real namespace,
+and inventing a blueprint there would stamp a fabricated input's hash as this job's
+provenance. That case logs a warning instead, because an unexplained empty first stage
+reads as a broken pipeline.
+
+**The fixture flag is carried out to the UI, not only to the dataset.**
+`GET /jobs/{id}` returns `used_reference_assets`, and the running view shows a
+`Fixture inputs` badge and re-captions the blueprint and mesh stages. Without it the
+page captions a bundled image "Blueprint drawn from the prompt" — the same lie the
+`dev-` prefix exists to prevent, told to the person instead of to the query. `_blueprint_is_stand_in` recognises the reference
 blueprint by hash and the legacy flat rectangles by pixels — that guard is the only thing
 stopping a per-generation backend from being billed to reconstruct a fixture, and the old
 files persist on the shared blueprint path.

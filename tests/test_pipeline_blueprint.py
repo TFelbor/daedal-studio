@@ -24,6 +24,7 @@ from pythonsrc.pipeline import (
     _blueprint_is_placeholder,
     _blueprint_is_stand_in,
     _install_dev_asset,
+    _should_install_reference_blueprint,
     _job_outputs_dir,
     _will_use_reference_assets,
 )
@@ -210,3 +211,103 @@ def test_the_server_serves_artifacts_out_of_a_dev_directory():
     finally:
         artifact.unlink()
         directory.rmdir()
+
+
+# ── Which runs get a stand-in blueprint ──────────────────────────────────────
+
+
+def test_both_phases_skipped_still_gets_a_blueprint(tmp_path: Path):
+    """The commonest dev configuration, and the one that silently got nothing.
+
+    Setting both config-store flags — `SKIP_VISUALIZER` and `SKIP_SCULPTOR`, which is
+    how the UI runs Phases 3-5 on a machine with no GPU — used to install the reference
+    *mesh* and no blueprint at all: the condition withheld it whenever Phase 2 was also
+    skipped, on the reasoning that a skipped Phase 2 has nothing to hand it to. But
+    Phase 2 is not the blueprint's only consumer. It is the first thing the running view
+    shows, and its hash is the job's only Phase 1 provenance. Every `dev-` job directory
+    on this machine came out with `raw_mesh.obj` and no `blueprint.png`, exit code 0, and
+    nothing in the log saying so.
+    """
+    assert _should_install_reference_blueprint(
+        _args(skip_visualizer=True, skip_sculptor=True), tmp_path / "missing.png"
+    ) is True
+
+
+def test_a_skipped_phase_1_alone_gets_a_blueprint(tmp_path: Path):
+    """Phase 2 is going to run and needs an image to reconstruct."""
+    assert _should_install_reference_blueprint(
+        _args(skip_visualizer=True), tmp_path / "missing.png"
+    ) is True
+
+
+def test_a_supplied_mesh_gets_no_invented_blueprint(tmp_path: Path):
+    """`--skip-sculptor --mesh real.obj` is a real run, so it stays honestly empty.
+
+    Nothing in it came from a fixture, so `_will_use_reference_assets` is False and the
+    outputs land in the real namespace. Installing a blueprint there would put a
+    fabricated input beside real artifacts and stamp its hash as this job's Phase 1
+    provenance.
+    """
+    mesh = tmp_path / "real.obj"
+    mesh.write_text("o real\n")
+    assert _should_install_reference_blueprint(
+        _args(skip_visualizer=True, skip_sculptor=True, mesh=str(mesh)),
+        tmp_path / "missing.png",
+    ) is False
+
+
+def test_an_existing_blueprint_is_never_replaced(tmp_path: Path):
+    """The native Mac path: Phase 1 just ran and wrote it."""
+    blueprint = tmp_path / "blueprint.png"
+    Image.new("RGB", (1024, 1024), color=(1, 2, 3)).save(blueprint)
+    assert _should_install_reference_blueprint(
+        _args(skip_visualizer=True, skip_sculptor=True), blueprint
+    ) is False
+
+
+def test_nothing_is_installed_when_phase_1_runs(tmp_path: Path):
+    """Phase 1 is about to write a real blueprint at that path."""
+    assert _should_install_reference_blueprint(
+        _args(), tmp_path / "missing.png"
+    ) is False
+
+
+def test_the_fixture_flag_reaches_the_running_view():
+    """A fixture blueprint must not be presented as something the model drew.
+
+    The `dev-` prefix and `used_reference_assets` kept fixture runs out of the dataset,
+    but nothing told the *person* looking at the page: the running view captioned the
+    reference blueprint "drawn from the prompt" like any other. Now that a both-phases-
+    skipped run actually installs one, that caption would be a straight lie, so the flag
+    has to come out of `GET /jobs/{id}` where the UI can say so.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+    from pythonsrc.telemetry.db import TelemetryDB
+    from pythonsrc.telemetry.schema import PrintJob
+
+    job_id = str(uuid.uuid4())
+    db = TelemetryDB()
+    db.init_schema()
+    db.insert_job(
+        PrintJob(
+            job_id=job_id,
+            prompt="a low poly planter",
+            printer_id="default",
+            printer_firmware="octoprint",
+            slicer="cura",
+            profile_name="pythonsrc/profiles/ender3.json",
+            started_at=datetime.now(timezone.utc),
+            completed_at=None,
+            outcome="unknown",
+        )
+    )
+    db.update_job_run_context(job_id, git_sha="abc1234", used_reference_assets=True)
+    db.close()
+
+    body = TestClient(app).get(f"/jobs/{job_id}").json()
+    assert body["used_reference_assets"] is True
