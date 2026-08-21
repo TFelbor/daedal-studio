@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_INTERVAL_S = 30.0
 STALE_AFTER_S = 120.0
 
+# SQLite's wording when a table is absent. Matched as a substring rather than by
+# exception type so a caller passing a duck-typed database is treated the same way.
+MISSING_TABLE_ERROR = "no such table"
+
 
 class CollectorClaim:
     """Tracks whether this collector is the designated writer for a job."""
@@ -47,6 +51,7 @@ class CollectorClaim:
         self._holds_claim: bool | None = None
         self._last_heartbeat = 0.0
         self._stood_down_logged = False
+        self._unavailable_logged = False
 
     def may_write(self, now: float) -> bool:
         """Whether this collector should persist the sample it just received.
@@ -55,7 +60,8 @@ class CollectorClaim:
             now: Current monotonic time, used to throttle heartbeat writes.
 
         Returns:
-            True if this collector holds the claim (or arbitration is unavailable).
+            True if this collector holds the claim, or arbitration is unavailable
+            *and* the sample can still be written.
         """
         if self._holds_claim is True and (now - self._last_heartbeat) < HEARTBEAT_INTERVAL_S:
             return True
@@ -63,13 +69,9 @@ class CollectorClaim:
         try:
             granted = self.db.try_claim_collector(self.job_id, self.owner, STALE_AFTER_S)
         except Exception as exc:
-            # No claim table (e.g. a standalone pipeline run against a fresh DB) —
-            # there is no second collector to conflict with in that case, so collect.
-            logger.debug("Collector claim unavailable for job %s: %s", self.job_id, exc)
-            self._holds_claim = True
-            self._last_heartbeat = now
-            return True
+            return self._arbitration_failed(exc, now)
 
+        self._unavailable_logged = False
         if granted:
             if self._holds_claim is not True:
                 logger.info(
@@ -89,6 +91,49 @@ class CollectorClaim:
                 other,
             )
             self._stood_down_logged = True
+        return False
+
+    def _arbitration_failed(self, exc: Exception, now: float) -> bool:
+        """Decide whether to write when the claim table could not be consulted.
+
+        Two very different failures arrive here and they call for opposite answers:
+
+        * **The claim table does not exist** — a standalone pipeline run against a
+          database predating ``telemetry_collector_claim``. Arbitration is genuinely
+          unavailable, but there is no second collector to conflict with either, and
+          the sample itself can still be written. Collect.
+        * **The database is unreachable** — unopenable file, locked, corrupt. This
+          used to take the same branch, which told the collector it had *won* a claim
+          it never took: it went on to ``insert_sample``, died there instead, and the
+          caller reported the result as a connection error. Nothing can be written by
+          anyone, so decline and name the real cause.
+
+        Args:
+            exc: The failure raised by ``try_claim_collector``.
+            now: Current monotonic time, used to throttle heartbeat writes.
+
+        Returns:
+            True if the sample should still be written despite the failure.
+        """
+        if MISSING_TABLE_ERROR in str(exc).lower():
+            logger.debug("Collector claim unavailable for job %s: %s", self.job_id, exc)
+            self._holds_claim = True
+            self._last_heartbeat = now
+            return True
+
+        # Not "someone else owns it" — nobody does, and this collector does not know
+        # whether it would have won. Every later sample retries, so a locked database
+        # recovers on its own and logs the recovery as a fresh claim.
+        self._holds_claim = None
+        if not self._unavailable_logged:
+            logger.error(
+                "%s cannot claim job %s — the telemetry database is unreachable, so "
+                "no telemetry will be recorded for this print: %s",
+                self.label,
+                self.job_id,
+                exc,
+            )
+            self._unavailable_logged = True
         return False
 
     def release(self) -> None:

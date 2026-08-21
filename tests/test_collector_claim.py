@@ -1,6 +1,8 @@
 """Two collectors must never both write telemetry for the same job."""
 
 import asyncio
+import logging
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -103,12 +105,76 @@ def test_owner_keeps_claim_across_heartbeats(memory_db):
     assert memory_db.get_collector_claim(JOB_ID) == owner.owner
 
 
-def test_claim_failure_falls_back_to_collecting(memory_db):
-    """If arbitration is unavailable, collect rather than silently drop telemetry."""
+def test_missing_claim_table_falls_back_to_collecting(memory_db):
+    """With no claim table there is no rival collector either, so collect."""
 
-    class BrokenDB:
+    class NoClaimTableDB:
         def try_claim_collector(self, *a, **k):
             raise RuntimeError("no such table: telemetry_collector_claim")
 
-    claim = CollectorClaim(BrokenDB(), JOB_ID, "standalone")
+    claim = CollectorClaim(NoClaimTableDB(), JOB_ID, "standalone")
     assert claim.may_write(now=0.0) is True
+
+
+class UnreachableDB:
+    """A database that cannot be opened at all — root-owned directory, corrupt file."""
+
+    def try_claim_collector(self, *a, **k):
+        raise sqlite3.OperationalError("unable to open database file")
+
+
+def test_unreachable_database_does_not_grant_a_claim(memory_db):
+    """An unopenable database must not read as "arbitration unavailable".
+
+    Failing open here told the collector it had won a claim it never took: it went on
+    to insert the sample, died there instead, and the caller reported the result as a
+    connection error.
+    """
+    claim = CollectorClaim(UnreachableDB(), JOB_ID, "server")
+
+    assert claim.may_write(now=0.0) is False
+    assert claim.may_write(now=1.0) is False
+    # Nothing was claimed, so nothing is released — UnreachableDB has no release
+    # method, and calling one would raise AttributeError.
+    claim.release()
+
+
+def test_unreachable_database_is_reported_once_and_loudly(memory_db, caplog):
+    """Silence would strand a print with no telemetry and no explanation.
+
+    One ERROR, not one per sample: telemetry arrives about every second and the cause
+    does not change between them.
+    """
+    claim = CollectorClaim(UnreachableDB(), JOB_ID, "server")
+
+    with caplog.at_level(logging.DEBUG, logger="pythonsrc.telemetry.collector_claim"):
+        claim.may_write(now=0.0)
+        claim.may_write(now=1.0)
+        claim.may_write(now=2.0)
+
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert "unable to open database file" in errors[0].getMessage()
+    assert JOB_ID in errors[0].getMessage()
+
+
+def test_claim_is_taken_once_the_database_comes_back(memory_db):
+    """A locked database is transient; a collector that gave up on it forever is not."""
+
+    class FlakyDB:
+        def __init__(self, real):
+            self.real = real
+            self.broken = True
+
+        def try_claim_collector(self, *a, **k):
+            if self.broken:
+                raise sqlite3.OperationalError("database is locked")
+            return self.real.try_claim_collector(*a, **k)
+
+    db = FlakyDB(memory_db)
+    claim = CollectorClaim(db, JOB_ID, "server")
+    assert claim.may_write(now=0.0) is False
+
+    db.broken = False
+    assert claim.may_write(now=1.0) is True
+    assert memory_db.get_collector_claim(JOB_ID) == claim.owner

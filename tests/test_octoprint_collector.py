@@ -1,5 +1,7 @@
 import pytest
 import asyncio
+import logging
+import sqlite3
 from types import SimpleNamespace
 from unittest.mock import patch
 from datetime import datetime, timezone
@@ -286,3 +288,78 @@ async def test_octoprint_collector_stop_cancels_task(memory_db, patch_session):
         await asyncio.sleep(0.05)
 
     assert collector._bg_task.done() or collector._bg_task.cancelled()
+
+
+CURRENT_FRAME = {
+    "currentZ": 5.0,
+    "temps": [{"tool0": {"actual": 200.0, "target": 205.0}, "bed": {"actual": 60.0, "target": 60.0}}],
+}
+
+
+def _unwritable(*args, **kwargs):
+    raise sqlite3.OperationalError("unable to open database file")
+
+
+@pytest.mark.asyncio
+async def test_database_failure_is_not_reported_as_a_connection_error(memory_db, caplog):
+    """A failed write must not reach _run_loop's blanket handler.
+
+    Unguarded, it was logged there as "OctoPrint connection error" and dropped a
+    websocket that was working perfectly; the socket reconnected on a backoff, and the
+    next sample tore it down again. The cause named in the log was the one thing that
+    was not wrong.
+    """
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    memory_db.insert_sample = _unwritable
+
+    with caplog.at_level(logging.ERROR):
+        await collector._on_current(dict(CURRENT_FRAME))
+
+    assert collector.sample_queue.empty(), "an unpersisted sample must not be fanned out"
+    assert "unable to open database file" in caplog.text
+    assert "connection error" not in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_repeated_write_failures_are_logged_once(memory_db, caplog):
+    """Samples arrive about every second; the cause does not change between them."""
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    memory_db.insert_sample = _unwritable
+
+    with caplog.at_level(logging.DEBUG, logger="pythonsrc.telemetry.octoprint_collector"):
+        for _ in range(5):
+            await collector._on_current(dict(CURRENT_FRAME))
+
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_failure_is_reported_again_after_a_recovery(memory_db, caplog):
+    """A second outage is news; only an unbroken run of the same failure is not."""
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    real_insert = memory_db.insert_sample
+
+    with caplog.at_level(logging.DEBUG, logger="pythonsrc.telemetry.octoprint_collector"):
+        memory_db.insert_sample = _unwritable
+        await collector._on_current(dict(CURRENT_FRAME))
+        memory_db.insert_sample = real_insert
+        await collector._on_current(dict(CURRENT_FRAME))
+        memory_db.insert_sample = _unwritable
+        await collector._on_current(dict(CURRENT_FRAME))
+
+    assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 2
+    assert len(memory_db.get_samples("test-job-123")) == 1
+
+
+@pytest.mark.asyncio
+async def test_outcome_write_failure_does_not_break_the_socket(memory_db, caplog):
+    """The same guard on the other DB write in the frame path."""
+    collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
+    memory_db.update_job_outcome_verdict = _unwritable
+
+    with caplog.at_level(logging.ERROR):
+        await collector._on_event({"type": "PrintDone"})
+
+    assert "awaiting_verdict" in caplog.text
+    assert "unable to open database file" in caplog.text

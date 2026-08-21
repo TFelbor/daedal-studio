@@ -359,6 +359,18 @@ FastAPI application with:
   database that read as a confident 40% when the honest answer was "no data".
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
+  **Arbitration being unavailable is not the same as the database being broken.** Only
+  `no such table` takes the fail-open branch — that is an older database with no claim
+  table and therefore no rival collector, and the sample can still be written. Every
+  other error means nothing can be written by anyone, and failing open there told the
+  collector it had *won* a claim it never took: it went on to `insert_sample`, died
+  there instead, and `_run_loop`'s blanket handler logged the result as `OctoPrint
+  connection error` — the one thing that was not wrong. An unreachable database now
+  logs one ERROR naming itself and the collector declines, and both DB writes in
+  `octoprint_collector` (`_on_current`, `_on_event`) are guarded so a storage fault
+  cannot masquerade as a dropped socket and tear down a working websocket once per
+  sample. Repeat failures are demoted to DEBUG until one succeeds, because telemetry
+  arrives about once a second.
 - **Print outcome is a product feature, not a column** (`outcome`, `outcome_source`,
   `outcome_reported_at`). `outcome_source` is `machine` or `user`, and **only `user` is ground
   truth**. A pipeline that exits 0 after dispatching a print, and an OctoPrint `PrintDone` event,
