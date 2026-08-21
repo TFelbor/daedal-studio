@@ -250,7 +250,10 @@ FastAPI application with:
   reports the response rate. The outcome endpoint takes an optional signed token from the outset
   so email or webhook delivery is a config change rather than a refactor.
 - `GET /jobs/{id}/download` logs a `download` event and increments `download_count` before
-  streaming — the response is lazy and may be abandoned mid-flight.
+  streaming — the response is lazy and may be abandoned mid-flight. `?preview=1` serves the
+  same bytes and records nothing: the toolpath viewer polls this endpoint to *render* the
+  G-code, and without the flag `download_count` was a component-mount counter, not the
+  "a person chose to keep this" signal it is documented as.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[P2P]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
@@ -295,11 +298,34 @@ FastAPI application with:
   gave every job started in the same second an identical image. `blueprint_spec.py` holds the
   seed and prompt logic torch-free so the pipeline, server and tests can use it without the
   Phase 1 stack.
+- **The blueprint sidecar carries Phase 1 provenance across the process boundary.** The
+  primary Mac workflow runs the visualizer as its own native process and the pipeline with
+  `--skip-visualizer`, which used to record only the image hash — seed, prompt, model all
+  NULL for every job on that path. `write_sidecar()`/`read_sidecar()` in `blueprint_spec.py`
+  serialize the `BlueprintResult` next to the PNG; the sidecar stores the image's own sha256
+  and a mismatch reads as *no sidecar*, because the blueprint path is shared and a stale
+  sidecar attributing an old seed to a new image is worse than none. The pipeline reads it
+  back on the skip path; do not "simplify" this into recording only the hash again.
+- **Run context**: `git_sha` and `used_reference_assets`, written by
+  `pipeline._record_run_context()` before any phase runs. The fixture flag used to exist only
+  in the output directory's `dev-` prefix — nothing queryable — which made fixture runs the
+  largest training-set contamination risk. False is written as 0, not skipped: "verified real"
+  must stay distinguishable from "predates the column". `git_sha` resolves via
+  `pythonsrc/telemetry/run_context.py` ($P2P_GIT_SHA beats `git rev-parse`; the server stamps
+  it into the container env, which carries no .git).
+- **Dispatch provenance**: `dispatched_printer_url`, written at the moment of dispatch by the
+  gate endpoint, the pipeline's Phase 5 and `run_operator.py` — deliberately the *pre*-Docker-
+  rewrite URL, since `host.docker.internal` is a container artifact. This is the only thing
+  that distinguishes simulator telemetry (localhost:5001) from real hardware; `printer_id` is
+  a constant and profiles are resolved on read.
 - **Mesh lineage**: `raw_mesh_sha256` / `raw_mesh_features` and `repaired_mesh_sha256` /
   `repaired_mesh_features` bracket Phase 3, making repair's effect measurable. `mesh_features`
   keeps its existing meaning — the printed mesh. Written by `pipeline._record_mesh_lineage()`
   via `printability.extract_features(mesh, thickness=False)` on the raw mesh; the voxel wall
   thickness pass is skipped there because it is expensive and meaningless before scaling.
+  `repair_report` (from `Engineer.last_report`) rides along: which repair path ran
+  (manifold / trimesh_fallback / voxel_remesh), rounds, faces dropped, and the scale factor —
+  previously log-only, which made "did voxel remeshing hurt outcomes" unanswerable.
 - **Slice results**: `slice_status` (`success`/`failed`/`skipped`), `slice_error`,
   `slice_duration_s`, `estimated_print_time_s`, `filament_used_mm`/`_mm3`/`_g`,
   `support_filament_mm3`, `layer_count`, `slice_stats`. Recorded on failure too — a dataset of
@@ -374,20 +400,46 @@ FastAPI application with:
   the file*, so enabling it from the host would leave the container unable to open
   the database at all. The real fix is one writer, which the existing
   `internal_telemetry.send_internal_telemetry` relay already makes possible; until
-  then, `db.integrity_check()` runs in the server's startup event and logs loudly,
-  `GET /health` reports `database.healthy`, and `db.backup_to()` takes a rotating
-  snapshot (`DB_BACKUP_COPIES`) using SQLite's online backup API — **only when the
-  check passes**, so a corrupt file cannot launder itself through every slot. It
-  refuses rather than hangs if the caller holds an open transaction.
+  then, `db.integrity_check()` runs in the server's startup event, again every
+  `$P2P_DB_BACKUP_INTERVAL_MIN` minutes (default 360, 0 disables), and on
+  `POST /system/database/backup`; `GET /health` reports `database.healthy`, and
+  `db.backup_to()` takes a rotating snapshot (`$P2P_DB_BACKUP_COPIES`, default 5)
+  using SQLite's online backup API — **only when the check passes**, so a corrupt
+  file cannot launder itself through every slot. It refuses rather than hangs if
+  the caller holds an open transaction.
+
+  **Off-disk mirror**: every verified snapshot is additionally copied to
+  `$P2P_DB_BACKUP_MIRROR_DIR` when that is set (it is deliberately unset until the
+  data is worth keeping; the intended target is the Drive-synced data-collection
+  folder). The copy runs on a **daemon thread**, staged as `.part` then renamed —
+  the Drive File Provider mount was measured blocking a directory listing for 10+
+  seconds, so nothing Drive-facing may ever run on the event loop or the startup
+  path. `$P2P_DB_BACKUP_MIRROR_COPIES` (default 10) prunes the mirror.
+  `tests/test_db_backup_policy.py` holds all of this.
 
   `tests/test_single_database.py` is the regression guard: it fails if compose or
   `.env.template` starts pinning the variable again, or if a telemetry volume reappears.
-- **`job_event` has no foreign key onto `print_job`**, so deleting a job leaves its
-  events behind. `feedback_funnel()` and `count_job_events()` therefore join `print_job`,
-  and `count_orphaned_job_events()` reports the debris. Without the join the pilot's
-  headline response rate is computed over jobs that no longer exist — on one real
-  database that read as a confident 40% when the honest answer was "no data".
+- **Foreign keys are enforced** (`PRAGMA foreign_keys = ON`, per connection in
+  `_configure_connection`). They were declared and decorative — SQLite's default —
+  which is the actual root cause of the orphaned-events incident. A sample, job
+  event or failure event for a nonexistent job is now refused at write time.
+  `feedback_funnel()` and `count_job_events()` keep their `print_job` joins and
+  `count_orphaned_job_events()` stays, because databases written before the pragma
+  still carry orphans. Tests that need a legacy orphan suspend the pragma explicitly.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **The server-side collector attaches when Phase 5 starts, not at job creation**
+  (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
+  banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
+  the job for the entire pipeline — hours of a machine printing nothing, shaped exactly
+  like print telemetry. `OctoPrintCollector` also takes a `gcode_filename` and ignores
+  printer events naming any other file: the socket reports every print on the machine,
+  and a Benchy someone started from the OctoPrint UI used to settle our job's outcome.
+  Its `_on_event` respects the single-writer claim, records `print_paused`/`print_resumed`/
+  `printer_terminal` job events (the terminal detail carries the firmware's own `reason`),
+  writes the printer-reported duration to `print_duration_s` (deliberately outside the
+  outcome-precedence guard — it is a measurement, not a verdict), and fills the sample's
+  `gcode_line` with `progress.filepos` — the same byte-offset semantics Moonraker uses,
+  which is also what lets the clog rule fire on OctoPrint at all.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
   **Arbitration being unavailable is not the same as the database being broken.** Only
   `no such table` takes the fail-open branch — that is an older database with no claim
@@ -435,8 +487,12 @@ FastAPI application with:
   (`outcome_prompt_dismissed`) — whether pilot users report at all is the thing being measured,
   so declining must be distinguishable from never being asked. `GET /feedback/stats` counts over
   prompted *jobs*, not raw events; dividing total reports by total prompts lets an unprompted
-  verdict push the rate above 1.
-- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C`, actual more than 25°C below target for 5 consecutive samples, **and the gap not closing** — a cold hotend climbing to 210°C satisfies the first two conditions exactly, and used to be reported as a fault seconds after dispatch; the rule is also gated on the printer still printing, so a job someone cancelled stops accruing automated failures), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → error/cancelled), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples). Each type fires at most once per job. Rules that read progress need an operator; rules that read `gcode_line` or `extrusion_factor_pct` are Klipper-only, since `OctoPrintCollector` leaves those fields None. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
+  verdict push the rate above 1. **`declined` and `dev` verdicts are responses, not answers**:
+  `feedback_funnel()` excludes them from `answered` (via the verdict in the event detail) and
+  reports `declined` separately — "don't ask me again" used to inflate the exact number the
+  pilot is measured by. The dashboard buckets them the same way: `GET /jobs` stats has `dev`
+  and `declined` keys, and neither counts as `failed`.
+- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C`, actual more than 25°C below target for 5 consecutive samples, **and the gap not closing** — a cold hotend climbing to 210°C satisfies the first two conditions exactly, and used to be reported as a fault seconds after dispatch), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples, **while printing** — end-of-print parking and homing drop Z legitimately and used to be written up on healthy jobs), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → **error, deliberately not cancelled**: a person cancelling a print is not machine-observed evidence about the part; if it really was adhesion, the human's own verdict says so), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples, while printing). Each type fires at most once per job (per process — the set is in-memory). Rules that read progress need an operator; `extrusion_factor_pct` is still Klipper-only, but `gcode_line` is now filled on OctoPrint too (file position), so the clog rule can fire on both firmwares. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
 
 ### Slice statistics (pythonsrc/gcode_stats.py)
 
