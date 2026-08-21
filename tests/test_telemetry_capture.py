@@ -579,3 +579,78 @@ def test_engineer_prompt_is_recorded_separately_from_the_user_prompt():
     assert "a vase" in engineered
     assert engineered != "a vase"
     assert "clay material" in engineered
+
+
+# ── Orphaned engagement events must not be counted ────────────────────────────
+#
+# `job_event` has no foreign key onto `print_job`, so deleting a job leaves its
+# events behind. That really happened: a test-suite bug removed 312 real job rows
+# and left 411 events pointing at nothing, and `/feedback/stats` went on reporting
+# a 40% response rate computed entirely from jobs that no longer existed.
+
+
+def _orphan_event(db, kind: str, job_id: str) -> None:
+    """Insert an event for a job that does not exist, as a deleted job leaves behind."""
+    from pythonsrc.telemetry.schema import JobEvent
+
+    db.insert_job_event(
+        JobEvent(
+            event_id=str(uuid.uuid4()),
+            job_id=job_id,
+            kind=kind,
+            occurred_at=datetime.now(timezone.utc),
+        )
+    )
+
+
+def test_the_response_rate_ignores_events_whose_job_is_gone(tmp_path):
+    db = TelemetryDB(str(tmp_path / "t.db"))
+    db.init_schema()
+
+    _orphan_event(db, "outcome_prompt_shown", "ghost-1")
+    _orphan_event(db, "outcome_reported", "ghost-1")
+
+    funnel = db.feedback_funnel()
+    assert funnel["prompted"] == 0, "a deleted job cannot have been prompted"
+    assert funnel["answered"] == 0
+    db.close()
+
+
+def test_a_live_job_still_counts_normally(tmp_path):
+    db = TelemetryDB(str(tmp_path / "t.db"))
+    db.init_schema()
+
+    job = make_job("live-1")
+    db.insert_job(job)
+    db.record_job_event(job.job_id, "outcome_prompt_shown", None)
+    db.record_job_event(job.job_id, "outcome_reported", None)
+    _orphan_event(db, "outcome_prompt_shown", "ghost-2")
+
+    funnel = db.feedback_funnel()
+    assert funnel["prompted"] == 1
+    assert funnel["answered"] == 1
+    db.close()
+
+
+def test_raw_event_totals_also_exclude_orphans(tmp_path):
+    db = TelemetryDB(str(tmp_path / "t.db"))
+    db.init_schema()
+
+    job = make_job("live-1")
+    db.insert_job(job)
+    db.record_job_event(job.job_id, "outcome_reported", None)
+    _orphan_event(db, "outcome_reported", "ghost-3")
+
+    assert db.count_job_events("outcome_reported") == 1
+    db.close()
+
+
+def test_orphaned_events_are_measurable(tmp_path):
+    """Excluded from the metric, but still countable — a non-zero value is a signal."""
+    db = TelemetryDB(str(tmp_path / "t.db"))
+    db.init_schema()
+
+    assert db.count_orphaned_job_events() == 0
+    _orphan_event(db, "download", "ghost-4")
+    assert db.count_orphaned_job_events() == 1
+    db.close()

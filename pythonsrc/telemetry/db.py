@@ -764,17 +764,41 @@ class TelemetryDB:
         ]
 
     def count_job_events(self, kind: str) -> int:
-        """Count events of one kind across all jobs.
+        """Count events of one kind across all jobs that still exist.
+
+        The join is not decoration. `job_event` has no foreign key onto `print_job`,
+        so deleting a job leaves its events behind — a test-suite bug once removed
+        312 job rows and left 411 events pointing at nothing, and every one of them
+        went on being counted in the pilot's headline response rate. An event whose
+        job is gone describes nobody, so it is not counted.
 
         Args:
             kind: The event kind to count.
 
         Returns:
-            The number of matching events.
+            The number of matching events belonging to a job that still exists.
         """
         with self._lock:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM job_event WHERE kind = ?", (kind,))
+            cursor.execute(
+                "SELECT COUNT(*) FROM job_event e "
+                "JOIN print_job j ON j.job_id = e.job_id WHERE e.kind = ?",
+                (kind,),
+            )
+            return int(cursor.fetchone()[0])
+
+    def count_orphaned_job_events(self) -> int:
+        """Events whose job no longer exists.
+
+        Exposed so the debris is measurable rather than merely excluded — a non-zero
+        count means something deleted jobs without their events.
+        """
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM job_event e "
+                "LEFT JOIN print_job j ON j.job_id = e.job_id WHERE j.job_id IS NULL"
+            )
             return int(cursor.fetchone()[0])
 
     def feedback_funnel(self) -> dict:
@@ -790,8 +814,15 @@ class TelemetryDB:
             counts. `answered` and `dismissed` are subsets of `prompted`.
         """
         def distinct_jobs(cursor, kind: str) -> set:
+            # Joined to `print_job` so an event orphaned by a deleted job cannot
+            # contribute. Without it this rate is computed over jobs that no longer
+            # exist: on one real database it reported 114 prompted / 46 answered —
+            # a confident 40% — when every one of those jobs had been deleted and
+            # the honest answer was "no data yet".
             cursor.execute(
-                "SELECT DISTINCT job_id FROM job_event WHERE kind = ?", (kind,)
+                "SELECT DISTINCT e.job_id FROM job_event e "
+                "JOIN print_job j ON j.job_id = e.job_id WHERE e.kind = ?",
+                (kind,),
             )
             return {row[0] for row in cursor.fetchall()}
 
