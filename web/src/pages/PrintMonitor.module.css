@@ -15,7 +15,8 @@
 
 .emptyFrame {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  /* One rail width across every scene that has one. See --rail in global.css. */
+  grid-template-columns: 1fr var(--rail);
 }
 
 .emptyMain {
@@ -122,7 +123,7 @@
 
 .jobGrid {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  grid-template-columns: 1fr var(--rail);
   gap: 20px;
   align-items: start;
 }

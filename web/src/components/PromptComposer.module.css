@@ -47,16 +47,11 @@
   color: var(--accent);
 }
 
+/* Border, ground and focus come from `.field-frame` in global.css — the same
+   treatment the landing page's field wears, so the two are one control in two
+   places rather than two controls that resemble each other. */
 .frame {
-  border-color: var(--field-line);
-  /* The sunken ground the other inputs use: the void at half alpha. */
-  background: rgba(13, 13, 13, 0.5);
   padding: 18px 18px 14px;
-  transition: border-color 0.15s ease;
-}
-
-.frame:focus-within {
-  border-color: var(--accent);
 }
 
 .input {

@@ -31,6 +31,8 @@ type FilterValue = (typeof FILTERS)[number]['value'];
 type JobRow = PaginatedJobs['jobs'][number] & {
   material_type?: string | null;
   awaiting_verdict?: boolean;
+  /** Sliced and never sent — Phase 5 is waiting for a person to confirm the printer. */
+  awaiting_dispatch?: boolean;
   outcome_source?: string | null;
 };
 
@@ -43,6 +45,11 @@ function rowStatus(job: JobRow): { label: string; className: string } {
   if (isAwaitingVerdict(job)) {
     // The printer reached the end of the file; nobody has confirmed the part.
     return { label: 'No verdict', className: styles.statusAwaiting };
+  }
+  if (job.awaiting_dispatch) {
+    // The pipeline finished and stopped: Phase 5 is holding for a person to confirm the
+    // printer. Calling this "Success" would describe a part that does not exist.
+    return { label: 'To send', className: styles.statusAwaiting };
   }
   switch (job.outcome) {
     case 'success':

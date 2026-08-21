@@ -20,6 +20,37 @@
   margin-left: 2px;
 }
 
+/* The score and whatever qualifies it, on one baseline. */
+.scoreSlot {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* An em dash in the score's own size and weight: the slot is never empty, because a
+   panel with no number in it reads as a panel with no problem in it. */
+.scoreUnknown {
+  color: var(--ink-35);
+}
+
+.chip,
+.chipBad {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-50);
+  white-space: nowrap;
+}
+
+.chipBad {
+  border-color: var(--bad-line);
+  background: var(--bad-tint);
+  color: var(--bad-ink);
+}
+
 .scoreReady {
   color: var(--ok);
 }
@@ -78,6 +109,15 @@
   margin-top: 4px;
 }
 
+/* Where the figure came from, or the tolerance it carries. Quieter than the label:
+   it qualifies the number rather than naming it. */
+.cellNote {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-28);
+  margin-top: 3px;
+}
+
 .checks {
   list-style: none;
   margin: 8px 0 0;
@@ -133,6 +173,53 @@
 
 .statusSkipped {
   color: var(--ink-35);
+}
+
+/* What the panel has to say when it cannot say a score. Drawn as a plate rather than
+   as an `.empty` state: absence of a measurement is a finding, not a blank. */
+.note {
+  border-left: 2px solid var(--rule-strong);
+  padding: 4px 0 4px 16px;
+  margin-top: 18px;
+  max-width: 62ch;
+}
+
+.noteLead {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.noteBody {
+  font-size: 13.5px;
+  color: var(--ink-50);
+  margin-top: 6px;
+}
+
+/* The machine's own words, kept verbatim and kept apart from ours. */
+.noteReason {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--bad-ink);
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+.retry {
+  margin-top: 14px;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Reads on every scored job, not only the troubled ones: what the number is worth is
+   part of the number. */
+.caveat {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-35);
+  margin-top: 14px;
+  max-width: 74ch;
 }
 
 /* Three 24px figures stop fitting side by side long before the page does, and the

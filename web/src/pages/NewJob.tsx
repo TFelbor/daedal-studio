@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Check, ChevronDown, Layers, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Layers, Maximize2, RotateCcw } from 'lucide-react';
 import { Blueprint, Marks } from '../components/Blueprint';
 import { BlueprintPreview } from '../components/BlueprintPreview';
 import { DeadChannel } from '../components/DeadChannel';
@@ -11,6 +11,10 @@ import { ProcessLog } from '../components/ProcessLog';
 import { PromptComposer } from '../components/PromptComposer';
 import { WaitingStage } from '../components/WaitingStage';
 import { JobControlPanel } from '../components/JobControlPanel';
+import { DispatchGate } from '../components/DispatchGate';
+import { PrintabilityCard } from '../components/PrintabilityCard';
+import { PromptZoom } from '../components/PromptZoom';
+import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
 import { createJob, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
 import type { JobStatusResponse, TelemetrySample } from '../api/client';
 import { getConfig } from '../api/config';
@@ -146,6 +150,8 @@ export function NewJob() {
   const [now, setNow] = useState(() => Date.now());
   /** Whether the inline composer for the *next* job is open. */
   const [composerOpen, setComposerOpen] = useState(false);
+  /** Whether the landing prompt is raised onto its own plate. */
+  const [promptZoomed, setPromptZoomed] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
@@ -203,28 +209,59 @@ export function NewJob() {
     }
   }, [jobId]);
 
-  // Check for running job on mount
+  /**
+   * Re-attach on mount — to a running job, or to one holding at the dispatch gate.
+   *
+   * The second case is what makes the confirmation step survive a reload. A job that
+   * has been sliced and not sent has finished as far as the pipeline is concerned, so
+   * it does not appear in the running list, and before this the pending decision simply
+   * vanished on refresh and the part was never printed.
+   */
   useEffect(() => {
-    listJobs(1, 0, 'running').then(data => {
-      if (data.jobs && data.jobs.length > 0) {
-        const activeJob = data.jobs[0];
-        setAttachedAt(Date.now());
-        setJobId(activeJob.job_id);
-        setPrompt(activeJob.prompt);
-        connectWebSocket(activeJob.job_id);
-      }
-    }).catch(err => {
-      console.error('Failed to fetch active jobs on mount', err);
-    });
+    let cancelled = false;
+
+    const attach = (job: { job_id: string; prompt: string }, live: boolean) => {
+      if (cancelled) return;
+      setAttachedAt(Date.now());
+      setJobId(job.job_id);
+      setPrompt(job.prompt);
+      if (live) connectWebSocket(job.job_id);
+      else getJob(job.job_id).then(setCurrentJob).catch(() => {});
+    };
+
+    listJobs(1, 0, 'running')
+      .then(data => {
+        if (data.jobs && data.jobs.length > 0) {
+          attach(data.jobs[0], true);
+          return null;
+        }
+        return listJobs(1, 0, 'awaiting_dispatch');
+      })
+      .then(waiting => {
+        if (waiting?.jobs && waiting.jobs.length > 0) attach(waiting.jobs[0], false);
+      })
+      .catch(err => {
+        console.error('Failed to look for a job to attach to on mount', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const connectWebSocket = (id: string) => {
+    // Confirming a dispatch reconnects, so this can be called with a socket already
+    // open. Closing the old one first is what stops two sockets writing the same state,
+    // and every handler below checks it is still the current one before doing so.
+    wsRef.current?.close();
+
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/jobs/${id}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       setWsConnected(true);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -233,6 +270,7 @@ export function NewJob() {
     };
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'job_status') {
@@ -314,6 +352,10 @@ export function NewJob() {
               prev.map(p => (p.status === 'running' ? { ...p, status: 'error' } : p)),
             );
           }
+          // One authoritative read. `dispatch_state` is derived on the server and the
+          // socket's completion message does not carry it, so without this the
+          // confirmation panel would not appear until something else refetched.
+          getJob(id).then(setCurrentJob).catch(() => {});
         }
       } catch (e) {
         console.error('WS parse error', e);
@@ -321,6 +363,7 @@ export function NewJob() {
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       setWsConnected(false);
       // Start polling fallback if job is not completed
       if (currentJob?.status !== 'completed' && currentJob?.outcome !== 'cancelled') {
@@ -390,11 +433,22 @@ export function NewJob() {
     return () => clearInterval(tick);
   }, [jobActive]);
 
-  // The stage follows the pipeline to the newest artifact until someone picks a tab.
+  /**
+   * The stage follows the pipeline to the newest artifact until someone picks a tab.
+   *
+   * The toolpath is the last thing the pipeline makes and the thing worth looking at
+   * before it goes to a printer, so the stage advances to it the moment it exists. It
+   * used to stop at the mesh: the G-code preview was reachable only by clicking a tab,
+   * or in a 240px slot in the rail, which is not where a 200-layer toolpath is read.
+   */
   useEffect(() => {
     if (tabPinnedRef.current) return;
-    if (phases.find(p => p.phase === 3)?.status === 'complete') setActiveTab('mesh');
-  }, [phases]);
+    if (currentJob?.slice_status === 'success' || currentJob?.layer_count != null) {
+      setActiveTab('slice');
+    } else if (phases.find(p => p.phase === 3)?.status === 'complete') {
+      setActiveTab('mesh');
+    }
+  }, [phases, currentJob?.slice_status, currentJob?.layer_count]);
 
   /**
    * Start a job for `text`, from either entry point.
@@ -416,8 +470,12 @@ export function NewJob() {
         profile: configDefaults.profile,
         skip_visualizer: configDefaults.skipVisualizer,
         skip_sculptor: configDefaults.skipSculptor,
-        print: true,
-        start_print: true,
+        // Phases 1–4 only. Phase 5 is held behind the confirmation panel, so the
+        // person who asked for the part sees which machine it is going to *before* a
+        // nozzle heats up. `--start-print` still exists for the CLI, where there is
+        // nobody to ask.
+        print: false,
+        start_print: false,
         // Recorded per job rather than assumed from the printer: spools get swapped
         // without anyone telling the app, and material is the likeliest explanation
         // for a bed adhesion failure after the fact.
@@ -485,172 +543,226 @@ export function NewJob() {
     const printerStatusLabel = printerReady ? 'Online' : printer?.configured ? 'Offline' : 'Not configured';
 
     return (
-      <div className={styles.split}>
-        <div className={styles.splitCell}>
-          {/* Whoever is reading this already chose to be here — they do not need
-              selling, they need to know what to type and that it is safe to try. */}
-          <div className={`eyebrow ${styles.heroEyebrow}`}>
-            <span className="label-accent">New job</span>
-          </div>
-          <h1 className={`display-lg ${styles.hero}`}>
-            What are we<br />making today?
-          </h1>
-          <p className={`lede ${styles.lede}`}>
-            Type the object the way you would describe it to someone: what it is, roughly how
-            big, what it needs to do. Everything after that is automatic — blueprint, geometry,
-            a printability check, then G-code. You can look it over before anything reaches the
-            printer.
-          </p>
-
-          {!printerReady && (
-            <div className={`notice ${styles.notice}`}>
-              <AlertTriangle size={15} strokeWidth={1.5} aria-hidden="true" />
-              <span>
-                No printer or simulator is running.{' '}
-                <Link to="/setup" className={styles.noticeLink}>Configure one in Settings</Link>{' '}
-                before you generate.
-              </span>
+      <>
+        <div className={styles.split}>
+          <div className={styles.splitCell}>
+            {/* Whoever is reading this already chose to be here — they do not need
+                selling, they need to know what to type and that it is safe to try. */}
+            {/* The state of the product, not the name of the page: the nav already
+                says where you are, and what a first-time user needs from this line is
+                that the thing they are about to trust with a printer is pre-beta. */}
+            <div className={`eyebrow ${styles.heroEyebrow}`}>
+              <span className="label-accent">Pre-beta</span>
             </div>
-          )}
+            <h1 className={`display-lg ${styles.hero}`}>
+              What are we<br />making today?
+            </h1>
+            <p className={`lede ${styles.lede}`}>
+              Type the object the way you would describe it to someone: what it is, roughly how
+              big, what it needs to do. Everything after that is automatic — blueprint, geometry,
+              a printability check, then G-code. You can look it over before anything reaches the
+              printer.
+            </p>
 
-          {submitError && (
-            <div className={`notice ${styles.notice}`} role="alert">
-              <AlertTriangle size={15} strokeWidth={1.5} aria-hidden="true" />
-              <span>{submitError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <Blueprint tone="accent" className={styles.promptFrame}>
-              <textarea
-                id="job-prompt"
-                className={styles.promptInput}
-                placeholder="A low poly planter box with a modern geometric design…"
-                aria-label="Describe the object to print"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (prompt.trim() && !loading && printerReady) {
-                      void handleSubmit();
-                    }
-                  }
-                }}
-                rows={3}
-                autoFocus
-                disabled={!printerReady}
-              />
-
-              <div className={styles.frameFooter}>
-                <div className={styles.materialRow}>
-                  <label className="label-tight" htmlFor="material-type">Material</label>
-                  <span className={styles.selectWrap}>
-                    <select
-                      id="material-type"
-                      className={styles.materialSelect}
-                      value={materialType}
-                      onChange={(e) => setMaterialType(e.target.value)}
-                      disabled={!printerReady}
-                    >
-                      {MATERIAL_TYPES.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={10} strokeWidth={1.5} className={styles.selectChevron} aria-hidden="true" />
+            <div className={styles.composeGroup}>
+              {!printerReady && (
+                <div className={`notice ${styles.notice}`}>
+                  <AlertTriangle size={15} strokeWidth={1.5} aria-hidden="true" />
+                  <span>
+                    No printer or simulator is running.{' '}
+                    <Link to="/setup" className={styles.noticeLink}>Configure one in Settings</Link>{' '}
+                    before you generate.
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className={styles.disclosure}
-                  onClick={() => setShowAdvanced((v) => !v)}
-                  aria-expanded={showAdvanced}
-                  aria-controls="job-details"
-                >
-                  Brand, colour, seed
-                </button>
-              </div>
+              )}
 
-              {showAdvanced && (
-                <div className={styles.advanced} id="job-details">
-                  <input
-                    className="input"
-                    placeholder="Filament brand"
-                    aria-label="Filament brand"
-                    value={materialBrand}
-                    onChange={(e) => setMaterialBrand(e.target.value)}
-                    disabled={!printerReady}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Colour"
-                    aria-label="Filament colour"
-                    value={materialColour}
-                    onChange={(e) => setMaterialColour(e.target.value)}
-                    disabled={!printerReady}
-                  />
-                  {/* Blank draws a fresh seed and records it. Filling it in reproduces a
-                      previous blueprint exactly — the point of recording it at all. */}
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    placeholder="Seed (blank draws one)"
-                    aria-label="Blueprint seed"
-                    value={seed}
-                    onChange={(e) => setSeed(e.target.value)}
-                    disabled={!printerReady}
-                  />
+              {submitError && (
+                <div className={`notice ${styles.notice}`} role="alert">
+                  <AlertTriangle size={15} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{submitError}</span>
                 </div>
               )}
-            </Blueprint>
 
-            <div className={styles.submitRow}>
-              {/* `blueprint` is what scopes the corner marks; `.btn`'s own transparent
-                  border is declared later in global.css, so the fill stays clean. */}
-              <button
-                type="submit"
-                className={`btn btn-primary blueprint marked-accent ${styles.submitBtn}`}
-                disabled={!prompt.trim() || loading || !printerReady}
-              >
-                <Marks />
-                {loading ? 'Starting…' : 'Generate & print'}
-                {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />}
-              </button>
-              <span className={styles.submitHint}>Enter to send · Shift + Enter for a new line</span>
+              <form onSubmit={handleSubmit}>
+                <Blueprint tone="accent" className={`field-frame ${styles.promptFrame}`}>
+                  <textarea
+                    id="job-prompt"
+                    className={styles.promptInput}
+                    placeholder="A low poly planter box with a modern geometric design…"
+                    aria-label="Describe the object to print"
+                    value={prompt}
+                    maxLength={MAX_PROMPT_CHARS}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (prompt.trim() && !loading && printerReady) {
+                          void handleSubmit();
+                        }
+                      }
+                    }}
+                    rows={3}
+                    autoFocus
+                    disabled={!printerReady}
+                  />
+
+                  <div className={styles.frameFooter}>
+                    <div className={styles.materialRow}>
+                      <label className="label-tight" htmlFor="material-type">Material</label>
+                      <span className={styles.selectWrap}>
+                        <select
+                          id="material-type"
+                          className={styles.materialSelect}
+                          value={materialType}
+                          onChange={(e) => setMaterialType(e.target.value)}
+                          disabled={!printerReady}
+                        >
+                          {MATERIAL_TYPES.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={10} strokeWidth={1.5} className={styles.selectChevron} aria-hidden="true" />
+                      </span>
+                    </div>
+                    <div className={styles.footerRight}>
+                      {/* Appears only near the ceiling. See MAX_PROMPT_CHARS. */}
+                      <span
+                        className={
+                          MAX_PROMPT_CHARS - prompt.length <= COUNTER_REVEAL
+                            ? `${styles.counter} ${styles.counterShown}`
+                            : styles.counter
+                        }
+                        aria-live="polite"
+                      >
+                        {MAX_PROMPT_CHARS - prompt.length} left
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.disclosure}
+                        onClick={() => setShowAdvanced((v) => !v)}
+                        aria-expanded={showAdvanced}
+                        aria-controls="job-details"
+                      >
+                        Brand, colour, seed
+                      </button>
+                      {/* Replaces the drag handle this field used to have. The corner
+                          could be pulled past the viewport and asked the writer to do
+                          layout; this raises the same text to reading size instead. */}
+                      <button
+                        type="button"
+                        className={styles.expand}
+                        onClick={() => {
+                          reportUi('prompt field', 'expanded');
+                          setPromptZoomed(true);
+                        }}
+                        disabled={!printerReady}
+                        aria-label="Expand the prompt field"
+                        title="Expand"
+                      >
+                        <Maximize2 size={13} strokeWidth={1.5} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {showAdvanced && (
+                    <div className={styles.advanced} id="job-details">
+                      <input
+                        className="input"
+                        placeholder="Filament brand"
+                        aria-label="Filament brand"
+                        value={materialBrand}
+                        onChange={(e) => setMaterialBrand(e.target.value)}
+                        disabled={!printerReady}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Colour"
+                        aria-label="Filament colour"
+                        value={materialColour}
+                        onChange={(e) => setMaterialColour(e.target.value)}
+                        disabled={!printerReady}
+                      />
+                      {/* Blank draws a fresh seed and records it. Filling it in reproduces a
+                          previous blueprint exactly — the point of recording it at all. */}
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        placeholder="Seed (blank draws one)"
+                        aria-label="Blueprint seed"
+                        value={seed}
+                        onChange={(e) => setSeed(e.target.value)}
+                        disabled={!printerReady}
+                      />
+                    </div>
+                  )}
+                </Blueprint>
+
+                <div className={styles.submitRow}>
+                  {/* `blueprint` is what scopes the corner marks; `.btn`'s own transparent
+                      border is declared later in global.css, so the fill stays clean. */}
+                  <button
+                    type="submit"
+                    className={`btn btn-primary blueprint marked-accent ${styles.submitBtn}`}
+                    disabled={!prompt.trim() || loading || !printerReady}
+                  >
+                    <Marks />
+                    {loading ? 'Starting…' : 'Generate & print'}
+                    {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />}
+                  </button>
+                  <span className={styles.submitHint}>Enter to send · Shift + Enter for a new line</span>
+                </div>
+              </form>
             </div>
-          </form>
-        </div>
-
-        <div className={styles.splitCell}>
-          <div className="block-title">
-            <span className="label">Pipeline · what runs when you hit send</span>
-            <span className="label-tight">05 phases</span>
           </div>
 
-          {PIPELINE.map((p) => (
-            <div key={p.phase} className="phase-row">
-              <span className="phase-num">{pad2(p.phase)}</span>
-              <div>
-                <div className={styles.phaseName}>{p.name}</div>
-                <div className={styles.phaseBlurb}>{p.blurb}</div>
-              </div>
-              <span className={styles.tag}>{p.tag}</span>
+          <div className={styles.splitCell}>
+            <div className="block-title">
+              <span className="label">Pipeline · what runs when you hit send</span>
+              <span className="label-tight">05 phases</span>
             </div>
-          ))}
 
-          <div className={styles.printerBlock}>
-            <div className={`label ${styles.printerLabel}`}>Printer</div>
-            <Blueprint className={styles.printerFrame}>
-              <div>
-                <div className={styles.printerName}>{printerName}</div>
-                <div className={styles.printerMeta}>{printerMeta}</div>
+            {PIPELINE.map((p) => (
+              <div key={p.phase} className="phase-row">
+                <span className="phase-num">{pad2(p.phase)}</span>
+                <div>
+                  <div className={styles.phaseName}>{p.name}</div>
+                  <div className={styles.phaseBlurb}>{p.blurb}</div>
+                </div>
+                <span className={styles.tag}>{p.tag}</span>
               </div>
-              <span className={printerStatusClass}>{printerStatusLabel}</span>
-            </Blueprint>
+            ))}
+
+            <div className={styles.printerBlock}>
+              <div className={`label ${styles.printerLabel}`}>Printer</div>
+              <Blueprint className={styles.printerFrame}>
+                <div>
+                  <div className={styles.printerName}>{printerName}</div>
+                  <div className={styles.printerMeta}>{printerMeta}</div>
+                </div>
+                <span className={printerStatusClass}>{printerStatusLabel}</span>
+              </Blueprint>
+            </div>
           </div>
         </div>
-      </div>
+
+        {promptZoomed && (
+          <PromptZoom
+            value={prompt}
+            busy={loading}
+            onChange={setPrompt}
+            onSubmit={next => {
+              setPromptZoomed(false);
+              void startJob(next);
+            }}
+            onClose={() => {
+              reportUi('prompt field', 'collapsed');
+              setPromptZoomed(false);
+              document.getElementById('job-prompt')?.focus();
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -676,9 +788,11 @@ export function NewJob() {
     ? 'Failed job'
     : currentJob?.outcome === 'cancelled'
       ? 'Cancelled job'
-      : jobActive
-        ? 'Running job'
-        : 'Finished job';
+      : currentJob?.dispatch_state === 'awaiting_confirmation'
+        ? 'Ready to print'
+        : jobActive
+          ? 'Running job'
+          : 'Finished job';
 
   const layerHeight = currentJob?.layer_height_mm;
   const chip = [currentJob?.material_type, layerHeight ? `${layerHeight} mm layers` : null]
@@ -708,7 +822,7 @@ export function NewJob() {
   }[activeTab];
 
   return (
-    <div>
+    <div className={styles.page}>
       <div className={styles.jobHeader}>
         <div className={styles.jobHeadLeft}>
           <div className={styles.jobIdRow}>
@@ -743,6 +857,26 @@ export function NewJob() {
           </button>
         </div>
       </div>
+
+      {/* Phase 5 waits here. Directly under the header rather than in the rail: it is a
+          decision about the whole job, and a 380px column is where controls go to be
+          missed. */}
+      {currentJob?.dispatch_state === 'awaiting_confirmation' && (
+        <DispatchGate
+          jobId={jobId}
+          job={currentJob}
+          onDispatched={() => {
+            // The operator is launched, so phase 05 is live and the row is now waiting
+            // on a human verdict about the part. Reconnecting the socket is what brings
+            // the printer's telemetry back onto the page — the old one closed when the
+            // pipeline finished.
+            setCurrentJob(prev => (prev ? { ...prev, dispatch_state: 'dispatched', outcome: 'awaiting_verdict' } : prev));
+            setPhases(prev => prev.map(p => (p.phase === 5 ? { ...p, status: 'running' } : p)));
+            connectWebSocket(jobId);
+            getJob(jobId).then(setCurrentJob).catch(() => {});
+          }}
+        />
+      )}
 
       <PromptComposer
         open={composerOpen}
@@ -844,6 +978,21 @@ export function NewJob() {
             <span>{caption.left}</span>
             <span className={styles.stageCaptionMono}>{caption.right}</span>
           </div>
+
+          {/* Printability, where the mesh is. The gate runs the moment the Engineer
+              finishes, and its verdict is about the geometry on the stage — reading it
+              on another page, after the part is already on a printer, is too late to be
+              a decision. */}
+          {activeTab === 'mesh' && meshRepaired && (
+            <div className={styles.meshQuality}>
+              <PrintabilityCard
+                jobId={jobId}
+                supportFilamentMm3={currentJob?.support_filament_mm3}
+                reloadKey={currentJob?.printability_score ?? null}
+                pending={currentJob?.printability_score == null && Boolean(jobActive)}
+              />
+            </div>
+          )}
 
           {activeTab === 'slice' && sliceReady && (
             <div className={`plate ${styles.slicePlateGrid}`}>

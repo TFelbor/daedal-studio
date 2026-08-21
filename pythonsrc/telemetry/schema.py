@@ -492,12 +492,20 @@ JOB_EVENT_KINDS = (
     "outcome_prompt_shown",
     "outcome_prompt_dismissed",
     "outcome_reported",
+    "dispatch_confirmed",
 )
 """Recognised `JobEvent.kind` values.
 
 These are the user-engagement signals that cannot be reconstructed after the fact:
 nothing else records that someone downloaded a result, asked for another one, or was
 shown a feedback prompt and chose not to answer it.
+
+`dispatch_confirmed` is the newest and the only one that gates an action rather than
+describing one: a print reaches a machine because a person looked at the target and
+said yes, and the row carries what they were shown. It lives here rather than in a
+`print_job` column for the same reason as the others — one table absorbs a new signal
+without a migration — and because "who authorised this print" is a decision record,
+which is not what the outcome column is for.
 """
 
 

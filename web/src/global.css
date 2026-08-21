@@ -57,6 +57,14 @@
   /* The 56px module the app surface is drawn on. */
   --module: 56px;
   --nav-height: 64px;
+  /* The page gutter — one number, so every left edge in the app stands on the same
+     line: the logo, the hero, a table's first column, the footer's credits. The pages
+     each had their own before (40px in the nav, 48 in a sheet, up to 56 in the split),
+     which read as a wobble down the left side of the product. */
+  --gutter: 40px;
+  /* The side column. Three scenes have one and they were 380/400/400px, so the divider
+     landed in three different places depending on which page you were looking at. */
+  --rail: 380px;
 
   color-scheme: dark;
 }
@@ -146,6 +154,12 @@ p {
 
 .surface {
   flex: 1;
+  /* A column, so a page root can claim the height between the nav and the footer
+     with `flex: 1` instead of stopping at a fixed number and leaving a band of bare
+     surface under its closing rule. Pages that do not ask for it are unaffected:
+     a flex item with the default `flex: 0 1 auto` is its own content's height. */
+  display: flex;
+  flex-direction: column;
   /* Anchors the pointer-trail layer to the same box the grid is drawn on. */
   position: relative;
   background-color: var(--ground);
@@ -154,13 +168,27 @@ p {
   background-size: var(--module) var(--module);
 }
 
+/* Every full-width page body. `flex: 1` so a short page still owns the height between
+   the nav and the footer rather than floating above a band of bare surface. */
 .sheet {
-  padding: 44px 48px 60px;
+  flex: 1;
+  padding: 44px var(--gutter) 60px;
+}
+
+/* One ladder for the gutter, so every scene narrows at the same two widths. */
+@media (max-width: 900px) {
+  :root {
+    --gutter: 24px;
+  }
 }
 
 @media (max-width: 720px) {
+  :root {
+    --gutter: 20px;
+  }
+
   .sheet {
-    padding: 28px 20px 44px;
+    padding: 28px var(--gutter) 44px;
   }
 }
 
@@ -301,6 +329,61 @@ p {
 
 .blueprint.marked-accent > .corner { color: var(--accent-mark); }
 .blueprint.marked-run > .corner { color: rgba(92, 156, 230, 0.6); }
+
+/* ── A framed field ───────────────────────────────────────────────────────────
+   A Blueprint that *is* an input: the frame is the field's edge, so the control
+   inside it must not draw an edge of its own. Focus is expressed here, once.
+
+   The browser's own `:focus-visible` ring is 2px of full accent offset 2px from
+   the textarea — a second orange rectangle sitting 16px inside the first. Two
+   nested rings around the largest object on the page read as an alarm, not as a
+   caret, so the inner one is suppressed and the frame carries the state: the
+   border takes the accent at line strength rather than at full, the ground opens,
+   and the four registration marks close in and go bright. Pulling focus, in the
+   language the rest of the board is drawn in.
+
+   Only the textarea loses its ring. A select or a button inside the same frame
+   keeps its own, because the frame lighting up cannot say *which* control is
+   focused once there is more than one. */
+
+.blueprint.field-frame {
+  border-color: var(--field-line);
+  /* The sunken ground `.input`/`.textarea` sit on: the void at half alpha. Held here
+     rather than on each field so the two prompt frames cannot drift apart. */
+  background: rgba(13, 13, 13, 0.5);
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.blueprint.field-frame > textarea:focus,
+.blueprint.field-frame > textarea:focus-visible {
+  outline: none;
+}
+
+.blueprint.field-frame > .corner {
+  transition: color 0.18s ease, left 0.18s ease, right 0.18s ease,
+    top 0.18s ease, bottom 0.18s ease;
+}
+
+.blueprint.field-frame:focus-within {
+  border-color: var(--accent-line);
+  background: rgba(13, 13, 13, 0.72);
+}
+
+.blueprint.field-frame:focus-within > .corner {
+  color: var(--accent);
+}
+
+.blueprint.field-frame:focus-within > .tl { left: -2px; top: -2px; }
+.blueprint.field-frame:focus-within > .tr { right: -2px; top: -2px; }
+.blueprint.field-frame:focus-within > .bl { left: -2px; bottom: -2px; }
+.blueprint.field-frame:focus-within > .br { right: -2px; bottom: -2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .blueprint.field-frame,
+  .blueprint.field-frame > .corner {
+    transition: none;
+  }
+}
 
 /* ── Actions ──────────────────────────────────────────────────────────────────
    The solid accent fill is the one filled object on the board. Everything else
