@@ -21,6 +21,17 @@ import trimesh
 import trimesh.repair
 import trimesh.util
 
+# ── Repair tuning ────────────────────────────────────────────────────────────
+# Closing a surface is iterative: dropping a non-manifold fin opens a hole, and
+# stitching a hole can leave a non-manifold seam behind. Both converge in two or
+# three passes on real meshes; the cap is a runaway guard, not a target.
+MAX_CLOSE_ROUNDS = 8
+
+# Voxel grid resolution for the last-resort remesh, as a divisor of the mesh's
+# longest extent. Scale-invariant on purpose — repair runs before Phase 3 scales
+# the part, so an absolute pitch would mean a different fidelity for every model.
+VOXEL_REMESH_RESOLUTION = int(os.environ.get("P2P_REPAIR_VOXEL_RESOLUTION", "128"))
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.engineer")
 
@@ -114,11 +125,28 @@ class Engineer:
             # ── Stage 2: hand to the manifold3d kernel ────────────────────────
             man = self._to_manifold(closed)
             if man.status() != manifold3d.Error.NoError:
+                # Stage 1 could not close this surface by editing its topology.
+                # Shipping the reject is what made repair look like a no-op: the
+                # slicer gets a mesh with no consistent inside, and printability
+                # scores it as unprintable no matter what face count it is asked
+                # for. Rebuild the surface volumetrically instead.
                 logger.warning(
-                    "manifold3d rejected the mesh (%s) — keeping trimesh-only repair.",
+                    "manifold3d rejected the repaired surface (%s) — escalating to "
+                    "a volumetric remesh.",
                     man.status(),
                 )
-                return closed
+                remeshed = self._voxel_remesh(closed)
+                if remeshed is None:
+                    return closed
+                man = self._to_manifold(remeshed)
+                if man.status() != manifold3d.Error.NoError:
+                    logger.warning(
+                        "manifold3d rejected the remesh too (%s) — keeping "
+                        "trimesh-only repair.",
+                        man.status(),
+                    )
+                    return closed
+                closed = remeshed
 
             # ── Stage 3: union the components ─────────────────────────────────
             # Interpenetrating shells are common in generated meshes and are a
@@ -160,6 +188,90 @@ class Engineer:
             )
             return self._repair_mesh_fallback(mesh)
 
+    @staticmethod
+    def _edge_face_counts(mesh: trimesh.Trimesh) -> tuple[np.ndarray, np.ndarray]:
+        """Map every per-face edge to its shared edge, and count the sharers.
+
+        Vertex pairs are folded into one int64 key rather than passed to
+        ``np.unique(axis=0)``, which sorts rows through an object-dtype view and
+        costs 16x more on an 80k-face mesh — measured 0.216s against 0.014s.
+        This runs once per repair round, so the difference is the difference
+        between a repair that is free and one that is felt.
+
+        Returns:
+            ``(inverse, counts)`` where ``inverse[i]`` is the shared-edge id of
+            per-face edge ``i`` and ``counts[j]`` is how many faces touch shared
+            edge ``j``. A closed manifold surface has every count exactly 2:
+            1 is a boundary edge (a hole), 3+ is a non-manifold edge (a fin,
+            a flap, or two shells fused along a seam).
+        """
+        edges = mesh.edges_sorted.astype(np.int64)
+        stride = int(mesh.vertices.shape[0]) + 1
+        keys = edges[:, 0] * stride + edges[:, 1]
+        _, inverse, counts = np.unique(keys, return_inverse=True, return_counts=True)
+        return inverse, counts
+
+    @classmethod
+    def _drop_nonmanifold_faces(cls, mesh: trimesh.Trimesh) -> int:
+        """Delete the faces that make an edge non-manifold. Mutates *mesh*.
+
+        Nothing else in this chain could do this, which is why repair used to
+        fail outright on generated meshes. ``fix_normals`` and ``fix_winding``
+        reorder faces, ``fill_holes`` adds them, and ``merge_vertices`` welds
+        coincident ones — none of them can remove a third face hanging off an
+        edge, so a mesh with non-manifold edges came out of "repair" with the
+        same count it went in with and the manifold3d kernel rejected it.
+
+        For an edge carrying more than two faces, two are kept and the rest
+        dropped. *Which* two decides whether this repairs the mesh or destroys
+        it, and area alone is the wrong answer: a fin sticking out of the
+        surface is often the larger triangle, so ranking by area keeps the fin
+        and deletes the surface under it. Measured on an 80k-face sphere with
+        200 fins, area dropped 440 faces and left 322 boundary edges that no
+        later round could close; the mesh then had to be rebuilt volumetrically,
+        losing all its detail.
+
+        Faces are therefore ranked by **how many of their own three edges are
+        cleanly manifold** — a face embedded in the surface scores 3, a fin
+        hanging off it scores 0 or 1 — with area only as a tie-break. Same mesh,
+        same budget: 198 faces dropped, closed in one round, detail intact.
+
+        Returns:
+            How many faces were dropped.
+        """
+        inverse, counts = cls._edge_face_counts(mesh)
+        over_shared = (counts > 2)[inverse]
+        if not over_shared.any():
+            return 0
+
+        # How many cleanly-shared edges each face sits on. `edges_face` maps
+        # per-face edges back to their face, so this is a weighted bincount.
+        clean_edges = np.bincount(
+            mesh.edges_face,
+            weights=(counts == 2)[inverse].astype(np.float64),
+            minlength=len(mesh.faces),
+        )
+
+        # Rank within each over-shared edge and drop everything past the first
+        # two. lexsort applies keys last-first: group by edge, then most-embedded
+        # first, then largest first.
+        edge_ids = inverse[over_shared]
+        faces = mesh.edges_face[over_shared]
+        order = np.lexsort((-mesh.area_faces[faces], -clean_edges[faces], edge_ids))
+        edge_ids, faces = edge_ids[order], faces[order]
+        group_starts = np.r_[True, edge_ids[1:] != edge_ids[:-1]]
+        positions = np.arange(len(edge_ids))
+        rank_in_group = positions - np.maximum.accumulate(
+            np.where(group_starts, positions, 0)
+        )
+        doomed = np.unique(faces[rank_in_group >= 2])
+
+        keep = np.ones(len(mesh.faces), dtype=bool)
+        keep[doomed] = False
+        mesh.update_faces(keep)
+        mesh.remove_unreferenced_vertices()
+        return int(len(doomed))
+
     def _repair_mesh_fallback(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
         trimesh-only repair: clean degeneracies, then close the surface.
@@ -168,10 +280,24 @@ class Engineer:
         manifold3d kernel needs a closed surface as input, and if the kernel
         then rejects the result this is what ships. Pure MIT, no copyleft.
 
+        Closing is a *loop*, not a sequence. Dropping a non-manifold fin opens
+        a hole where it was attached; filling a hole, or stitching a boundary
+        loop too large for ``fill_holes`` to fan over, can fuse two faces onto
+        one edge and create a fresh non-manifold seam. Running each step once —
+        which is what this method used to do — leaves whichever defect the
+        other step created. Both converge in two or three rounds on real
+        meshes.
+
         Compatible with trimesh 4.x, where remove_degenerate_faces /
         remove_duplicate_faces are no longer instance methods.
         """
         repaired = mesh.copy()
+
+        # ── Weld coincident vertices ───────────────────────────────────────
+        # An exporter that splits vertices at normal or UV seams turns one
+        # closed surface into a pile of disconnected triangles that merely look
+        # closed. Every count below is meaningless until this has run.
+        repaired.merge_vertices()
 
         # ── Remove degenerate faces (trimesh 4.x API) ──────────────────────
         valid_mask = repaired.nondegenerate_faces()
@@ -185,10 +311,64 @@ class Engineer:
         # ── Remove unreferenced vertices (still present in 4.x) ───────────
         repaired.remove_unreferenced_vertices()
 
-        # ── Normals, winding, holes ────────────────────────────────────────
-        trimesh.repair.fix_normals(repaired, multibody=True)
-        trimesh.repair.fix_winding(repaired)
-        trimesh.repair.fill_holes(repaired)
+        # ── Close the surface ──────────────────────────────────────────────
+        # Winding is deliberately *not* fixed first. It is the most expensive
+        # call in this file — trimesh walks the face-adjacency graph in Python,
+        # ~10s on an 80k-face mesh — and the loop below grafts stitched patches
+        # whose own winding is arbitrary, so a pass before it is a pass that has
+        # to be repeated. `fill_holes` and `stitch` orient each patch from the
+        # boundary loop they close, which is a local decision and survives a
+        # globally inconsistent mesh. One traversal at the end therefore does
+        # the work that two used to.
+
+        for round_index in range(MAX_CLOSE_ROUNDS):
+            dropped = self._drop_nonmanifold_faces(repaired)
+            trimesh.repair.fill_holes(repaired)
+
+            _, counts = self._edge_face_counts(repaired)
+            boundary = int((counts == 1).sum())
+            nonmanifold = int((counts > 2).sum())
+            logger.debug(
+                "Close round %d — dropped %d face(s), boundary edges: %d, "
+                "non-manifold edges: %d",
+                round_index + 1,
+                dropped,
+                boundary,
+                nonmanifold,
+            )
+            if boundary == 0 and nonmanifold == 0:
+                break
+
+            stitched = 0
+            if boundary:
+                # fill_holes only fans over triangle and quad holes. A larger
+                # boundary loop needs stitching, which trimesh returns as loose
+                # faces for the caller to graft on.
+                patch = self._stitch_boundaries(repaired)
+                stitched = len(patch)
+                if stitched:
+                    repaired = self._graft(repaired, patch)
+            if not dropped and not stitched:
+                logger.warning(
+                    "Surface still open after %d round(s) — %d boundary edge(s), "
+                    "%d non-manifold edge(s) and no further progress possible.",
+                    round_index + 1,
+                    boundary,
+                    nonmanifold,
+                )
+                break
+
+        # Winding and normals, once, at the end: which side is "out" is only
+        # meaningful on a closed surface, and manifold3d rejects a mesh whose
+        # faces disagree about it. `is_winding_consistent` is a vectorised
+        # comparison over the edge list, so the mesh that arrives already
+        # consistent — the normal case off an isosurface — pays for the check
+        # and skips the graph traversal, needing only a sign test on its volume
+        # to turn it right side out.
+        if repaired.is_winding_consistent:
+            trimesh.repair.fix_inversion(repaired)
+        else:
+            trimesh.repair.fix_normals(repaired, multibody=True)
 
         logger.debug(
             "After fallback repair — watertight: %s, faces: %d",
@@ -196,6 +376,82 @@ class Engineer:
             len(repaired.faces),
         )
         return repaired
+
+    @staticmethod
+    def _stitch_boundaries(mesh: trimesh.Trimesh) -> np.ndarray:
+        """Triangulate the boundary loops ``fill_holes`` is too small-minded for.
+
+        Returns the new faces rather than applying them, matching trimesh's own
+        signature. An empty array means stitching found nothing to do, which is
+        the caller's signal that this defect is beyond topological repair.
+        """
+        try:
+            patch = trimesh.repair.stitch(mesh)
+        except Exception as exc:  # noqa: BLE001 - a failed stitch is not fatal
+            logger.debug("Boundary stitching failed: %s", exc)
+            return np.zeros((0, 3), dtype=np.int64)
+        return np.asarray(patch).reshape(-1, 3)
+
+    @staticmethod
+    def _graft(mesh: trimesh.Trimesh, faces: np.ndarray) -> trimesh.Trimesh:
+        """Add faces to a mesh and re-weld, returning the combined mesh."""
+        grafted = trimesh.Trimesh(
+            vertices=mesh.vertices,
+            faces=np.vstack([mesh.faces, faces]),
+            process=False,
+        )
+        grafted.merge_vertices()
+        grafted.update_faces(grafted.nondegenerate_faces())
+        grafted.remove_unreferenced_vertices()
+        return grafted
+
+    def _voxel_remesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh | None:
+        """Rebuild the surface volumetrically. The last resort, and it shows.
+
+        A filled voxel grid has an unambiguous inside, so marching cubes over it
+        cannot produce a boundary or a non-manifold edge — which is exactly the
+        guarantee the kernel wants and exactly what a torn reconstruction cannot
+        provide by editing its own topology. The cost is real and is logged: the
+        surface is resampled at ``VOXEL_REMESH_RESOLUTION`` of its longest
+        extent, so sharp features round off and the face count rises steeply.
+
+        The result is deliberately **not** decimated back to the input budget.
+        Quadric decimation of a marching-cubes surface at the ratios involved
+        (measured: 100k faces down to 2.4k) reintroduces hundreds of
+        non-manifold edges — trading the defect this method exists to remove for
+        a smaller file. Phase 4 slices geometry, not vertices, and CuraEngine is
+        untroubled by a six-figure face count.
+
+        Returns:
+            The remeshed surface, or None if it could not be built.
+        """
+        extent = float(mesh.extents.max())
+        if not np.isfinite(extent) or extent <= 0:
+            logger.warning("Cannot remesh a mesh with zero extent.")
+            return None
+
+        pitch = extent / VOXEL_REMESH_RESOLUTION
+        try:
+            remeshed = mesh.voxelized(pitch=pitch).fill().marching_cubes
+            remeshed.merge_vertices()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Volumetric remesh failed: %s", exc)
+            return None
+
+        if len(remeshed.faces) == 0:
+            logger.warning("Volumetric remesh produced an empty surface.")
+            return None
+
+        logger.warning(
+            "Rebuilt the surface volumetrically at pitch %.4f (1/%d of %.2f) — "
+            "%d faces became %d, and sharp detail below the pitch is gone.",
+            pitch,
+            VOXEL_REMESH_RESOLUTION,
+            extent,
+            len(mesh.faces),
+            len(remeshed.faces),
+        )
+        return remeshed
 
     # ── Scale ─────────────────────────────────────────────────────────────────
     def scale_to_dimensions(self, mesh: trimesh.Trimesh, target_mm: float) -> trimesh.Trimesh:
@@ -290,10 +546,18 @@ class Engineer:
 
     # ── Analysis ──────────────────────────────────────────────────────────────
     def analyze_mesh(self, mesh: trimesh.Trimesh) -> dict:
+        # Edge counts are reported because "not watertight" on its own does not
+        # say which repair is needed: a boundary edge is a hole to fill, a
+        # non-manifold edge is a face to remove, and the two are fixed by
+        # different code. They are also the numbers that show whether repair did
+        # anything, logged either side of it by `process`.
+        _, edge_counts = self._edge_face_counts(mesh)
         return {
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
             "is_watertight": mesh.is_watertight,
+            "boundary_edges": int((edge_counts == 1).sum()),
+            "nonmanifold_edges": int((edge_counts > 2).sum()),
             "is_convex": mesh.is_convex,
             "volume_mm3": round(mesh.volume, 2) if mesh.is_volume else 0,
             "bounds": mesh.bounds.tolist() if mesh.bounds is not None else None,

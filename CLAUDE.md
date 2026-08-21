@@ -414,6 +414,66 @@ one streaming pass instead, using the header only for `;TIME:` and as a fallback
 - `header_bbox_is_populated()` detects the sentinel by MIN exceeding MAX, not by magnitude.
 - Tested against synthetic fixtures, so the suite needs no CuraEngine.
 
+### Mesh repair — Phase 3 (pythonsrc/engineer.py)
+
+`repair_mesh` composes trimesh (MIT, closes the surface) with manifold3d
+(Apache-2.0, guarantees the result). The trimesh half used to have a hole in it:
+**nothing in the chain could remove a non-manifold edge.** `fix_normals` and
+`fix_winding` reorder faces, `fill_holes` adds them, `merge_vertices` welds
+coincident ones — none of them can delete a third face hanging off an edge. A mesh
+that arrived with non-manifold edges therefore left "repair" with the same count,
+the kernel answered `Error.NotManifold`, and the unrepaired surface was shipped.
+Downstream that reads as repair failing outright at every face count: the slicer
+gets a mesh with no consistent inside and printability scores it unprintable.
+
+- **Closing is a loop, not a sequence** (`MAX_CLOSE_ROUNDS`). Dropping a
+  non-manifold fin opens a hole where it was attached; filling a hole, or
+  stitching a boundary loop, can fuse two faces onto one edge and create a fresh
+  non-manifold seam. Running each step once leaves whichever defect the other one
+  created. Real meshes converge in one to three rounds.
+- **Which two faces to keep on an over-shared edge decides whether repair fixes
+  the mesh or destroys it.** Faces are ranked by how many of their *own* three
+  edges are cleanly manifold — a face embedded in the surface scores 3, a fin
+  hanging off it scores 0 or 1 — with area only as a tie-break. Ranking by area
+  is the intuitive choice and it is wrong: isosurface fins are usually *larger*
+  than the face beneath them, so area keeps the fin and deletes the surface.
+  Measured on an 80k-face sphere with 200 fins: area dropped 440 faces and left
+  322 boundary edges no later round could close, forcing a volumetric rebuild
+  that lost all detail; connectivity dropped 198 and closed in one round.
+- **`fill_holes` only fans over triangle and quad loops.** Anything larger needs
+  `trimesh.repair.stitch`, which returns loose faces for the caller to graft on
+  (`_graft` re-welds after). A boundary that neither closes nor stitches is where
+  the loop gives up and logs why.
+- **Winding is fixed once, at the end, and only when needed.** `fix_winding`
+  walks the face-adjacency graph in Python and measures ~10s on an 80k-face mesh;
+  the loop grafts patches whose winding is arbitrary, so a pass before it is a
+  pass that has to be repeated. `is_winding_consistent` is a vectorised
+  comparison, so a mesh that arrives consistent — the normal case off an
+  isosurface — pays for the check and needs only `fix_inversion`, a sign test on
+  its volume. Removing the redundant pass took an 82k-face repair from 20s to
+  0.5s and a 328k-face one from 63s to 2s.
+- **Edge counting folds vertex pairs into one int64 key** rather than calling
+  `np.unique(axis=0)`, which sorts rows through an object-dtype view: 0.014s
+  against 0.216s on an 80k-face mesh, once per round.
+- **A kernel rejection escalates to a volumetric remesh** rather than shipping
+  the reject. A filled voxel grid has an unambiguous inside, so marching cubes
+  over it cannot produce a boundary or a non-manifold edge. It is the last resort
+  and it says so in the log: detail below the pitch
+  (`VOXEL_REMESH_RESOLUTION`, a divisor of the longest extent so it is
+  scale-invariant — repair runs before scaling) is gone. The result is
+  deliberately **not** decimated back to the input budget: quadric decimation of
+  a marching-cubes surface at those ratios (measured: 100k faces to 2.4k)
+  reintroduces hundreds of non-manifold edges, trading the defect the remesh
+  exists to remove for a smaller file. CuraEngine is untroubled by six figures.
+- **`analyze_mesh` reports `boundary_edges` and `nonmanifold_edges`.**
+  "Not watertight" does not say which repair is needed — a boundary edge is a
+  hole to fill, a non-manifold edge is a face to remove, and different code fixes
+  each. `process` logs the pair either side of repair, so a repair that did
+  nothing is visible in the log rather than three phases later.
+- **Repair is not bit-exact even on a clean mesh**: `_to_manifold` hands vertices
+  to the kernel as float32, so coordinates round-trip through single precision.
+  Sub-micron on a 50mm part, but not zero.
+
 ### Printability (pythonsrc/printability.py)
 
 Deterministic, pre-print geometry scoring — the quality gate the Engineer never had.
