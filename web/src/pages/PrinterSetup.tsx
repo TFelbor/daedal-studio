@@ -58,16 +58,15 @@ function printerKind(firmware: string): PrinterKind {
 }
 
 /**
- * The *service* to probe for a firmware, or null when there is nothing to probe.
+ * The *service* to probe for a firmware.
  *
  * `/config/test-connection` takes service names: Moonraker is the HTTP API in
- * front of Klipper, and Bambu is reached over LAN MQTT, which the server has no
- * probe for at all. Handing it a firmware name is why this test used to fail
- * permanently for Klipper and Bambu.
+ * front of Klipper. Handing it a firmware name is why this test used to fail
+ * permanently for Klipper. Bambu has a probe now too — a TCP connect to its LAN
+ * MQTT port — so every firmware is checkable and none of them is assumed good.
  */
-function probeService(firmware: string): 'moonraker' | 'octoprint' | null {
-  const kind = printerKind(firmware);
-  return kind === 'bambu' ? null : kind;
+function probeService(firmware: string): 'moonraker' | 'octoprint' | 'bambu' {
+  return printerKind(firmware);
 }
 
 function errorMessage(e: unknown, fallback: string): string {
@@ -239,27 +238,22 @@ export function PrinterSetup() {
       }
     }
 
-    // Bambu has no probe on the server, so there is nothing to call: reporting
-    // "ready" without a printer check beats reporting a failure that only means
-    // "this endpoint does not exist".
-    const service = probeService(printerType);
-    if (service) {
-      try {
-        const printerRes = await testConnection(service);
-        if (!printerRes.success) {
-          setOverall('error');
-          setOverallMessage(`Printer connection failed — ${printerRes.message}. Is your printer or simulator running?`);
-          return;
-        }
-      } catch (e) {
+    // Every firmware is probed. This used to skip the check for Bambu and fall
+    // straight through to "Ready", so the pill went green before anything had been
+    // connected — it was reporting an assumption as a verified fact.
+    try {
+      const printerRes = await testConnection(probeService(printerType));
+      if (!printerRes.success) {
         setOverall('error');
-        setOverallMessage(`Printer check failed — ${errorMessage(e, 'the API server did not answer')}.`);
+        setOverallMessage(`Printer connection failed — ${printerRes.message}`);
         return;
       }
+      setOverall('ready');
+      setOverallMessage(null);
+    } catch (e) {
+      setOverall('error');
+      setOverallMessage(`Printer check failed — ${errorMessage(e, 'the API server did not answer')}.`);
     }
-
-    setOverall('ready');
-    setOverallMessage(null);
   };
 
   const fetchSimStatus = async () => {
@@ -429,7 +423,8 @@ export function PrinterSetup() {
   }
 
   const kind = printerKind(printerType);
-  const canProbePrinter = probeService(printerType) !== null;
+  // Every firmware has a probe now, including Bambu.
+  const canProbePrinter = true;
   const noticeMessage = overall === 'error' || overall === 'incomplete' ? overallMessage : null;
   const octoRunning = simStatus?.octoprint?.running === true;
   const octoUrl = simStatus?.octoprint?.url || 'http://localhost:5001';
@@ -763,7 +758,7 @@ export function PrinterSetup() {
                   {kind === 'octoprint' && 'Running OctoPrint on a Pi? Use its local IP.'}
                   {kind === 'moonraker' && 'Moonraker is the HTTP API in front of Klipper — port 7125 on the printer host.'}
                   {kind === 'bambu' &&
-                    'Bambu printers answer over LAN MQTT, which this page cannot probe. Enable LAN mode on the printer: Settings → Network → LAN Mode Liveview.'}
+                    'Checks the printer answers on its LAN MQTT port. The access code is only proven when a print is sent. Enable LAN mode first: Settings → Network → LAN Mode Liveview.'}
                 </p>
               </div>
               {printerTestResult && renderResult(printerTestResult)}

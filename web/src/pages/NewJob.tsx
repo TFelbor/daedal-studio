@@ -408,15 +408,19 @@ export function NewJob() {
     return (
       <div className={styles.split}>
         <div className={styles.splitCell}>
+          {/* Whoever is reading this already chose to be here — they do not need
+              selling, they need to know what to type and that it is safe to try. */}
           <div className={`eyebrow ${styles.heroEyebrow}`}>
-            <span className="label-accent">Text prompt to printed model</span>
+            <span className="label-accent">New job</span>
           </div>
           <h1 className={`display-lg ${styles.hero}`}>
-            Describe it.<br />We print it.
+            What are we<br />making today?
           </h1>
           <p className={`lede ${styles.lede}`}>
-            Describe the object in plain text. The engine draws a blueprint, reconstructs the
-            geometry, repairs and slices it, then sends the job to your printer.
+            Type the object the way you would describe it to someone: what it is, roughly how
+            big, what it needs to do. Everything after that is automatic — blueprint, geometry,
+            a printability check, then G-code. You can look it over before anything reaches the
+            printer.
           </p>
 
           {!printerReady && (
