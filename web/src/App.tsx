@@ -1,59 +1,48 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { NewJob } from './pages/NewJob';
 import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
 import { OutcomeFeedback } from './components/OutcomeFeedback';
-import { LayoutDashboard, PlusCircle, Settings, Monitor, MoonStar, SunMedium } from 'lucide-react';
-import { toggleTheme } from './theme';
+import { engineLabel, engineStatusClass, useEngineStatus } from './hooks/useEngineStatus';
+import logo from './assets/p2p-logo.png';
 import styles from './App.module.css';
 
+const NAV_ITEMS = [
+  { to: '/', label: 'New job', match: (path: string) => path === '/' },
+  { to: '/dashboard', label: 'Dashboard', match: (path: string) => path.startsWith('/dashboard') },
+  { to: '/monitor', label: 'Monitor', match: (path: string) => path === '/monitor' },
+  { to: '/setup', label: 'Settings', match: (path: string) => path === '/setup' },
+];
+
 function Navigation() {
-  const location = useLocation();
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
-
-  useEffect(() => {
-    const updateTheme = () => {
-      setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
-    };
-
-    updateTheme();
-    window.addEventListener('themechange', updateTheme);
-    return () => window.removeEventListener('themechange', updateTheme);
-  }, []);
+  const { pathname } = useLocation();
+  const engine = useEngineStatus();
 
   return (
     <nav className={styles.nav}>
-      <div className={styles.navContainer}>
-        <Link to="/" className={styles.logo}>
-          P2P
+      <div className={styles.navLeft}>
+        <Link to="/" className={styles.brand} aria-label="Prompt2Print">
+          <img src={logo} alt="" width={26} height={26} />
         </Link>
         <div className={styles.navLinks}>
-          <Link to="/" className={`${styles.navLink} ${location.pathname === '/' ? styles.active : ''}`}>
-            <PlusCircle size={18} /> New Job
-          </Link>
-          <Link to="/dashboard" className={`${styles.navLink} ${location.pathname.startsWith('/dashboard') ? styles.active : ''}`}>
-            <LayoutDashboard size={18} /> Dashboard
-          </Link>
-          <Link to="/monitor" className={`${styles.navLink} ${location.pathname === '/monitor' ? styles.active : ''}`}>
-            <Monitor size={18} /> Monitor
-          </Link>
-          <Link to="/setup" className={`${styles.navLink} ${location.pathname === '/setup' ? styles.active : ''}`}>
-            <Settings size={18} /> Settings
-          </Link>
-          <button
-            type="button"
-            className="btn btn-secondary theme-toggle"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? <SunMedium size={16} /> : <MoonStar size={16} />}
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
+          {NAV_ITEMS.map((item) => {
+            const active = item.match(pathname);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={active ? `${styles.navLink} ${styles.navLinkActive}` : styles.navLink}
+                aria-current={active ? 'page' : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
+      <span className={engineStatusClass(engine)}>{engineLabel(engine)}</span>
     </nav>
   );
 }
@@ -65,15 +54,14 @@ function Attribution() {
   // this app that does not use it. See THIRD-PARTY-NOTICES.md.
   return (
     <footer className={styles.attribution}>
-      <span>Built with DINOv3</span>
-      <span className={styles.attributionSep} aria-hidden="true">
-        ·
-      </span>
-      <span>3D reconstruction by TRELLIS.2 (© Microsoft, MIT)</span>
-      <span className={styles.attributionSep} aria-hidden="true">
-        ·
-      </span>
-      <span>Blueprints by FLUX.2-klein</span>
+      <div className={styles.attributionCredits}>
+        <span>Built with DINOv3</span>
+        <span className={styles.sep} aria-hidden="true">·</span>
+        <span>3D reconstruction by TRELLIS.2 (© Microsoft, MIT)</span>
+        <span className={styles.sep} aria-hidden="true">·</span>
+        <span>Blueprints by FLUX.2-klein</span>
+      </div>
+      <span className={styles.plate}>PROMPT2PRINT</span>
     </footer>
   );
 }
@@ -82,7 +70,7 @@ function App() {
   return (
     <BrowserRouter>
       <Navigation />
-      <main className="container">
+      <main className="surface">
         {/* Sits in the shell rather than on one page: a user who finished a print and
             navigated elsewhere is exactly the person we need an answer from. */}
         <OutcomeFeedback />
@@ -92,6 +80,8 @@ function App() {
           <Route path="/dashboard/:id" element={<JobDetail />} />
           <Route path="/monitor" element={<PrintMonitor />} />
           <Route path="/setup" element={<PrinterSetup />} />
+          {/* A mistyped URL used to render an empty page. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <Attribution />

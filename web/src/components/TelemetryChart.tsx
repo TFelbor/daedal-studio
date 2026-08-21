@@ -1,13 +1,35 @@
 import { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { TelemetrySample } from '../api/client';
+import { Blueprint } from './Blueprint';
 import styles from './TelemetryChart.module.css';
-import { Activity } from 'lucide-react';
 
 export interface TelemetryChartProps {
   jobId?: string;
   data?: TelemetrySample[];
 }
+
+/** Tooltip styling goes through inline style props because Recharts writes its own. */
+const TOOLTIP_SURFACE = {
+  background: 'var(--void)',
+  border: '1px solid var(--rule-strong)',
+  padding: '9px 12px',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '11px',
+};
+
+const TOOLTIP_LABEL = {
+  color: 'var(--ink-42)',
+  marginBottom: '4px',
+  letterSpacing: '0.06em',
+};
+
+const TOOLTIP_ITEM = { color: 'var(--ink-80)' };
+
+const format = (value: number | null | undefined, decimals: number) => {
+  if (value == null || Number.isNaN(value)) return '—';
+  return value.toFixed(decimals);
+};
 
 export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
   const [fallbackData, setFallbackData] = useState<TelemetrySample[]>([]);
@@ -31,7 +53,7 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
           setFallbackData(json as TelemetrySample[]);
         }
       } catch {
-        // Keep using the placeholder UI until live data arrives.
+        // Nothing recorded yet is the normal case; the empty state says so.
       }
     };
 
@@ -41,7 +63,6 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
     };
   }, [jobId, hasLiveData]);
 
-  // Format timestamps for display
   const formattedData = sourceData.map(s => ({
     ...s,
     timeLabel: new Date(s.sampled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -49,104 +70,128 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
 
   if (formattedData.length === 0) {
     return (
-      <div className={`card ${styles.chartCard} ${styles.empty}`}>
-        <Activity size={24} className={styles.iconEmpty} />
-        <p>Leave this in maintenance until telemetry data from a real 3D printer is available.</p>
-        <details style={{ marginTop: '1rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', alignSelf: 'stretch', textAlign: 'left', color: 'var(--text-primary)' }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Debug: Raw Data Prop</summary>
-          <pre style={{ fontSize: '0.75rem', maxHeight: '200px', overflow: 'auto', marginTop: '0.5rem' }}>
-            Raw data: {JSON.stringify(data, null, 2)}
-          </pre>
-          <pre style={{ fontSize: '0.75rem', maxHeight: '200px', overflow: 'auto', marginTop: '0.5rem' }}>
-            Formatted data: {JSON.stringify(formattedData, null, 2)}
-          </pre>
-        </details>
-      </div>
+      <Blueprint className={styles.panel}>
+        <div className={styles.head}>
+          <div className="block-title">
+            <h3 className="subheading">Live telemetry</h3>
+            <span className="status status-off">No samples</span>
+          </div>
+          <div className="empty">
+            <span>Nothing has been reported yet.</span>
+            <span>Hotend and bed temperatures, Z height, fan and speed appear here as the printer samples them.</span>
+          </div>
+        </div>
+      </Blueprint>
     );
   }
 
-  const latestSample = formattedData[formattedData.length - 1];
-
-  const formatNum = (val: any, decimals: number) => {
-    if (val == null) return '--';
-    const num = Number(val);
-    if (isNaN(num)) return '--';
-    return num.toFixed(decimals);
-  };
-
-  const formatVal = (val: any) => {
-    if (val == null) return '--';
-    const num = Number(val);
-    if (isNaN(num)) return '--';
-    return num.toString();
-  };
+  const latest = formattedData[formattedData.length - 1];
 
   return (
-    <div className={`card ${styles.chartCard}`}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>Live Telemetry</h3>
-        <div className={styles.statsContainer}>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Hotend</span>
-            <span className={styles.statValue}>
-              {formatNum(latestSample.hotend_actual_c, 1)}
-              <span>/ {formatVal(latestSample.hotend_target_c) !== '--' ? formatVal(latestSample.hotend_target_c) : '0'} °C</span>
+    <Blueprint className={styles.panel} tone="run">
+      <div className={styles.head}>
+        <div className="block-title">
+          <h3 className="subheading">Live telemetry</h3>
+          <div className={styles.legend}>
+            <span className={styles.legendItem}>
+              <i className={`${styles.swatch} ${styles.swatchHotend}`} aria-hidden="true" />Hotend
             </span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Bed</span>
-            <span className={styles.statValue}>
-              {formatNum(latestSample.bed_actual_c, 1)}
-              <span>/ {formatVal(latestSample.bed_target_c) !== '--' ? formatVal(latestSample.bed_target_c) : '0'} °C</span>
+            <span className={styles.legendItem}>
+              <i className={`${styles.swatch} ${styles.swatchBed}`} aria-hidden="true" />Bed
             </span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Z Height</span>
-            <span className={styles.statValue}>
-              {formatNum(latestSample.z_height_mm, 2)}
-              <span>mm</span>
-            </span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Fan</span>
-            <span className={styles.statValue}>
-              {formatVal(latestSample.fan_speed_pct)}
-              <span>%</span>
-            </span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Speed</span>
-            <span className={styles.statValue}>
-              {formatVal(latestSample.print_speed_pct)}
-              <span>%</span>
+            <span className={styles.legendItem}>
+              <i className={`${styles.swatch} ${styles.swatchZ}`} aria-hidden="true" />Z
             </span>
           </div>
         </div>
       </div>
-      <div className={styles.chartContainer}>
+
+      <div className={`plate ${styles.figures}`}>
+        <div className={styles.cell}>
+          <div className={styles.figure}>
+            {format(latest.hotend_actual_c, 1)}
+            <i className={styles.unit}>/ {format(latest.hotend_target_c, 0)} &deg;C</i>
+          </div>
+          <div className="plate-label">Hotend</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>
+            {format(latest.bed_actual_c, 1)}
+            <i className={styles.unit}>/ {format(latest.bed_target_c, 0)} &deg;C</i>
+          </div>
+          <div className="plate-label">Bed</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>
+            {format(latest.z_height_mm, 2)}
+            <i className={styles.unit}>mm</i>
+          </div>
+          <div className="plate-label">Z height</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>
+            {format(latest.fan_speed_pct, 0)}
+            <i className={styles.unit}>%</i>
+          </div>
+          <div className="plate-label">Fan</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>
+            {format(latest.print_speed_pct, 0)}
+            <i className={styles.unit}>%</i>
+          </div>
+          <div className="plate-label">Speed</div>
+        </div>
+      </div>
+
+      {/* Axes, grid and series all take their colour from the module stylesheet, so
+          there is no hex anywhere in the chart. */}
+      <div className={styles.chart}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={formattedData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-            <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} tickMargin={10} />
-            <YAxis yAxisId="temp" orientation="left" stroke="#ff7300" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="height" orientation="right" stroke="#387908" tick={{ fontSize: 12 }} />
-            <Tooltip 
-              contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}
-              labelStyle={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.5rem' }}
+          <LineChart data={formattedData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="timeLabel" tickMargin={10} minTickGap={44} interval="preserveStartEnd" />
+            <YAxis yAxisId="temp" orientation="left" width={38} />
+            <YAxis yAxisId="height" orientation="right" width={34} />
+            <Tooltip
+              contentStyle={TOOLTIP_SURFACE}
+              labelStyle={TOOLTIP_LABEL}
+              itemStyle={TOOLTIP_ITEM}
+              cursor={{ className: styles.cursor }}
             />
-            <Legend wrapperStyle={{ paddingTop: '20px' }} />
-            <Line yAxisId="temp" type="monotone" dataKey="hotend_actual_c" name="Extruder Temp (°C)" stroke="#ff7300" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-            <Line yAxisId="temp" type="monotone" dataKey="bed_actual_c" name="Bed Temp (°C)" stroke="#8884d8" strokeWidth={2} dot={false} />
-            <Line yAxisId="height" type="stepAfter" dataKey="z_height_mm" name="Z Height (mm)" stroke="#387908" strokeWidth={2} dot={false} />
+            <Line
+              yAxisId="temp"
+              type="monotone"
+              dataKey="hotend_actual_c"
+              name="Hotend °C"
+              className={styles.seriesHotend}
+              strokeWidth={1.6}
+              dot={false}
+              activeDot={false}
+            />
+            <Line
+              yAxisId="temp"
+              type="monotone"
+              dataKey="bed_actual_c"
+              name="Bed °C"
+              className={styles.seriesBed}
+              strokeWidth={1.2}
+              dot={false}
+              activeDot={false}
+            />
+            <Line
+              yAxisId="height"
+              type="stepAfter"
+              dataKey="z_height_mm"
+              name="Z height mm"
+              className={styles.seriesZ}
+              strokeWidth={1.2}
+              dot={false}
+              activeDot={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <details style={{ marginTop: '1rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Debug: Raw Telemetry Data</summary>
-        <pre style={{ fontSize: '0.75rem', maxHeight: '200px', overflow: 'auto', marginTop: '0.5rem' }}>
-          {JSON.stringify(formattedData, null, 2)}
-        </pre>
-      </details>
-    </div>
+    </Blueprint>
   );
 }

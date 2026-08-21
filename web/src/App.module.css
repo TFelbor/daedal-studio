@@ -1,73 +1,119 @@
+/* The header bar: one hairline over the drawn surface, darker than the ground it
+   sits on so the app reads as a plate laid on a bench. */
 .nav {
-  background-color: var(--surface-color);
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.navContainer {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 2rem;
-  height: 60px;
+  height: var(--nav-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 20px;
+  padding: 0 40px;
+  background: rgba(13, 13, 13, 0.92);
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(8px);
 }
 
-.logo {
-  font-size: 1.25rem;
-  font-weight: 800;
-  color: var(--text-primary);
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  min-width: 0;
 }
 
-.logo:hover {
-  text-decoration: none;
+.brand {
+  display: block;
+  flex: none;
 }
 
 .navLinks {
   display: flex;
-  gap: 1.5rem;
-  height: 100%;
+  align-items: center;
+  gap: 28px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.navLinks::-webkit-scrollbar {
+  display: none;
 }
 
 .navLink {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  height: 100%;
-  border-bottom: 2px solid transparent;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-50);
+  white-space: nowrap;
+  transition: color 0.15s ease;
 }
 
 .navLink:hover {
-  color: var(--accent-color);
-  text-decoration: none;
+  color: var(--ink);
 }
 
-.active {
-  color: var(--accent-color);
-  border-bottom-color: var(--accent-color);
+/* The active item is marked by a square, not an underline — the same 5px mark the
+   marketing site uses for a current section. */
+.navLinkActive {
+  color: var(--ink);
+}
+
+.navLinkActive::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  flex: none;
 }
 
 /* Model attribution. "Built with DINOv3" is a licence obligation, not branding —
-   see THIRD-PARTY-NOTICES.md — so this is styled to stay legible rather than to
-   recede into the background entirely. */
+   see THIRD-PARTY-NOTICES.md — so this stays legible rather than receding. */
 .attribution {
-  max-width: 1200px;
-  margin: 3rem auto 0;
-  padding: 1.25rem 2rem 2rem;
-  border-top: 1px solid var(--border-color);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 40px;
+  background: var(--void);
+  border-top: 1px solid var(--rule);
+  font-size: 11.5px;
+  color: rgba(242, 240, 237, 0.32);
 }
 
-.attributionSep {
-  color: var(--border-color);
+.attributionCredits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.sep {
+  color: rgba(242, 240, 237, 0.16);
+}
+
+.plate {
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 720px) {
+  .nav {
+    padding: 0 20px;
+    gap: 12px;
+  }
+
+  .navLeft {
+    gap: 18px;
+  }
+
+  .navLinks {
+    gap: 18px;
+  }
+
+  .attribution {
+    padding: 16px 20px;
+  }
 }

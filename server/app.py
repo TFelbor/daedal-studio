@@ -33,7 +33,7 @@ from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
 import httpx
 from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
-from server.simulator_manager import simulator_manager
+from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
 logger = logging.getLogger(__name__)
 
@@ -1725,21 +1725,47 @@ async def get_moonraker_simulator_logs():
         
     return {"lines": [line.rstrip() for line in lines[-100:]]}
 
+#: OctoPrint takes roughly half a minute to come up — intermediary server, plugin
+#: load, then the real server. The old budget was 30 × 0.1s = 3 seconds, so a cold
+#: start was always reported unhealthy.
+_OCTOPRINT_BOOT_TIMEOUT_S = 90
+_OCTOPRINT_POLL_INTERVAL_S = 1.0
+
+
 @app.post("/simulators/octoprint/start")
 async def start_octoprint_simulator():
-    status = await simulator_manager.start_octoprint()
+    try:
+        status = await simulator_manager.start_octoprint()
+    except SimulatorAvailabilityError as exc:
+        # Docker being down is an environment problem the user can fix, not a bug:
+        # report it as such instead of a 500 with a stack trace.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # The probe must authenticate: OctoPrint answers an unauthenticated
+    # /api/version with 403, so a keyless poll can never see it come up.
+    api_key = status.get("api_key") or config_store.get("OCTOPRINT_API_KEY")
+    headers = {"X-Api-Key": api_key} if api_key else {}
 
     healthy = False
-    async with httpx.AsyncClient(timeout=1.0) as client:
-        for _ in range(30):
+    deadline = asyncio.get_event_loop().time() + _OCTOPRINT_BOOT_TIMEOUT_S
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        while asyncio.get_event_loop().time() < deadline:
             try:
-                resp = await client.get(f"{status['url']}/api/version")
+                resp = await client.get(f"{status['url']}/api/version", headers=headers)
                 if resp.status_code == 200:
                     healthy = True
                     break
+                if resp.status_code in (401, 403):
+                    logger.warning(
+                        "OctoPrint simulator is up but rejected our API key (%s). "
+                        "Is OCTOPRINT_API_KEY in sync with "
+                        "data/octoprint/octoprint/config.yaml?",
+                        resp.status_code,
+                    )
+                    break
             except Exception:
-                pass
-            await asyncio.sleep(0.1)
+                pass  # still booting
+            await asyncio.sleep(_OCTOPRINT_POLL_INTERVAL_S)
 
     status["healthy"] = healthy
     await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})

@@ -1,13 +1,419 @@
-.container {
-  max-width: 800px;
-  margin: 0 auto;
+/* Settings — numbered sections with a left index (artboard 1g).
+   The page is a two-column plate: a fixed index that names the four sections and
+   a 760px column of ruled section heads. Every colour, face and rule below is a
+   token from global.css; nothing here hard-codes a hex, a face or a radius. */
+
+.page {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 56px;
+  align-items: start;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* ── Left index ───────────────────────────────────────────────────────────────
+   Sticky so the index that replaced the long scroll stays reachable while the
+   sections scroll past it. */
+
+.index {
+  position: sticky;
+  top: calc(var(--nav-height) + 24px);
 }
 
-.spinner {
-  animation: spin 1s linear infinite;
+.indexTitle {
+  margin-bottom: 26px;
+}
+
+.indexList {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
+}
+
+.indexRow {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-sub);
+  font-size: 14px;
+  color: var(--ink-58);
+  transition: color 0.15s ease;
+}
+
+.indexRow:hover {
+  color: var(--ink);
+}
+
+.indexRowActive,
+.indexRowActive:hover {
+  color: var(--accent);
+}
+
+.indexNum {
+  flex: none;
+  padding-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.indexStatus {
+  margin-top: 22px;
+}
+
+/* ── Right column ─────────────────────────────────────────────────────────── */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  max-width: 760px;
+  min-width: 0;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section {
+  /* The nav is sticky, so an anchored section must clear it. */
+  scroll-margin-top: calc(var(--nav-height) + 24px);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 12px;
+  margin-bottom: 22px;
+}
+
+.sectionNum {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.sectionTag {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-28);
+  text-align: right;
+}
+
+.sectionNote {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--ink-42);
+  text-align: right;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+
+.fieldHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Saving / Saved, in the label's line so it never resizes the control row. */
+.fieldState {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-35);
+}
+
+.fieldStateSaved {
+  color: var(--ok);
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowInput {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* The reveal button: a bordered cell the width of the field's own gutter. */
+.iconButton {
+  width: 46px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--field-line);
+  color: var(--ink-50);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.iconButton:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.result {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.resultOk {
+  color: var(--ok);
+}
+
+.resultBad {
+  color: var(--bad-ink);
+}
+
+/* ── Skip toggles: one hairline-divided box, two cells ─────────────────────── */
+
+.toggleBox {
+  display: flex;
+  border: 1px solid var(--rule);
+}
+
+.toggleCell {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+}
+
+.toggleCell + .toggleCell {
+  border-left: 1px solid var(--rule);
+}
+
+.toggleName {
+  display: block;
+  font-size: 14px;
+}
+
+.toggleCaption {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-35);
+  margin-top: 2px;
+}
+
+/* The checkbox itself is the state; it is hidden from sight, not from the
+   keyboard or the accessibility tree. */
+.toggleInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 18px;
+  border: 1px solid var(--rule-strong);
+  transition: border-color 0.15s ease;
+}
+
+.switchKnob {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 14px;
+  height: 14px;
+  background: var(--ink-28);
+  transition: background-color 0.15s ease;
+}
+
+.toggleInput:checked + .switch {
+  border-color: var(--accent-line);
+}
+
+.toggleInput:checked + .switch > .switchKnob {
+  left: auto;
+  right: 1px;
+  background: var(--accent);
+}
+
+.toggleInput:focus-visible + .switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Test connection row ──────────────────────────────────────────────────── */
+
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Simulators ───────────────────────────────────────────────────────────── */
+
+.simGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.simCard {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.simHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.simName {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 20px;
+}
+
+.simActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.simUrl {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-35);
+  word-break: break-all;
+}
+
+.simNote {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-42);
+}
+
+/* ── Developer ────────────────────────────────────────────────────────────── */
+
+.devGrid {
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  gap: 18px;
+}
+
+/* ── Page-level loading ───────────────────────────────────────────────────── */
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-42);
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────────
+   Under 900px the index unsticks and lays out as a horizontal strip above the
+   sections; under 700px every field grid becomes one column. */
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .index {
+    position: static;
+  }
+
+  .indexTitle {
+    margin-bottom: 18px;
+  }
+
+  .indexList {
+    flex-direction: row;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--rule-sub);
+  }
+
+  .indexRow {
+    padding: 10px 16px;
+    border-bottom: none;
+    border-left: 1px solid var(--rule-sub);
+    white-space: nowrap;
+  }
+
+  .indexRow:first-child {
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .indexStatus {
+    margin-top: 16px;
+  }
+
+  .body {
+    max-width: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .fieldGrid,
+  .simGrid,
+  .devGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .toggleBox {
+    flex-direction: column;
+  }
+
+  .toggleCell + .toggleCell {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+  }
 }

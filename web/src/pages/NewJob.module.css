@@ -1,187 +1,549 @@
-.pageLayout {
-  display: flex;
-  flex-direction: column;
-  min-height: calc(100vh - 64px); /* assuming 64px nav */
-  background-color: var(--bg-color);
+/* New job — the page the app opens on, in two states.
+   Idle: prompt on the left, the pipeline explained on the right.
+   Running: one dominant artifact stage with a phase rail beside it.
+   Every colour, face and rule below is a token from global.css. */
+
+/* ── Idle: the split ───────────────────────────────────────────────────────── */
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: min(72vh, 620px);
+  border-bottom: 1px solid var(--rule);
 }
 
-.heroContainer {
+.splitCell {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 24px;
+  padding: clamp(32px, 4.4vw, 64px) clamp(20px, 3.9vw, 56px) clamp(36px, 4.7vw, 68px);
+  min-width: 0;
+}
+
+.splitCell:first-child {
+  border-right: 1px solid var(--rule);
+}
+
+.heroEyebrow {
+  margin-bottom: 26px;
 }
 
 .hero {
-  text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
-.title {
-  font-size: 3rem;
-  font-weight: 800;
-  margin-bottom: 12px;
-  color: var(--text-primary);
+.lede {
+  max-width: 430px;
+  margin-bottom: 36px;
 }
 
-.subtitle {
-  font-size: 1.25rem;
-  color: #6b7280;
-}
-
-.form {
-  width: 100%;
-  max-width: 800px;
-  padding: 24px;
-  background: var(--surface-color);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  box-shadow: none;
-}
-
-.textarea {
-  width: 100%;
-  font-size: 1.125rem;
-  padding: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+.notice {
   margin-bottom: 16px;
+}
+
+/* The accent underline the mockup gives the one link inside a red notice. */
+.noticeLink {
+  border-bottom: 1px solid var(--accent-line);
+}
+
+/* ── Idle: the prompt field ───────────────────────────────────────────────────
+   The Blueprint frame *is* the field, so the textarea inside it carries no
+   border of its own — a second rule 18px inside the first reads as a mistake. */
+
+.promptFrame {
+  border-color: var(--field-line);
+  /* The same sunken ground `.input`/`.textarea` use in global.css — the void at
+     half alpha, which no single token spells. */
+  background: rgba(13, 13, 13, 0.5);
+  padding: 18px 18px 14px;
+  margin-bottom: 14px;
+}
+
+.promptFrame:focus-within {
+  border-color: var(--accent);
+}
+
+.promptInput {
+  width: 100%;
+  min-height: 78px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
   resize: vertical;
-  transition: border-color 0.2s;
-  background-color: var(--surface-color);
-  color: var(--text-primary);
 }
 
-.textarea:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: none;
+.promptInput::placeholder {
+  color: var(--ink-35);
 }
 
-.actions {
+.promptInput:disabled {
+  opacity: 0.45;
+}
+
+.frameFooter {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule-row);
+  padding-top: 12px;
+  margin-top: 10px;
 }
 
-.submitBtn {
+.materialRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  border-radius: 8px;
 }
 
-.liveView {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
+.selectWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
-.grid {
+/* Native chevron replaced by a Lucide one so the control keeps the 1.5px line
+   weight the rest of the interface is drawn with. */
+.materialSelect {
+  appearance: none;
+  border: 1px solid var(--rule-strong);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 5px 28px 5px 10px;
+}
+
+.materialSelect:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.materialSelect:disabled {
+  opacity: 0.45;
+}
+
+.selectChevron {
+  position: absolute;
+  right: 9px;
+  color: var(--ink-50);
+  pointer-events: none;
+}
+
+.disclosure {
+  padding: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink-50);
+  border-bottom: 1px dotted var(--ink-28);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.disclosure:hover:not(:disabled) {
+  color: var(--accent);
+  border-bottom-color: var(--accent-line);
+}
+
+.advanced {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  padding: 16px 24px;
-  flex: 1;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  border-top: 1px solid var(--rule-sub);
+  padding-top: 12px;
+  margin-top: 12px;
 }
 
-@media (max-width: 1200px) {
-  .grid {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
-  }
-}
-
-@media (max-width: 768px) {
-  .grid {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
-  }
-}
-
-.column {
+.submitRow {
   display: flex;
-  flex-direction: column;
-  height: 100%;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
-.colTitle {
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* The registration marks need a positioned box to straddle. */
+.submitBtn {
+  position: relative;
+  padding: 14px 26px;
+  font-size: 16px;
+}
+
+.submitHint {
+  font-size: 12.5px;
+  color: var(--ink-35);
+}
+
+/* ── Idle: the pipeline explainer ─────────────────────────────────────────── */
+
+.phaseName {
+  font-family: var(--font-heading);
   font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 12px;
+  font-size: 19px;
+  letter-spacing: 0.01em;
 }
 
-.componentWrapper {
-  flex: 1;
-  background: var(--surface-color);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  box-shadow: none;
+.phaseBlurb {
+  font-size: 13.5px;
+  color: var(--ink-50);
+  margin-top: 2px;
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-35);
+  white-space: nowrap;
+}
+
+.printerBlock {
+  margin-top: auto;
+  padding-top: 38px;
+}
+
+.printerLabel {
+  margin-bottom: 14px;
+}
+
+.printerFrame {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.printerName {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.printerMeta {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-42);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* ── Running: the job header strip ────────────────────────────────────────── */
+
+.jobHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px 32px;
+  flex-wrap: wrap;
+  padding: 26px 40px 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.jobHeadLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.jobIdRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.jobTitle {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1.05;
+}
+
+.jobFigures {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.figureLabel {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-35);
+  margin-bottom: 3px;
+}
+
+.figureValue {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.figureRun {
+  color: var(--run);
+}
+
+.figureDone {
+  color: var(--ok);
+}
+
+.figureBad {
+  color: var(--bad);
+}
+
+/* ── Running: stage + rail ────────────────────────────────────────────────── */
+
+.liveGrid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+}
+
+.stagePane {
+  border-right: 1px solid var(--rule);
+  padding: 24px 40px 34px;
+  min-width: 0;
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-bottom: 20px;
+}
+
+.tabButtons {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  padding: 8px 18px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--rule);
+  color: var(--ink-42);
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tabActive {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.tabChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 8px 14px;
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-50);
+  white-space: nowrap;
+}
+
+/* The stage draws the ruled ground itself, at the 40px viewport scale, so an
+   artifact panel dropped into it needs no background of its own. A panel that
+   *does* paint an opaque ground (the mesh viewer) simply covers this one. */
+.stage {
+  position: relative;
+  height: clamp(320px, 52vh, 520px);
   overflow: hidden;
+  background-color: var(--raised);
+  background-image: linear-gradient(rgba(242, 240, 237, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 240, 237, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.stageBody {
+  position: absolute;
+  inset: 0;
+}
+
+/* Sits above the artifact so the frame always says which phase drew it. */
+.stageLabel {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--ink-35);
+  pointer-events: none;
+}
+
+.stageCaption {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--ink-42);
 }
 
-.promptSummary {
-  background: var(--surface-color);
-  padding: 16px;
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  box-shadow: none;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+.stageCaptionMono {
+  font-family: var(--font-mono);
 }
 
-.promptText {
-  font-size: 1rem;
-  color: #1f2937;
-  font-style: italic;
-  margin-bottom: auto;
-  line-height: 1.5;
-}
-
-.resetBtn {
+/* Slice tab: the figures the slicer produced, centred in the frame. */
+.slicePlate {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  height: 100%;
+  padding: 20px;
+}
+
+.slicePlateGrid {
   width: 100%;
-  padding: 10px;
-  margin-top: 16px;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  color: var(--text-secondary);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
-.resetBtn:hover {
-  background-color: var(--border-color);
-  color: var(--surface-color);
-}
-
-.offlineBadge {
-  margin-top: 12px;
+.sliceEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 26px;
   text-align: center;
-  font-size: 0.75rem;
-  background: var(--surface-color);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  padding: 4px;
-  border-radius: var(--border-radius);
-  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ink-35);
 }
 
-.progressWrapper {
+/* ── Running: the rail ───────────────────────────────────────────────────── */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 24px 32px 34px;
+  min-width: 0;
+}
+
+.railHead {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 10px;
+}
+
+.railRow {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 0 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--rule-sub);
+}
+
+.railRow:last-child {
+  border-bottom: none;
+}
+
+/* The rail lists the same five phases at a smaller size than a page body does. */
+.rail .railNum {
+  font-size: 14px;
+}
+
+.railName {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.railNamePending {
+  color: var(--ink-42);
+}
+
+.railMark {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ink-28);
+}
+
+/* Status colours, never action colours: a failed phase is red, not orange. */
+.numBad {
+  color: var(--bad);
+}
+
+.markOk {
+  color: var(--ok);
+}
+
+.markBad {
+  color: var(--bad);
+}
+
+.railEmpty {
+  height: 120px;
+  margin-top: 14px;
+}
+
+.railBottom {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.railCaption {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-35);
+}
+
+/* ── Collapse ────────────────────────────────────────────────────────────────
+   Both splits become one column; nothing wide is allowed to push the page
+   sideways, so the tab strip scrolls inside itself instead. */
+
+@media (max-width: 900px) {
+  .split,
+  .liveGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .splitCell:first-child {
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .split {
+    min-height: 0;
+  }
+
+  .stagePane {
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+    padding: 20px 20px 28px;
+  }
+
+  .jobHeader {
+    padding: 22px 20px 16px;
+  }
+
+  .jobTitle {
+    font-size: 26px;
+  }
+
+  .rail {
+    padding: 22px 20px 30px;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
 }

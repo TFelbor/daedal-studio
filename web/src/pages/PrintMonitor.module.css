@@ -1,149 +1,172 @@
-.header {
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 1rem;
+/* Monitor. Two states, one language: a single framed object when nothing is
+   printing, and one framed head plus a two-column body per running job. */
+
+.head {
+  margin-bottom: 36px;
 }
 
-.titleArea {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
+.head :global(.eyebrow) {
+  margin-bottom: 10px;
 }
 
-.headerIcon {
-  color: var(--accent-color);
+/* ── Empty state ──────────────────────────────────────────────────────────────
+   The printer is still worth showing, so the frame is split rather than centred:
+   the invitation on the left, what this machine can print on the right. */
+
+.emptyFrame {
+  display: grid;
+  grid-template-columns: 1fr 400px;
 }
 
-.title {
-  font-size: 2rem;
-  margin: 0;
-  color: var(--text-primary);
+.emptyMain {
+  padding: 70px 56px 74px;
+  border-right: 1px solid var(--rule);
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  margin: 0;
+.emptyTitle {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 34px;
+  line-height: 1.05;
+  margin-bottom: 12px;
 }
 
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem;
-  color: var(--text-secondary);
-}
-
-.errorCard {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--danger-color);
-  background-color: #fff1f0;
-  border-color: #ffccc7;
-  padding: 1rem;
-}
-
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  text-align: center;
-  background-color: var(--surface-color);
-}
-
-.emptyIcon {
-  color: var(--border-color);
-  margin-bottom: 1rem;
-}
-
-.emptyState h2 {
-  margin: 0 0 0.5rem 0;
-  color: var(--text-primary);
-}
-
-.emptyState p {
-  margin: 0;
-  color: var(--text-secondary);
+.emptyLede {
   max-width: 400px;
+  margin-bottom: 28px;
 }
+
+/* `.blueprint` gives the marks their anchor; `.btn` keeps the border transparent.
+   Doubled so the shared button padding cannot win on source order. */
+.cta.cta {
+  padding: 13px 24px;
+}
+
+.printers {
+  padding: 34px 32px;
+  min-width: 0;
+}
+
+.printersHead {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 11px;
+  margin-bottom: 18px;
+}
+
+/* Hairline rows: one rule between rows, nothing else. */
+.printerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule-sub);
+}
+
+.printers > .printerRow:last-child {
+  border-bottom: none;
+}
+
+.printerIdentity {
+  min-width: 0;
+}
+
+.printerName {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.printerMeta {
+  margin-top: 3px;
+}
+
+/* ── Active state ─────────────────────────────────────────────────────────────
+   Not drawn in the mockup, so it is built from the same parts: a framed head
+   naming the job, then the telemetry panel beside the printer's own blocks. */
 
 .jobList {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 28px;
 }
 
-.jobMonitorContainer {
+.job {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 1.5rem;
+  gap: 20px;
 }
 
-.jobBanner {
+.jobHead {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
 }
 
-.jobInfo {
-  display: flex;
-  flex-direction: column;
+.jobIdentity {
+  min-width: 0;
 }
 
-.jobInfo h4 {
-  margin: 0 0 0.25rem 0;
-  font-size: 1.1rem;
-  color: var(--text-primary);
+.jobPrompt {
+  font-size: 26px;
+  margin: 8px 0 4px;
+  overflow-wrap: anywhere;
 }
 
 .jobId {
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  display: block;
 }
 
-.monitorGrid {
+.jobGrid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 2rem;
+  grid-template-columns: 1fr 400px;
+  gap: 20px;
+  align-items: start;
 }
 
-.mainCol {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+/* No telemetry panel to place: the printer's blocks take the full width. */
+.jobGridSolo {
+  grid-template-columns: 1fr;
 }
 
+.mainCol,
 .sideCol {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 20px;
+  min-width: 0;
 }
 
-.chartCard {
-  padding: 0;
-  overflow: hidden;
-  min-height: 400px;
-}
-
-@media (max-width: 900px) {
-  .monitorGrid {
+@media (max-width: 1000px) {
+  .emptyFrame,
+  .jobGrid {
     grid-template-columns: 1fr;
   }
-  
-  .jobBanner {
+
+  .emptyMain {
+    padding: 44px 28px 40px;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .emptyTitle {
+    font-size: 28px;
+  }
+
+  .printers {
+    padding: 28px;
+  }
+
+  .jobHead {
     flex-direction: column;
     align-items: flex-start;
-    gap: 1rem;
+    gap: 14px;
+  }
+
+  .jobPrompt {
+    font-size: 22px;
   }
 }

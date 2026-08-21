@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import styles from './PrinterStateCard.module.css';
+import { Pause, Play, Square } from 'lucide-react';
+import { Blueprint, Marks } from './Blueprint';
 import { printerAction } from '../api/client';
-import { Play, Pause, Square, Clock, FileText, Thermometer, Layers, Timer } from 'lucide-react';
+import styles from './PrinterStateCard.module.css';
 
 interface PrinterStateCardProps {
   jobId: string;
@@ -9,6 +10,8 @@ interface PrinterStateCardProps {
   startedAt?: string | null;
   layerHeightMm?: number | null;
 }
+
+const EM_DASH = '—';
 
 export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm }: PrinterStateCardProps) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -18,15 +21,15 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
     setLoadingAction(action);
     try {
       await printerAction(jobId, action);
-    } catch (err: any) {
-      alert(err.message || `Failed to ${action}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `Failed to ${action}`);
     } finally {
       setLoadingAction(null);
     }
   };
 
   const formatTime = (seconds: number | undefined | null) => {
-    if (seconds == null) return '\u2014';
+    if (seconds == null) return EM_DASH;
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
@@ -36,7 +39,7 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
   };
 
   const formatDateTime = (iso: string | null | undefined) => {
-    if (!iso) return '\u2014';
+    if (!iso) return EM_DASH;
     return new Date(iso).toLocaleString([], {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit'
@@ -44,18 +47,25 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
   };
 
   const getETA = (secondsLeft: number | null | undefined) => {
-    if (secondsLeft == null) return '\u2014';
+    if (secondsLeft == null) return EM_DASH;
     const eta = new Date(Date.now() + secondsLeft * 1000);
     return eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   if (!printerState) {
     return (
-      <div className={`card ${styles.stateCard} ${styles.waiting}`}>
-        <Timer size={20} className={styles.waitingIcon} />
-        <p className={styles.waitingText}>Waiting for printer data\u2026</p>
-        <p className={styles.waitingHint}>Telemetry will appear once the print starts.</p>
-      </div>
+      <Blueprint className={styles.block}>
+        <div className={styles.section}>
+          <div className="block-title">
+            <h3 className="subheading">Print status</h3>
+            <span className="status status-off">Waiting</span>
+          </div>
+          <div className="empty">
+            <span>The printer has not reported yet.</span>
+            <span>Progress, times and temperatures appear here once it does.</span>
+          </div>
+        </div>
+      </Blueprint>
     );
   }
 
@@ -66,7 +76,7 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
   const isPrinting = flags.printing;
   const isPaused = flags.paused;
 
-  const fileName = job?.file?.name || '\u2014';
+  const fileName = job?.file?.name || EM_DASH;
   const completionPct = progress?.completion != null ? progress.completion : 0;
   const printTime = progress?.printTime;
   const printTimeLeft = progress?.printTimeLeft;
@@ -90,41 +100,101 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
   const bed = temps.bed || {};
 
   // Filament
-  let filamentStr = '\u2014';
+  let filamentStr = EM_DASH;
   if (job?.filament?.tool0?.length) {
-    filamentStr = `${(job.filament.tool0.length / 1000).toFixed(2)}m`;
+    filamentStr = `${(job.filament.tool0.length / 1000).toFixed(2)} m`;
   }
 
   return (
-    <div className={`card ${styles.stateCard}`}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>Print Status</h3>
-        <span className={`${styles.badge} ${isPrinting ? styles.badgePrinting : isPaused ? styles.badgePaused : styles.badgeDefault}`}>
-          {stateText}
-        </span>
-      </div>
-
-      <div className={styles.progressSection}>
-        <div className={styles.progressHeader}>
-          <span className={styles.progressLabel}>Progress</span>
-          <span className={styles.progressPct}>{completionPct.toFixed(1)}%</span>
+    <Blueprint className={styles.block}>
+      <div className={styles.section}>
+        <div className="block-title">
+          <h3 className="subheading">Print status</h3>
+          <span className={`status ${isPrinting ? 'status-run' : 'status-off'}`}>{stateText}</span>
         </div>
-        <div className={styles.progressBarBg}>
-          <div
-            className={styles.progressBarFill}
-            style={{ width: `${Math.min(completionPct, 100)}%` }}
-          />
+
+        <div className={styles.progressHead}>
+          <span className="label">Progress</span>
+          <span className={styles.progressPct}>
+            {completionPct.toFixed(1)}<i className={styles.unit}>%</i>
+          </span>
+        </div>
+        <div className={styles.track}>
+          <div className={styles.fill} style={{ width: `${Math.min(completionPct, 100)}%` }} />
         </div>
       </div>
 
-      <div className={styles.controlButtons}>
+      <div className={`plate ${styles.figures}`}>
+        <div className={styles.cell}>
+          <div className={styles.figure}>{formatTime(printTime)}</div>
+          <div className="plate-label">Elapsed</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>{formatTime(printTimeLeft)}</div>
+          <div className="plate-label">Remaining</div>
+        </div>
+        <div className={styles.cell}>
+          <div className={styles.figure}>{getETA(printTimeLeft)}</div>
+          <div className="plate-label">Done at</div>
+        </div>
+        {currentLayer != null && (
+          <div className={styles.cell}>
+            <div className={styles.figure}>
+              {currentLayer}
+              {totalLayers != null && <i className={styles.unit}>/ ~{totalLayers}</i>}
+            </div>
+            <div className="plate-label">Layer</div>
+          </div>
+        )}
+      </div>
+
+      {(tool0.actual != null || bed.actual != null) && (
+        <div className={styles.temps}>
+          {tool0.actual != null && (
+            <div className={styles.temp}>
+              <span className="label-tight">Hotend</span>
+              <span className={styles.tempValue}>
+                {tool0.actual?.toFixed(1)}&deg;C
+                {tool0.target != null && <i className={styles.unit}>/ {tool0.target?.toFixed(1)}&deg;C</i>}
+              </span>
+            </div>
+          )}
+          {bed.actual != null && (
+            <div className={styles.temp}>
+              <span className="label-tight">Bed</span>
+              <span className={styles.tempValue}>
+                {bed.actual?.toFixed(1)}&deg;C
+                {bed.target != null && <i className={styles.unit}>/ {bed.target?.toFixed(1)}&deg;C</i>}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={styles.rows}>
+        <div className={styles.row}>
+          <span className="label-tight">File</span>
+          <span className={`mono ${styles.rowValue}`} title={fileName}>{fileName}</span>
+        </div>
+        <div className={styles.row}>
+          <span className="label-tight">Started</span>
+          <span className={`mono ${styles.rowValue}`}>{formatDateTime(startedAt)}</span>
+        </div>
+        <div className={styles.row}>
+          <span className="label-tight">Filament</span>
+          <span className={`mono ${styles.rowValue}`}>{filamentStr}</span>
+        </div>
+      </div>
+
+      <div className={styles.controls}>
         {!isPrinting ? (
           <button
-            className="btn btn-primary"
+            className="btn btn-primary blueprint marked-accent"
             onClick={() => handleAction('resume')}
             disabled={loadingAction === 'resume'}
           >
-            <Play size={14} /> Resume
+            <Marks />
+            <Play size={14} strokeWidth={1.5} /> Resume
           </button>
         ) : (
           <button
@@ -132,7 +202,7 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
             onClick={() => handleAction('pause')}
             disabled={loadingAction === 'pause'}
           >
-            <Pause size={14} /> Pause
+            <Pause size={14} strokeWidth={1.5} /> Pause
           </button>
         )}
         <button
@@ -140,76 +210,9 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
           onClick={() => handleAction('cancel')}
           disabled={loadingAction === 'cancel' || (!isPrinting && !isPaused)}
         >
-          <Square size={14} /> Cancel
+          <Square size={14} strokeWidth={1.5} /> Cancel
         </button>
       </div>
-
-      <div className={styles.statsGrid}>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><FileText size={13} className={styles.icon} /> File</span>
-          <span className={styles.statValue} title={fileName}>{fileName}</span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><Clock size={13} className={styles.icon} /> Started</span>
-          <span className={styles.statValue}>{formatDateTime(startedAt)}</span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><Timer size={13} className={styles.icon} /> Elapsed</span>
-          <span className={styles.statValue}>{formatTime(printTime)}</span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><Timer size={13} className={styles.icon} /> Remaining</span>
-          <span className={styles.statValue}>{formatTime(printTimeLeft)}</span>
-        </div>
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><Clock size={13} className={styles.icon} /> ETA</span>
-          <span className={styles.statValue}>{getETA(printTimeLeft)}</span>
-        </div>
-        {currentLayer != null && (
-          <div className={styles.statRow}>
-            <span className={styles.statLabel}><Layers size={13} className={styles.icon} /> Layer</span>
-            <span className={styles.statValue}>
-              {currentLayer}{totalLayers != null ? ` / ~${totalLayers}` : ''}
-            </span>
-          </div>
-        )}
-        <div className={styles.statRow}>
-          <span className={styles.statLabel}><span className={styles.icon}>🧵</span> Filament</span>
-          <span className={styles.statValue}>{filamentStr}</span>
-        </div>
-      </div>
-
-      {(tool0.actual != null || bed.actual != null) && (
-        <div className={styles.tempSection}>
-          <h4 className={styles.tempTitle}>
-            <Thermometer size={14} /> Temperatures
-          </h4>
-          <div className={styles.tempGrid}>
-            {tool0.actual != null && (
-              <div className={styles.tempItem}>
-                <span className={styles.tempLabel}>Hotend</span>
-                <span className={styles.tempValue}>
-                  {tool0.actual?.toFixed(1)}°C
-                  {tool0.target != null && (
-                    <span className={styles.tempTarget}> / {tool0.target?.toFixed(1)}°C</span>
-                  )}
-                </span>
-              </div>
-            )}
-            {bed.actual != null && (
-              <div className={styles.tempItem}>
-                <span className={styles.tempLabel}>Bed</span>
-                <span className={styles.tempValue}>
-                  {bed.actual?.toFixed(1)}°C
-                  {bed.target != null && (
-                    <span className={styles.tempTarget}> / {bed.target?.toFixed(1)}°C</span>
-                  )}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </Blueprint>
   );
 }

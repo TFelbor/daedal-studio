@@ -1,126 +1,79 @@
-.progressCard {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  min-width: 0;
-}
+/* The five pipeline phases as five equal cells across one row, divided by
+   hairlines. The numbering is information, not decoration: the pipeline is
+   genuinely ordered. */
 
-.title {
-  font-size: 1.25rem;
-  margin: 0;
-}
-
-.stepper {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  position: relative;
-  padding: 1rem 0;
-}
-
-.stepper::before {
-  content: '';
-  position: absolute;
-  top: 2rem;
-  left: 10%;
-  right: 10%;
-  height: 2px;
-  background-color: var(--border-color);
-  z-index: 0;
-}
-
-.step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  z-index: 1;
-  width: 25%;
-}
-
-.iconContainer {
-  background-color: var(--surface-color);
-  border-radius: 50%;
-  padding: 4px;
-}
-
-.iconPending {
-  color: var(--border-color);
-}
-
-.iconActive {
-  color: var(--accent-color);
-}
-
-.iconCompleted {
-  color: var(--success-color);
-}
-
-.label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.active .label {
-  color: var(--accent-color);
-  font-weight: 600;
-}
-
-.completed .label {
-  color: var(--text-primary);
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
+.summary {
+  display: block;
+  margin-bottom: 18px;
 }
 
 .loading {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 2rem;
-  color: var(--text-secondary);
+  gap: 10px;
+  padding: 22px 0;
+  color: var(--ink-42);
 }
 
-.logsContainer {
-  margin-top: 1rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  overflow: hidden;
-  background-color: #f5f5f5;
-  height: 250px;
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
+.row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  min-width: 620px;
+}
+
+.cell {
+  padding: 18px 16px;
+  border-left: 1px solid var(--rule-row);
   min-width: 0;
 }
 
-.logsHeader {
-  background-color: #eaeaea;
-  padding: 0.5rem 1rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
+.cell:first-child {
+  padding-left: 0;
+  border-left: none;
 }
 
-.logs {
-  margin: 0;
-  padding: 1rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.8rem;
-  color: #333;
-  overflow-x: auto;
-  overflow-y: auto;
-  flex-grow: 1;
-  white-space: pre-wrap;
-  word-break: break-all;
+.cell:last-child {
+  padding-right: 0;
+}
+
+.cellHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* The accent means "you can act here", so a stopped phase takes the bad status
+   colour rather than the default accent `.phase-num` carries. */
+.numError {
+  color: var(--bad);
+}
+
+.markDone {
+  color: var(--ok);
+}
+
+.markError {
+  color: var(--bad);
+}
+
+.cellName {
+  font-size: 14px;
+}
+
+.cellState {
+  margin-top: 4px;
+}
+
+.logBlock {
+  margin-top: 22px;
+  border-top: 1px solid var(--rule-sub);
+  padding-top: 14px;
+}
+
+.logLabel {
+  display: block;
+  margin-bottom: 8px;
 }

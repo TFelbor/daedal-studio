@@ -17,7 +17,32 @@ export interface ConnectionTestResult {
 
 export interface SimulatorStatus {
   moonraker: { running: boolean; port: number | null; url: string | null };
-  octoprint: { running: boolean; port: number | null; url: string | null; api_key?: string | null };
+  octoprint: {
+    running: boolean;
+    port: number | null;
+    url: string | null;
+    api_key?: string | null;
+    /** False when Docker could not be reached — "we cannot tell", not "stopped". */
+    available?: boolean;
+    /** Why the state is unknown, when it is. */
+    error?: string | null;
+  };
+}
+
+/**
+ * Pull the server's own explanation out of a failed response.
+ *
+ * FastAPI puts it in `detail`, and it is written to be shown to a person — "Is
+ * Docker Desktop running?" is far more use than "Failed to start simulator".
+ */
+async function errorDetail(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === 'string' && body.detail) return body.detail;
+  } catch {
+    // Not JSON; fall through to the generic message.
+  }
+  return fallback;
 }
 
 export async function getConfig(): Promise<ConfigResponse> {
@@ -65,10 +90,10 @@ export async function getSimulatorStatus(): Promise<SimulatorStatus> {
 
 export async function startSimulator(service: string): Promise<void> {
   const res = await fetch(`/simulators/${service}/start`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to start simulator');
+  if (!res.ok) throw new Error(await errorDetail(res, 'Could not start the simulator.'));
 }
 
 export async function stopSimulator(service: string): Promise<void> {
   const res = await fetch(`/simulators/${service}/stop`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to stop simulator');
+  if (!res.ok) throw new Error(await errorDetail(res, 'Could not stop the simulator.'));
 }

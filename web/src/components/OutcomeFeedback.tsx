@@ -124,7 +124,7 @@ function OutcomeCard({ job, onResolved }: CardProps) {
           onClick={() => submit('success')}
           disabled={busy !== null}
         >
-          {busy === 'success' ? <Loader2 size={16} className="spinner" /> : <ThumbsUp size={16} />}
+          {busy === 'success' ? <Loader2 size={16} className="spin" /> : <ThumbsUp size={16} />}
           Came off clean
         </button>
         <button
@@ -154,7 +154,7 @@ function OutcomeCard({ job, onResolved }: CardProps) {
             </label>
             <select
               id={`ft-${job.job_id}`}
-              className="input"
+              className="select"
               value={failureType}
               onChange={(e) => setFailureType(e.target.value)}
               style={{ maxWidth: 260 }}
@@ -167,7 +167,7 @@ function OutcomeCard({ job, onResolved }: CardProps) {
             </select>
           </div>
           <textarea
-            className="input"
+            className="textarea"
             rows={2}
             placeholder="Anything else worth knowing (optional)"
             value={notes}
@@ -180,7 +180,7 @@ function OutcomeCard({ job, onResolved }: CardProps) {
               onClick={() => submit('failure', true)}
               disabled={busy !== null}
             >
-              {busy === 'failure' ? <Loader2 size={16} className="spinner" /> : <ThumbsDown size={16} />}
+              {busy === 'failure' ? <Loader2 size={16} className="spin" /> : <ThumbsDown size={16} />}
               Record failure
             </button>
             <button
@@ -206,6 +206,10 @@ export function OutcomeFeedback() {
   // Jobs whose prompt-shown event has already been sent this session. The server
   // deduplicates too, but tracking it here avoids a request per poll.
   const marked = useRef<Set<string>>(new Set());
+  // Jobs answered or skipped in this session. `/feedback/pending` keeps returning a
+  // dismissed job — declining is recorded, not acted on — so without this the card
+  // reappears on the next poll and every re-skip books another dismissal event.
+  const resolved = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +219,7 @@ export function OutcomeFeedback() {
         const body = await listPendingFeedback();
         // A print can finish long after the page that started it was closed, so the
         // banner polls rather than relying on the job's WebSocket still being open.
-        if (!cancelled) setJobs(body.jobs);
+        if (!cancelled) setJobs(body.jobs.filter((job) => !resolved.current.has(job.job_id)));
       } catch {
         // The banner is additive; a failed poll must never break the page around it.
       }
@@ -244,6 +248,7 @@ export function OutcomeFeedback() {
   }, [jobs, open]);
 
   const handleResolved = (jobId: string) => {
+    resolved.current.add(jobId);
     setJobs((current) => current.filter((j) => j.job_id !== jobId));
   };
 

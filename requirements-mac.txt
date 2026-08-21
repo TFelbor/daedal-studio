@@ -1,8 +1,27 @@
+# macOS (Apple Silicon) dependency set. Phase 1 runs natively here on MPS; Phase 2
+# has no local path on this platform and reaches a CUDA host, a GPU worker, or Pixazo.
+
 mflux==0.16.4
 mlx==0.30.6
 mlx-lm==0.30.7
 mlx-metal==0.30.6
-torch==2.10.0
-torchaudio==2.11.0.dev20260215
-torchvision==0.20.1
+
+# PyTorch 2.7.x, the same family infra/docker/pipeline.Dockerfile installs, so a
+# Mac-native run and a containerised one exercise the same code paths.
+#
+# The floor is forced, not preferred: transformers 5.x reaches for
+# `torch.float8_e8m0fnu`, which does not exist before torch 2.7, and mflux 0.16.4
+# independently declares `torch>=2.7.1`. torchvision 0.22.1 is the release built
+# against this torch. The previous `torch==2.10.0` + `torchvision==0.20.1` pairing
+# could not resolve at all — 0.20.1 requires torch 2.5.1 — so this file has not been
+# installable as written, and the environments that appear to work were assembled by
+# hand around it.
+torch==2.7.1
+torchvision==0.22.1
+
+# torchaudio is deliberately absent: nothing in this project imports it, transformers
+# only wants it under its `audio` extra, and the nightly previously pinned here
+# (2.11.0.dev20260215) was compiled against a different torch ABI and raised
+# ImportError on load. Do not add it back without a caller that needs it.
+
 -r requirements-base.txt
