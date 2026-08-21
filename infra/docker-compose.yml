@@ -241,8 +241,10 @@ services:
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
       - ${HOST_PROJECT_ROOT:-..}/data/logs:/app/data/logs
       - ${HOST_PROJECT_ROOT:-..}/pythonsrc:/app/pythonsrc
+      # The one telemetry database. HOME is /root in the container, so the
+      # library's default path resolves through this mount to the same file the
+      # host uses — see "One database" in CLAUDE.md.
       - ~/.p2p-mesh:/root/.p2p-mesh
-      - p2p-telemetry:/app/telemetry
       - p2p-models-flux:/models/flux
       - p2p-models-trellis2:/models/trellis2
       - p2p-models-cache:/models/hf_cache
@@ -268,9 +270,15 @@ services:
       - ${HOST_PROJECT_ROOT:-..}/server:/app/server
       - ${HOST_PROJECT_ROOT:-..}/tests:/app/tests
       - /var/run/docker.sock:/var/run/docker.sock
-      - p2p-telemetry:/app/telemetry
+      # Same single database as every other execution mode. Deliberately a bind
+      # mount rather than a named volume: a volume is invisible from the host, and
+      # that is how a month of job history was written somewhere nobody could see.
+      - ~/.p2p-mesh:/root/.p2p-mesh
     environment:
-      - TELEMETRY_DB_PATH=/app/telemetry/telemetry.db
+      # TELEMETRY_DB_PATH is deliberately NOT set. Leaving it unset makes every
+      # process — native, container, pipeline subprocess — resolve the same default,
+      # ~/.p2p-mesh/telemetry.db. Setting it here to a container path is what split
+      # the data across two databases. See "One database" in CLAUDE.md.
       - P2P_LOGS_DIR=/app/data/logs
       - DOCKER_HOST=unix:///var/run/docker.sock
       - HOST_PROJECT_ROOT=${PWD}
@@ -300,5 +308,5 @@ volumes:
   # Shared HuggingFace cache — avoids re-downloading tokenisers / configs
   p2p-models-cache:
     name: p2p-models-hf-cache
-  p2p-telemetry:
-    name: p2p-telemetry
+  # There is deliberately no telemetry volume. The database is bind-mounted from
+  # ~/.p2p-mesh so it is visible, backup-able, and the same file in every mode.

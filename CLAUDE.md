@@ -279,7 +279,37 @@ FastAPI application with:
   and report its knobs from `generation_params()`. `pipeline._record_generation()` reads all of it
   off the instance after Phase 2, so a pay-per-generation backend needs no pipeline change to get
   its cost and latency recorded per job.
-- **DB** (`db.py`): SQLite wrapper with thread-safe locking; `check_same_thread=False` for use across asyncio tasks. Path default: `~/.p2p-mesh/telemetry.db` or `TELEMETRY_DB_PATH` env var
+- **DB** (`db.py`): SQLite wrapper with thread-safe locking; `check_same_thread=False` for use across asyncio tasks.
+- **One database, and where it lives.** The telemetry database is
+  **`~/.p2p-mesh/telemetry.db` on the host** — always, in every execution mode. Containers
+  reach that same file through the `~/.p2p-mesh:/root/.p2p-mesh` bind mount: `HOME` is
+  `/root` in the image, so `get_default_db_path()` resolves to the mounted host file
+  rather than to anything container-local. The Fernet key for the encrypted config store
+  (`.config_key`) sits in that same directory, so one database means one key.
+
+  **Do not set `TELEMETRY_DB_PATH`** in `.env`, in compose, or in a shell that will run
+  the server. Leaving it unset is what keeps every process on one file. The only
+  legitimate use is pointing a throwaway environment somewhere else — which is exactly
+  what `tests/conftest.py` does, redirecting it to a temp directory in `pytest_configure`
+  so the suite cannot touch real data.
+
+  This is written down because it went wrong. `.env` used to set
+  `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` and compose mounted a **named volume**
+  `p2p-telemetry` there. A named volume is invisible from the host, so container runs
+  wrote job rows into a database nobody could see while their artifacts landed in the
+  bind-mounted `data/outputs/` — 27 job directories with no matching rows anywhere a
+  developer would look. Native runs meanwhile used the default path, so the two modes
+  had separate histories and separate encrypted config stores. There is deliberately no
+  telemetry volume in compose now, and `infra/scripts/patch_env.py`, which rewrote that
+  variable back into `.env` on every run, has been deleted.
+
+  `tests/test_single_database.py` is the regression guard: it fails if compose or
+  `.env.template` starts pinning the variable again, or if a telemetry volume reappears.
+- **`job_event` has no foreign key onto `print_job`**, so deleting a job leaves its
+  events behind. `feedback_funnel()` and `count_job_events()` therefore join `print_job`,
+  and `count_orphaned_job_events()` reports the debris. Without the join the pilot's
+  headline response rate is computed over jobs that no longer exist — on one real
+  database that read as a confident 40% when the honest answer was "no data".
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
 - **Print outcome is a product feature, not a column** (`outcome`, `outcome_source`,
