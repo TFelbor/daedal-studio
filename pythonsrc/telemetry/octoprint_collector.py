@@ -48,6 +48,7 @@ class OctoPrintCollector:
         self._backoff = 1.0
         self._claim = CollectorClaim(db, job_id, "OctoPrintCollector")
         self._needs_reauth = False
+        self._db_error_logged = False
 
     async def start(self) -> None:
         """Start the collector and initiate the WebSocket connection."""
@@ -259,7 +260,16 @@ class OctoPrintCollector:
             # duplicate every telemetry_sample row.
             return
 
-        self.db.insert_sample(sample)
+        try:
+            self.db.insert_sample(sample)
+        except Exception as exc:  # noqa: BLE001 - reported, never raised at the socket
+            self._log_db_failure("record a telemetry sample", exc)
+            return
+        self._db_error_logged = False
+
+        # Deliberately downstream of the insert: a sample this collector could not
+        # persist is not its sample to fan out, and the relay target is the process
+        # reading the very database that just refused the write.
         await self.sample_queue.put(sample)
 
         telemetry_message = {"type": "telemetry", "data": sample.to_dict()}
@@ -310,9 +320,35 @@ class OctoPrintCollector:
 
         # A human verdict already on the row wins; the guard lives in
         # update_job_outcome_verdict so every machine writer inherits it.
-        self.db.update_job_outcome_verdict(
-            self.job_id,
-            outcome,
-            source="machine",
-            completed_at=datetime.now(timezone.utc),
-        )
+        try:
+            self.db.update_job_outcome_verdict(
+                self.job_id,
+                outcome,
+                source="machine",
+                completed_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:  # noqa: BLE001 - reported, never raised at the socket
+            self._log_db_failure(f"record the '{outcome}' outcome", exc)
+
+    def _log_db_failure(self, what: str, exc: Exception) -> None:
+        """Report a database failure as itself, rather than as a connection error.
+
+        These writes used to run unguarded, so a permissions or corruption fault
+        propagated into ``_run_loop``'s blanket handler, which logged it as
+        ``OctoPrint connection error`` and dropped a websocket that was working
+        perfectly — then reconnected on a backoff, for the next sample to tear down
+        again. The cause named in the log was the one thing that was not wrong.
+
+        Samples arrive roughly every second, so only the first failure is logged at
+        ERROR and the rest at DEBUG until one succeeds. The cause does not change
+        between them, and an hour of identical lines buries everything else.
+
+        Args:
+            what: What the collector was trying to do, phrased to follow "Cannot".
+            exc: The failure raised by the database.
+        """
+        if self._db_error_logged:
+            logger.debug("Still cannot %s for job %s: %s", what, self.job_id, exc)
+            return
+        logger.error("Cannot %s for job %s: %s", what, self.job_id, exc)
+        self._db_error_logged = True
