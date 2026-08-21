@@ -25,6 +25,12 @@ class AnomalyDetector:
         - Rule 5 (Extrusion issue): Klipper + OctoPrint
     """
 
+    #: How much the hotend's shortfall must shrink across the thermal window before
+    #: it counts as heating rather than failing. Sampling noise is a few tenths of a
+    #: degree; a hotend actually climbing closes tens of degrees over five samples,
+    #: so anything in between separates the two cleanly.
+    CONVERGENCE_TOLERANCE_C = 1.0
+
     def __init__(self, queue: asyncio.Queue, db: TelemetryDB, operator: Optional[BasePrinterOperator]):
         """Initialize the AnomalyDetector.
 
@@ -156,33 +162,64 @@ class AnomalyDetector:
         current = history[-1]
         state, progress = await self._get_state_and_progress(job_id)
         
-        self._check_thermal_runaway(job_id, current, history)
+        self._check_thermal_runaway(job_id, current, history, state)
         self._check_extrusion_stall(job_id, current, history, state, progress)
         self._check_layer_shift(job_id, current, history)
         self._check_bed_adhesion(job_id, current, history, state, progress)
         self._check_extrusion_issue(job_id, current, history)
 
-    def _check_thermal_runaway(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+    def _check_thermal_runaway(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str) -> None:
         """Evaluate Rule 1: Thermal runaway.
 
-        Condition: hotend_target > 150°C AND hotend_actual < (hotend_target - 25°C) for 5 consecutive samples.
+        Condition: hotend_target > 150°C AND hotend_actual < (hotend_target - 25°C)
+        for 5 consecutive samples, **and** the gap is not closing.
+
+        That last clause is the whole difference between a fault and a warm-up. A
+        cold hotend climbing toward 210°C sits far below its target for as long as it
+        takes to get there, which satisfies the first two conditions exactly. A real
+        job was labelled `thermal_runaway` seconds after dispatch for precisely that,
+        and the operator cancelled it by hand. What distinguishes the fault is the
+        *trend*: heating closes the gap, a dead heater holds it, and a runaway widens
+        it. Stalling below target still fires — the gap has to be shrinking, not
+        merely nonzero.
 
         Args:
             job_id: The unique identifier of the job.
             current: The most recent telemetry sample.
             history: A list of recent telemetry samples for the job.
+            state: The printer state, so a job that is no longer printing stops
+                accruing automated failures. A human cancelling a print is not a
+                fault, and the cooldown that follows must not be reported as one.
         """
+        if state not in ("printing", "heating"):
+            return
+
         if len(history) >= 5:
+            window = history[-5:]
             thermal_runaway = True
-            for s in history[-5:]:
+            for s in window:
                 if s.hotend_target_c is None or s.hotend_actual_c is None:
                     thermal_runaway = False
                     break
                 if s.hotend_target_c <= 150 or s.hotend_actual_c >= (s.hotend_target_c - 25):
                     thermal_runaway = False
                     break
-            if thermal_runaway:
-                self._trigger_failure(job_id, current, "thermal_runaway", history[-5:])
+
+            if not thermal_runaway:
+                return
+
+            # Measured as a deficit rather than a raw temperature so a target that
+            # moves mid-window cannot read as the hotend converging.
+            opening = window[0].hotend_target_c - window[0].hotend_actual_c
+            closing = window[-1].hotend_target_c - window[-1].hotend_actual_c
+            if opening - closing > self.CONVERGENCE_TOLERANCE_C:
+                logger.debug(
+                    "Job %s is heating, not running away — gap %.1f°C → %.1f°C",
+                    job_id, opening, closing,
+                )
+                return
+
+            self._trigger_failure(job_id, current, "thermal_runaway", window)
 
     def _check_extrusion_stall(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str, progress: float) -> None:
         """Evaluate Rule 2: Extrusion stall (clog proxy).

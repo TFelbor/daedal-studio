@@ -11,12 +11,13 @@ import sys
 import uuid
 import platform
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -35,9 +36,61 @@ from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
 from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
+from server.logging_config import configure_logging, is_high_frequency_path
+
+# At import time, not in a startup event: uvicorn imports this module and runs
+# module-level code (config store, strategy resolution) before any startup hook
+# fires, and those lines are worth keeping.
+configure_logging()
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="P2P Mesh API", version="1.0.0")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log one line per request: method, path, status and how long it took.
+
+    There was no request log at all, so a failing UI action left no trace on the
+    server side and had to be reproduced with a browser open. Duration is included
+    because the slow paths here are slow for structural reasons — a slice, a printer
+    probe — and knowing which endpoint blocked is most of the diagnosis.
+
+    Status decides the level, so a 500 is visible without turning on DEBUG. Polled
+    endpoints drop to DEBUG regardless: the job detail page alone would otherwise
+    emit a line every second.
+    """
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        # FastAPI's own handler logs this too, but without the path or the timing,
+        # and this is the line that says which request died.
+        logger.exception(
+            "%s %s — unhandled exception after %.0f ms",
+            request.method, request.url.path, elapsed_ms,
+        )
+        raise
+
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
+    if response.status_code >= 500:
+        level = logging.ERROR
+    elif response.status_code >= 400:
+        level = logging.WARNING
+    elif is_high_frequency_path(request.url.path):
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    logger.log(
+        level,
+        "%s %s → %d (%.0f ms)",
+        request.method, request.url.path, response.status_code, elapsed_ms,
+    )
+    return response
 
 config_store = ConfigStore()
 
@@ -248,6 +301,66 @@ def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float
     return data, nozzle
 
 
+#: How many rotating snapshots of the telemetry database to keep.
+DB_BACKUP_COPIES = 5
+
+#: Set when the last startup integrity check found damage, so `/health` can say so.
+database_problems: list[str] = []
+
+
+def check_database_health(db: TelemetryDB) -> list[str]:
+    """Verify the telemetry database and, if it is sound, snapshot it.
+
+    The database went corrupt once — `telemetry_sample`'s b-tree ended up with pages
+    referenced twice — and nothing noticed. It was found only because a query for
+    telemetry samples started returning `database disk image is malformed`, by which
+    point 346 rows were unreadable and the pages had been reused. There was no
+    integrity check anywhere in the codebase and no backup, so there was neither a
+    warning nor anything to restore from.
+
+    Running at startup is the right moment: it is the one point where the file is
+    known-quiescent from this process's side, and a server that comes up on a broken
+    database should say so in its logs rather than fail one endpoint at a time.
+
+    Snapshots are taken **only when the check passes**, so a corrupt file cannot
+    overwrite the last good copy — the rotation would otherwise launder the damage
+    through every slot in five restarts.
+
+    Args:
+        db: An open telemetry database.
+
+    Returns:
+        The problems found; empty when the database is sound.
+    """
+    global database_problems
+
+    problems = db.integrity_check()
+    database_problems = problems
+
+    if problems:
+        logger.error(
+            "Telemetry database FAILED its integrity check (%s). Data is being lost. "
+            "Repair it before relying on anything it reports: %s",
+            db.db_path, "; ".join(problems),
+        )
+        return problems
+
+    try:
+        source = Path(db.db_path)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        db.backup_to(source.with_name(f"{source.name}.backup-{stamp}"))
+
+        # Oldest first, so the newest DB_BACKUP_COPIES survive.
+        snapshots = sorted(source.parent.glob(f"{source.name}.backup-*"))
+        for stale in snapshots[:-DB_BACKUP_COPIES]:
+            stale.unlink(missing_ok=True)
+    except Exception as exc:
+        # A failed backup is not a reason to refuse to start.
+        logger.warning("Could not snapshot the telemetry database: %s", exc)
+
+    return problems
+
+
 @app.on_event("startup")
 def startup_event():
     """Handle application startup events."""
@@ -272,8 +385,9 @@ def startup_event():
     
     db = TelemetryDB()
     db.init_schema()
+    check_database_health(db)
     db.close()
-    
+
     for k, v in config_store.get_all().items():
         os.environ[k] = v
 
@@ -1122,10 +1236,26 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    `database` reports the verdict from the startup integrity check rather than
+    re-running it: `PRAGMA integrity_check` walks every page, and this endpoint is
+    polled. A degraded database is still reported as reachable — the server does
+    work, it is the data underneath that cannot be trusted — so the caller gets the
+    problems and decides.
+    """
     strategy = get_resolved_strategy()
     detected = get_execution_strategy()
-    return {"status": "ok", "version": app.version, "execution_strategy": strategy, "detected_strategy": detected}
+    return {
+        "status": "ok" if not database_problems else "degraded",
+        "version": app.version,
+        "execution_strategy": strategy,
+        "detected_strategy": detected,
+        "database": {
+            "healthy": not database_problems,
+            "problems": database_problems,
+        },
+    }
 
 @app.get("/jobs/{job_id}/telemetry")
 async def get_job_telemetry(job_id: str) -> List[Dict[str, Any]]:

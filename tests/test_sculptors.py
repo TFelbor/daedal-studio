@@ -1006,3 +1006,155 @@ def test_the_metallic_material_pixazo_returns_is_discarded(pixazo, monkeypatch, 
     material = getattr(mesh.visual, "material", None)
     metallic = getattr(material, "metallicFactor", None) if material else None
     assert not metallic, f"expected no metallic material, got {metallic}"
+
+
+# ── Component pruning must keep the body, not the longest scrap ──────────────
+#
+# A real job lost 99.7% of a purchased mesh here. The Pixazo GLB arrived with
+# 196,733 faces and `raw_mesh.obj` came out with 577, because pruning ranked
+# components by bounding-box size: an elongated sliver spans more space than a
+# dense body without being any part of the model.
+
+
+def test_largest_component_is_chosen_by_mass_not_by_bounding_box(blueprint, tmp_path):
+    """A long thin scrap out-spans the body; it must still lose."""
+    body = trimesh.creation.icosphere(subdivisions=3)  # 1280 faces, extent 2.0
+    sliver = trimesh.creation.box(extents=(0.01, 0.01, 50.0))  # 12 faces, extent 50
+    sliver.apply_translation([9, 0, 0])
+    combined = trimesh.util.concatenate([body, sliver])
+
+    out = tmp_path / "mesh.obj"
+    RecordingBackend(combined).generate_mesh(blueprint, out, target_faces=0)
+
+    kept = trimesh.load(out)
+    assert len(kept.faces) == len(body.faces)
+    # The sliver is 25x longer than the body is wide, so extents alone would keep it.
+    assert kept.extents.max() < 10
+
+
+def test_pruning_survives_a_mesh_split_into_many_components(blueprint, tmp_path):
+    """6,195 components is what the real failing mesh had — pruning must not choke."""
+    body = trimesh.creation.icosphere(subdivisions=3)
+    debris = [
+        trimesh.creation.box(extents=(0.01, 0.01, 0.01)).apply_translation([i, 0, 0])
+        for i in range(5, 205)
+    ]
+    combined = trimesh.util.concatenate([body, *debris])
+
+    out = tmp_path / "mesh.obj"
+    RecordingBackend(combined).generate_mesh(blueprint, out, target_faces=0)
+    assert len(trimesh.load(out).faces) == len(body.faces)
+
+
+def _seam_split_glb_bytes() -> bytes:
+    """A GLB whose vertices are duplicated per face, as a textured export produces.
+
+    glTF cannot share a vertex between faces that disagree on a normal or a UV, so
+    exporters split them. The positions still coincide; only the index buffer says
+    the surface is torn.
+    """
+    import numpy as np
+
+    sphere = trimesh.creation.icosphere(subdivisions=3)
+    unwelded = trimesh.Trimesh(
+        vertices=sphere.vertices[sphere.faces].reshape(-1, 3),
+        faces=np.arange(len(sphere.faces) * 3).reshape(-1, 3),
+        process=False,
+    )
+    return trimesh.Scene(unwelded).export(file_type="glb")
+
+
+def test_seam_split_vertices_are_welded_before_pruning(pixazo, monkeypatch, instant_polls):
+    """Unwelded seams shatter the surface, and pruning then keeps one triangle.
+
+    The real mesh arrived with 143,783 vertices for 196,733 faces — 47,541 of them
+    duplicates sitting on top of each other. Left unwelded the face-adjacency graph
+    saw 6,195 components instead of 742, the biggest holding 2,195 faces instead of
+    193,305, and the job printed the scrap.
+    """
+    _stub_request_sequence(monkeypatch, [(200, _seam_split_glb_bytes())])
+    mesh = pixazo._download_mesh("https://cdn.test/out.glb")
+
+    expected = trimesh.creation.icosphere(subdivisions=3)
+    assert len(mesh.faces) == len(expected.faces)
+    # The whole surface must survive pruning as one body.
+    kept = SculptorBackend._largest_component(mesh)
+    assert len(kept.faces) == len(expected.faces)
+
+
+# ── Nothing in this workflow carries appearance ───────────────────────────────
+#
+# The pipeline is shape-only: an FDM printer consumes geometry, and nothing after
+# Phase 2 reads a material. Appearance still travelled, because the cached GLB was
+# the raw purchased payload — so the one artifact a person opens by hand was the
+# chrome one, whatever the exported OBJ said.
+
+
+def _glb_appearance(path) -> dict:
+    """Flatten a GLB's first material plus its texture count.
+
+    `metallicFactor` lives under `pbrMetallicRoughness`, not at the top of the
+    material — asserting on the top level passes whether or not the chrome is there,
+    which is a test that cannot fail.
+    """
+    import json
+    import struct
+    from pathlib import Path as _Path
+
+    blob = _Path(path).read_bytes()
+    json_len = struct.unpack("<I", blob[12:16])[0]
+    doc = json.loads(blob[20:20 + json_len])
+    material = (doc.get("materials") or [{}])[0]
+    flattened = {**material, **material.get("pbrMetallicRoughness", {})}
+    flattened["image_count"] = len(doc.get("images") or [])
+    return flattened
+
+
+def test_the_cached_glb_is_rewritten_without_its_material(pixazo, monkeypatch, instant_polls, tmp_path):
+    """`metallicFactor: 1.0` and two texture images must not survive on disk."""
+    pixazo.artifact_dir = tmp_path
+    pixazo.last_request_id = "req-1"
+    _stub_request_sequence(monkeypatch, [(200, _minimal_glb_bytes())])
+
+    pixazo._download_mesh("https://cdn.test/out.glb")
+
+    cached = tmp_path / "pixazo_req-1.glb"
+    assert cached.exists(), "the purchased mesh must still be cached"
+    appearance = _glb_appearance(cached)
+    assert not appearance.get("metallicFactor")
+    assert not appearance.get("baseColorTexture")
+    assert appearance["image_count"] == 0
+
+
+def test_a_failed_rewrite_leaves_the_purchased_bytes_intact(pixazo, monkeypatch, instant_polls, tmp_path):
+    """A half-written export over the only copy of a paid mesh is the worse outcome."""
+    pixazo.artifact_dir = tmp_path
+    pixazo.last_request_id = "req-2"
+    payload = _minimal_glb_bytes()
+    _stub_request_sequence(monkeypatch, [(200, payload)])
+
+    def explode(*_a, **_k):
+        raise RuntimeError("export died")
+
+    monkeypatch.setattr(trimesh.Scene, "export", explode)
+
+    pixazo._download_mesh("https://cdn.test/out.glb")
+
+    cached = tmp_path / "pixazo_req-2.glb"
+    assert cached.read_bytes() == payload
+    assert not (tmp_path / "pixazo_req-2.glb.tmp").exists()
+
+
+def test_postprocess_strips_appearance_whatever_the_backend(blueprint, tmp_path):
+    """Held here, not per backend, so a worker returning textures cannot undo it."""
+    from trimesh.visual.material import PBRMaterial
+
+    mesh = trimesh.creation.icosphere(subdivisions=2)
+    mesh.visual = trimesh.visual.TextureVisuals(
+        material=PBRMaterial(metallicFactor=1.0)
+    )
+
+    out = tmp_path / "mesh.glb"
+    RecordingBackend(mesh).generate_mesh(blueprint, out, target_faces=0)
+
+    assert not _glb_appearance(out).get("metallicFactor")
