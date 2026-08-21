@@ -74,4 +74,7 @@ docs-site/build/
 #Others
 .codegraph/
 data/octoprint/
+
+# Scripts used by Alberto
 setup_venv.sh
+start_website.sh
