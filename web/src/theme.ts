@@ -10,3 +10,22 @@ export function initializeTheme() {
 }
 
 initializeTheme();
+
+/**
+ * Read a design token off the document root.
+ *
+ * Canvas and WebGL surfaces cannot use `var(--accent)`, so anything drawn rather
+ * than styled has to look the value up. Going through here rather than hardcoding
+ * the hex is what keeps a drawn stage and the stylesheet from drifting apart.
+ */
+export function cssToken(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+/** True when the viewer has asked for less motion. Drawn surfaces must check this themselves. */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}

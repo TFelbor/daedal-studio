@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import { WaitingStage } from './WaitingStage';
 
 interface BlueprintPreviewProps {
   jobId: string | null;
   status: string;
+  /** Live pipeline output, newest last. Passed through to the waiting stage. */
+  logLines?: string[];
 }
 
 /* The artifact layer only. The frame, its registration marks and the ruled ground
@@ -31,21 +33,9 @@ const IMAGE: CSSProperties = {
   transition: 'opacity 0.3s ease',
 };
 
-const LOADING: CSSProperties = {
-  position: 'absolute',
-  left: 20,
-  bottom: 18,
-  zIndex: 3,
-  fontFamily: 'var(--font-mono)',
-  fontSize: '10.5px',
-  letterSpacing: '0.1em',
-  textTransform: 'uppercase',
-  color: 'var(--accent)',
-};
-
 const PLACEHOLDER: CSSProperties = { height: '100%' };
 
-export function BlueprintPreview({ jobId, status }: BlueprintPreviewProps) {
+export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewProps) {
   const [loaded, setLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -55,27 +45,30 @@ export function BlueprintPreview({ jobId, status }: BlueprintPreviewProps) {
 
   const imgSrc = jobId ? `/jobs/${jobId}/blueprint${retryCount > 0 ? `?t=${retryCount}` : ''}` : '';
 
+  // Nothing has been drawn yet — so draw the drawing. The head lays the same
+  // isometric outline the blueprint will arrive as, and answers to the same drag.
   if (!jobId || status === 'queued' || status === 'pending') {
-    return (
-      <div className="empty" style={PLACEHOLDER}>
-        <ImageIcon size={28} strokeWidth={1.5} aria-hidden="true" />
-        <span>The blueprint appears here once phase 01 runs.</span>
-      </div>
-    );
+    return <WaitingStage kind="blueprint" note="awaiting phase 01" fill />;
   }
 
+  // A failed phase is the one case that must not animate hopefully.
   if (status === 'error') {
     return (
       <div className="empty" style={PLACEHOLDER}>
-        <ImageIcon size={28} strokeWidth={1.5} aria-hidden="true" />
-        <span>The blueprint could not be drawn. Start a new job to try again.</span>
+        <span>The blueprint could not be drawn.</span>
+        <span>Start a new job to try again.</span>
       </div>
     );
   }
 
   return (
     <div style={VIEWPORT}>
-      {isRunning && <span style={LOADING}>Drawing blueprint…</span>}
+      {/* The waiting stage stays underneath while phase 1 runs, so the frame is never
+          blank and the sweep is what the wait looks like. It is unmounted the moment
+          the real image loads. */}
+      {isRunning && (
+        <WaitingStage kind="blueprint" running logLines={logLines} fill />
+      )}
 
       {showImage && (
         <img

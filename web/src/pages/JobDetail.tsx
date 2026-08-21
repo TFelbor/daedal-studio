@@ -4,7 +4,10 @@ import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { ArrowLeft, Download, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { createJob, getJob, getJobTelemetry, reportOutcome } from '../api/client';
 import type { FailureEvent, JobStatusResponse, TelemetrySample } from '../api/client';
+import { BootMark } from '../components/BootMark';
+import { DeadChannel } from '../components/DeadChannel';
 import { PhaseProgress, derivePhases } from '../components/PhaseProgress';
+import { WaitingStage } from '../components/WaitingStage';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { FailureButton } from '../components/FailureButton';
 import { MeshViewer } from '../components/MeshViewer';
@@ -258,10 +261,7 @@ export function JobDetail() {
   if (loading || !job) {
     return (
       <div className="sheet">
-        <div className={styles.loading}>
-          <Loader2 className="spin" size={28} strokeWidth={1.5} />
-          <span className="label">Loading job</span>
-        </div>
+        <BootMark block label="Reading the job record" />
       </div>
     );
   }
@@ -390,9 +390,18 @@ export function JobDetail() {
                       onError={() => setBlueprintOk(false)}
                     />
                   ) : (
-                    <span className={styles.frameEmpty}>
-                      The blueprint appears here after phase 1
-                    </span>
+                    // On a running job the sheet is genuinely still being drawn, so the
+                    // frame draws it. On a settled job nothing is coming, and the drawn
+                    // stage stands still with the phase named rather than pulsing.
+                    <div className={styles.frameSlot}>
+                      <WaitingStage
+                        kind="blueprint"
+                        running={phases[0]?.status === 'running'}
+                        logLines={job.log_tail}
+                        note="no blueprint on file for this job"
+                        showHint={false}
+                      />
+                    </div>
                   )}
                 </Blueprint>
               </div>
@@ -401,7 +410,12 @@ export function JobDetail() {
                 <span className={`label ${styles.blockLabel}`}>Mesh</span>
                 <Blueprint tone="accent" className={styles.frame}>
                   <div className={styles.frameSlot}>
-                    <MeshViewer jobId={job.job_id} status={job.status} phases={phases} />
+                    <MeshViewer
+                      jobId={job.job_id}
+                      status={job.status}
+                      phases={phases}
+                      logLines={job.log_tail}
+                    />
                   </div>
                 </Blueprint>
               </div>
@@ -449,10 +463,11 @@ export function JobDetail() {
                   </div>
                 </Blueprint>
               ) : (
-                <div className="empty">
-                  <span>No temperature readings for this job</span>
-                  <span>The hotend charts here once the printer starts reporting</span>
-                </div>
+                <DeadChannel height={148}>
+                  {printIsLive
+                    ? 'The hotend charts here once the printer starts reporting'
+                    : 'No temperature readings for this job'}
+                </DeadChannel>
               )}
             </div>
           </div>

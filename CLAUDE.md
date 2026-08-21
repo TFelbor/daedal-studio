@@ -376,6 +376,23 @@ FastAPI application with:
   cannot masquerade as a dropped socket and tear down a working websocket once per
   sample. Repeat failures are demoted to DEBUG until one succeeds, because telemetry
   arrives about once a second.
+- **Two outcomes describe the dataset, not the part.** `VALID_OUTCOMES` in
+  `schema.py` now also carries `dev` and `declined`, and `NON_EVIDENCE_OUTCOMES` names
+  everything a success-rate query must filter out. `dev` is a developer's test run —
+  the third verdict button, gated behind `import.meta.env.DEV` so it is dropped from
+  the production bundle rather than merely hidden — and exists so that verifying a
+  pipeline change by printing a cube does not land in the column the pilot is measured
+  from. `declined` records that someone was asked twice and does not want to be asked
+  again; it is deliberately **not** `unknown`, because `job_status_from_outcome` maps
+  `unknown` back to `running` and a settled job written that way would claim to be
+  mid-pipeline forever.
+- **`VALID_FAILURE_TYPES` is shared between the detector and the human form.** The
+  first five values are the `AnomalyDetector`'s own rule names, reused by the UI's
+  dropdown on purpose: when the detector fires and a person agrees, both rows must use
+  the same word or "how often is the detector right" is not a query. `other` is the
+  escape hatch and means nothing without `notes`. `OutcomeRequest` validates the field
+  on the *request model*, not in the handler — validating later wrote the verdict and
+  then refused the request, leaving the row marked `failure` behind a 422.
 - **Print outcome is a product feature, not a column** (`outcome`, `outcome_source`,
   `outcome_reported_at`). `outcome_source` is `machine` or `user`, and **only `user` is ground
   truth**. A pipeline that exits 0 after dispatching a print, and an OctoPrint `PrintDone` event,
@@ -521,6 +538,31 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
   one that was asked for. Note that `adhesion_type` in `pythonsrc/profiles/*.json` is
   **not** read by the slicer — those are printer-connection profiles; CuraEngine's
   settings come from the `-j` definitions and `-s` overrides.
+
+### Printer readiness (`printer_status`)
+
+`GET /system/printer/status` answers two different questions and they must not be
+conflated: `configured` means a target is set, `running` means **we asked it and it
+answered**. It used to return `running: True` for any profile file that existed,
+without opening a connection — so a profile pointing at a switched-off printer read as
+ready, the pipeline view opened, and the failure surfaced four phases later at dispatch,
+after Phase 2 had already been billed on the hosted sculptor. `POST /jobs` now refuses
+on `running`, not just `configured`, and the probe delegates to `test_connection` rather
+than reimplementing reachability — two probes that can disagree about one printer is how
+a "ready" badge ends up beside a dead machine.
+
+`SimulatorManager._get_container` had the same class of bug independently: compose
+derives its project name from the directory it is invoked in, so the same service
+accumulates container records under several project names
+(`p2p-mesh-poc-docker-octoprint-simulator-1`, `infra-octoprint-simulator-1`, …).
+Listing them and taking `[0]` reported "stopped" while a working simulator answered on
+port 5001. A **running** container now wins over a stopped one regardless of which
+project created it, and "stopped" stays distinguishable from "absent".
+
+A 401/403 from a printer is reported as *reached and refused*, naming the credential to
+check — not as a connection failure. Surfacing OctoPrint's stock Flask 403 body
+("You don't have the permission to access the requested resource") sent people looking
+at their network for a wrong API key.
 
 ### Printer Operators (pythonsrc/operators/)
 

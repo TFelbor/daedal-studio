@@ -45,6 +45,7 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
   const [printerConfigured, setPrinterConfigured] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const accent = useMemo(() => token('--accent'), []);
 
   useEffect(() => {
@@ -86,10 +87,27 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
     if (!jobId || cancelling) return;
     if (!confirm('Are you sure you want to cancel the job and printer?')) return;
     setCancelling(true);
+    setStopError(null);
     try {
-      await fetch(`/jobs/${jobId}`, { method: 'DELETE' });
+      const res = await fetch(`/jobs/${jobId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // The old version swallowed this: a failed cancel left the button re-enabled
+        // and the job running, with nothing on screen to say the stop had not landed.
+        let detail = `The server answered ${res.status}.`;
+        try {
+          const data = await res.json();
+          if (data?.detail) detail = String(data.detail);
+        } catch {
+          /* not JSON — the status code is the whole story */
+        }
+        setStopError(detail);
+      }
+      // The button stays busy on success. The pipeline is killed with a grace period,
+      // so the endpoint can take several seconds to return, and re-enabling a control
+      // whose job is already terminal only invites a second press.
     } catch (err) {
       console.error(err);
+      setStopError('Network error while stopping the job.');
     } finally {
       setCancelling(false);
     }
@@ -177,18 +195,40 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
       {showPreview && (
         <>
           <hr style={RULE} />
-          <div style={{ flex: 2, minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
-            <span className="label" style={{ display: 'block', marginBottom: '12px' }}>
-              Print preview
-            </span>
+          {/* `flex: none` with a definite height. As a `flex: 2` child with a
+              200px floor it could not shrink, so on a short viewport it grew past its
+              share and the Print button below ended up overlapping the figures. */}
+          <div style={{ flex: 'none', height: '240px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
+              <span className="label">Print preview</span>
+              <span className="mono" style={{ fontSize: '10px', color: 'var(--ink-35)' }}>
+                expand to inspect
+              </span>
+            </div>
             <div style={{ flex: 1, position: 'relative' }}>
               <GCodeViewer
+                // Keyed by job: the renderer reads the build volume and nozzle at
+                // construction, so a new job must get a new instance rather than a
+                // stale envelope around fresh geometry.
+                key={jobId}
                 jobId={jobId}
                 zHeightMm={
                   telemetrySamples.length > 0
                     ? telemetrySamples[telemetrySamples.length - 1].z_height_mm
                     : null
                 }
+                buildVolumeMm={currentJob?.build_volume_mm}
+                nozzleDiameterMm={currentJob?.nozzle_diameter_mm}
+                // Compact in the rail; the figures and the scrubber appear on expand.
+                compact
+                stats={{
+                  layerCount: currentJob?.layer_count ?? null,
+                  printTimeS: currentJob?.estimated_print_time_s ?? null,
+                  filamentG: currentJob?.filament_used_g ?? null,
+                  supportMm3: currentJob?.support_filament_mm3 ?? null,
+                  material: currentJob?.material_type ?? null,
+                  layerHeightMm: currentJob?.layer_height_mm ?? null,
+                }}
               />
             </div>
           </div>
@@ -219,8 +259,13 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
           disabled={!isJobActive || cancelling}
         >
           <StopCircle size={16} strokeWidth={1.5} />
-          {cancelling ? 'Stopping' : 'Stop job'}
+          {cancelling ? 'Stopping' : isJobActive ? 'Stop job' : 'Stopped'}
         </button>
+        {stopError && (
+          <span className="hint" role="alert" style={{ color: 'var(--bad-ink)' }}>
+            {stopError}
+          </span>
+        )}
       </div>
     </Blueprint>
   );

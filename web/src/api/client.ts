@@ -49,6 +49,9 @@ export interface JobStatusResponse {
   profile_name: string | null;
   machine_name: string | null;
   layer_height_mm: number | null;
+  /** [width, depth, height] in mm. Null when the printer profile does not declare one. */
+  build_volume_mm: number[] | null;
+  nozzle_diameter_mm: number | null;
   printability_score: number | null;
   printability_verdict: string | null;
   material_type: string | null;
@@ -129,7 +132,12 @@ export interface PendingFeedbackJob {
 }
 
 export interface OutcomeRequest {
-  verdict: 'success' | 'failure' | 'cancelled';
+  /**
+   * `dev` marks a developer's test run so it can be excluded from analysis; `declined`
+   * records that the user was asked twice and does not want to be asked again. Neither
+   * describes a part. See `OutcomeRequest` in server/app.py.
+   */
+  verdict: 'success' | 'failure' | 'cancelled' | 'dev' | 'declined';
   failure_type?: string;
   notes?: string;
   layer_pct?: number;

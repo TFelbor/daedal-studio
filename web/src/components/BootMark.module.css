@@ -1,0 +1,50 @@
+.block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 44px 0;
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A whole-page wait sits on the same ruled module the app surface is drawn on, so
+   the page reads as already present and merely empty rather than as not yet loaded. */
+.ground {
+  background-color: var(--ground);
+  background-image: linear-gradient(rgba(242, 240, 237, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 240, 237, 0.022) 1px, transparent 1px);
+  background-size: var(--module) var(--module);
+}
+
+.label {
+  color: var(--ink-42);
+}
+
+/* The finished face arrives first and stays; the walls are still being drawn under
+   it. `pathLength=1` is what makes one dash length work at every mark size. */
+.face {
+  animation: p2p-boot-fill 2.2s ease-out infinite;
+}
+
+.wall {
+  animation: p2p-boot-draw 2.2s ease-in-out infinite;
+}
+
+.wallLag {
+  animation-delay: 0.16s;
+}
+
+/* With the animations off the mark falls back to its authored state — filled face,
+   dashoffset 0 — which is the completed cube. A static logo, not a frozen frame. */
+@media (prefers-reduced-motion: reduce) {
+  .face,
+  .wall {
+    animation: none;
+  }
+}

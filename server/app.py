@@ -19,13 +19,13 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from pythonsrc.telemetry.db import TelemetryDB, _str_to_dt
-from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample
+from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample, VALID_FAILURE_TYPES
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.telemetry.detector import attach_detector
@@ -36,6 +36,7 @@ from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
 from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
+from server.activity import activity, rule as activity_rule
 from server.logging_config import configure_logging, is_high_frequency_path
 
 # At import time, not in a startup event: uvicorn imports this module and runs
@@ -90,6 +91,24 @@ async def log_requests(request: Request, call_next):
         "%s %s → %d (%.0f ms)",
         request.method, request.url.path, response.status_code, elapsed_ms,
     )
+
+    # Every request that failed reaches the activity feed as a one-liner, whether or
+    # not its handler knows how to describe itself. A 4xx or 5xx the handler swallowed
+    # was previously invisible to anyone watching the feed, which is the case where
+    # watching is most worth doing.
+    # The polled-path demotion applies to GET only. A failed POST or DELETE is never a
+    # poll, and `/jobs/{id}` matches the high-frequency prefix — so a rejected
+    # `DELETE /jobs/{id}` was being suppressed by the heuristic meant for the detail
+    # page's read timer, which is the exact failure someone would be watching for.
+    if response.status_code >= 400 and (
+        request.method != "GET" or not is_high_frequency_path(request.url.path)
+    ):
+        activity.event(
+            f"{request.method} {request.url.path} → {response.status_code} "
+            f"({elapsed_ms:.0f} ms)",
+            level="ERROR" if response.status_code >= 500 else "WARNING",
+            source="http",
+        )
     return response
 
 config_store = ConfigStore()
@@ -97,6 +116,16 @@ config_store = ConfigStore()
 active_collectors = {}
 active_detectors: dict[str, asyncio.Task] = {}
 active_pipelines: dict[str, asyncio.subprocess.Process] = {}
+# Jobs a human has stopped.
+#
+# A cancelled pipeline dies with a non-zero exit code, which is indistinguishable
+# from a crash at the point where `_run_pipeline` decides what to record. Without
+# this set the cancel endpoint wrote "cancelled" and `_run_pipeline` overwrote it
+# with "failure" a second later — both are machine-sourced writes, so the
+# precedence rule in `update_job_outcome_verdict` does not stop it. The user saw
+# their stop turn into a failure, and the dataset recorded a crash that never
+# happened.
+cancelled_jobs: set[str] = set()
 
 
 def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
@@ -177,6 +206,34 @@ def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | 
 
     return firmware, base_url, api_key
 
+# How long a stopped pipeline gets to exit on SIGTERM before it is killed outright.
+PIPELINE_TERM_GRACE_S = 10
+
+
+def _read_current_phase(job_id: str) -> dict | None:
+    """The last phase line the pipeline wrote to its `.status` file, or None.
+
+    Shared by `GET /jobs/{id}` and the cancel endpoint so there is one reader of the
+    `.status` protocol. The file is append-only and one JSON object per line; the last
+    line is the pipeline's most recent word on where it got to.
+    """
+    status_file = Path(__file__).parent.parent / "data" / "logs" / f"{job_id}.status"
+    if not status_file.exists():
+        return None
+    try:
+        with open(status_file, "r") as f:
+            lines = [line.strip() for line in f if line.strip()]
+    except OSError:
+        return None
+    if not lines:
+        return None
+    try:
+        parsed = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def job_status_from_outcome(outcome: str | None, started_at) -> str:
     """Map a stored outcome onto the synthetic status the API exposes.
 
@@ -188,7 +245,11 @@ def job_status_from_outcome(outcome: str | None, started_at) -> str:
     """
     if outcome == "unknown":
         return "running" if started_at else "queued"
-    if outcome in ("success", "awaiting_verdict"):
+    # `dev` and `declined` are settled rows: the print ran and the question has been
+    # closed out. They map to "completed" because that is what the software did — the
+    # distinction they carry is about the *data*, not about the run, and lives in the
+    # outcome column where a query can see it.
+    if outcome in ("success", "awaiting_verdict", "dev", "declined"):
         return "completed"
     if outcome == "cancelled":
         return "cancelled"
@@ -230,11 +291,42 @@ class JobRequest(BaseModel):
 
 
 class OutcomeRequest(BaseModel):
-    """A human's verdict on whether a print actually succeeded."""
-    verdict: str = Field(..., pattern="^(success|failure|cancelled)$")
+    """A human's verdict on whether a print actually succeeded.
+
+    Five values, and two of them exist to keep the dataset honest rather than to
+    describe a part:
+
+    - `dev` — a developer's test run. Answers the prompt so the job stops being asked
+      about, and marks the row as **not real data**. Without it, every pipeline change
+      verified by printing a cube lands in the same column the pilot's results are
+      measured from.
+    - `declined` — the user was asked, asked again, and said don't ask again. Distinct
+      from never being asked (which is the absence of an `outcome_prompt_shown` event)
+      and from a single skip (`outcome_prompt_dismissed`). Deliberately **not**
+      `unknown`: that string is the sentinel for "the pipeline has not finished", so
+      writing it here would make a settled job read as running again.
+    """
+    verdict: str = Field(..., pattern="^(success|failure|cancelled|dev|declined)$")
     failure_type: Optional[str] = None
     notes: Optional[str] = None
     layer_pct: Optional[float] = None
+
+    @field_validator("failure_type")
+    @classmethod
+    def _known_failure_type(cls, value: Optional[str]) -> Optional[str]:
+        """Reject an unknown failure type before anything is written.
+
+        `FailureEvent.__post_init__` validates this too, but by the time the handler
+        constructs one the verdict has already been saved — so a typo produced a 500,
+        or later a 422, with the job left marked `failure` regardless. Validating on the
+        request model means the handler never runs and the row is untouched.
+        """
+        if value is None or value in VALID_FAILURE_TYPES:
+            return value
+        raise ValueError(
+            f"Unknown failure_type '{value}'. Expected one of: "
+            f"{', '.join(sorted(VALID_FAILURE_TYPES))}."
+        )
 
 class JobResponse(BaseModel):
     """Pydantic model representing the immediate response to a job creation."""
@@ -255,6 +347,10 @@ class JobStatusResponse(BaseModel):
     printer_firmware: Optional[str] = None
     profile_name: Optional[str] = None
     machine_name: Optional[str] = None
+    #: [width, depth, height] in mm, for drawing the build envelope in the G-code
+    #: preview. None when the profile does not declare one.
+    build_volume_mm: Optional[list[float]] = None
+    nozzle_diameter_mm: Optional[float] = None
     layer_height_mm: Optional[float] = None
     printability_score: Optional[float] = None
     printability_verdict: Optional[str] = None
@@ -406,42 +502,103 @@ async def shutdown_event():
     await simulator_manager.stop_moonraker()
     await simulator_manager.stop_octoprint()
 
+# Live log fan-out. Every stdout line reaches the browser, but coalesced: a docker
+# build emits thousands of lines in a burst, and one WebSocket frame per line floods
+# the socket and the React tree for no visible gain. Batching on a short interval
+# still reads as live — roughly eight updates a second — at a fraction of the frames.
+LOG_FLUSH_INTERVAL_S = 0.12
+LOG_BATCH_MAX = 40
+
+
 async def _stream_output(process, log_file_obj, job_id: str):
     import re
     phase_re = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
     phase_names = {1: "Visualizer", 2: "Sculptor", 3: "Engineer", 4: "Slicer", 5: "Operator"}
-    
-    async for line_bytes in process.stdout:
-        line = line_bytes.decode('utf-8', errors='replace')
-        log_file_obj.write(line)
-        log_file_obj.flush()
-        
-        m = phase_re.search(line)
-        if m:
-            phase_num = int(m.group(1))
-            action = m.group(2)
-            name = phase_names.get(phase_num, "Unknown")
-            
-            if action == "START":
-                status = "running"
-                error = None
-            elif action == "PASS":
-                status = "complete"
-                error = None
-            else:
-                status = "error"
-                error = "Phase failed"
-                
-            asyncio.create_task(broadcaster.broadcast(job_id, {
-                "type": "phase_update",
-                "data": {
-                    "phase": phase_num,
-                    "name": name,
-                    "status": status,
-                    "error": error,
-                    "ts": datetime.now(timezone.utc).isoformat()
-                }
-            }))
+
+    pending: list[str] = []
+    # Monotonic across the whole job, so a client can tell a quiet pipeline from a
+    # dropped batch — the two look identical without it.
+    seq = 0
+
+    async def flush():
+        nonlocal pending, seq
+        if not pending:
+            return
+        batch, pending = pending, []
+        seq += 1
+        await broadcaster.broadcast(job_id, {
+            "type": "log",
+            "data": {
+                "seq": seq,
+                "lines": batch,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
+        })
+
+    async def flusher():
+        # A data-driven flush alone would hold the last few lines forever whenever the
+        # pipeline goes quiet — which is exactly when someone is staring at the log
+        # wondering whether anything is still happening.
+        while True:
+            await asyncio.sleep(LOG_FLUSH_INTERVAL_S)
+            await flush()
+
+    flusher_task = asyncio.create_task(flusher())
+    try:
+        async for line_bytes in process.stdout:
+            line = line_bytes.decode('utf-8', errors='replace')
+            log_file_obj.write(line)
+            log_file_obj.flush()
+
+            stripped = line.rstrip("\n")
+            if stripped:
+                pending.append(stripped)
+                if len(pending) >= LOG_BATCH_MAX:
+                    await flush()
+
+            m = phase_re.search(line)
+            if m:
+                phase_num = int(m.group(1))
+                action = m.group(2)
+                name = phase_names.get(phase_num, "Unknown")
+
+                if action == "START":
+                    status = "running"
+                    error = None
+                elif action == "PASS":
+                    status = "complete"
+                    error = None
+                else:
+                    status = "error"
+                    error = "Phase failed"
+
+                # A phase banner is the one line that must not wait for the batch
+                # timer: the whole UI keys off it.
+                await flush()
+                # Heavy rule for a START, so a phase boundary is findable by eye in a
+                # stream that is otherwise thousands of tool lines.
+                if action == "START":
+                    activity.boundary(f"phase {phase_num:02d} · {name}")
+                else:
+                    activity.event(
+                        f"phase {phase_num:02d} {name} · {'complete' if action == 'PASS' else 'FAILED'}",
+                        level="INFO" if action == "PASS" else "ERROR",
+                        source="pipeline",
+                    )
+                await broadcaster.broadcast(job_id, {
+                    "type": "phase_update",
+                    "data": {
+                        "phase": phase_num,
+                        "name": name,
+                        "status": status,
+                        "error": error,
+                        "ts": datetime.now(timezone.utc).isoformat()
+                    }
+                })
+    finally:
+        flusher_task.cancel()
+        # The tail matters most — it is whatever the pipeline said before it stopped.
+        await flush()
 
 async def _run_pipeline(job_id: str, request: JobRequest):
     repo_root = Path(__file__).parent.parent
@@ -622,7 +779,13 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             returncode = process.returncode
             
             db = TelemetryDB()
-            if returncode != 0:
+            if job_id in cancelled_jobs:
+                # A stopped pipeline exits non-zero, exactly like a crash. Only the
+                # cancel endpoint knows the difference, and recording "failure" here
+                # would both mislead the user and put a crash in the dataset that
+                # never happened.
+                outcome = "cancelled"
+            elif returncode != 0:
                 outcome = "failure"
             elif request.print and request.start_print:
                 # The pipeline exits as soon as the printer accepts the job, so a zero
@@ -639,18 +802,42 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 completed_at=datetime.now(timezone.utc),
             )
             db.close()
+            activity.action(
+                "pipeline finished",
+                [("job", job_id[:8]), ("exit code", returncode), ("outcome", outcome)],
+                outcome={
+                    "cancelled": "stopped on request — not a failure",
+                    "failure": "the pipeline exited non-zero",
+                    "awaiting_verdict": "dispatched to the printer; only a person can close this out",
+                }.get(outcome, "finished"),
+                status="ok" if outcome in ("success", "awaiting_verdict") else "fail",
+                level="INFO" if outcome in ("success", "awaiting_verdict") else "WARNING",
+                source="pipeline",
+            )
             await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": outcome}})
     except Exception as e:
+        # Same reasoning as above: a phase raising because its process was killed is
+        # a cancellation, not a failure.
+        outcome = "cancelled" if job_id in cancelled_jobs else "failure"
         db = TelemetryDB()
         db.update_job_outcome_verdict(
-            job_id, "failure", source="machine", completed_at=datetime.now(timezone.utc)
+            job_id, outcome, source="machine", completed_at=datetime.now(timezone.utc)
         )
         db.close()
         with open(log_file, "a") as f:
             f.write(f"\nPipeline failed to start: {e}\n")
-        await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "failure"}})
+        activity.action(
+            "pipeline aborted",
+            [("job", job_id[:8]), ("error", str(e))],
+            outcome="stopped on request" if outcome == "cancelled" else "recorded as a failure",
+            status="warn" if outcome == "cancelled" else "fail",
+            level="WARNING" if outcome == "cancelled" else "ERROR",
+            source="pipeline",
+        )
+        await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": outcome}})
     finally:
         active_pipelines.pop(job_id, None)
+        cancelled_jobs.discard(job_id)
         detector_task = active_detectors.pop(job_id, None)
         if detector_task:
             detector_task.cancel()
@@ -673,8 +860,21 @@ async def create_job(request: JobRequest):
         A JobResponse containing the job ID and 'queued' status immediately.
     """
     status_res = await printer_status()
-    if not status_res["configured"]:
-        raise HTTPException(status_code=400, detail="Cannot start job: No real printer or simulator is configured and running. Please check your Printer Setup.")
+    if not status_res.get("configured"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot start job: no printer or simulator is configured. "
+                   "Choose one in Settings.",
+        )
+    # `configured` only means a target is set. Starting a five-phase run against a
+    # printer that will refuse the file at the end wastes the whole pipeline — and on
+    # the hosted sculptor backend it wastes real money.
+    if not status_res.get("running"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot start job: the configured printer did not answer. "
+                   + (status_res.get("detail") or "Test the connection in Settings."),
+        )
 
     job_id = str(uuid.uuid4())
 
@@ -727,6 +927,21 @@ async def create_job(request: JobRequest):
     )
     db.insert_job(job)
 
+    activity.action(
+        "job created",
+        [
+            ("job", job_id[:8]),
+            ("prompt", request.prompt),
+            ("profile", request.profile or "default"),
+            ("firmware", firmware),
+            ("material", request.material_type or "unset"),
+            ("seed", request.seed if request.seed is not None else "drawn at run time"),
+            ("regen of", request.parent_job_id[:8] if request.parent_job_id else None),
+        ],
+        outcome="queued; pipeline subprocess starting",
+        status="ok",
+    )
+
     # A regeneration is an implicit judgement on the parent — the user looked at that
     # result and asked for another. Recorded against the parent, which is the job the
     # signal is actually about.
@@ -768,8 +983,32 @@ async def create_job(request: JobRequest):
                 logger.warning(f"No operator for detector ({firmware}): {e}")
             active_detectors[job_id] = attach_detector(collector, TelemetryDB(), operator)
 
+            # These two are the background machinery that was completely silent: a job
+            # whose collector never claimed the row, or whose detector had no operator
+            # and therefore could not evaluate half its rules, looked identical to a
+            # healthy one from the log.
+            activity.action(
+                "telemetry attached",
+                [
+                    ("job", job_id[:8]),
+                    ("collector", type(collector).__name__),
+                    ("firmware", firmware),
+                    ("detector", "armed" if operator else "no operator — progress rules off"),
+                ],
+                outcome="sampling; the single-writer claim is taken on the first sample",
+                status="ok" if operator else "warn",
+                level="INFO" if operator else "WARNING",
+                source="telemetry",
+            )
+        else:
+            activity.event(
+                f"no telemetry collector for firmware {firmware!r} · job {job_id[:8]}",
+                level="WARNING",
+                source="telemetry",
+            )
+
     db.close()
-    
+
     asyncio.create_task(_run_pipeline(job_id, request))
     
     return JobResponse(job_id=job_id, status="queued")
@@ -798,23 +1037,24 @@ async def get_job(job_id: str):
     repo_root = Path(__file__).parent.parent
     log_dir = repo_root / "data" / "logs"
     log_file = log_dir / f"{job_id}.log"
-    status_file = log_dir / f"{job_id}.status"
-    
+
     log_tail = []
     if log_file.exists():
         with open(log_file, "r") as f:
             lines = f.readlines()
             log_tail = [line.rstrip('\n') for line in lines[-20:]]
             
-    current_phase = None
-    if status_file.exists():
-        with open(status_file, "r") as f:
-            lines = [line.strip() for line in f if line.strip()]
-            if lines:
-                try:
-                    current_phase = json.loads(lines[-1])
-                except json.JSONDecodeError:
-                    pass
+    current_phase = _read_current_phase(job_id)
+    # A killed pipeline leaves its `.status` file frozen mid-phase, so a job that has
+    # stopped keeps claiming that phase is running — and every client that polls this
+    # endpoint re-lights the pulse the cancel just put out. The row's own outcome is
+    # the authority on whether anything is still running.
+    if (
+        current_phase
+        and current_phase.get("status") == "running"
+        and job.outcome not in (None, "unknown")
+    ):
+        current_phase = {**current_phase, "status": "error", "error": "Stopped"}
             
     # Prefer the snapshot frozen when the job was created. Reading the profile file
     # instead means editing a profile retroactively rewrites what old jobs claim to
@@ -822,9 +1062,27 @@ async def get_job(job_id: str):
     # process_params.
     machine_name = None
     layer_height_mm = None
+    build_volume_mm = None
+
+    def _volume(source: dict) -> list[float] | None:
+        """[width, depth, height] in mm, or None if the profile does not say.
+
+        The G-code preview draws the bed and the build envelope around the toolpath,
+        and a wrong envelope is worse than none: a part that fits reads as overflowing
+        a machine it was never sliced for.
+        """
+        keys = ("machine_width", "machine_depth", "machine_height")
+        if not all(source.get(k) is not None for k in keys):
+            return None
+        try:
+            return [float(source[k]) for k in keys]
+        except (TypeError, ValueError):
+            return None
+
     if job.process_params:
         machine_name = job.process_params.get("machine_name")
         layer_height_mm = job.process_params.get("layer_height")
+        build_volume_mm = _volume(job.process_params)
     else:
         profile_path_str = job.profile_name
         if profile_path_str and profile_path_str != "default":
@@ -835,6 +1093,7 @@ async def get_job(job_id: str):
                         profile_data = json.load(pf)
                         machine_name = profile_data.get("machine_name")
                         layer_height_mm = profile_data.get("layer_height")
+                        build_volume_mm = _volume(profile_data)
             except Exception:
                 pass
 
@@ -854,6 +1113,8 @@ async def get_job(job_id: str):
         profile_name=job.profile_name,
         machine_name=machine_name,
         layer_height_mm=layer_height_mm,
+        build_volume_mm=build_volume_mm,
+        nozzle_diameter_mm=job.nozzle_diameter_mm,
         printability_score=job.printability_score,
         printability_verdict=job.printability_verdict,
         material_type=job.material_type,
@@ -1073,13 +1334,52 @@ async def cancel_job(job_id: str):
         db.close()
         raise HTTPException(status_code=404, detail="Job not found")
         
-    # Kill pipeline
+    # Mark the job cancelled *before* killing anything. The pipeline's exit is
+    # observed by `_run_pipeline`, which would otherwise read the non-zero code as a
+    # crash and overwrite this verdict with "failure".
+    cancelled_jobs.add(job_id)
+
+    # Kill the pipeline, then make sure it is actually gone. `terminate()` only asks:
+    # a pipeline blocked on a hosted generation or a docker build can sit in SIGTERM
+    # handling for a long time, and the endpoint used to return "cancelled" while the
+    # work carried on spending money in the background.
     process = active_pipelines.get(job_id)
     if process:
         try:
             process.terminate()
         except ProcessLookupError:
             pass
+        try:
+            await asyncio.wait_for(process.wait(), timeout=PIPELINE_TERM_GRACE_S)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Pipeline for job %s ignored SIGTERM after %ss; killing",
+                job_id, PIPELINE_TERM_GRACE_S,
+            )
+            try:
+                process.kill()
+                await process.wait()
+            except ProcessLookupError:
+                pass
+        except ProcessLookupError:
+            pass
+
+    # The phase the pipeline died inside is still recorded as "running", both in the
+    # `.status` file it will never write again and in every client's phase row. Say so
+    # explicitly, or the UI keeps a phase pulsing forever on a job that has stopped —
+    # which reads as the Stop button having done nothing at all.
+    stopped_phase = _read_current_phase(job_id)
+    if stopped_phase and stopped_phase.get("status") == "running":
+        await broadcaster.broadcast(job_id, {
+            "type": "phase_update",
+            "data": {
+                "phase": stopped_phase.get("phase"),
+                "name": stopped_phase.get("name"),
+                "status": "error",
+                "error": "Stopped",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
+        })
             
     # Attempt to cancel printer
     repo_root = Path(__file__).parent.parent
@@ -1108,6 +1408,17 @@ async def cancel_job(job_id: str):
     )
     db.close()
     
+    activity.action(
+        "job stopped by user",
+        [
+            ("job", job_id[:8]),
+            ("phase", (stopped_phase or {}).get("phase")),
+            ("printer", "cancel sent" if os.path.exists(profile_path) else "no profile"),
+        ],
+        outcome="pipeline killed, outcome recorded as cancelled",
+        status="warn",
+        level="WARNING",
+    )
     await broadcaster.broadcast(job_id, {"type": "job_complete", "data": {"outcome": "cancelled"}})
     return {"status": "cancelled"}
 
@@ -1147,10 +1458,25 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
             op.cancel_print()
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
-            
+
+        activity.action(
+            f"printer {request.action}",
+            [("job", job_id[:8]), ("firmware", firmware), ("target", base_url)],
+            outcome="the machine accepted it",
+            status="ok",
+        )
         return {"status": "success", "action": request.action}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to execute printer action {request.action}: {e}")
+        activity.action(
+            f"printer {request.action}",
+            [("job", job_id[:8]), ("error", str(e))],
+            outcome="the machine refused it — nothing changed",
+            status="fail",
+            level="ERROR",
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 class InternalTelemetryRequest(BaseModel):
@@ -1603,6 +1929,20 @@ async def report_outcome(job_id: str, request: OutcomeRequest) -> Dict[str, Any]
     })
     db.close()
 
+    activity.action(
+        "outcome reported by user",
+        [
+            ("job", job_id[:8]),
+            ("verdict", request.verdict),
+            ("failure", request.failure_type),
+            ("at layer", f"{request.layer_pct}%" if request.layer_pct is not None else None),
+        ],
+        # Worth saying out loud: this is the one write a later machine event cannot
+        # overturn, which is exactly why it is the label worth having.
+        outcome="recorded as ground truth — machine events cannot overwrite it",
+        status="ok" if request.verdict == "success" else "warn",
+    )
+
     await broadcaster.broadcast(job_id, {
         "type": "job_complete",
         "data": {"outcome": request.verdict, "outcome_source": "user"},
@@ -1682,11 +2022,28 @@ async def update_config(update: ConfigUpdate):
     if update.key not in CONFIG_KEYS:
         raise HTTPException(status_code=400, detail="Invalid config key")
         
+    meta = CONFIG_KEYS[update.key]
+    secret = bool(meta.get("secret"))
+    # Read the old value before overwriting it: "what changed" is the question anyone
+    # debugging a configuration has, and it is unanswerable after the write.
+    previous = config_store.get(update.key)
+
     config_store.set(update.key, update.value)
     os.environ[update.key] = update.value
-    
-    meta = CONFIG_KEYS[update.key]
-    display_val = "••••••••" if meta.get("secret") else update.value
+
+    display_val = "••••••••" if secret else update.value
+    # A secret's *value* never reaches the log; whether it went from unset to set does,
+    # because that is the fact that explains a connection starting to work.
+    activity.action(
+        "config changed",
+        [
+            ("key", update.key),
+            ("from", "••••••••" if (secret and previous) else (previous or "(unset)")),
+            ("to", display_val),
+        ],
+        outcome="saved, encrypted at rest; live for the next request",
+        status="ok",
+    )
     
     return {
         "key": update.key,
@@ -1707,7 +2064,13 @@ async def delete_config(key: str):
     config_store.delete(key)
     if key in os.environ:
         del os.environ[key]
-        
+
+    activity.action(
+        "config cleared",
+        [("key", key)],
+        outcome="removed from the store and the environment",
+        status="warn",
+    )
     return {"status": "success", "key": key}
 
 @app.get("/config/{key}/reveal")
@@ -1817,7 +2180,36 @@ async def test_connection(req: TestConnectionRequest):
         except httpx.HTTPStatusError as e:
             if service == "huggingface" and e.response.status_code == 401:
                 return {"success": False, "message": "Invalid HuggingFace Token", "latency_ms": None}
-            return {"success": False, "message": f"HTTP Error {e.response.status_code}: {e.response.text}", "latency_ms": None}
+            # A 401/403 means we reached the printer and it refused us — the opposite
+            # diagnosis from "unreachable", and the fix is a key rather than a cable.
+            # Dumping the raw body here surfaced OctoPrint's stock Flask 403 page
+            # ("You don't have the permission to access the requested resource"),
+            # which names neither the printer nor the credential and sent people
+            # looking at their network.
+            if e.response.status_code in (401, 403):
+                where = {
+                    "octoprint": "OCTOPRINT_API_KEY",
+                    "moonraker": "MOONRAKER_API_KEY",
+                }.get(service, "the API key")
+                hint = (
+                    " For the bundled simulator it must match `accessControl` in "
+                    "data/octoprint/octoprint/config.yaml."
+                    if service == "octoprint"
+                    else ""
+                )
+                return {
+                    "success": False,
+                    "message": (
+                        f"Reached the printer, but it rejected the credential "
+                        f"({e.response.status_code}). Check {where}.{hint}"
+                    ),
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                }
+            return {
+                "success": False,
+                "message": f"HTTP {e.response.status_code} from {service}: {e.response.text[:200]}",
+                "latency_ms": None,
+            }
         except Exception as e:
             return {"success": False, "message": str(e), "latency_ms": None}
 
@@ -1843,11 +2235,88 @@ async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
     await websocket.send_json({"type": "telemetry_batch", "data": [s.to_dict() for s in samples]})
     
     await broadcaster.connect(job_id, websocket)
+    activity.event(f"watcher attached · job {job_id[:8]}", source="ws")
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await broadcaster.disconnect(job_id, websocket)
+        activity.event(f"watcher left · job {job_id[:8]}", source="ws")
+
+class UiEvent(BaseModel):
+    """One thing a person did in the browser that never reached another endpoint."""
+
+    action: str = Field(..., min_length=1, max_length=80)
+    detail: str | None = Field(default=None, max_length=200)
+
+
+class UiEventBatch(BaseModel):
+    events: list[UiEvent] = Field(default_factory=list, max_length=50)
+
+
+@app.post("/activity/ui", status_code=status.HTTP_202_ACCEPTED)
+async def record_ui_activity(batch: UiEventBatch):
+    """Record interactions that change no server state.
+
+    Switching a stage tab, expanding the process log, scrubbing a layer — none of these
+    hit another endpoint, so from the server's side a user who spent five minutes
+    looking for something was indistinguishable from an idle one. Batched by the client
+    and capped here, because this is a debugging aid and must never become a write
+    amplifier: nothing is persisted, it goes to the in-memory feed only.
+    """
+    for event in batch.events[:50]:
+        activity.event(
+            f"ui · {event.action}" + (f" · {event.detail}" if event.detail else ""),
+            level="DEBUG",
+            source="ui",
+        )
+    return {"accepted": len(batch.events[:50])}
+
+
+@app.get("/activity")
+async def get_activity(limit: int = 200):
+    """The server's recent activity, newest last.
+
+    Read once on page load; `/ws/activity` carries it from there. In memory only — a
+    debugging aid must not add a second reader to the telemetry database.
+    """
+    return {"entries": activity.recent(limit=max(1, min(limit, 500)))}
+
+
+@app.websocket("/ws/activity")
+async def websocket_activity_endpoint(websocket: WebSocket):
+    """Live server activity, in the symbol grammar defined in `server/activity.py`.
+
+    Not scoped to a job, unlike `/ws/jobs/{job_id}`: config edits, simulator lifecycle
+    and printer actions belong to no job, and those are exactly the ones that were
+    invisible.
+    """
+    await websocket.accept()
+    await websocket.send_json({"type": "activity_batch", "data": activity.recent(limit=200)})
+
+    queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+
+    def on_record(record) -> None:
+        # `put_nowait` from a synchronous listener, so emitting activity never blocks
+        # on a slow socket. A client that cannot keep up loses lines rather than
+        # applying backpressure to a print job.
+        try:
+            queue.put_nowait(record.as_dict())
+        except asyncio.QueueFull:
+            pass
+
+    unsubscribe = activity.subscribe(on_record)
+    try:
+        while True:
+            entry = await queue.get()
+            await websocket.send_json({"type": "activity", "data": entry})
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.debug("Activity socket closed", exc_info=True)
+    finally:
+        unsubscribe()
+
 
 @app.get("/simulators/status")
 async def get_simulators_status():
@@ -1870,12 +2339,21 @@ async def start_moonraker_simulator():
             await asyncio.sleep(0.1)
 
     status["healthy"] = healthy
+    activity.action(
+        "moonraker simulator start",
+        [("url", status.get("url")), ("healthy", healthy)],
+        outcome="answering /printer/info" if healthy else "started but not answering yet",
+        status="ok" if healthy else "warn",
+        level="INFO" if healthy else "WARNING",
+        source="simulator",
+    )
     await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
     return status
 
 @app.post("/simulators/moonraker/stop")
 async def stop_moonraker_simulator():
     status = await simulator_manager.stop_moonraker()
+    activity.event("moonraker simulator stopped", source="simulator", level="WARNING")
     await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
     return status
 
@@ -1934,12 +2412,30 @@ async def start_octoprint_simulator():
             await asyncio.sleep(_OCTOPRINT_POLL_INTERVAL_S)
 
     status["healthy"] = healthy
+    activity.action(
+        "octoprint simulator start",
+        [
+            ("url", status.get("url")),
+            ("api key", "present" if api_key else "MISSING"),
+            ("healthy", healthy),
+        ],
+        outcome=(
+            "answering /api/version"
+            if healthy
+            else "up but not authenticating — check OCTOPRINT_API_KEY against "
+                 "data/octoprint/octoprint/config.yaml"
+        ),
+        status="ok" if healthy else "fail",
+        level="INFO" if healthy else "WARNING",
+        source="simulator",
+    )
     await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
     return status
 
 @app.post("/simulators/octoprint/stop")
 async def stop_octoprint_simulator():
     status = await simulator_manager.stop_octoprint()
+    activity.event("octoprint simulator stopped", source="simulator", level="WARNING")
     await broadcaster.broadcast_all({"type": "simulator_update", "data": simulator_manager.get_status()})
     return status
 
@@ -1985,23 +2481,55 @@ async def system_info():
 
 @app.get("/system/printer/status")
 async def printer_status():
-    """Verify if a simulator or real printer is configured and running."""
-    # Check simulator
+    """Whether there is a printer that will actually accept a job right now.
+
+    This used to answer `running: True` for any profile file that existed, without
+    opening a single connection — so a profile pointing at a switched-off printer
+    reported ready, the pipeline view opened, and the failure surfaced four phases
+    later at dispatch. `configured` means "a target is set"; `running` now means
+    "we asked it and it answered", and only the second one should gate a job.
+
+    The container reachability check is `test_connection`'s, reused rather than
+    reimplemented: two probes that can disagree about the same printer is how a
+    "ready" badge ends up next to a dead machine.
+    """
     sim_status = simulator_manager.get_status()
     if sim_status.get("octoprint", {}).get("running"):
-        return {"configured": True, "type": "simulator", "running": True}
-        
-    # Check real printer profile
+        # The container being up is not the same as OctoPrint answering inside it, and
+        # the boot takes tens of seconds.
+        probe = await test_connection(TestConnectionRequest(service="octoprint"))
+        return {
+            "configured": True,
+            "type": "simulator",
+            "running": bool(probe.get("success")),
+            "detail": probe.get("message"),
+        }
+
     profile = config_store.get("DEFAULT_PROFILE")
-    if profile:
-        profile_path = Path(__file__).parent.parent / profile
-        if profile_path.exists():
-            if profile in ["pythonsrc/profiles/ender3.json", "pythonsrc/profiles/bambu_test.json"]:
-                # These are dummy profiles that require the simulator, which is not running
-                return {"configured": False, "type": "none", "running": False}
-            return {"configured": True, "type": "real", "running": True} 
-            
-    return {"configured": False, "type": "none", "running": False}
+    if not profile:
+        return {"configured": False, "type": "none", "running": False,
+                "detail": "No printer profile selected."}
+
+    profile_path = Path(__file__).parent.parent / profile
+    if not profile_path.exists():
+        return {"configured": False, "type": "none", "running": False,
+                "detail": f"Profile file not found: {profile}"}
+
+    try:
+        firmware, _base_url, _api_key = resolve_printer_target(str(profile_path))
+    except Exception as exc:  # noqa: BLE001
+        return {"configured": True, "type": "real", "running": False,
+                "detail": f"Could not read {profile}: {exc}"}
+
+    service = {"klipper": "moonraker", "moonraker": "moonraker",
+               "bambu": "bambu"}.get(firmware, "octoprint")
+    probe = await test_connection(TestConnectionRequest(service=service))
+    return {
+        "configured": True,
+        "type": "real",
+        "running": bool(probe.get("success")),
+        "detail": probe.get("message"),
+    }
 
 @app.get("/jobs/{job_id}/blueprint")
 async def get_blueprint(job_id: str):

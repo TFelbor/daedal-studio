@@ -7,14 +7,6 @@
   margin-bottom: 18px;
 }
 
-.loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 0;
-  color: var(--ink-42);
-}
-
 .row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

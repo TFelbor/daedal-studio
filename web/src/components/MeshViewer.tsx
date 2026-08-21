@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Box } from 'lucide-react';
+import { cssToken } from '../theme';
+import { WaitingStage } from './WaitingStage';
 import styles from './MeshViewer.module.css';
 
 interface PhaseLike {
@@ -13,14 +14,12 @@ interface MeshViewerProps {
   jobId: string | null;
   status: string;
   phases: PhaseLike[];
+  /** Live pipeline output, newest last. Passed through to the waiting stage. */
+  logLines?: string[];
 }
 
 /** Read a design token so the scene cannot drift from the stylesheet. */
-function token(name: string, fallback: string): string {
-  if (typeof document === 'undefined') return fallback;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return value || fallback;
-}
+const token = cssToken;
 
 function parseOBJ(text: string) {
   const positions: number[] = [];
@@ -53,7 +52,7 @@ function parseOBJ(text: string) {
   return geometry;
 }
 
-export function MeshViewer({ jobId, phases }: MeshViewerProps) {
+export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -200,12 +199,29 @@ export function MeshViewer({ jobId, phases }: MeshViewerProps) {
     };
   }, [jobId, isPhase3Complete]);
 
-  if (!jobId || !isPhase3Complete || error) {
+  // A failed fetch is the one case that must not animate hopefully — the waiting
+  // stage promises the mesh is on its way, and here it is not.
+  if (error) {
     return (
       <div className={styles.placeholder}>
-        <Box size={28} strokeWidth={1.5} aria-hidden="true" />
-        <span>{error ? 'The mesh could not be loaded.' : 'The mesh appears here once phase 03 completes.'}</span>
+        <span>The mesh could not be loaded.</span>
       </div>
+    );
+  }
+
+  // Before phase 3 lands there is nothing to render, so the stand-in solid assembles
+  // itself instead — orbitable by the same drag the real viewer answers to, which is
+  // what makes the wait a rehearsal rather than a block.
+  if (!jobId || !isPhase3Complete) {
+    const running = phases.some(p => (p.phase === 2 || p.phase === 3) && p.status === 'running');
+    return (
+      <WaitingStage
+        kind="mesh"
+        running={running}
+        logLines={logLines}
+        note="awaiting phase 03"
+        fill
+      />
     );
   }
 
@@ -213,7 +229,9 @@ export function MeshViewer({ jobId, phases }: MeshViewerProps) {
     <div className={styles.viewport}>
       <div className={styles.grid} aria-hidden="true" />
       <div ref={mountRef} className={styles.canvas} />
-      {loading && <span className={styles.loading}>Loading mesh…</span>}
+      {/* The mesh is on the wire but not yet parsed: keep the assembling stand-in
+          under it so the frame is never a flat empty rectangle. */}
+      {loading && <WaitingStage kind="mesh" running logLines={logLines} fill showHint={false} />}
     </div>
   );
 }

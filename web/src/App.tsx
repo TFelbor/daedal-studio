@@ -4,6 +4,7 @@ import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
+import { WaitingStatesGallery } from './pages/WaitingStatesGallery';
 import { OutcomeFeedback } from './components/OutcomeFeedback';
 import { engineLabel, engineStatusClass, useEngineStatus } from './hooks/useEngineStatus';
 import logo from './assets/p2p-logo.png';
@@ -80,6 +81,12 @@ function App() {
           <Route path="/dashboard/:id" element={<JobDetail />} />
           <Route path="/monitor" element={<PrintMonitor />} />
           <Route path="/setup" element={<PrinterSetup />} />
+          {/* Every waiting state on one page, for reviewing them without sitting
+              through a five-phase run. Dev-only: the guard is what keeps a review
+              harness out of the shipped app. */}
+          {import.meta.env.DEV && (
+            <Route path="/states" element={<WaitingStatesGallery />} />
+          )}
           {/* A mistyped URL used to render an empty page. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -2,7 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Candidate 1B, the lay-down. Declared four ways on purpose.
+
+         A lone SVG icon did not stick: browsers cache the favicon far harder than any
+         other asset, several still prefer a bitmap when one is offered, and
+         /favicon.ico is fetched from the document root whether it is declared or not —
+         so an undeclared one leaves a 404 and the browser falls back to nothing. The
+         ?v= query is the only reliable way to evict a cached icon. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" />
+    <link rel="alternate icon" type="image/x-icon" href="/favicon.ico?v=3" sizes="16x16 32x32 48x48 64x64" />
+    <link rel="shortcut icon" href="/favicon.ico?v=3" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0d0d0d" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

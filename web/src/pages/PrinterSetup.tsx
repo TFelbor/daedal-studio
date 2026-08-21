@@ -10,6 +10,7 @@ import {
   Square,
 } from 'lucide-react';
 import { Blueprint, Marks } from '../components/Blueprint';
+import { BootMark } from '../components/BootMark';
 import {
   getConfig,
   setConfig,
@@ -414,10 +415,7 @@ export function PrinterSetup() {
     return (
       <div className="sheet">
         <h1 className="display">Settings</h1>
-        <div className={styles.loading}>
-          <Loader2 className="spin" size={13} strokeWidth={1.5} />
-          Loading configuration
-        </div>
+        <BootMark block label="Reading configuration" />
       </div>
     );
   }

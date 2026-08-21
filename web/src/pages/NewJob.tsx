@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, AlertTriangle, ArrowRight, Check, ChevronDown, Layers, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Layers, RotateCcw } from 'lucide-react';
 import { Blueprint, Marks } from '../components/Blueprint';
 import { BlueprintPreview } from '../components/BlueprintPreview';
+import { DeadChannel } from '../components/DeadChannel';
 import { MeshViewer } from '../components/MeshViewer';
+import { GCodeViewer } from '../components/GCodeViewer';
+import { ProcessLog } from '../components/ProcessLog';
+import { PromptComposer } from '../components/PromptComposer';
+import { WaitingStage } from '../components/WaitingStage';
 import { JobControlPanel } from '../components/JobControlPanel';
 import { createJob, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
 import type { JobStatusResponse, TelemetrySample } from '../api/client';
 import { getConfig } from '../api/config';
+import { reportUi } from '../api/activity';
+import { useActivityFeed } from '../hooks/useActivityFeed';
 import styles from './NewJob.module.css';
 
 interface PhaseStatus {
@@ -39,6 +46,15 @@ const PIPELINE = [
   { phase: 4, name: 'Slicer', blurb: 'Wall thickness and overhangs inspected, then sliced', tag: 'G-CODE' },
   { phase: 5, name: 'Operator', blurb: 'Streamed to OctoPrint, Klipper or Bambu Lab', tag: 'JOB' },
 ];
+
+/** Lines held in memory. The full log is on disk; ProcessLog renders the tail. */
+const LOG_BUFFER = 800;
+
+/** Outcomes after which nothing else will happen on its own. */
+const TERMINAL_OUTCOMES = new Set(['success', 'awaiting_verdict', 'failure', 'cancelled']);
+
+/** Statuses meaning the same, for a row whose outcome has not been written yet. */
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 const STAGE_TABS = [
   { id: 'blueprint', label: 'Blueprint', phase: 1 },
@@ -122,10 +138,14 @@ export function NewJob() {
   const [currentJob, setCurrentJob] = useState<LiveJob | null>(null);
   const [phases, setPhases] = useState<PhaseStatus[]>([]);
   const [telemetrySamples, setTelemetrySamples] = useState<TelemetrySample[]>([]);
+  /** The pipeline's stdout, newest last. Fed by the socket's batched `log` messages. */
+  const [logLines, setLogLines] = useState<string[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<StageTab>('blueprint');
   /** Ticks the elapsed figure. Presentation only — nothing is fetched on this timer. */
   const [now, setNow] = useState(() => Date.now());
+  /** Whether the inline composer for the *next* job is open. */
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
@@ -143,6 +163,8 @@ export function NewJob() {
   }>({ skipVisualizer: false, skipSculptor: false, profile: '' });
 
   const [printer, setPrinter] = useState<PrinterProbe | null>(null);
+  /** The server's own activity — config edits, printer replies, phase boundaries. */
+  const serverActivity = useActivityFeed();
   const printerReady = printer?.configured === true && printer?.running === true;
 
   useEffect(() => {
@@ -177,6 +199,7 @@ export function NewJob() {
       setPhases(PIPELINE.map(p => ({ phase: p.phase, name: p.name, status: 'pending' })));
       setCurrentJob(null);
       setTelemetrySamples([]);
+      setLogLines([]);
     }
   }, [jobId]);
 
@@ -263,8 +286,34 @@ export function NewJob() {
               });
             }
           }
+        } else if (msg.type === 'log') {
+          // Trim on ingest, not on render: an unbounded array is a leak on a job that
+          // runs for an hour, and only the tail is ever displayed.
+          setLogLines(prev => {
+            const next = [...prev, ...(msg.data.lines ?? [])];
+            return next.length > LOG_BUFFER ? next.slice(next.length - LOG_BUFFER) : next;
+          });
         } else if (msg.type === 'job_complete') {
-          setCurrentJob(prev => ({ ...(prev ?? {}), status: 'completed', outcome: msg.data.outcome }));
+          const outcome = msg.data.outcome;
+          setCurrentJob(prev => ({
+            ...(prev ?? {}),
+            status: outcome === 'cancelled' ? 'cancelled' : 'completed',
+            outcome,
+            // Stamp the end so the elapsed figure freezes on the instant the job
+            // stopped rather than on whichever second the 1s tick last fired. The
+            // next poll replaces this with the server's own value; until then, the
+            // socket arriving *is* the event, so the two are the same moment.
+            completed_at: prev?.completed_at ?? new Date().toISOString(),
+          }));
+          // Nothing is running any more. Without this the phase that was live when
+          // the job stopped keeps its running status — and keeps pulsing, in the rail
+          // and on the waiting stage — which is what made Stop job look like it had
+          // done nothing at all.
+          if (outcome !== 'success' && outcome !== 'awaiting_verdict') {
+            setPhases(prev =>
+              prev.map(p => (p.status === 'running' ? { ...p, status: 'error' } : p)),
+            );
+          }
         }
       } catch (e) {
         console.error('WS parse error', e);
@@ -319,7 +368,20 @@ export function NewJob() {
   }, []);
 
   const isRunning = jobId !== null;
-  const jobActive = isRunning && currentJob?.status !== 'completed' && currentJob?.outcome !== 'cancelled';
+  /**
+   * A job stops for four reasons, and the clock has to stop for all of them.
+   *
+   * This used to be `status !== 'completed' && outcome !== 'cancelled'`, which misses
+   * `failure` entirely: the server maps that outcome to status `failed`, so a job that
+   * died in phase 2 kept a running clock for as long as the page stayed open. Phase 5
+   * dispatching is the normal end — the pipeline exits the moment the printer accepts
+   * the file, recording `awaiting_verdict` — and the clock must stop there too, because
+   * what follows is the printer's time, not the pipeline's.
+   */
+  const jobActive =
+    isRunning &&
+    !TERMINAL_OUTCOMES.has(currentJob?.outcome ?? '') &&
+    !TERMINAL_STATUSES.has(currentJob?.status ?? '');
 
   // The elapsed figure only needs to move while the job does.
   useEffect(() => {
@@ -334,15 +396,22 @@ export function NewJob() {
     if (phases.find(p => p.phase === 3)?.status === 'complete') setActiveTab('mesh');
   }, [phases]);
 
-  const handleSubmit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!prompt.trim()) return;
+  /**
+   * Start a job for `text`, from either entry point.
+   *
+   * Split out of `handleSubmit` so the landing form and the inline composer share one
+   * implementation. They previously would have needed two, and the second would have
+   * been the one that forgot to record the material.
+   */
+  const startJob = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
 
     setLoading(true);
     setSubmitError(null);
     try {
       const data = await createJob({
-        prompt,
+        prompt: trimmed,
         printer_id: 'default_printer',
         profile: configDefaults.profile,
         skip_visualizer: configDefaults.skipVisualizer,
@@ -358,16 +427,31 @@ export function NewJob() {
         // Blank means "draw one and record it", which is what we want by default.
         seed: seed.trim() ? Number(seed) : undefined,
       });
+      // Everything from the job being replaced has to go, or the new run inherits its
+      // log, its telemetry and its socket.
+      if (wsRef.current) wsRef.current.close();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      setPrompt(trimmed);
+      setLogLines([]);
+      setTelemetrySamples([]);
+      setCurrentJob(null);
+      tabPinnedRef.current = false;
+      setActiveTab('blueprint');
+      setComposerOpen(false);
+
       setAttachedAt(Date.now());
       setNow(Date.now());
       setJobId(data.job_id);
 
       // Initial phase running
-      setPhases(prev => {
-        const next = prev.map(p => ({ ...p, status: 'pending' as PhaseStatus['status'] }));
-        next[0].status = 'running';
-        return next;
-      });
+      setPhases(PIPELINE.map((p, i) => ({
+        phase: p.phase,
+        name: p.name,
+        status: i === 0 ? 'running' : 'pending',
+      })));
 
       connectWebSocket(data.job_id);
     } catch (err: any) {
@@ -377,14 +461,9 @@ export function NewJob() {
     }
   };
 
-  const resetJob = () => {
-    if (wsRef.current) wsRef.current.close();
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    pollIntervalRef.current = null;
-    tabPinnedRef.current = false;
-    setActiveTab('blueprint');
-    setJobId(null);
-    setPrompt('');
+  const handleSubmit = (e?: FormEvent) => {
+    e?.preventDefault();
+    void startJob(prompt);
   };
 
   // ── Idle: the prompt and the pipeline it starts ────────────────────────────
@@ -650,11 +729,28 @@ export function NewJob() {
             <div className={styles.figureLabel}>Elapsed</div>
             <div className={styles.figureValue}>{elapsed}</div>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={resetJob}>
+          <button
+            type="button"
+            className={composerOpen ? 'btn btn-secondary' : 'btn btn-primary blueprint marked-accent'}
+            onClick={() => {
+              reportUi('new job', composerOpen ? 'closed composer' : 'opened composer');
+              setComposerOpen(o => !o);
+            }}
+            aria-expanded={composerOpen}
+          >
+            {!composerOpen && <Marks />}
             <RotateCcw size={14} strokeWidth={1.5} aria-hidden="true" /> New job
           </button>
         </div>
       </div>
+
+      <PromptComposer
+        open={composerOpen}
+        busy={loading}
+        error={submitError}
+        onCancel={() => setComposerOpen(false)}
+        onSubmit={next => startJob(next)}
+      />
 
       <div className={styles.liveGrid}>
         <div className={styles.stagePane}>
@@ -671,6 +767,7 @@ export function NewJob() {
                   className={activeTab === tab.id ? `${styles.tab} ${styles.tabActive}` : styles.tab}
                   onClick={() => {
                     tabPinnedRef.current = true;
+                    reportUi('stage tab', `${activeTab} → ${tab.id}`);
                     setActiveTab(tab.id);
                   }}
                 >
@@ -695,43 +792,49 @@ export function NewJob() {
               aria-labelledby={`stage-tab-${activeTab}`}
             >
               {activeTab === 'blueprint' && (
-                <BlueprintPreview jobId={jobId} status={phases[0]?.status ?? 'pending'} />
+                <BlueprintPreview
+                  jobId={jobId}
+                  status={phases[0]?.status ?? 'pending'}
+                  logLines={currentJob?.log_tail}
+                />
               )}
               {activeTab === 'mesh' && (
-                <MeshViewer jobId={jobId} status={currentJob?.status || 'queued'} phases={phases} />
+                <MeshViewer
+                  jobId={jobId}
+                  status={currentJob?.status || 'queued'}
+                  phases={phases}
+                  logLines={currentJob?.log_tail}
+                />
               )}
               {activeTab === 'slice' && (
                 sliceReady ? (
-                  <div className={styles.slicePlate}>
-                    <div className={`plate ${styles.slicePlateGrid}`}>
-                      <div>
-                        <div className="plate-figure">{currentJob?.layer_count ?? '—'}</div>
-                        <div className="plate-label">Layers</div>
-                      </div>
-                      <div>
-                        <div className="plate-figure">
-                          {currentJob?.estimated_print_time_s != null
-                            ? formatPrintTime(currentJob.estimated_print_time_s)
-                            : '—'}
-                        </div>
-                        <div className="plate-label">Print time</div>
-                      </div>
-                      <div>
-                        <div className="plate-figure">
-                          {currentJob?.filament_used_g != null
-                            ? `${Math.round(currentJob.filament_used_g)} g`
-                            : '—'}
-                        </div>
-                        <div className="plate-label">Filament</div>
-                      </div>
-                    </div>
+                  // The toolpath itself, at stage size. The slice figures stay, moved
+                  // out below the frame — the geometry is what the stage is for, and
+                  // three numbers were standing in for it.
+                  <GCodeViewer
+                    key={jobId}
+                    jobId={jobId}
+                    zHeightMm={
+                      telemetrySamples.length > 0
+                        ? telemetrySamples[telemetrySamples.length - 1].z_height_mm
+                        : null
+                    }
+                    buildVolumeMm={currentJob?.build_volume_mm}
+                    nozzleDiameterMm={currentJob?.nozzle_diameter_mm}
+                  />
+                ) : sliceFailed ? (
+                  // A failed slice must not animate hopefully.
+                  <div className={styles.sliceEmpty}>
+                    Slicing failed. The mesh reached the slicer but produced no G-code.
                   </div>
                 ) : (
-                  <div className={styles.sliceEmpty}>
-                    {sliceFailed
-                      ? 'Slicing failed. The mesh reached the slicer but produced no G-code.'
-                      : 'The slice figures appear here once phase 04 finishes.'}
-                  </div>
+                  <WaitingStage
+                    kind="slice"
+                    running={phases.find(p => p.phase === 4)?.status === 'running'}
+                    logLines={currentJob?.log_tail}
+                    note="awaiting phase 04"
+                    fill
+                  />
                 )
               )}
             </div>
@@ -740,6 +843,51 @@ export function NewJob() {
           <div className={styles.stageCaption}>
             <span>{caption.left}</span>
             <span className={styles.stageCaptionMono}>{caption.right}</span>
+          </div>
+
+          {activeTab === 'slice' && sliceReady && (
+            <div className={`plate ${styles.slicePlateGrid}`}>
+              <div>
+                <div className="plate-figure">{currentJob?.layer_count ?? '—'}</div>
+                <div className="plate-label">
+                  Layers{currentJob?.layer_height_mm ? ` · ${currentJob.layer_height_mm} mm` : ''}
+                </div>
+              </div>
+              <div>
+                <div className="plate-figure">
+                  {currentJob?.estimated_print_time_s != null
+                    ? formatPrintTime(currentJob.estimated_print_time_s)
+                    : '—'}
+                </div>
+                <div className="plate-label">Print time</div>
+              </div>
+              <div>
+                <div className="plate-figure">
+                  {currentJob?.filament_used_g != null
+                    ? `${Math.round(currentJob.filament_used_g)} g`
+                    : '—'}
+                </div>
+                <div className="plate-label">
+                  {currentJob?.material_type ? currentJob.material_type : 'Filament'}
+                  {currentJob?.support_filament_mm3 ? ' · incl. supports' : ''}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Under the stage rather than in the rail: it is wide content, and the rail
+              is a 380px column that would wrap every docker line into confetti. */}
+          <div className={styles.processLog}>
+            <ProcessLog lines={logLines} live={Boolean(jobActive)} />
+            {/* Two streams, not one merged list: the pipeline's stdout is thousands of
+                tool lines, and the server's own activity is a few dozen decisions.
+                Interleaving them buries the second in the first. */}
+            <ProcessLog
+              lines={serverActivity.lines}
+              live={serverActivity.connected}
+              title="Server activity"
+              emptyHint="Nothing from the server yet."
+            />
           </div>
         </div>
 
@@ -783,10 +931,9 @@ export function NewJob() {
               <div className={styles.railHead}>
                 <span className="label">Telemetry</span>
               </div>
-              <div className={`empty ${styles.railEmpty}`}>
-                <Activity size={20} strokeWidth={1.5} aria-hidden="true" />
-                <span>No printer data until phase 05</span>
-              </div>
+              <DeadChannel className={styles.railEmpty}>
+                No printer data until phase 05
+              </DeadChannel>
             </div>
           )}
 

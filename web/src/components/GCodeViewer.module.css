@@ -1,0 +1,242 @@
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* The floor belongs here, not on `.stage`: this is the box a parent sizes, and the
+     stage has to stay shrinkable so the controls below it always get their space. */
+  min-height: 180px;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  /* `min-height: 0` so the stage can shrink inside a short flex parent. With a floor
+     here instead, the viewer refused to compress and pushed the panel's own controls
+     out of the bottom of the rail — which is how the Print button ended up sitting on
+     top of the slice figures. The floor lives on `.viewer` where it can be overridden. */
+  min-height: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* Full-window inspection. The same element, restyled — the WebGL context stays bound
+   to its canvas, so expanding neither reloads the file nor loses the camera. */
+.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  padding: 24px 28px 28px;
+  background: var(--void);
+}
+
+.expanded .stage {
+  border: 1px solid var(--rule);
+}
+
+.expandBtn {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--rule-strong);
+  background: var(--void);
+  color: var(--ink-42);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.expandBtn:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The readout sits on the same 20px gutter as every other stage caption in the app. */
+.overlay {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  right: 20px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.readout {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: pre;
+}
+
+.readoutDim {
+  color: var(--ink-35);
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--run);
+  white-space: nowrap;
+}
+
+.waiting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  background: var(--void);
+}
+
+.waitingHint {
+  font-size: 12.5px;
+  color: var(--ink-35);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 0 0;
+}
+
+/* Square everywhere — the app has no rounded corner in it, and a native range input
+   brings its own. Track and thumb are both restyled for that reason alone. */
+.scrub {
+  flex: 1;
+  min-width: 140px;
+  height: 18px;
+  margin: 0;
+  appearance: none;
+  background: none;
+  cursor: ew-resize;
+}
+
+.scrub::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--rule-strong);
+}
+
+.scrub::-moz-range-track {
+  height: 1px;
+  background: var(--rule-strong);
+}
+
+.scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 3px;
+  height: 15px;
+  margin-top: -7px;
+  border: none;
+  border-radius: 0;
+  background: var(--accent);
+}
+
+.scrub::-moz-range-thumb {
+  width: 3px;
+  height: 15px;
+  border: none;
+  border-radius: 0;
+  background: var(--accent);
+}
+
+.scrub:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.buttons {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--rule);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.chip:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.chipOn {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* The slice figures, kept with the geometry they describe. Divided by hairlines like
+   every other figure row in the app. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-left: 1px solid var(--rule-row);
+  min-width: 0;
+}
+
+.stat:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.statValue {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-35);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

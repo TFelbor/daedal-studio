@@ -19,6 +19,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  FlaskConical,
   Loader2,
   ThumbsDown,
   ThumbsUp,
@@ -32,14 +33,42 @@ import {
 } from '../api/client';
 import styles from './OutcomeFeedback.module.css';
 
+/**
+ * How FDM prints actually fail, in roughly descending order of how often.
+ *
+ * The first five match the `AnomalyDetector`'s own rule names on purpose: when the
+ * detector fires and a human agrees, the two records should use the same word, or the
+ * question "how often is the detector right" cannot be answered by a query.
+ *
+ * `other` is last and opens a free-text box. A fixed list cannot anticipate every way
+ * a part comes out wrong, and the failures worth hearing about are exactly the ones
+ * nobody thought to list.
+ */
 const FAILURE_TYPES = [
   { value: 'adhesion', label: 'Came off the bed / warped' },
   { value: 'layer_shift', label: 'Layer shift' },
   { value: 'extrusion_issue', label: 'Under-extrusion / gaps' },
-  { value: 'clog', label: 'Clog / no filament' },
+  { value: 'clog', label: 'Clog / nothing coming out' },
   { value: 'thermal_runaway', label: 'Temperature problem' },
-  { value: 'unknown', label: 'Something else' },
+  { value: 'detached', label: 'Detached mid-print (spaghetti)' },
+  { value: 'supports', label: 'Supports failed or would not come off' },
+  { value: 'surface', label: 'Stringing, blobs or poor surface' },
+  { value: 'dimensional', label: 'Wrong size — does not fit' },
+  { value: 'filament_out', label: 'Ran out of filament / tangled spool' },
+  { value: 'other', label: 'Other:' },
 ];
+
+/** The one option that requires words, because it is the one the list did not cover. */
+const OTHER = 'other';
+
+/**
+ * Whether the developer-only verdict is offered.
+ *
+ * Vite replaces `import.meta.env.DEV` at build time, so the button and its handler are
+ * dropped from the production bundle entirely rather than merely hidden — a beta user
+ * cannot reach it by editing the DOM. Two options for them; three for us.
+ */
+const SHOW_DEV_VERDICT = import.meta.env.DEV;
 
 /** How often to look for newly finished prints, in milliseconds. */
 const POLL_MS = 30_000;
@@ -63,15 +92,33 @@ function OutcomeCard({ job, onResolved }: CardProps) {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  /**
+   * Whether the first skip has already happened.
+   *
+   * One press records a skip and asks once more. The second press is where "don't ask
+   * again" is offered, because that is a heavier answer than "not now" and should not
+   * be one careless click away — while a user who genuinely never wants to be asked
+   * must be able to say so rather than dismissing the same card every day.
+   */
+  const [skipAsked, setSkipAsked] = useState(false);
 
-  const submit = async (verdict: 'success' | 'failure', withDetail = false) => {
+  const otherChosen = failureType === OTHER;
+  const trimmedNotes = notes.trim();
+  // "Other:" is a promise of words. Recording it with an empty note stores strictly
+  // less than the dropdown already said.
+  const failureReady = !otherChosen || trimmedNotes.length > 0;
+
+  const submit = async (
+    verdict: 'success' | 'failure' | 'dev' | 'declined',
+    withDetail = false,
+  ) => {
     setBusy(verdict);
     setError(null);
     try {
       await reportOutcome(job.job_id, {
         verdict,
         ...(verdict === 'failure' && withDetail
-          ? { failure_type: failureType, notes: notes || undefined }
+          ? { failure_type: failureType, notes: trimmedNotes || undefined }
           : {}),
       });
       setDone(true);
@@ -84,14 +131,21 @@ function OutcomeCard({ job, onResolved }: CardProps) {
   };
 
   const skip = async () => {
+    // The dismissal is recorded on the first press. Whether pilot users answer at all
+    // is the thing being measured, so a decline has to be distinguishable from never
+    // having been asked — and that stays true even if they never press again.
     setBusy('skip');
     try {
       await dismissOutcomePrompt(job.job_id);
-      onResolved(job.job_id);
     } catch {
-      // A failed skip is not worth interrupting anyone over; the card simply stays.
-      setBusy(null);
+      // A failed skip is not worth interrupting anyone over.
     }
+    if (!skipAsked) {
+      setSkipAsked(true);
+      setBusy(null);
+      return;
+    }
+    onResolved(job.job_id);
   };
 
   if (done) {
@@ -142,9 +196,40 @@ function OutcomeCard({ job, onResolved }: CardProps) {
           onClick={skip}
           disabled={busy !== null}
         >
-          Skip
+          {skipAsked ? 'Skip & don’t ask again' : 'Skip'}
         </button>
+        {/* Dropped from the production bundle. See SHOW_DEV_VERDICT. */}
+        {SHOW_DEV_VERDICT && (
+          <button
+            type="button"
+            className={`${styles.verdict} ${styles.dev}`}
+            onClick={() => submit('dev')}
+            disabled={busy !== null}
+            title="Developer test run — recorded, but excluded from the dataset"
+          >
+            {busy === 'dev' ? <Loader2 size={16} className="spin" /> : <FlaskConical size={16} />}
+            Dev
+          </button>
+        )}
       </div>
+
+      {skipAsked && (
+        <div className={styles.skipAgain} role="status">
+          <span>
+            Skipped. Your answer is the only way we learn whether a part survived — but
+            if you would rather not be asked, say so and we will stop.
+          </span>
+          <button
+            type="button"
+            className={`${styles.verdict} ${styles.skip}`}
+            onClick={() => submit('declined')}
+            disabled={busy !== null}
+          >
+            {busy === 'declined' ? <Loader2 size={16} className="spin" /> : null}
+            Don’t ask again
+          </button>
+        </div>
+      )}
 
       {showDetail && (
         <div className={styles.detail}>
@@ -168,17 +253,23 @@ function OutcomeCard({ job, onResolved }: CardProps) {
           </div>
           <textarea
             className="textarea"
-            rows={2}
-            placeholder="Anything else worth knowing (optional)"
+            rows={otherChosen ? 3 : 2}
+            placeholder={
+              otherChosen
+                ? 'What happened? This is the box that catches what the list could not.'
+                : 'Anything else worth knowing (optional)'
+            }
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+            aria-label={otherChosen ? 'Describe what went wrong' : 'Additional notes'}
           />
           <div className={styles.actions}>
             <button
               type="button"
               className={`${styles.verdict} ${styles.failed}`}
               onClick={() => submit('failure', true)}
-              disabled={busy !== null}
+              disabled={busy !== null || !failureReady}
+              title={failureReady ? undefined : 'Describe what happened first'}
             >
               {busy === 'failure' ? <Loader2 size={16} className="spin" /> : <ThumbsDown size={16} />}
               Record failure
