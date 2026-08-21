@@ -308,6 +308,36 @@
   flex-wrap: wrap;
 }
 
+/* The way back to the composer. Set at the type scale of the labels beside it, so it
+   reads as part of the header's small-caps row rather than as a fifth control
+   competing with "New job". */
+.leaveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+  transition: color 0.15s ease;
+}
+
+.leaveBtn:hover {
+  color: var(--accent);
+}
+
+.leaveBtn::after {
+  content: '';
+  width: 1px;
+  height: 11px;
+  margin-left: 7px;
+  background: var(--rule-strong);
+}
+
 .jobTitle {
   font-family: var(--font-heading);
   font-weight: 600;

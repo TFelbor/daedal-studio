@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { closeSocket } from '../api/ws';
 
 /**
  * The server's own activity, live.
@@ -79,7 +80,7 @@ export function useActivityFeed(enabled: boolean = true) {
 
     return () => {
       mounted = false;
-      ws.close();
+      closeSocket(ws);
     };
   }, [enabled]);
 

@@ -2006,9 +2006,40 @@ async def internal_telemetry(job_id: str, request: InternalTelemetryRequest):
     await broadcaster.broadcast(job_id, {"type": request.type, "data": request.data})
     return {"status": "success"}
 
+#: The filters ``GET /jobs`` knows about.
+#:
+#: An unrecognised value used to fall through the ``elif`` chain to no WHERE clause at
+#: all, so the endpoint answered with every job, newest first. To a client that only
+#: checks whether a row came back — which is what ``NewJob``'s re-attach did — that is
+#: indistinguishable from "here is the job you asked about", and a browser one deploy
+#: ahead of the server was handed a finished job and dropped into the running view.
+#: Refusing beats guessing: the caller then knows the filter did not run.
+JOB_LIST_STATUSES = (
+    "all",
+    "running",
+    "completed",
+    "failed",
+    "awaiting_verdict",
+    "awaiting_dispatch",
+)
+
+
 @app.get("/jobs")
 async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
-    """List print jobs with pagination and status filtering."""
+    """List print jobs with pagination and status filtering.
+
+    Raises:
+        HTTPException: 400 when `status` is not one of `JOB_LIST_STATUSES`.
+    """
+    if status not in JOB_LIST_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown status filter {status!r}. "
+                f"Expected one of: {', '.join(JOB_LIST_STATUSES)}."
+            ),
+        )
+
     db = TelemetryDB()
     cursor = db.conn.cursor()
     

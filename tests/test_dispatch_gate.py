@@ -178,3 +178,25 @@ def test_phase_status_append_is_readable(tmp_path, monkeypatch):
         assert record["name"] == "operator"
     finally:
         status_file.unlink(missing_ok=True)
+
+
+def test_unknown_status_filter_is_refused():
+    """An unrecognised filter must not answer with every job.
+
+    `GET /jobs?status=` fell through to no WHERE clause at all when it did not know
+    the value, so it answered "every job, newest first" — indistinguishable, to a
+    client that only checks whether a row came back, from "here is the job you asked
+    about". `NewJob` re-attaches on mount to whatever `status=awaiting_dispatch`
+    returns, so a browser one deploy ahead of the server was handed a finished job
+    and dropped straight into the running view, with the landing composer
+    unreachable for the rest of that tab's life.
+    """
+    _make_job(outcome="cancelled", slice_status=None)
+
+    resp = client.get("/jobs?status=not_a_status&limit=50")
+    assert resp.status_code == 400
+    assert "not_a_status" in resp.json()["detail"]
+
+    # The filters it does know still answer.
+    for known in ("all", "running", "completed", "failed", "awaiting_verdict", "awaiting_dispatch"):
+        assert client.get(f"/jobs?status={known}&limit=1").status_code == 200

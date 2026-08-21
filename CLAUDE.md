@@ -699,8 +699,12 @@ first time anyone saw which machine a part was going to was in the past tense.
   does not leave a row asking a person about a part that does not exist.
 - **`GET /jobs?status=awaiting_dispatch`** is what makes the step survive a page reload: such a
   job is finished as far as the pipeline is concerned, so it is absent from the running list, and
-  the pending decision used to vanish on refresh. `NewJob` re-attaches to it on mount and the
-  dashboard marks the row `To send` (`awaiting_dispatch` per row) rather than `Success`.
+  the pending decision used to vanish on refresh. The dashboard marks the row `To send`
+  (`awaiting_dispatch` per row) rather than `Success`, and `NewJob` re-attaches on mount — but
+  **only to the job that tab was watching** (`sessionStorage['p2p.watchedJob']`, re-checked
+  against `dispatch_state`), not to whatever the filter returns newest. "Sliced and not sent"
+  has no time limit, so one job nobody ever confirmed would otherwise own the landing page
+  for good. Everything else is reached from the dashboard.
 
 ### Printer Operators (pythonsrc/operators/)
 
@@ -742,6 +746,25 @@ and to the **toolpath as soon as the slice exists**, and the printability report
 under the mesh stage (`PrintabilityCard` with `pending` for the window where the mesh is done
 and the score is not). The G-code preview used to be duplicated in a 240px slot in the rail,
 which is not where a 200-layer toolpath is read.
+
+**`NewJob` shows one of two pages, and `jobId` decides which — so nothing may set it
+without a way to unset it.** The running view was a one-way door: `setJobId(null)` was
+called nowhere, so a tab that attached to a job could not reach the landing composer
+again, and "New job" opens the inline composer *beside* the running job rather than
+going back. `leaveJob` is the way back — it closes the socket, forgets the watched job
+and leaves the job itself alone. The other half of the same bug was on the server:
+`GET /jobs` answered an unrecognised `status` filter with the *unfiltered* list, newest
+first, so a browser one deploy ahead of the server was handed a finished job by
+`status=awaiting_dispatch` and dropped into the running view on every load. Unknown
+filters are now a 400 (`JOB_LIST_STATUSES`), and the client checks the row it got back
+rather than the fact that a row came back.
+
+**A WebSocket closed while still `CONNECTING` is aborted, not closed** — the spec says
+to fail the connection, so the browser resets the TCP socket mid-handshake and the Vite
+proxy logs `ws proxy error: read ECONNRESET` twice. StrictMode discards the first socket
+of every effect, so this fired on every dev page load and read like a dead backend.
+`api/ws.ts`'s `closeSocket` waits for the upgrade before closing; use it instead of
+`ws.close()` in effect cleanups.
 
 ## Configuration
 
