@@ -40,7 +40,14 @@ def clear_db():
 @patch('server.app._run_pipeline', new_callable=AsyncMock)
 @patch('pythonsrc.telemetry.moonraker_collector.MoonrakerCollector.start', new_callable=AsyncMock)
 def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline, printer_configured):
-    """Integration test (Klipper path)"""
+    """Integration test (Klipper path).
+
+    The collector is attached when Phase 5 begins — at job creation it wrote an
+    idle-printer sample per second for the whole pipeline — so this exercises
+    `_attach_job_telemetry`, the hook `_run_pipeline` fires on the Phase 5 banner.
+    """
+    from server.app import _attach_job_telemetry
+
     resp = client.post("/jobs", json={
         "prompt": "test klipper",
         "printer_id": "test_klipper",
@@ -51,17 +58,22 @@ def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline, printer_conf
     })
     assert resp.status_code == 202
     job_id = resp.json()["job_id"]
-    
-    # Check if collector is added to active_collectors
+    mock_run_pipeline.assert_called_once()
+
+    async def attach():
+        _attach_job_telemetry(job_id, "klipper", "http://localhost:7125", None)
+        await asyncio.sleep(0)
+
+    asyncio.run(attach())
+
     assert job_id in active_collectors
     collector = active_collectors[job_id]
     from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
     assert isinstance(collector, MoonrakerCollector)
     assert collector.ws_url == "ws://localhost:7125/websocket"
-    
+
     mock_moonraker_start.assert_called_once()
-    mock_run_pipeline.assert_called_once()
-    
+
     # Manually inject telemetry samples to simulate collector
     db = TelemetryDB()
     for i in range(5):
@@ -87,51 +99,42 @@ def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline, printer_conf
     assert len(samples) == 5
     assert samples[0]["gcode_line"] == 0
 
-@patch('server.app._run_pipeline', new_callable=AsyncMock)
 @patch('pythonsrc.telemetry.octoprint_collector.OctoPrintCollector.start', new_callable=AsyncMock)
-def test_octoprint_telemetry(mock_octoprint_start, mock_run_pipeline, printer_configured):
-    """Integration test (OctoPrint path)"""
-    resp = client.post("/jobs", json={
-        "prompt": "test octoprint",
-        "printer_id": "test_octoprint",
-        "profile": "pythonsrc/profiles/ender3.json",
-        "skip_visualizer": True,
-        "print": True,
-        "start_print": True
-    })
-    assert resp.status_code == 202
-    job_id = resp.json()["job_id"]
-    
+def test_octoprint_telemetry(mock_octoprint_start):
+    """Integration test (OctoPrint path) — attach fires at Phase 5, not creation."""
+    from server.app import _attach_job_telemetry
+
+    job_id = str(uuid.uuid4())
+
+    async def attach():
+        _attach_job_telemetry(job_id, "octoprint", "http://localhost:5001", "key")
+        await asyncio.sleep(0)
+
+    asyncio.run(attach())
+
     assert job_id in active_collectors
     collector = active_collectors[job_id]
     from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
     assert isinstance(collector, OctoPrintCollector)
     assert collector.host == "localhost"
     assert collector.port == 5001
-    
+    assert collector.gcode_filename == "engineered_mesh.gcode"
+
     mock_octoprint_start.assert_called_once()
 
 @patch('server.app.logger.warning')
-@patch('server.app._run_pipeline', new_callable=AsyncMock)
-def test_bambu_telemetry(mock_run_pipeline, mock_logger_warning, tmp_path, printer_configured):
-    """Bambu job logs the warning and proceeds without crashing"""
-    profile_file = tmp_path / "bambu.json"
-    profile_file.write_text(json.dumps({
-        "firmware": "bambu",
-        "base_url": "http://bambu-printer"
-    }))
-    
-    resp = client.post("/jobs", json={
-        "prompt": "test bambu",
-        "printer_id": "test_bambu",
-        "profile": str(profile_file),
-        "skip_visualizer": True,
-        "print": True,
-        "start_print": True
-    })
-    assert resp.status_code == 202
-    job_id = resp.json()["job_id"]
-    
+def test_bambu_telemetry(mock_logger_warning):
+    """A Bambu attach logs the warning and registers nothing."""
+    from server.app import _attach_job_telemetry
+
+    job_id = str(uuid.uuid4())
+
+    async def attach():
+        _attach_job_telemetry(job_id, "bambu", "http://bambu-printer", None)
+        await asyncio.sleep(0)
+
+    asyncio.run(attach())
+
     # Collector shouldn't be registered
     assert job_id not in active_collectors
     mock_logger_warning.assert_called_with("Telemetry not yet available for Bambu")

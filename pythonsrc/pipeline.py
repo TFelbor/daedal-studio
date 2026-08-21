@@ -279,30 +279,13 @@ def _record_generation(args, model, model_version, backend, params, cost_eur, du
 def _resolve_git_sha() -> str | None:
     """The commit of the code running this job, or None when unknowable.
 
-    `$P2P_GIT_SHA` wins so a container image — which carries no .git — can be
-    stamped at build or launch time; otherwise the working tree is asked.
-
-    Returns:
-        A short commit hash, or None.
+    Delegates to the shared torch-free helper so the server (which stamps
+    `$P2P_GIT_SHA` into container subprocesses) and the pipeline resolve the
+    value the same way.
     """
-    env = os.environ.get("P2P_GIT_SHA")
-    if env:
-        return env.strip()
-    try:
-        import subprocess
+    from pythonsrc.telemetry.run_context import resolve_git_sha
 
-        proc = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=Path(__file__).parent.parent,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip()
-    except Exception:  # noqa: BLE001
-        pass
-    return None
+    return resolve_git_sha()
 
 
 def _record_run_context(args, used_reference_assets: bool) -> None:
@@ -1040,7 +1023,11 @@ def run(args: argparse.Namespace) -> None:
             
             firmware = os.environ.get("P2P_FIRMWARE", profile_data.get("firmware", "octoprint"))
             base_url = os.environ.get("P2P_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
-            
+
+            # Recorded before the Docker rewrite below: host.docker.internal is a
+            # container artifact, not the address anyone configured.
+            dispatch_url = base_url
+
             # Rewrite localhost if running inside docker so it can reach the host
             if "localhost" in base_url or "127.0.0.1" in base_url:
                 if os.path.exists("/.dockerenv"):
@@ -1073,7 +1060,7 @@ def run(args: argparse.Namespace) -> None:
                     from pythonsrc.telemetry.db import TelemetryDB as _DispatchDB
 
                     _ddb = _DispatchDB()
-                    _ddb.update_job_dispatch(args.job_id, printer_url=base_url)
+                    _ddb.update_job_dispatch(args.job_id, printer_url=dispatch_url)
                     _ddb.close()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Could not record the dispatch target: %s", exc)
@@ -1101,7 +1088,10 @@ def run(args: argparse.Namespace) -> None:
                     if job and job.outcome == 'unknown' and not job.started_at:
                         db.update_job_start_time(args.job_id, datetime.now(timezone.utc))
 
-                    collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
+                    collector = OctoPrintCollector(
+                        parsed.hostname or "localhost", port, api_key or "",
+                        args.job_id, db, gcode_filename=gcode_path.name,
+                    )
                     await collector.start()
 
                     # Consume the collector's samples so automated failure detection

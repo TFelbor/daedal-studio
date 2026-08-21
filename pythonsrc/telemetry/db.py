@@ -979,10 +979,10 @@ class TelemetryDB:
         meaning anything. The denominator here is the set of people who were asked.
 
         Returns:
-            A mapping with `prompted`, `answered`, `dismissed` and `unanswered` job
-            counts. `answered` and `dismissed` are subsets of `prompted`.
+            A mapping with `prompted`, `answered`, `declined`, `dismissed` and
+            `unanswered` job counts. All but `prompted` are subsets of it.
         """
-        def distinct_jobs(cursor, kind: str) -> set:
+        def distinct_jobs(cursor, kind: str, verdicts_sql: str = "") -> set:
             # Joined to `print_job` so an event orphaned by a deleted job cannot
             # contribute. Without it this rate is computed over jobs that no longer
             # exist: on one real database it reported 114 prompted / 46 answered —
@@ -990,7 +990,8 @@ class TelemetryDB:
             # the honest answer was "no data yet".
             cursor.execute(
                 "SELECT DISTINCT e.job_id FROM job_event e "
-                "JOIN print_job j ON j.job_id = e.job_id WHERE e.kind = ?",
+                "JOIN print_job j ON j.job_id = e.job_id WHERE e.kind = ?"
+                + verdicts_sql,
                 (kind,),
             )
             return {row[0] for row in cursor.fetchall()}
@@ -998,15 +999,31 @@ class TelemetryDB:
         with self._lock:
             cursor = self.conn.cursor()
             prompted = distinct_jobs(cursor, "outcome_prompt_shown")
-            answered = distinct_jobs(cursor, "outcome_reported") & prompted
+            # `declined` and `dev` are responses, but not *answers*: neither says
+            # anything about a printed part, and counting "don't ask me again" as
+            # an answered prompt inflates the exact number the pilot is measured
+            # by. Events with no verdict in their detail predate the distinction
+            # and were all real answers.
+            answered = distinct_jobs(
+                cursor,
+                "outcome_reported",
+                " AND COALESCE(json_extract(e.detail, '$.verdict'), '')"
+                " NOT IN ('declined', 'dev')",
+            ) & prompted
+            declined = distinct_jobs(
+                cursor,
+                "outcome_reported",
+                " AND json_extract(e.detail, '$.verdict') = 'declined'",
+            ) & prompted
             dismissed = distinct_jobs(cursor, "outcome_prompt_dismissed") & prompted
 
         return {
             "prompted": len(prompted),
             "answered": len(answered),
+            "declined": len(declined - answered),
             # A job can be dismissed and later answered; the two overlap by design.
             "dismissed": len(dismissed - answered),
-            "unanswered": len(prompted - answered),
+            "unanswered": len(prompted - answered - declined),
         }
 
     def increment_download_count(self, job_id: str) -> None:

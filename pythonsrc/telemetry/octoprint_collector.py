@@ -21,13 +21,23 @@ class OctoPrintCollector:
     """Collects telemetry data from an OctoPrint 3D printer via SockJS.
 
     Limitations:
-        - gcode_line: Not exposed via the streaming API (always None).
+        - gcode_line: Holds the G-code *file position* (byte offset from
+          ``progress.filepos``), matching what the Moonraker collector stores
+          there. OctoPrint does not expose a line number.
         - print_speed_pct: Not exposed via the streaming API (always None).
         - extrusion_factor_pct: Not exposed via the streaming API (always None).
         - fan_speed_pct: Not exposed via the streaming API (always None).
     """
 
-    def __init__(self, host: str, port: int, api_key: str, job_id: str, db: TelemetryDB):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        api_key: str,
+        job_id: str,
+        db: TelemetryDB,
+        gcode_filename: str | None = None,
+    ):
         """Initialize the OctoPrint collector.
 
         Args:
@@ -36,12 +46,16 @@ class OctoPrintCollector:
             api_key: The API key for authentication.
             job_id: The job identifier.
             db: The telemetry database.
+            gcode_filename: The file this job uploaded. The socket reports every
+                print on the machine, so events naming a *different* file are not
+                this job's outcome and are ignored. None disables the check.
         """
         self.host = host
         self.port = port
         self.api_key = api_key
         self.job_id = job_id
         self.db = db
+        self.gcode_filename = gcode_filename
         self.sample_queue: asyncio.Queue[TelemetrySample] = asyncio.Queue()
         self._running = False
         self._bg_task: Optional[asyncio.Task] = None
@@ -211,6 +225,13 @@ class OctoPrintCollector:
         now = datetime.now(timezone.utc)
         z_height_mm = payload.get("currentZ")
 
+        # The byte offset into the G-code file, from the same frame. It was on the
+        # wire all along (and forwarded to the browser below) while the sample
+        # column was hardcoded to None — which also disabled the detector's clog
+        # rule for every OctoPrint print.
+        progress = payload.get("progress") or {}
+        filepos = progress.get("filepos") if isinstance(progress, dict) else None
+
         temps_data = payload.get("temps", [])
         if isinstance(temps_data, list) and len(temps_data) > 0:
             # The history buffer arrives oldest-first; the newest entry is last.
@@ -244,7 +265,7 @@ class OctoPrintCollector:
         sample = TelemetrySample(
             job_id=self.job_id,
             sampled_at=now,
-            gcode_line=None,
+            gcode_line=filepos,
             z_height_mm=z_height_mm,
             hotend_actual_c=hotend_actual,
             hotend_target_c=hotend_target,
@@ -299,15 +320,27 @@ class OctoPrintCollector:
         A failure, error or cancellation is different — those the machine genuinely
         observed, so they are recorded as machine-sourced outcomes directly.
 
+        Two guards, both of which used to be missing:
+
+        * **The file must be ours.** The socket reports every print on the machine,
+          so a ``PrintDone`` for a file this job never uploaded — someone printing a
+          Benchy from the OctoPrint UI mid-pipeline — used to be written as this
+          job's outcome.
+        * **The claim must be ours.** A collector that lost the single-writer claim
+          stood down from samples but kept mutating the print_job row.
+
         Args:
-            event_data: The OctoPrint event payload.
+            event_data: The OctoPrint event message ({"type": ..., "payload": ...}).
         """
         if not isinstance(event_data, dict):
             return
 
         event_type = event_data.get("type")
-        outcome = None
+        payload = event_data.get("payload") or {}
+        if not isinstance(payload, dict):
+            payload = {}
 
+        outcome = None
         if event_type in ("PrintFailed", "Error"):
             outcome = "failure"
         elif event_type == "PrintDone":
@@ -315,8 +348,51 @@ class OctoPrintCollector:
         elif event_type == "PrintCancelled":
             outcome = "cancelled"
 
+        event_kind = {
+            "PrintPaused": "print_paused",
+            "PrintResumed": "print_resumed",
+        }.get(event_type)
+        if outcome:
+            event_kind = "printer_terminal"
+
+        if not outcome and not event_kind:
+            return
+
+        event_file = payload.get("name")
+        if self.gcode_filename and event_file and event_file.lower() != self.gcode_filename.lower():
+            logger.info(
+                "Ignoring %s for %r — job %s printed %r, so this event is another print's.",
+                event_type, event_file, self.job_id, self.gcode_filename,
+            )
+            return
+
+        if not self._claim.may_write(asyncio.get_running_loop().time()):
+            return
+
+        try:
+            detail = {"event": event_type}
+            if event_file:
+                detail["file"] = event_file
+            if payload.get("reason") is not None:
+                # The firmware's own word for why — "cancelled" vs "error" on a
+                # PrintFailed — exists only in this one payload.
+                detail["reason"] = payload.get("reason")
+            if payload.get("time") is not None:
+                detail["print_duration_s"] = payload.get("time")
+            self.db.record_job_event(self.job_id, event_kind, detail)
+        except Exception as exc:  # noqa: BLE001 - reported, never raised at the socket
+            self._log_db_failure(f"record the '{event_type}' printer event", exc)
+
         if not outcome:
             return
+
+        # The measured duration is a column of its own so it can be averaged and
+        # compared against the slicer's estimate without digging through JSON.
+        if payload.get("time") is not None:
+            try:
+                self.db.update_job_print_duration(self.job_id, float(payload["time"]))
+            except Exception as exc:  # noqa: BLE001
+                self._log_db_failure("record the print duration", exc)
 
         # A human verdict already on the row wins; the guard lives in
         # update_job_outcome_verdict so every machine writer inherits it.

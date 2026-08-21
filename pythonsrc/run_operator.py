@@ -29,7 +29,11 @@ def main():
             api_key = os.environ.get("OCTOPRINT_API_KEY")
             
         base_url = os.environ.get("OCTOPRINT_URL") or profile_data.get("base_url", "http://localhost:5001")
-        
+
+        # Recorded before the Docker rewrite below: host.docker.internal is a
+        # container artifact, not the address anyone configured.
+        dispatch_url = base_url
+
         # Rewrite localhost if running inside docker so it can reach the host
         if "localhost" in base_url or "127.0.0.1" in base_url:
             if os.path.exists("/.dockerenv"):
@@ -56,7 +60,7 @@ def main():
             from pythonsrc.telemetry.db import TelemetryDB as _DispatchDB
 
             _ddb = _DispatchDB()
-            _ddb.update_job_dispatch(args.job_id, printer_url=base_url)
+            _ddb.update_job_dispatch(args.job_id, printer_url=dispatch_url)
             _ddb.close()
         except Exception as exc:
             logger.warning(f"Could not record the dispatch target: {exc}")
@@ -86,7 +90,10 @@ def main():
                     import datetime
                     db.update_job_start_time(args.job_id, datetime.datetime.now(datetime.timezone.utc))
 
-                collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
+                collector = OctoPrintCollector(
+                    parsed.hostname or "localhost", port, api_key or "",
+                    args.job_id, db, gcode_filename=filename,
+                )
                 await collector.start()
 
                 # Consume the samples so automated failure detection runs.

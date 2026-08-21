@@ -402,3 +402,73 @@ async def test_a_cancelled_job_accrues_no_automated_failures(mock_db):
     task.cancel()
 
     assert mock_db.insert_failure_event.call_count == 0
+
+
+# ── State guards: rules must not fabricate evidence off-print ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_layer_shift_does_not_fire_after_the_print_ends(mock_db):
+    """End-of-print parking and homing legitimately drop Z by far more than
+    0.5mm; a completed job must not collect a layer_shift for it."""
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    done = MagicMock()
+    done.outcome = "success"
+    mock_db.get_job.return_value = done
+
+    await queue.put(make_sample(z_height_mm=42.0))
+    await queue.put(make_sample(z_height_mm=0.0))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_extrusion_issue_does_not_fire_when_not_printing(mock_db):
+    """An idle extruder factor after the print settles is not a fault."""
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+
+    done = MagicMock()
+    done.outcome = "success"
+    mock_db.get_job.return_value = done
+
+    for _ in range(5):
+        await queue.put(make_sample(z_height_mm=1.0, extrusion_factor_pct=5.0))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_user_cancellation_is_not_adhesion_evidence(mock_db):
+    """A person cancelling 30 seconds in — for any reason, including changing
+    their mind — used to be written up as a machine-observed adhesion failure.
+    Only an error state is evidence; the human's own verdict covers the rest."""
+    queue = asyncio.Queue()
+    detector = AnomalyDetector(queue, mock_db, operator=None)
+    detector._state_cache["job_1"] = {
+        "time": 0, "state": "printing", "progress": 5.0, "prev_state": "printing",
+    }
+
+    await queue.put(make_sample(z_height_mm=0.5))
+
+    cancelled = MagicMock()
+    cancelled.outcome = "cancelled"
+    mock_db.get_job.return_value = cancelled
+
+    await queue.put(make_sample(z_height_mm=0.6))
+
+    task = asyncio.create_task(detector.run())
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+    assert mock_db.insert_failure_event.call_count == 0
