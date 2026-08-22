@@ -134,6 +134,11 @@ class _Report:
         self.checks = list(checks)
 
 
+class _Profile:
+    def __init__(self, nozzle_diameter_mm):
+        self.nozzle_diameter_mm = nozzle_diameter_mm
+
+
 def test_a_small_footprint_gets_a_brim():
     """A real job reached the plate with 6mm² against the 25mm² wanted."""
     from pythonsrc.pipeline import BRIM_WIDTH_MM, _adhesion_args
@@ -141,7 +146,32 @@ def test_a_small_footprint_gets_a_brim():
     args = _adhesion_args(_Report(_Check("bed_contact", "warn", "only 6.1mm²")))
 
     assert "adhesion_type=brim" in args
-    assert f"brim_width={BRIM_WIDTH_MM}" in args
+    assert f"brim_line_count={round(BRIM_WIDTH_MM / 0.4)}" in args
+
+
+def test_the_brim_is_asked_for_in_lines_not_millimetres():
+    """`brim_width` is a Cura *frontend* setting: the UI divides it by the line
+    width and hands CuraEngine a count. CuraEngine never reads the width, so the
+    override this used to emit did nothing. Measured on CuraEngine 4.13 with the
+    bundled definitions: `brim_line_count=5` gave 119 adhesion moves, `=20` gave
+    907, and `brim_width=2` alone gave exactly the default.
+    """
+    from pythonsrc.pipeline import _adhesion_args
+
+    args = _adhesion_args(_Report(_Check("bed_contact", "fail", "2.0mm²")))
+
+    assert not any(arg.startswith("brim_width") for arg in args)
+
+
+def test_the_line_count_follows_the_nozzle():
+    """8mm of brim is twenty lines at 0.4mm and ten at 0.8mm. A count that ignored
+    the nozzle would put a 16mm brim on a volcano hotend."""
+    from pythonsrc.pipeline import _adhesion_args
+
+    report = _Report(_Check("bed_contact", "warn", "small"))
+
+    assert "brim_line_count=20" in _adhesion_args(report, _Profile(0.4))
+    assert "brim_line_count=10" in _adhesion_args(report, _Profile(0.8))
 
 
 def test_a_part_that_already_sits_flat_gets_no_brim():
