@@ -88,7 +88,7 @@ def test_the_submitted_request_is_persisted(mock_run, printer_configured):
 
 # ── The derived state ────────────────────────────────────────────────────────
 
-def _park(db, job_id, *, blueprint=True):
+def _park(db, job_id, *, blueprint=True, parked=True):
     """Put a job in the state the pipeline leaves it in after a gated Phase 1.
 
     The hash returned is the **file's own**, not the row's `blueprint_sha256`. Those
@@ -115,6 +115,11 @@ def _park(db, job_id, *, blueprint=True):
         outputs = Path(app_module.__file__).parent.parent / "data" / "outputs" / job_id
         outputs.mkdir(parents=True, exist_ok=True)
         (outputs / "blueprint.png").write_bytes(payload)
+    # `parked=False` reproduces the case the gate used to get wrong: an ungated run,
+    # which snapshots a blueprint into its own directory like every other run but never
+    # stopped and is not waiting for anybody.
+    if parked:
+        db.record_job_event(job_id, "blueprint_gate_parked", {"sha256": digest})
     return digest
 
 
@@ -275,3 +280,223 @@ def test_an_unknown_status_filter_is_still_a_400():
     everything, newest first — which dropped a browser one deploy ahead of the
     server into the running view for a finished job."""
     assert client.get("/jobs?status=not_a_real_status").status_code == 400
+
+
+# ── The approval must bind to the image Phase 2 actually consumes ─────────────
+#
+# Found in review, and it defeated the whole gate. `_snapshot_blueprint` exists because
+# `POST /jobs` deletes the shared `data/inputs/blueprint.png` on every submission — but
+# the continuation was still launched with `--blueprint /app/data/inputs/blueprint.png`.
+# So: job A parks; job B is submitted, deleting the shared PNG and writing its own;
+# someone approves A; A's Phase 2 reconstructs **B's** image, and the sidecar beside it
+# stamps B's seed, prompt and model onto A's `blueprint_*` columns. A paid
+# reconstruction of an image nobody approved, with fabricated Phase 1 provenance, and
+# the sha256 the person confirmed was of a file that was never read.
+
+def test_the_continuation_reads_the_snapshot_it_was_approved_from():
+    """The resumed run must name the per-job snapshot, not the shared input path."""
+    resumed = app_module.JobRequest(
+        prompt="a vase", printer_id="d", skip_visualizer=True,
+        blueprint_path="/app/data/outputs/JOBA/blueprint.png",
+    )
+    args = app_module._pipeline_args(
+        resumed, skip_viz=True, skip_sculpt=False, profile=None,
+    )
+
+    assert args[args.index("--blueprint") + 1] == "/app/data/outputs/JOBA/blueprint.png"
+    assert "/app/data/inputs/blueprint.png" not in args
+
+
+def test_a_first_run_still_uses_the_shared_input_path():
+    """Phase 1 writes there, so an ungated first run must keep reading there."""
+    args = app_module._pipeline_args(
+        app_module.JobRequest(prompt="a vase", printer_id="d", skip_visualizer=True),
+        skip_viz=True, skip_sculpt=False, profile=None,
+    )
+
+    assert args[args.index("--blueprint") + 1] == "/app/data/inputs/blueprint.png"
+
+
+def test_approval_hands_the_continuation_the_snapshot_path():
+    """End to end: what the endpoint builds must point at this job's own image."""
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000a"
+    digest = _park(db, job_id)
+    db.close()
+
+    with patch("server.app._continue_pipeline", new_callable=AsyncMock) as cont:
+        resp = client.post(f"/jobs/{job_id}/blueprint-approval", json={
+            "confirmed": True, "sha256": digest,
+        })
+
+    assert resp.status_code == 200, resp.text
+    resumed = cont.call_args[0][1]
+    assert resumed.blueprint_path == f"/app/data/outputs/{job_id}/blueprint.png"
+    assert resumed.skip_visualizer is True
+
+
+# ── Only a job that actually parked is awaiting approval ─────────────────────
+#
+# Also from review. The state was derived from "a per-job blueprint.png exists and no
+# decision event exists" — but `pipeline.py` snapshots the blueprint into the per-job
+# directory on *every* run with a `--job-id`, and a run with `SKIP_VISUALIZER=true` or
+# `print: true` is never gated. So a job that was never parked reported
+# `awaiting_approval` seconds into its run, the UI drew the gate over a pipeline already
+# in Phase 2, and approving it started a **second** full pipeline for the same job:
+# two hosted reconstructions billed, two containers writing one output directory.
+
+def test_a_job_that_never_parked_is_not_awaiting_approval():
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000b"
+    _park(db, job_id, parked=False)      # snapshot exists, but the run never stopped
+    job = db.get_job(job_id)
+
+    assert app_module.blueprint_gate_state(job, db) == "not_ready"
+    db.close()
+
+
+def test_a_finished_job_is_not_awaiting_approval():
+    """A settled outcome means nothing is waiting, whatever is on disk."""
+    from datetime import datetime, timezone
+
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000c"
+    digest = _park(db, job_id)
+    db.update_job_outcome_verdict(
+        job_id, "success", source="machine", completed_at=datetime.now(timezone.utc),
+    )
+    job = db.get_job(job_id)
+
+    assert app_module.blueprint_gate_state(job, db) == "not_ready"
+    db.close()
+
+
+def test_approving_a_job_that_never_parked_is_refused():
+    """The endpoint re-checks, so an approval racing a running pipeline cannot land."""
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000d"
+    digest = _park(db, job_id, parked=False)
+    db.close()
+
+    with patch("server.app._continue_pipeline", new_callable=AsyncMock) as cont:
+        resp = client.post(f"/jobs/{job_id}/blueprint-approval", json={
+            "confirmed": True, "sha256": digest,
+        })
+
+    assert resp.status_code == 409
+    cont.assert_not_called()
+
+
+# ── A rejection has to settle the row ────────────────────────────────────────
+
+def test_rejecting_settles_the_outcome():
+    """`outcome='unknown'` reads as *running* everywhere.
+
+    Left unknown, a rejected job stays in the running list forever and `NewJob`
+    re-attaches to it on every page load — so declining a blueprint would make the
+    landing composer unreachable. `cancelled` is the existing value for "stopped on
+    request, not a failure" and is already excluded from the success-rate query.
+    """
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000e"
+    digest = _park(db, job_id)
+    db.close()
+
+    resp = client.post(f"/jobs/{job_id}/blueprint-approval", json={
+        "confirmed": True, "sha256": digest, "approve": False,
+    })
+    assert resp.status_code == 200
+
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+
+    assert job.outcome == "cancelled"
+    assert job.completed_at is not None
+
+
+# ── The start time is the job's, not the invocation's ────────────────────────
+
+def test_a_continuation_does_not_overwrite_the_original_start_time():
+    """`started_at` is when the job began. The continuation is a second invocation of
+    the same job, and overwriting it destroys the only record of the first."""
+    from datetime import datetime, timedelta, timezone
+
+    db = TelemetryDB()
+    job_id = "gate-0000-0000-0000-00000000000f"
+    _park(db, job_id)
+
+    first = datetime.now(timezone.utc) - timedelta(minutes=30)
+    db.update_job_start_time(job_id, first)
+    db.update_job_start_time(job_id, datetime.now(timezone.utc))
+
+    job = db.get_job(job_id)
+    db.close()
+
+    assert abs((job.started_at - first).total_seconds()) < 1
+
+
+# ── The list filter arbitrates rather than approximating ─────────────────────
+
+def test_the_awaiting_approval_filter_excludes_jobs_that_never_parked():
+    """The SQL is the candidate set; `blueprint_gate_state` is the arbiter.
+
+    Without the second step the filter returns every job whose outcome is still
+    unknown — which is every running job — and the dashboard would offer to approve
+    blueprints that do not exist.
+    """
+    db = TelemetryDB()
+    parked = "gate-0000-0000-0000-000000000010"
+    running = "gate-0000-0000-0000-000000000011"
+    _park(db, parked)
+    _park(db, running, blueprint=False, parked=False)
+    db.close()
+
+    rows = client.get("/jobs?status=awaiting_blueprint_approval").json()["jobs"]
+    ids = {row["job_id"] for row in rows}
+
+    assert parked in ids
+    assert running not in ids
+
+
+# ── A parked job is waiting, not running ─────────────────────────────────────
+
+def test_a_parked_job_is_not_in_the_running_list():
+    """Otherwise it owns the landing page for as long as nobody decides.
+
+    `NewJob`'s mount effect attaches to the newest `status=running` job, so a parked
+    job left as "running" would drop every new tab into its running view and make the
+    landing composer unreachable — the same failure `awaiting_dispatch` was introduced
+    to fix, in a new place. A parked job has its own filter; it does not belong in this
+    one.
+    """
+    db = TelemetryDB()
+    parked = "gate-0000-0000-0000-000000000012"
+    _park(db, parked)
+    db.close()
+
+    ids = {row["job_id"] for row in client.get("/jobs?status=running").json()["jobs"]}
+    assert parked not in ids
+
+
+def test_a_job_still_in_phase_1_is_in_the_running_list():
+    """The exclusion must be about the gate, not about being unfinished."""
+    db = TelemetryDB()
+    running = "gate-0000-0000-0000-000000000013"
+    _park(db, running, blueprint=False, parked=False)
+    db.close()
+
+    ids = {row["job_id"] for row in client.get("/jobs?status=running").json()["jobs"]}
+    assert running in ids
+
+
+def test_a_decided_job_returns_to_the_running_list_while_phase_2_runs():
+    """Once approved it is genuinely running again, and must read that way."""
+    db = TelemetryDB()
+    approved = "gate-0000-0000-0000-000000000014"
+    digest = _park(db, approved)
+    db.record_job_event(approved, "blueprint_approved", {"sha256": digest})
+    db.close()
+
+    ids = {row["job_id"] for row in client.get("/jobs?status=running").json()["jobs"]}
+    assert approved in ids

@@ -244,13 +244,21 @@ export function NewJob() {
    * ceiling is actually known — a profile that declares no machine size must not
    * clamp to `undefined` and silently drop the size the person chose.
    */
-  const resolvedHeightMm = ((): number | undefined => {
+  /** What the person typed or picked, before the build-volume clamp. */
+  const requestedHeightMm = ((): number | undefined => {
     const raw = sizePreset === 'custom'
       ? (customHeight.trim() ? Number(customHeight) : NaN)
       : SIZE_PRESETS.find((p) => p.key === sizePreset)?.mm;
     if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return undefined;
-    return maxHeightMm ? Math.min(raw, maxHeightMm) : raw;
+    return raw;
   })();
+  const resolvedHeightMm = requestedHeightMm === undefined
+    ? undefined
+    : (maxHeightMm ? Math.min(requestedHeightMm, maxHeightMm) : requestedHeightMm);
+  /** True when the machine's ceiling reduced what was asked for. */
+  const heightWasClamped = requestedHeightMm !== undefined
+    && resolvedHeightMm !== undefined
+    && resolvedHeightMm < requestedHeightMm;
 
   useEffect(() => {
     getConfig()
@@ -432,6 +440,19 @@ export function NewJob() {
               });
             }
           }
+        } else if (msg.type === 'blueprint_gate') {
+          // Phase 2 has stopped and is waiting for a person. Without this branch the
+          // message was dropped, so on a live run the gate only appeared on the next
+          // poll or reload — the pipeline looked stalled at Phase 1 with nothing on
+          // screen asking for anything.
+          setPhases(prev => prev.map(ph => (ph.phase === 1 ? { ...ph, status: 'complete' } : ph)));
+          setCurrentJob(prev => ({
+            ...(prev ?? {}),
+            blueprint_gate_state: msg.data?.state ?? 'awaiting_approval',
+            blueprint_gate_subject: msg.data?.sha256
+              ? { sha256: msg.data.sha256, url: msg.data.url }
+              : (prev?.blueprint_gate_subject ?? null),
+          }));
         } else if (msg.type === 'log') {
           // Trim on ingest, not on render: an unbounded array is a leak on a job that
           // runs for an hour, and only the tail is ever displayed.
@@ -826,7 +847,12 @@ export function NewJob() {
                         className={`input ${styles.mmInput}`}
                         type="number"
                         min={1}
-                        max={maxHeightMm ?? undefined}
+                        // No `max`: native validation on a number input blocks form
+                        // submission, so a `max` here made the submit button dead for
+                        // any value above the ceiling while Enter-to-submit ignored it —
+                        // two paths disagreeing about whether the form was valid. The
+                        // clamp caps the value and the readout says when it bit.
+                        step="any"
                         inputMode="numeric"
                         placeholder="mm"
                         aria-label="Print height in millimetres"
@@ -838,8 +864,13 @@ export function NewJob() {
                           setSizeFromHint(false);
                         }}
                       />
+                      {/* Never a dash when a size will in fact be applied: clearing
+                          the field used to read "—" while the job silently printed at
+                          the pipeline's own 50mm default. */}
                       <span className={styles.sizeReadout} aria-live="polite">
-                        {resolvedHeightMm !== undefined ? `${resolvedHeightMm} mm` : '—'}
+                        {resolvedHeightMm !== undefined
+                          ? `${resolvedHeightMm} mm${heightWasClamped ? ' (max)' : ''}`
+                          : '50 mm (default)'}
                       </span>
                     </div>
                     <div className={styles.footerRight}>
@@ -886,7 +917,10 @@ export function NewJob() {
                       and not `.notice`: the latter is the failure treatment, and a
                       neutral suggestion rendered in the error colour is the same class
                       of mistake as captioning a fixture blueprint as drawn. */}
-                  {sizeHint && resolvedHeightMm !== sizeHint.mm && (
+                  {/* Compared against what was *asked for*, not what survived the
+                      clamp — otherwise a hint above the machine's ceiling could never
+                      be marked as accepted and the offer stayed on screen for good. */}
+                  {sizeHint && requestedHeightMm !== sizeHint.mm && (
                     <p className={`hint ${styles.sizeHint}`}>
                       Your prompt says <b>{sizeHint.text}</b>.{' '}
                       <button

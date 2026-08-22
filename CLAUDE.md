@@ -97,6 +97,12 @@ and Phase 2 then has two subjects for `_largest_component` to choose between. Va
 words ("small", "miniature") are deliberately **left in place**: those are style, not
 measurement, and editing them out would change what the person asked for.
 
+**Height mode bounds one axis and not the other two.** A wide model asked for a tall
+height can come out past the bed. It is deliberately **not** shrunk — a part quietly
+scaled to something other than what was asked for is the bug this whole change set
+removes — so Phase 3 prints an `--- OVERSIZE ---` line naming the axes, and
+`build_volume_fit` (critical, weight 2.0) fails it in the printability report.
+
 **`printability.size_feasibility` inverts the wall check.** The min-wall check runs
 *after* scaling, so "your walls are too thin" arrives once the size is fixed and the one
 remedy — print it bigger — was never named. It reuses `_thickness_pitch` and
@@ -892,6 +898,41 @@ EUR 0,32 later.
   request.print`). That coupling is what terminates the loop: `_continue_pipeline`
   re-enters with `skip_visualizer=True`, so the continuation is not gated. `--print` opts
   out — the CLI and automation pass it and there is nobody to ask.
+- **The continuation reads the snapshot, not the shared input.** This was wrong first
+  time and it defeated the whole gate: `_pipeline_args` hardcoded
+  `--blueprint /app/data/inputs/blueprint.png`, so between parking and approving, a
+  second `POST /jobs` could delete that file and write its own render there — and the
+  approved job would reconstruct *the other job's* image while the sidecar beside it
+  stamped that job's seed, prompt and model onto this row. `JobRequest.blueprint_path`
+  had been declared and forwarded nowhere since forever; it is now honoured, and the
+  resumed request names `/app/data/outputs/{job_id}/blueprint.png`.
+- **`awaiting_approval` requires a `blueprint_gate_parked` event and an unsettled
+  outcome.** Deriving it from "a per-job blueprint exists" was wrong for the same class
+  of reason: `pipeline.py` snapshots a blueprint into the per-job directory on *every*
+  run with a `--job-id`, so an ungated run — anything with `SKIP_VISUALIZER` or
+  `print: true` — reported itself as awaiting approval seconds in, the UI drew the gate
+  over a pipeline already in Phase 2, and approving it started a **second** pipeline for
+  the same job: two hosted reconstructions billed, two containers writing one output
+  directory. A settled row is checked too, mirroring `dispatch_state`'s insistence on
+  `outcome == "success"`.
+- **A gated run that cannot park fails rather than continuing.** Falling through would
+  let Phase 2 spend money on an image nobody approved, which is the one outcome the gate
+  exists to prevent.
+- **A rejection settles the row** as `cancelled`. `job_status_from_outcome` maps
+  `unknown` to running, so a declined job left unknown would sit in the running list
+  forever and `NewJob` would re-attach to it on every page load — the landing composer
+  would become unreachable. For the same reason a *parked* job is excluded from
+  `status=running`: it is waiting, not running, and it has its own filter.
+- **`update_job_start_time` is first-write-wins.** A job can be launched more than once
+  against one row — the gate resumes it, the dispatch gate runs the operator — and a
+  later invocation overwriting `started_at` destroys the only record of when the job
+  began, along with every duration computed from it. The continuation appends to the log
+  rather than truncating it, for the same reason.
+- **A directory holding only a blueprint snapshot does not claim the plain namespace.**
+  `_job_outputs_dir` prefers an existing `data/outputs/{job_id}`, and the gate creates
+  exactly that before Phase 2 runs — so a continuation that then substituted a fixture
+  mesh would have written it into the real namespace, which is the one thing the `dev-`
+  prefix exists to prevent.
 - **The blueprint is snapshotted before parking** (`_snapshot_blueprint`). `POST /jobs`
   deletes the shared `data/inputs/blueprint.png` on every submission, so a parked job
   would otherwise have the image it is asking about destroyed by the next job — and

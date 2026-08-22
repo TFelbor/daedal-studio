@@ -673,7 +673,11 @@ def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     parent, so a mesh that came from a fixture reads exactly like one a model made.
 
     An existing directory always wins, so re-running the same job id cannot split one
-    job's artifacts across two locations.
+    job's artifacts across two locations. The one exception is a directory holding
+    *only* a blueprint snapshot and its sidecar: that is the approval gate's work,
+    created before Phase 2 has run, and treating it as a claim on the plain namespace
+    would let a run that then substitutes a fixture mesh write into
+    `data/outputs/{job_id}` — the one thing the `dev-` prefix exists to prevent.
 
     Args:
         args: Parsed CLI arguments; `job_id` must be set.
@@ -688,7 +692,16 @@ def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     if dev.exists():
         return dev
     if plain.exists():
-        return plain
+        contents = list(plain.iterdir())
+        # A directory holding *only* a blueprint snapshot is the approval gate's work,
+        # not a previous run's output. An empty one still counts as claimed — that is
+        # the pre-existing contract and nothing is being split by honouring it.
+        snapshot_only = bool(contents) and all(
+            child.name == "blueprint.png" or child.name.endswith(".provenance.json")
+            for child in contents
+        )
+        if not snapshot_only:
+            return plain
     mesh_candidates = [Path(args.mesh)] if args.mesh else [plain / "raw_mesh.obj", dev / "raw_mesh.obj"]
     return dev if _will_use_reference_assets(args, blueprint_path, mesh_candidates) else plain
 
@@ -962,6 +975,19 @@ def run(args: argparse.Namespace) -> None:
     if _should_stop_after(args.stop_after_phase, 2):
         _stop_here(2, f"raw mesh at {raw_mesh_path}")
 
+    # The machine's limits, read once. Needed before Phase 3 so the oversize check can
+    # run against the size that was just applied, rather than being discovered in the
+    # printability report after the fact.
+    process_profile_limits = None
+    try:
+        with open(args.profile or "pythonsrc/profiles/ender3.json", "r") as handle:
+            profile_data = json.load(handle)
+        keys = ("machine_width", "machine_depth", "machine_height")
+        if all(profile_data.get(k) is not None for k in keys):
+            process_profile_limits = [float(profile_data[k]) for k in keys]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("No build volume available for the oversize check: %s", exc)
+
     # ── Phase 3: Engineer ─────────────────────────────────────────────────────
     t0 = _phase_start(3)
     try:
@@ -976,6 +1002,27 @@ def run(args: argparse.Namespace) -> None:
             wall_thickness=args.wall,
             scale_axis=args.scale_axis,
         )
+        # Height mode bounds one axis by construction and the other two not at all, so
+        # a wide model asked for a tall height can come out past the bed. The size is
+        # *not* silently reduced — a part quietly scaled to something other than what
+        # was asked for is the bug this whole change set exists to remove — but it is
+        # said plainly here, and `build_volume_fit` (critical, weight 2.0) fails it in
+        # the printability report a few lines below.
+        achieved = (eng.last_report or {}).get("achieved_extent_mm")
+        if achieved and process_profile_limits:
+            over = [
+                f"{axis} {extent:.0f}mm > {limit:.0f}mm"
+                for axis, extent, limit in zip("XYZ", achieved, process_profile_limits)
+                if extent > limit
+            ]
+            if over:
+                print(
+                    "[P2P] ─── OVERSIZE ─── the scaled part exceeds the build volume: "
+                    + ", ".join(over)
+                    + ". It was not shrunk; choose a smaller size or a bigger printer.",
+                    flush=True,
+                )
+
         _record_mesh_lineage(args, raw_mesh_path, final_mesh_path, eng.last_report)
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:

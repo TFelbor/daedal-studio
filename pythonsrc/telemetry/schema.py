@@ -591,6 +591,11 @@ JOB_EVENT_KINDS = (
     # exists for the job, and `blueprint_rejected` records that a person looked and
     # said no — which is a different fact from never having been asked, and the only
     # thing that stops the gate asking again forever.
+    # Recorded when a run actually stops and waits. Without it the gate state was
+    # inferred from "a per-job blueprint.png exists", which `pipeline.py` writes on
+    # *every* run with a --job-id — so an ungated run reported itself as awaiting
+    # approval, and approving it launched a second pipeline for the same job.
+    "blueprint_gate_parked",
     "blueprint_approved",
     "blueprint_rejected",
     # Printer lifecycle, written by the collector as the events arrive on the

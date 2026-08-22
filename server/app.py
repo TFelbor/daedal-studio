@@ -325,6 +325,24 @@ def blueprint_gate_state(job, db: TelemetryDB) -> str:
         logger.warning("Could not read blueprint gate events for %s: %s", job.job_id, exc)
         return "not_ready"
 
+    # A settled row is not waiting for anything, whatever is on disk. Mirrors
+    # `dispatch_state`'s insistence on `outcome == "success"`: the point of checking
+    # the outcome is that a pipeline which has moved on must not be re-entered.
+    if job.outcome != "unknown":
+        return "not_ready"
+
+    # And the run must actually have stopped. Derived from the *event*, not from the
+    # presence of an image: `pipeline.py` snapshots a blueprint into the per-job
+    # directory on every run with a `--job-id`, so an ungated run — anything with
+    # SKIP_VISUALIZER or `print: true` — used to report itself as awaiting approval
+    # seconds in, and approving it started a second pipeline for the same job.
+    try:
+        if not db.get_job_events(job.job_id, kind="blueprint_gate_parked"):
+            return "not_ready"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read blueprint park events for %s: %s", job.job_id, exc)
+        return "not_ready"
+
     # This job's *own* blueprint, not the shared `data/inputs/blueprint.png`: POST
     # /jobs deletes that on every submission, so a parked job asked about the shared
     # path would show a different job's image, or none.
@@ -501,7 +519,9 @@ class JobRequest(BaseModel):
     # adhesion failure, and nothing else in the system records it.
     material_type: Optional[str] = None
     material_brand: Optional[str] = None
-    material_colour: Optional[str] = None
+    # Bounded for the same reasons as the prompt, and because it is interpolated
+    # into the string sent to the image model — an unbounded second prompt channel.
+    material_colour: Optional[str] = Field(None, max_length=64)
     # Reproducibility and lineage.
     seed: Optional[int] = None
     parent_job_id: Optional[str] = None
@@ -1163,7 +1183,15 @@ def _pipeline_args(
     args: List[str] = []
 
     if skip_viz:
-        args.extend(["--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png"])
+        # `blueprint_path` was declared on `JobRequest` and forwarded nowhere, which is
+        # what let the approval gate approve one image and reconstruct another: the
+        # continuation was launched against the *shared* input path, and `POST /jobs`
+        # deletes that on every submission. A resumed run names its own snapshot.
+        args.extend([
+            "--skip-visualizer",
+            "--blueprint",
+            request.blueprint_path or "/app/data/inputs/blueprint.png",
+        ])
     if skip_sculpt:
         args.append("--skip-sculptor")
 
@@ -1347,7 +1375,15 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         else:
             pipeline_env["P2P_API_URL"] = "http://host.docker.internal:8000"
 
-        with open(log_file, "w") as f:
+        # Appended, not truncated. The blueprint gate resumes a job as a *second*
+        # invocation against the same log file, and "w" threw away the Phase 1 record —
+        # the seed line, any screen verdict — the moment someone approved. The file is
+        # job-scoped, so appending cannot mix two jobs together.
+        log_mode = "a" if request.blueprint_path else "w"
+        with open(log_file, log_mode) as f:
+            if log_mode == "a":
+                f.write("\n[P2P] ─── resumed after blueprint approval ───\n")
+                f.flush()
             docker_env_args = ["-e", "P2P_LOGS_DIR=/app/data/logs"]
             if "TELEMETRY_DB_PATH" in pipeline_env:
                 docker_env_args.extend(["-e", f"TELEMETRY_DB_PATH={pipeline_env['TELEMETRY_DB_PATH']}"])
@@ -1409,8 +1445,13 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     # started. Returning rather than awaiting is what makes the wait
                     # durable: the job's state is a row plus a snapshotted image, so
                     # it survives a server restart and has no time limit.
-                    if gated and await _park_at_blueprint_gate(job_id):
-                        return
+                    if gated:
+                        if await _park_at_blueprint_gate(job_id):
+                            return
+                        raise Exception(
+                            "Phase 1 completed but the job could not be parked for "
+                            "approval, so Phase 2 was not started."
+                        )
 
                 clean_args = _strip_phase1_args(pipeline_args)
 
@@ -1420,7 +1461,8 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 ] + docker_env_args + [
                     "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
-                    "--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png",
+                    "--skip-visualizer",
+                    "--blueprint", request.blueprint_path or "/app/data/inputs/blueprint.png",
                     "--job-id", job_id
                 ] + _strip_stop_after(clean_args)
             elif strategy == "nvidia_docker":
@@ -1465,6 +1507,17 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             if gated and returncode == 0 and job_id not in cancelled_jobs:
                 if await _park_at_blueprint_gate(job_id):
                     return
+                # The run stopped after Phase 1 as instructed but could not be parked —
+                # no blueprint to show, or the decision could not be recorded. Falling
+                # through would let Phase 2 spend money on an image nobody approved,
+                # which is the one outcome this gate exists to prevent, so it fails
+                # instead. A failed gate is a failed job, loudly.
+                logger.error(
+                    "Job %s stopped for approval but could not be parked — failing it "
+                    "rather than continuing past the gate.", job_id,
+                )
+                _append_phase_status(job_id, 1, "error", "could not park for approval")
+                returncode = 1
 
             db = TelemetryDB()
             if job_id in cancelled_jobs:
@@ -2073,6 +2126,19 @@ async def _park_at_blueprint_gate(job_id: str) -> bool:
         )
         return False
 
+    # The record that this run stopped and is waiting. Written before anything else,
+    # because `blueprint_gate_state` derives from it: a park that is not recorded is a
+    # job that silently continues past the gate.
+    try:
+        db = TelemetryDB()
+        db.record_job_event(job_id, "blueprint_gate_parked", {
+            "sha256": _file_sha256(snapshot),
+        })
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not record the blueprint park for %s: %s", job_id, exc)
+        return False
+
     _append_phase_status(job_id, 1, "complete")
     await broadcaster.broadcast(job_id, {
         "type": "blueprint_gate",
@@ -2194,6 +2260,15 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
         )
 
         if not request.approve:
+            # Settled, or the row reads as *running* forever: `job_status_from_outcome`
+            # maps "unknown" to running, so a declined job would stay in the running
+            # list and `NewJob` would re-attach to it on every page load — making the
+            # landing composer unreachable. "cancelled" is the existing value for
+            # stopped-on-request, and is already excluded from the success rate.
+            db.update_job_outcome_verdict(
+                job_id, "cancelled", source="user",
+                completed_at=datetime.now(timezone.utc),
+            )
             _append_phase_status(job_id, 1, "complete")
             return {"job_id": job_id, "decision": "rejected", "blueprint_gate_state": "rejected"}
 
@@ -2203,6 +2278,12 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
                 **stored,
                 "prompt": stored.get("prompt") or job.prompt,
                 "printer_id": stored.get("printer_id") or job.printer_id or "default_printer",
+                # The image that was approved, by its container path. Not the shared
+                # input: `POST /jobs` deletes that on every submission, so between
+                # parking and approving it may be a different job's render entirely —
+                # which is what the hash check would have been guarding for nothing.
+                "blueprint_path": f"/app/data/outputs/{job_id}/blueprint.png",
+                "skip_visualizer": True,
             })
         except Exception as exc:  # noqa: BLE001
             logger.error("Could not rebuild the request for %s: %s", job_id, exc)
@@ -2597,6 +2678,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     Raises:
         HTTPException: 400 when `status` is not one of `JOB_LIST_STATUSES`.
     """
+    arbitrate_blueprint_gate = False
     if status not in JOB_LIST_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -2613,7 +2695,19 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     params = []
     
     if status == 'running':
-        where_clause = "WHERE outcome = 'unknown'"
+        # Parked at the blueprint gate is waiting, not running, and it has its own
+        # filter. Left in here it would own the landing page: `NewJob` attaches to the
+        # newest running job on mount, so one job nobody ever decides would drop every
+        # new tab into its running view and make the composer unreachable — exactly the
+        # failure `awaiting_dispatch` was introduced to fix, one gate earlier.
+        where_clause = (
+            "WHERE outcome = 'unknown' "
+            "AND job_id NOT IN ("
+            "  SELECT job_id FROM job_event WHERE kind = 'blueprint_gate_parked' "
+            "  AND job_id NOT IN (SELECT job_id FROM job_event "
+            "    WHERE kind IN ('blueprint_approved', 'blueprint_rejected'))"
+            ")"
+        )
     elif status == 'completed':
         where_clause = "WHERE outcome = 'success'"
     elif status == 'failed':
@@ -2624,10 +2718,18 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         # Parked after Phase 1, waiting on a person. Its own filter because such a job
         # is not "running" by any other definition, so without this the pending
         # decision vanishes on a page reload — which for a human-in-the-loop gate
-        # means it does not survive at all. The artifact check cannot be done in SQL,
-        # so this is the candidate set and `blueprint_gate_state` is the arbiter.
+        # means it does not survive at all.
+        #
+        # The SQL is only the candidate set: "outcome is unknown" is every running job.
+        # Whether a job is *actually* waiting depends on a park event and an artifact
+        # on disk, so the rows are arbitrated by `blueprint_gate_state` below — the
+        # same function the job endpoint answers with, so the list and the page cannot
+        # disagree about who is waiting.
+        arbitrate_blueprint_gate = True
         where_clause = (
             "WHERE outcome = 'unknown' "
+            "AND job_id IN (SELECT job_id FROM job_event "
+            "WHERE kind = 'blueprint_gate_parked') "
             "AND job_id NOT IN (SELECT job_id FROM job_event "
             "WHERE kind IN ('blueprint_approved', 'blueprint_rejected'))"
         )
@@ -2712,6 +2814,20 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             ),
         })
     db.close()
+
+    # The park event is checked in SQL; whether the image is actually on disk is not
+    # something SQL can answer, so the candidate rows are arbitrated here. Without it
+    # the dashboard would offer to approve blueprints that do not exist — and the list
+    # and `GET /jobs/{id}` would disagree about who is waiting, which is the shape of
+    # bug that puts a "ready" badge beside a dead machine.
+    if arbitrate_blueprint_gate:
+        jobs = [
+            job for job in jobs
+            if resolve_job_artifact(job["job_id"], "blueprint.png", per_job_only=True)
+            is not None
+        ]
+        total = len(jobs)
+
     return {"jobs": jobs, "total": total, "limit": limit, "offset": offset, "stats": stats}
 
 class SizeHintRequest(BaseModel):

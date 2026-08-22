@@ -536,19 +536,24 @@ class TelemetryDB:
             self.conn.commit()
 
     def update_job_start_time(self, job_id: str, started_at: datetime) -> None:
-        """Update the start time for a print job when the pipeline begins.
+        """Record when the job began — the first time, and only the first time.
+
+        First-write-wins because a job can be launched more than once for the same row:
+        the blueprint approval gate resumes it as a second subprocess, and the dispatch
+        gate runs the operator as a third. `started_at` means "when this job began",
+        and a later invocation overwriting it destroys the only record of that, which
+        also makes every duration computed against it wrong.
 
         Args:
-            job_id: The unique identifier of the job to update.
-            started_at: The timestamp when the pipeline actually started.
+            job_id: The job to update.
+            started_at: When the run began.
         """
         with self._lock:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-            UPDATE print_job
-            SET started_at = ?
-            WHERE job_id = ?
-            ''', (_dt_to_str(started_at), job_id))
+            self.conn.execute(
+                "UPDATE print_job SET started_at = ? "
+                "WHERE job_id = ? AND started_at IS NULL",
+                (_dt_to_str(started_at), job_id),
+            )
             self.conn.commit()
 
     def update_job_outcome(self, job_id: str, outcome: str, completed_at: datetime) -> None:

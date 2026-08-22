@@ -20,6 +20,7 @@ that check reports `not_checked` with the reason instead of silently passing.
 from __future__ import annotations
 
 import dataclasses
+import math
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
@@ -820,9 +821,13 @@ def size_feasibility(
     # floor than the walls do on a small-footprint part.
     bed_contact = float(features.get("bed_contact_mm2") or 0.0)
     if bed_contact > 0:
-        result["bed_limited_mm"] = round(
-            reference * float(np.sqrt(profile.min_bed_contact_mm2 / bed_contact)), 4,
-        )
+        exact = reference * float(np.sqrt(profile.min_bed_contact_mm2 / bed_contact))
+        # Rounded *up*, and by a hair more than the rounding. The size at which the
+        # footprint exactly equals the minimum is the size at which the check still
+        # warns, and being told "print it at 27mm" and then warned at 27mm is worse
+        # than not being told. Same reasoning as using the tolerance-clearing wall
+        # figure rather than the nominal one.
+        result["bed_limited_mm"] = math.ceil(exact * 100.0 + 1.0) / 100.0
 
     floor = max(pass_mm, result["bed_limited_mm"] or 0.0)
     result["smallest_viable_mm"] = round(floor, 4) if np.isfinite(floor) else None
