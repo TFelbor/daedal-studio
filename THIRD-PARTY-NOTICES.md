@@ -108,24 +108,30 @@ is not obviously covered. **Action:** if the worker image is ever distributed ra
 than built where it runs, get that reviewed. Building it on the GPU host from this
 repo avoids the question entirely.
 
-**2. `opencv-python` ships Qt 5 under LGPLv3, and nothing here uses OpenCV.** All
-wheels bundle FFmpeg (LGPLv2.1); the **non-headless** Linux wheels additionally bundle
-Qt 5 (LGPLv3). `requirements-base.txt` pins *both* `opencv-python` and
-`opencv-python-headless`, and `import cv2` appears nowhere in this project's own code —
-it is a transitive requirement of the upstream sculptor stack. **Action:** drop
-`opencv-python` and keep only `opencv-python-headless`. That removes an LGPLv3 payload
-and a GUI toolkit from a headless container, for no functional loss. Not done here
-because it changes image contents and wants a real build to verify.
+**2. `opencv-python` shipped Qt 5 under LGPLv3, and nothing here uses OpenCV.
+Resolved.** All `opencv-python` wheels bundle FFmpeg (LGPLv2.1) and the **non-headless**
+Linux wheels additionally bundle Qt 5 (LGPLv3). `requirements-base.txt` pinned *both*
+builds while `import cv2` appears nowhere in this project's own code — it is a
+transitive requirement of the upstream sculptor stack. The non-headless pin is removed,
+with a comment recording why, so that "why is only the headless one here" is not
+answered by adding the other one back.
 
-**3. `gmpy2` is LGPL-3.0-or-later.** Almost certainly transitive (sympy, via torch)
-rather than wanted. **Action:** check whether anything needs it; if not, unpin it. If it
-stays, the LGPL obligations are satisfiable but must be honoured on any distributed
-image.
+> Scope correction, recorded because it was overstated when this finding was first
+> written: **the images never carried this.** `base.Dockerfile` only *copies*
+> `requirements.txt` and never runs `pip install -r` against it, so image contents come
+> from explicit pip lines — and `trellis2-worker.Dockerfile` already installed
+> `opencv-python-headless` by name. The LGPLv3 payload reached only a **native**
+> install, which is the macOS development path.
 
-**4. The runtime requirements contain a publishing toolchain.** `twine`, `keyring`,
-`readme_renderer`, `docutils`, `nh3`, `id`, `jaraco.*` and `backports.*` are pinned in
-`requirements-base.txt` — pip-freeze leakage from a publishing environment. Harmless
-licence-wise, but every one is surface area in every image. **Action:** remove.
+**3. `gmpy2` was LGPL-3.0-or-later. Resolved.** Optional acceleration for `sympy`, which
+is itself transitive via torch. Nothing imports it and `sympy` works without it, so the
+pin is removed rather than the obligations documented.
+
+**4. The runtime requirements contained a publishing toolchain. Resolved.** `twine`,
+`keyring`, `readme_renderer`, `docutils`, `nh3`, `id`, `jaraco.*` and `backports.*` were
+pinned in `requirements-base.txt` — pip-freeze leakage from a publishing environment.
+Licence-clean, pure surface area, removed as a cluster since each existed only to serve
+`twine`.
 
 **5. Nothing in the dependency set restricts commercial use of the output.** Every
 generative model on the live path — FLUX.2-klein, TRELLIS.2, BiRefNet, SigLIP — permits
