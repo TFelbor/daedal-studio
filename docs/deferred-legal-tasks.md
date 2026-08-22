@@ -116,6 +116,178 @@ nobody can audit.
 
 ---
 
+---
+
+## Task L3 — Decide the outbound licence, deliberately
+
+**This is a choice, not an obligation, and the two halves of it are unrelated.** They
+got conflated once, so they are written down separately here.
+
+### Nothing in the dependency set forces this project to be open source
+
+Every direct dependency is permissive — trimesh (MIT), manifold3d (Apache-2.0),
+FastAPI, transformers, diffusers. Permissive licences let this project be licensed
+however its owner wants, **including fully proprietary**.
+
+The only copyleft components are **CuraEngine and OctoPrint, both AGPL-3.0**, and both
+are reached at arm's length: a CLI subprocess and an HTTP client. That distance is the
+entire reason this project's own code is not subject to their terms. It is enforced by
+tests (`test_no_source_file_links_an_agpl_component`,
+`test_no_install_manifest_pulls_an_agpl_python_package`,
+`test_the_slicer_still_invokes_curaengine_as_a_subprocess`) rather than by memory.
+
+### Apache-2.0 does not prevent commercialisation
+
+Two facts that resolve most of the apparent contradiction:
+
+1. **Open source does not mean non-commercial.** Apache-2.0 permits commercial use
+   explicitly. Selling software under it is ordinary.
+2. **The product is not the code.** A customer pays for a printed object — machine
+   time, filament, the fleet, logistics, someone answering when a part warps. Apache-2.0
+   has nothing to say about what is charged for a service that is operated rather than
+   distributed, and its obligations (retain notices, state changes, pass the licence on)
+   all trigger on **distribution**. Running a hosted service is not distribution.
+
+### The repository is private, so nothing has been open-sourced yet
+
+`Prompt-2-Print/p2p-mesh` is private and GitHub detects no licence on it. There is an
+Apache-2.0 `LICENSE` file in the tree, but a licence is a grant to whoever *receives*
+the software, and nobody outside the organisation has. **Today that file is a statement
+of intent, not an active grant.**
+
+One inaccuracy to correct whenever the file is next touched: `THIRD-PARTY-NOTICES.md`
+opens with "Prompt2Print (p2p-mesh) is distributed under the Apache License 2.0." It is
+not distributed at all.
+
+### The options, and what each costs
+
+| Option | Gives | Costs |
+|---|---|---|
+| Keep Apache-2.0, stay private | Every door open; publish later or never | Nothing today |
+| Publish under Apache-2.0 | Goodwill, contributions, hiring signal | A competitor may run the same pipeline as their own service with no obligation back |
+| Proprietary / source-available | Nobody else runs this stack | Loses the open-source position; cannot retract the grant on anything already shared |
+| Open core | Pipeline open, fleet and dispatch closed | Boundary policing forever |
+| AGPL the project's own code | A competitor offering it as a service must publish their changes | Enterprise customers avoid AGPL; complicates any later proprietary offering |
+
+**Recommendation:** not urgent. Apache-2.0 while private costs nothing and forecloses
+nothing. What *is* urgent is L4 below.
+
+### What the licence does not cover
+
+The moat is not the code. It is the printer fleet, the operational competence, and the
+**telemetry dataset** — which prompts produce printable geometry, which meshes fail,
+what people said about the parts they received. A code licence says nothing about data;
+publishing the pipeline would not publish a single row of it.
+
+---
+
+## Task L4 — Confirm the model-weight terms before launch (revenue-gating)
+
+**This constrains commercialisation far more than the outbound licence does**, because
+weight licences restrict *use*, not only distribution. They bind a service that
+distributes nothing at all.
+
+For each checkpoint on the live path, three questions have to be answered, and the
+third is the one that is usually skipped:
+
+1. Does the licence permit **commercial use**?
+2. Does it permit use **in a hosted service** — deployed, not merely experimented with?
+3. Does it place any restriction on **commercial use of the generated output**?
+
+Question 3 is the revenue gate. If a model's terms restricted commercial use of what it
+produces, the mesh could be generated legally and the printed part could not be sold —
+which is the entire business. `microsoft/TRELLIS.2-4B` is MIT with no restriction on
+generated output, which is why Phase 2 is viable; that needs confirming per checkpoint
+rather than assumed.
+
+Current state, all recorded in `THIRD-PARTY-NOTICES.md`:
+
+| Checkpoint | Status | What still needs doing |
+|---|---|---|
+| `black-forest-labs/FLUX.2-klein-4B` | Apache-2.0 | Confirm no output restriction |
+| `microsoft/TRELLIS.2-4B` | MIT, no output restriction | — |
+| `facebook/dinov3-vitl16-pretrain-lvd1689m` | Commercial use permitted **with conditions** | **See L5** |
+| `ZhengPeng7/BiRefNet` | MIT | Substituted for the encumbered default; keep the substitution |
+| `google/siglip-base-patch16-224` | Apache-2.0, no out-of-scope clause | Pin a revision before launch |
+| ~~`briaai/RMBG-2.0`~~ | CC BY-NC 4.0 — **never loaded** | Residual exposure is Pixazo's deployment, not this code — see below |
+| ~~`openai/clip-vit-*`~~ | Tag says MIT; card puts all deployed use out of scope | On the deny list. **Do not remove the entry** |
+
+### The Pixazo residual, stated plainly
+
+The RMBG-2.0 problem is **solved in this codebase** for the two backends it runs in.
+`microsoft/TRELLIS.2-4B`'s own `pipeline.json` configures
+`BiRefNet(model_name="briaai/RMBG-2.0")`; `permissive_rembg()` substitutes MIT BiRefNet
+weights *before* the pipeline is constructed, and `assert_permissive_matte()` verifies
+the outcome rather than the mechanism, so an upstream reshuffle fails the load instead
+of silently reverting. That covers `trellis2` (in-process) and `remote` (the worker runs
+this same code).
+
+It does **not** cover the `pixazo` backend, and it cannot: that is someone else's
+deployment of the same model, running on their hardware. Whether their matte step uses
+the encumbered weights is invisible from here and unfixable from here. **This is a
+contract question, not a code question**, and it is the one genuinely open exposure:
+
+- Ask Pixazo, in writing, to confirm which background-removal weights their
+  `trellis-2-image-to-3d` endpoint uses.
+- Get a warranty in the service agreement that the outputs are free of third-party
+  licence restrictions and that commercial use of the generated mesh is permitted.
+- Failing that, treat the hosted backend as unsuitable for production and keep it for
+  development only — which is close to its current role, since it is the last resort in
+  `resolve_backend_name` and the only backend that bills.
+
+### Why the deny-list entries must stay
+
+Two entries in this codebase name things this project does **not** use:
+`openai/clip-vit-*` in `ip_screen_image.DENIED_MODEL_REPOS`, and
+`nvdiffrast`/`nvdiffrec` in `test_licensing_guards.FORBIDDEN_RENDERER_PACKAGES`.
+
+There is **no usage of either** — every occurrence is a deny-list entry, a test that the
+deny-list works, a comment explaining why an upstream install flag is omitted, or a
+notices row recording the rejection. Deleting them would remove the protection, not the
+exposure:
+
+- The runtime refusal in `assert_permissive_vision_model` is what stops
+  `P2P_IP_MODEL_ID=openai/clip-vit-base-patch32` from loading.
+- `FORBIDDEN_RENDERER_PACKAGES` is what fails the build if `--nvdiffrast` is added to a
+  Dockerfile — and upstream TRELLIS.2's own documented install line asks for it, so the
+  tempting copy-paste is the encumbered one.
+- The comments are how the next engineer learns why the flags are missing.
+- The notices rows are the audit trail showing these were **considered and rejected**.
+  To a reviewer, that reads as diligence; their absence reads as ignorance.
+
+The guards match executable lines only, so explanatory comments naming them are
+deliberately permitted.
+
+---
+
+## Task L5 — DINOv3: accept the licence as the right legal entity
+
+DINOv3 is TRELLIS.2's `image_cond_model`, on the shape path, and cannot be structurally
+avoided the way the rasterizer and the matte weights were. The **DINOv3 License permits
+commercial use**; what it requires is:
+
+- **Attribution** — "Built with DINOv3", carried in the UI footer, `README.md` and
+  `THIRD-PARTY-NOTICES.md`, and held there by `test_dinov3_attribution_is_present_in_the_ui`
+  and its docs counterpart.
+- Compliance with its **Acceptable Use Policy** and **trade-control terms**.
+- **Propagation of the licence** if the weights or a derivative are ever redistributed.
+- Acknowledgement in publications.
+
+Two things to settle before launch:
+
+1. **Who the licensee is.** The Hugging Face repo is gated, so whoever accepted the
+   terms with the token in `HF_TOKEN` is the accepting party. If that is a personal
+   account, the licence may not run to the company. Re-accept as the corporate entity
+   and record when and by whom.
+2. **Never bake the weights into a distributed image.** Using them at runtime is a use;
+   shipping a container with them inside is a redistribution, and the gated acceptance
+   does not travel to whoever pulls the image. Enforced by
+   `test_no_install_manifest_bakes_model_weights`, which fails the build on
+   `huggingface-cli download`, `snapshot_download`, `from_pretrained` in a `RUN`, a
+   `COPY` of `*.safetensors`, or a `curl` from `huggingface.co` — comments excluded.
+
+---
+
 ## Open question for counsel (not blocking)
 
 EU AI Act Art. 50 imposes transparency duties around artificially generated content. The
