@@ -100,6 +100,20 @@ STAGES: tuple[Stage, ...] = (
         columns=("started_at",),
     ),
     Stage(
+        key="run_context",
+        title="Run context",
+        trigger="pipeline start, before Phase 1",
+        writer="db.update_job_run_context()",
+        call_site="pythonsrc/pipeline.py:366",
+        # Written first because neither value is about a phase's outcome: which
+        # commit ran, and whether a bundled fixture stood in for a model's output.
+        # A run that dies in Phase 1 still has to be attributable and excludable.
+        columns=(
+            "git_sha",
+            "used_reference_assets",
+        ),
+    ),
+    Stage(
         key="phase1",
         title="Phase 1 · Visualizer",
         trigger="prompt → blueprint.png (FLUX)",
@@ -143,6 +157,7 @@ STAGES: tuple[Stage, ...] = (
             "raw_mesh_features",
             "repaired_mesh_sha256",
             "repaired_mesh_features",
+            "repair_report",
         ),
     ),
     Stage(
@@ -179,6 +194,30 @@ STAGES: tuple[Stage, ...] = (
             "slice_stats",
         ),
         duration_column="slice_duration_s",
+    ),
+    Stage(
+        key="dispatch",
+        title="Phase 5 · Dispatch",
+        trigger="G-code uploaded to a printer",
+        writer="db.update_job_dispatch()",
+        call_site="pythonsrc/pipeline.py:1141 · pythonsrc/run_operator.py:63 · server/app.py:1758",
+        # The dispatch moment is the only moment the target URL is true: profiles
+        # are resolved on read and edited in place, so nothing later can say
+        # whether a row's telemetry came from the simulator or real hardware.
+        columns=("dispatched_printer_url",),
+    ),
+    Stage(
+        key="print_duration",
+        title="Print duration",
+        trigger="the printer's terminal event",
+        writer="db.update_job_print_duration()",
+        call_site="pythonsrc/telemetry/octoprint_collector.py:393",
+        # Its own stage rather than part of the verdict below, matching the writer:
+        # `update_job_outcome_verdict`'s machine-never-overwrites-human guard would
+        # discard this whenever a person answered first, and a duration is a
+        # measurement, not a verdict.
+        columns=("print_duration_s",),
+        duration_column="print_duration_s",
     ),
     Stage(
         key="outcome",

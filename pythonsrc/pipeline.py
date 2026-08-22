@@ -939,25 +939,22 @@ def run(args: argparse.Namespace) -> None:
     else:
         logger.info("Skipping Phase 2 — using existing mesh: %s", raw_mesh_path)
         if not raw_mesh_path.exists():
-            # No fallback geometry. This used to export a 50mm cube and carry on,
-            # which is the worst available outcome: the cube passes repair, scores
-            # well on printability (it is watertight, has no overhangs and sits flat),
-            # slices cleanly and gets dispatched to the printer. Nothing downstream
-            # can tell it apart from the model that was asked for, so the failure
-            # surfaced as filament spent on a cube, and as telemetry rows whose mesh
-            # features describe a box under a prompt that asked for something else.
-            # The placeholder *blueprint* is a different case — an image is only ever
-            # input to a phase that names its own model, and Phase 2 refuses to pay
-            # for it. A mesh is the deliverable.
-            message = (
-                f"--skip-sculptor was passed but there is no mesh at {raw_mesh_path}. "
-                "Phase 2 is the only thing that can produce one: point --mesh at an "
-                "existing mesh, or drop --skip-sculptor to reconstruct it."
-            )
-            logger.error(message)
-            print(f"[P2P] ERROR: {message}", flush=True)
-            _write_status(2, "error", message)
-            sys.exit(1)
+            # Stand the bundled reference mesh in rather than fabricating geometry.
+            # A 50mm `trimesh.creation.box` used to be exported here, which is the
+            # worst available outcome: a cube is watertight, convex, has no boundary
+            # or non-manifold edges, no thin walls and no overhangs, so repair has
+            # nothing to repair, printability scores geometry no reconstruction
+            # produces, the adhesion rule never fires and the slicer sees six faces
+            # instead of six figures. `assets/dev_reference/raw_mesh.obj` is a real
+            # O-Voxel reconstruction carrying the defects Phases 3-5 exist to handle,
+            # and a run that installs it is marked as a fixture run twice over: the
+            # output directory is named `dev-{job_id}` and `used_reference_assets` is
+            # set on the telemetry row.
+            try:
+                _install_dev_asset(DEV_REFERENCE_MESH, raw_mesh_path, "mesh")
+            except Exception as e:
+                logger.error("Failed to install the reference mesh: %s", e)
+                sys.exit(1)
 
     # ── Phase 3: Engineer ─────────────────────────────────────────────────────
     t0 = _phase_start(3)
@@ -1071,11 +1068,10 @@ def run(args: argparse.Namespace) -> None:
             )
             # Slicer (CuraEngine) needs .stl, Engineer outputs both .obj and .stl
             stl_mesh_path = final_mesh_path.with_suffix(".stl")
-            slicer_overrides = _adhesion_args(printability_report)
+            slicer_overrides = _adhesion_args(printability_report, process_profile)
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
-                extra_args=_adhesion_args(printability_report, process_profile),
                 extra_args=slicer_overrides,
             )
             _record_slice(
