@@ -39,6 +39,23 @@ VALID_OUTCOMES = frozenset({
 NON_EVIDENCE_OUTCOMES = frozenset({"unknown", "awaiting_verdict", "dev", "declined"})
 
 
+#: Where a job's target size came from. Three values, because two of them would
+#: collapse the only question this column exists to answer:
+#:
+#: - ``default`` — nobody chose. The pipeline's own 50 mm applied.
+#: - ``user`` — a person set it in the composer or on the CLI.
+#: - ``prompt_hint`` — a size was parsed out of the prompt and the user *accepted*
+#:   the suggestion. Never written for a hint that was merely offered: a size the
+#:   software inferred and applied by itself is not a size anyone asked for.
+VALID_SIZE_SOURCES = frozenset({"default", "user", "prompt_hint"})
+
+#: Which bounding-box extent a target size describes. Mirrors `Engineer.SCALE_AXES`;
+#: "height" is the Z extent after the part is seated on the plate, "longest" is the
+#: longest edge, which is what the code did before anyone asked a person what they
+#: meant by "how big".
+VALID_SCALE_AXES = frozenset({"height", "longest"})
+
+
 @dataclasses.dataclass
 class PrintJob:
     """Represents a print job in the telemetry system."""
@@ -229,6 +246,38 @@ class PrintJob:
     them at query time makes a historical job silently claim settings it never used.
     """
 
+    request_params: Dict[str, Any] | None = None
+    """The submitted job request, as it arrived. Captured because the pipeline runs in
+    a different process and the blueprint approval gate resumes it in a *third* one,
+    minutes later — `_run_pipeline` holds the request in memory only, so a gate that
+    parked by awaiting would lose the job on a server restart. Rebuilding it from the
+    individual columns is not equivalent: `pipeline_type` and `mesh_seed` both change
+    the geometry and exist nowhere else until Phase 2 has already run."""
+
+    # ── Requested size ────────────────────────────────────────────────────────
+    # What the person asked for, which is not what the mesh can tell you. The
+    # *applied* size and axis are recoverable from `repair_report`; the request is
+    # recoverable from nothing once the row is written, and every job before this
+    # column existed silently used 50 mm because nothing forwarded the flag.
+
+    requested_size_mm: float | None = None
+    """The target size the requester chose, in millimetres, or None when nobody
+    chose one. Deliberately NULL rather than 50.0 in that case: a stored default is
+    indistinguishable from a user who typed the default, and "did anyone care about
+    size" is the question the pilot needs answered."""
+
+    requested_scale_axis: Literal["height", "longest"] | None = None
+    """Which extent `requested_size_mm` was understood to describe, as presented to
+    the requester. None when they did not choose. This is the *promise*; the axis
+    actually applied is `repair_report["scale_axis"]`, written by Phase 3. They are
+    separate columns precisely so they can be compared — a control labelled "Height"
+    that produced a longest-edge part is a bug this pairing makes visible."""
+
+    size_source: Literal["default", "user", "prompt_hint"] | None = None
+    """Who decided `requested_size_mm`. See `VALID_SIZE_SOURCES`. None only on rows
+    written before this column existed — a live job always has a source, because
+    "the default applied" is itself a fact worth recording."""
+
     # ── Lineage and engagement ────────────────────────────────────────────────
 
     parent_job_id: str | None = None
@@ -294,6 +343,14 @@ class PrintJob:
             raise ValueError(f"Invalid outcome_source: {self.outcome_source}")
         if self.slice_status is not None and self.slice_status not in {"success", "failed", "skipped"}:
             raise ValueError(f"Invalid slice_status: {self.slice_status}")
+        # None-tolerant on purpose: `__post_init__` runs for every row read back
+        # through `_row_to_job`, so rejecting None here would make every
+        # pre-migration job unreadable via get_job() and the trace tool.
+        if self.size_source is not None and self.size_source not in VALID_SIZE_SOURCES:
+            raise ValueError(f"Invalid size_source: {self.size_source}")
+        if (self.requested_scale_axis is not None
+                and self.requested_scale_axis not in VALID_SCALE_AXES):
+            raise ValueError(f"Invalid requested_scale_axis: {self.requested_scale_axis}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the PrintJob to a JSON-serializable dictionary.
@@ -525,6 +582,17 @@ JOB_EVENT_KINDS = (
     "outcome_prompt_dismissed",
     "outcome_reported",
     "dispatch_confirmed",
+    # The prompt screen recognised something, but not clearly enough to refuse. There
+    # is deliberately no `ip_screen_blocked` counterpart: a block happens before
+    # `insert_job`, foreign keys are enforced, and an event for a job row that does
+    # not exist cannot be written. Blocks go to the activity feed instead.
+    "ip_screen_flagged",
+    # The blueprint approval gate. Phase 2 does not run until `blueprint_approved`
+    # exists for the job, and `blueprint_rejected` records that a person looked and
+    # said no — which is a different fact from never having been asked, and the only
+    # thing that stops the gate asking again forever.
+    "blueprint_approved",
+    "blueprint_rejected",
     # Printer lifecycle, written by the collector as the events arrive on the
     # socket. Sparse and discrete, so rows rather than sample columns: a pause is
     # a fact about the print ("someone intervened at layer 40") that no success

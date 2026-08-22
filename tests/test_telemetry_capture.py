@@ -437,6 +437,8 @@ def test_insert_job_carries_every_new_column(db):
         nozzle_diameter_mm=0.6, process_params={"c": 3},
         parent_job_id="full-parent", regeneration_reason="why not",
         outcome_source="machine",
+        requested_size_mm=80.0, size_source="user", requested_scale_axis="height",
+        request_params={"prompt": "a vase", "mesh_seed": 7},
     )
     db.insert_job(job)
     read = db.get_job("full")
@@ -449,6 +451,8 @@ def test_insert_job_carries_every_new_column(db):
         "material_type", "material_brand", "material_colour",
         "nozzle_diameter_mm", "process_params",
         "parent_job_id", "regeneration_reason", "outcome_source",
+        "requested_size_mm", "size_source", "requested_scale_axis",
+        "request_params",
     ):
         assert getattr(read, field) == getattr(job, field), field
 

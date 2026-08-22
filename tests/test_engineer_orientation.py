@@ -19,6 +19,7 @@ with the widest cross-section at the top.
 """
 
 import numpy as np
+import pytest
 import trimesh
 
 from pythonsrc.engineer import Engineer
@@ -157,3 +158,105 @@ def test_no_report_means_no_opinion():
 
     assert _adhesion_args(None) == []
     assert _adhesion_args(_Report(_Check("watertight", "fail"))) == []
+
+
+# ── Which axis the target size describes ──────────────────────────────────────
+#
+# `scale_to_dimensions` scaled the *longest bounding-box edge*, and its docstring
+# said so — but "how big is it" means height to almost everyone who asks. A
+# figurine with its arms out is wider than it is tall, so a request for 50 mm gave a
+# part 50 mm across and under 40 mm tall: shorter than asked, in the one dimension
+# the person was picturing. The axis is now a parameter, defaulting to height, and
+# is recorded because a bare `target_mm` in a historical row cannot say which
+# convention produced it.
+
+def _written(mesh: trimesh.Trimesh, tmp_path) -> str:
+    """Export a mesh so `Engineer.process` can be driven end to end."""
+    path = tmp_path / "raw_mesh.obj"
+    mesh.export(str(path))
+    return str(path)
+
+
+def _lying_slab() -> trimesh.Trimesh:
+    """Eight times wider than it is tall — the shape that made this a bug."""
+    return trimesh.creation.box(extents=(40.0, 10.0, 5.0))
+
+
+def test_height_mode_scales_the_z_extent_not_the_longest_edge(tmp_path):
+    """Asking for 50 mm in height mode must give 50 mm of height, however wide."""
+    out = tmp_path / "engineered.obj"
+    Engineer().process(
+        input_path=_written(_lying_slab(), tmp_path), output_path=out,
+        target_mm=50.0, scale_axis="height", hollow=False,
+    )
+    result = trimesh.load(str(out), force="mesh")
+
+    assert abs(result.extents[2] - 50.0) < 0.05, f"height is {result.extents[2]}"
+    # The part is 8x wider than tall, so honouring the height means 400 mm wide.
+    assert abs(result.extents[0] - 400.0) < 0.5, f"width is {result.extents[0]}"
+    # And it is still seated: `apply_scale` is origin-based, so scaling must happen
+    # after `orient_for_print` drove Z-min to zero, never before.
+    assert abs(result.bounds[0][2]) < 1e-6
+
+
+def test_longest_mode_still_scales_the_longest_edge(tmp_path):
+    """The old behaviour stays reachable by name, for anything that depended on it."""
+    out = tmp_path / "engineered.obj"
+    Engineer().process(
+        input_path=_written(_lying_slab(), tmp_path), output_path=out,
+        target_mm=50.0, scale_axis="longest", hollow=False,
+    )
+    result = trimesh.load(str(out), force="mesh")
+
+    assert abs(result.extents[0] - 50.0) < 0.05
+    assert abs(result.extents[2] - 6.25) < 0.05
+
+
+def test_the_report_names_the_axis_that_was_actually_used(tmp_path):
+    """`repair_report` must carry the axis, not just the number.
+
+    `target_mm` alone is ambiguous once two conventions exist, and every row written
+    before this change carries a bare one. An absent key in an unschematised blob is
+    indistinguishable from a pre-change row, so it is written unconditionally.
+    """
+    eng = Engineer()
+    eng.process(
+        input_path=_written(_lying_slab(), tmp_path),
+        output_path=tmp_path / "engineered.obj",
+        target_mm=50.0, scale_axis="height", hollow=False,
+    )
+
+    assert eng.last_report["scale_axis"] == "height"
+    assert eng.last_report["target_mm"] == 50.0
+    assert eng.last_report["achieved_extent_mm"][2] == pytest.approx(50.0, abs=0.05)
+
+
+def test_a_flat_mesh_does_not_divide_by_a_zero_height(tmp_path):
+    """A coaster has no height to scale, and must survive rather than blow up.
+
+    The pre-existing guard only caught a mesh with *no* extent at all. A nameplate
+    lying in XY has a legitimately zero Z extent, which height mode would divide by.
+    """
+    plate = trimesh.creation.box(extents=(60.0, 60.0, 2.0))
+    plate.apply_scale([1.0, 1.0, 0.0])          # flatten to a true zero-height sheet
+    out = tmp_path / "engineered.obj"
+
+    eng = Engineer()
+    eng.process(
+        input_path=_written(plate, tmp_path), output_path=out,
+        target_mm=50.0, scale_axis="height", hollow=False,
+    )
+
+    # Reported honestly as what happened, not as what was asked for.
+    assert eng.last_report["scale_axis"] == "none"
+    assert eng.last_report["scale_factor"] is None
+
+
+def test_an_unknown_axis_is_refused_rather_than_guessed(tmp_path):
+    """A typo must not silently fall back to a convention nobody chose."""
+    with pytest.raises(ValueError, match="scale_axis"):
+        Engineer().process(
+            input_path=_written(_lying_slab(), tmp_path),
+            output_path=tmp_path / "engineered.obj",
+            target_mm=50.0, scale_axis="tallest", hollow=False,
+        )

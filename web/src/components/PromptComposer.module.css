@@ -140,3 +140,10 @@
 .go:disabled {
   opacity: 0.4;
 }
+
+/* The shared prompt notice. `.notice` here is a layout slot, not the global error
+   treatment — PromptNotice brings its own `hint` class. */
+.notice {
+  margin: 8px 0 0;
+  max-width: 62ch;
+}

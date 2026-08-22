@@ -87,6 +87,10 @@ STAGES: tuple[Stage, ...] = (
             "material_colour",
             "nozzle_diameter_mm",
             "process_params",
+            "requested_size_mm",
+            "size_source",
+            "requested_scale_axis",
+            "request_params",
             "parent_job_id",
             "regeneration_reason",
         ),
@@ -98,6 +102,22 @@ STAGES: tuple[Stage, ...] = (
         writer="db.update_job_start_time()",
         call_site="server/app.py:490",
         columns=("started_at",),
+    ),
+    Stage(
+        key="run_context",
+        title="Run context",
+        trigger="before any phase runs",
+        writer="db.update_job_run_context()",
+        call_site="pythonsrc/pipeline.py:311",
+        # Deliberately its own stage rather than folded into phase1: both values
+        # have to survive a run that dies *in* Phase 1, which is exactly when
+        # knowing the commit and whether fixtures were substituted matters most.
+        # `used_reference_assets=False` is written as 0 rather than skipped, so
+        # "verified real" stays distinguishable from "predates the column".
+        columns=(
+            "git_sha",
+            "used_reference_assets",
+        ),
     ),
     Stage(
         key="phase1",
@@ -138,11 +158,16 @@ STAGES: tuple[Stage, ...] = (
         trigger="repair + scale, before/after pair",
         writer="db.update_job_mesh_lineage()",
         call_site="pythonsrc/pipeline.py:323",
+        # repair_report rides along with the lineage pair because the same call
+        # writes it: which repair path ran, how many rounds, faces dropped and the
+        # scale factor. Without it "did the voxel remesh hurt outcomes" is not a
+        # query, and the before/after hashes cannot say which path produced them.
         columns=(
             "raw_mesh_sha256",
             "raw_mesh_features",
             "repaired_mesh_sha256",
             "repaired_mesh_features",
+            "repair_report",
         ),
     ),
     Stage(
@@ -181,6 +206,32 @@ STAGES: tuple[Stage, ...] = (
         duration_column="slice_duration_s",
     ),
     Stage(
+        key="dispatch",
+        title="Dispatch",
+        trigger="a person confirming the printer, or --print --start-print",
+        writer="db.update_job_dispatch()",
+        call_site=(
+            "server/app.py:1749 · pythonsrc/pipeline.py:1063 · "
+            "pythonsrc/run_operator.py:63"
+        ),
+        # Recorded as the pre-Docker-rewrite URL, because host.docker.internal is
+        # a container artifact. This is the only column separating simulator
+        # telemetry from real hardware: printer_id is a constant and profiles are
+        # resolved on read.
+        columns=("dispatched_printer_url",),
+    ),
+    Stage(
+        key="print_duration",
+        title="Print duration",
+        trigger="the printer reporting how long it ran",
+        writer="db.update_job_print_duration()",
+        call_site="pythonsrc/telemetry/octoprint_collector.py:393",
+        # Its own stage rather than part of `outcome`: a different process writes
+        # it by a different method, and it is a measurement rather than a verdict
+        # — which is why it is written outside the outcome-precedence guard.
+        columns=("print_duration_s",),
+    ),
+    Stage(
         key="outcome",
         title="Outcome",
         trigger="printer event, or a human tapping a verdict",
@@ -207,6 +258,7 @@ STAGES: tuple[Stage, ...] = (
 
 # Columns held as JSON text; summarised rather than dumped unless -v is given.
 _JSON_COLUMNS = frozenset({
+    "request_params",
     "process_params",
     "blueprint_params",
     "generation_params",
@@ -241,6 +293,10 @@ _EXPECTED_NULL = {
     "blueprint_prompt_engineered": "absent under --skip-visualizer",
     "outcome_reported_at": "only set once a human answers",
     "support_filament_mm3": "only set when supports were generated",
+    "dispatched_printer_url": "only set once a print is dispatched",
+    "print_duration_s": "only set once the printer reports one",
+    "requested_size_mm": "only set when a size was chosen; the default applied otherwise",
+    "requested_scale_axis": "only set when a size was chosen",
 }
 
 

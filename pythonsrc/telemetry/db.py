@@ -87,6 +87,12 @@ _PRINT_JOB_EXTRA_COLUMNS = {
     "material_colour": "TEXT",
     "nozzle_diameter_mm": "REAL",
     "process_params": "TEXT",
+    # The submitted request, so a gated run can be resumed by another process.
+    "request_params": "TEXT",
+    # Requested size.
+    "requested_size_mm": "REAL",
+    "size_source": "TEXT",
+    "requested_scale_axis": "TEXT",
     # Lineage and engagement.
     "parent_job_id": "TEXT",
     "regeneration_reason": "TEXT",
@@ -113,6 +119,7 @@ _PRINT_JOB_JSON_COLUMNS = (
     "slice_stats",
     "process_params",
     "repair_report",
+    "request_params",
 )
 
 

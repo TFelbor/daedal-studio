@@ -249,7 +249,13 @@ def test_engineer_exposes_a_repair_report(tmp_path):
     report = eng.last_report
     assert report is not None
     assert report["repair_method"] in {"manifold", "trimesh_fallback", "voxel_remesh"}
-    assert report["scale_factor"] == pytest.approx(50.0 / finned.extents.max(), rel=0.2)
+    # Against the Z extent, not the longest edge: `process` now defaults to height
+    # mode. This assertion used to read `finned.extents.max()` and kept passing on a
+    # rel=0.2 tolerance while the two extents differ by 6.4% — a green test
+    # documenting a formula the code had stopped using. Tight tolerance so it cannot
+    # do that again, and the axis is asserted explicitly.
+    assert report["scale_axis"] == "height"
+    assert report["scale_factor"] == pytest.approx(50.0 / finned.extents[2], rel=1e-3)
     assert report["hollowed"] is False
     assert "faces_dropped" in report
     assert "close_rounds" in report

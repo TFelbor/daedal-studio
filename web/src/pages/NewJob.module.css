@@ -694,3 +694,69 @@
     animation: none;
   }
 }
+
+/* ── Height control ─────────────────────────────────────────────────────────
+   A second left-hand group in the frame footer, beside Material. The global
+   `.seg` is shared with PrinterSetup and JobList, so its cell padding is
+   overridden here rather than retuned there — this row has to fit a footer, not
+   a page. */
+.sizeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sizeSeg button {
+  padding: 4px 9px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.mmInput {
+  width: 62px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.mmInput:disabled {
+  opacity: 0.45;
+}
+
+/* The resolved value, after the build-volume clamp. Shown because a clamp that
+   silently lowers what someone typed is a clamp they will not notice. */
+.sizeReadout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ink-50);
+}
+
+/* The size-in-prompt offer. Neutral, not `.notice` — nothing has gone wrong. */
+.sizeHint {
+  margin: 6px 0 0;
+}
+
+.hintApply {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.hintApply:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The rights-and-retention line. Sits between the frame and the submit button, so
+   it is read on the way to pressing it rather than after. */
+.promptNotice {
+  margin: 10px 0 0;
+  max-width: 62ch;
+}

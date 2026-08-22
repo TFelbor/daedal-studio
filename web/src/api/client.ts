@@ -82,6 +82,18 @@ export interface JobStatusResponse {
   material_type: string | null;
   material_brand: string | null;
   material_colour: string | null;
+  /** The size the requester asked for, in mm, or null when they did not choose. */
+  requested_size_mm: number | null;
+  /** "default" | "user" | "prompt_hint" — who decided `requested_size_mm`. */
+  size_source: string | null;
+  /** "height" | "longest" — which extent `requested_size_mm` described. */
+  requested_scale_axis: string | null;
+  /**
+   * "not_ready" | "awaiting_approval" | "approved" | "rejected".
+   * Phase 2 does not run until this is "approved".
+   */
+  blueprint_gate_state: string;
+  blueprint_gate_subject: BlueprintGateSubject | null;
   blueprint_seed: number | null;
   parent_job_id: string | null;
   download_count: number;
@@ -145,6 +157,24 @@ export interface JobRequest {
    * They are separate so one image can be re-sculpted more than one way.
    */
   mesh_seed?: number;
+  /**
+   * Target size of the finished part, in millimetres. Omit to let the pipeline's
+   * own default (50 mm) apply — sending an explicit 50 would be recorded as a
+   * deliberate choice, which is a different fact.
+   */
+  target_mm?: number;
+  /**
+   * Which extent `target_mm` describes. Send whatever the control was labelled —
+   * the row records it as the promise made, so a "Height" label that submitted a
+   * longest-edge job is visible rather than silent.
+   */
+  scale_axis?: 'height' | 'longest';
+  /**
+   * Whether the person typed the size or accepted one parsed from their prompt.
+   * Only the client knows which, so only the client can say. Omit when no size is
+   * sent — the server writes "default" itself and will not take our word for it.
+   */
+  size_source?: 'user' | 'prompt_hint';
 }
 
 /** Filament types the mass estimate has a density for. */
@@ -306,6 +336,39 @@ export async function createJob(request: JobRequest): Promise<JobResponse> {
   return res.json();
 }
 
+/** A physical size read out of a prompt. A suggestion — never applied by itself. */
+export interface SizeHint {
+  /** The size in millimetres. Converted at the parser, so this is never inches. */
+  mm: number;
+  /** The exact substring that was matched, so the offer can quote it back. */
+  text: string;
+  /** Start and end offsets of `text` in the prompt. */
+  span: [number, number];
+  /** 'height' | 'longest', or null when the phrasing does not say which. */
+  axis: 'height' | 'longest' | null;
+}
+
+/**
+ * Ask whether a prompt states a physical size.
+ *
+ * Returns null when it does not, and a failure is also null: this is a
+ * convenience, so a composer that cannot reach the endpoint should behave exactly
+ * like one looking at a prompt with no size in it rather than showing an error.
+ */
+export async function fetchSizeHint(prompt: string): Promise<SizeHint | null> {
+  try {
+    const res = await fetch('/prompt/size-hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()).hint ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getJob(jobId: string): Promise<JobStatusResponse> {
   const res = await fetch(`/jobs/${jobId}`);
   if (!res.ok) throw new Error('Failed to fetch job status');
@@ -345,6 +408,44 @@ export async function listJobs(limit = 20, offset = 0, status = 'all'): Promise<
  * back as it was displayed, so a profile swapped in Settings while the confirmation was
  * on screen is answered with a 409 rather than a print to a machine nobody chose.
  */
+/** What the person is being asked to approve, as the server resolved it. */
+export interface BlueprintGateSubject {
+  /** The blueprint's own hash, sent back so the server can refuse a stale approval. */
+  sha256: string;
+  url: string;
+}
+
+/**
+ * Approve or reject a rendered blueprint.
+ *
+ * `confirmed: true` is the gate — the server has no unconfirmed code path, so an
+ * empty body cannot start a reconstruction. `sha256` is the hash **as displayed**:
+ * if the image has changed since, the server answers 409 rather than approving
+ * something the person never saw.
+ */
+export async function decideBlueprint(
+  jobId: string,
+  approve: boolean,
+  sha256?: string | null,
+): Promise<{ decision: string; blueprint_gate_state: string }> {
+  const res = await fetch(`/jobs/${jobId}/blueprint-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmed: true, approve, sha256: sha256 ?? null }),
+  });
+  if (!res.ok) {
+    let detail = `The server answered ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) detail = String(data.detail);
+    } catch {
+      // The body was not JSON; the status line is all there is to report.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export async function dispatchPrint(
   jobId: string,
   target?: DispatchTarget | null,

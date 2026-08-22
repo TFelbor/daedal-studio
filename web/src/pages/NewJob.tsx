@@ -9,14 +9,16 @@ import { MeshViewer } from '../components/MeshViewer';
 import { GCodeViewer } from '../components/GCodeViewer';
 import { ProcessLog } from '../components/ProcessLog';
 import { PromptComposer } from '../components/PromptComposer';
+import { PromptNotice } from '../components/PromptNotice';
 import { WaitingStage } from '../components/WaitingStage';
 import { JobControlPanel } from '../components/JobControlPanel';
 import { DispatchGate } from '../components/DispatchGate';
+import { BlueprintGate } from '../components/BlueprintGate';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { PromptZoom } from '../components/PromptZoom';
 import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
-import { createJob, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
-import type { JobStatusResponse, TelemetrySample } from '../api/client';
+import { createJob, fetchSizeHint, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
+import type { JobStatusResponse, SizeHint, TelemetrySample } from '../api/client';
 import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
 import { closeSocket } from '../api/ws';
@@ -37,7 +39,27 @@ interface PrinterProbe {
   configured: boolean;
   running: boolean;
   type: string;
+  /**
+   * [width, depth, height] in mm, or null when the profile does not declare them.
+   * Null is a real answer — `bambu_test.json` says nothing about machine size — and
+   * means "do not clamp", not "clamp to zero".
+   */
+  build_volume_mm?: number[] | null;
 }
+
+/**
+ * Height presets, in mm. Three named sizes because a bare number field asks the
+ * person to guess what is reasonable for a desktop FDM printer, and most people
+ * want one of these. `custom` is the escape hatch, not the default.
+ */
+const SIZE_PRESETS: { key: 'S' | 'M' | 'L'; mm: number }[] = [
+  { key: 'S', mm: 40 },
+  { key: 'M', mm: 70 },
+  { key: 'L', mm: 120 },
+];
+
+/** The preset the composer opens on. Not the pipeline's 50mm — see the comment at submit. */
+const DEFAULT_SIZE_PRESET = 'M';
 
 /**
  * The five phases, in the order they run, with the one line each needs to explain
@@ -163,6 +185,16 @@ export function NewJob() {
   const [materialBrand, setMaterialBrand] = useState('');
   const [materialColour, setMaterialColour] = useState('');
   const [seed, setSeed] = useState('');
+  /**
+   * The requested height. `sizePreset` is what the person clicked; `customHeight` is
+   * the free number, held as a string like `seed` and converted once at submit.
+   * `sizeFromHint` records that the value arrived from the prompt rather than from a
+   * keystroke, which is a different fact and is captured as one.
+   */
+  const [sizePreset, setSizePreset] = useState<'S' | 'M' | 'L' | 'custom'>(DEFAULT_SIZE_PRESET);
+  const [customHeight, setCustomHeight] = useState('');
+  const [sizeFromHint, setSizeFromHint] = useState(false);
+  const [sizeHint, setSizeHint] = useState<SizeHint | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -201,6 +233,24 @@ export function NewJob() {
   /** The server's own activity — config edits, printer replies, phase boundaries. */
   const serverActivity = useActivityFeed();
   const printerReady = printer?.configured === true && printer?.running === true;
+  /** The machine's Z limit, when it declares one. Null means no ceiling is known. */
+  const maxHeightMm = printer?.build_volume_mm?.[2] ?? null;
+
+  /**
+   * The height to submit, in mm, or undefined when there is nothing usable to send.
+   *
+   * Clamped here and only here, because `startJob` is the single `createJob` path for
+   * the form, the inline composer and the zoomed one. Clamping happens only when a
+   * ceiling is actually known — a profile that declares no machine size must not
+   * clamp to `undefined` and silently drop the size the person chose.
+   */
+  const resolvedHeightMm = ((): number | undefined => {
+    const raw = sizePreset === 'custom'
+      ? (customHeight.trim() ? Number(customHeight) : NaN)
+      : SIZE_PRESETS.find((p) => p.key === sizePreset)?.mm;
+    if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return undefined;
+    return maxHeightMm ? Math.min(raw, maxHeightMm) : raw;
+  })();
 
   useEffect(() => {
     getConfig()
@@ -572,6 +622,15 @@ export function NewJob() {
         material_colour: materialColour || undefined,
         // Blank means "draw one and record it", which is what we want by default.
         seed: seed.trim() ? Number(seed) : undefined,
+        // Height, not longest edge — which is what the label above says and what the
+        // Engineer now scales. Sent explicitly rather than relying on the pipeline
+        // default so the row records the axis the person was actually shown; a
+        // "Height" label over a longest-edge job is the bug this pairing catches.
+        target_mm: resolvedHeightMm,
+        scale_axis: resolvedHeightMm !== undefined ? 'height' : undefined,
+        size_source: resolvedHeightMm === undefined
+          ? undefined
+          : (sizeFromHint ? 'prompt_hint' : 'user'),
       });
       // Everything from the job being replaced has to go, or the new run inherits its
       // log, its telemetry and its socket.
@@ -614,6 +673,31 @@ export function NewJob() {
   };
 
   // ── Idle: the prompt and the pipeline it starts ────────────────────────────
+
+  /**
+   * Look for a size written in the prompt, and offer it.
+   *
+   * Must live above the `if (!isRunning)` return below — a hook after an early
+   * return is called conditionally, which changes hook order between the landing
+   * and running views. Debounced because it runs on every keystroke, and every
+   * `setState` is inside the timeout rather than in the effect body: a synchronous
+   * one there cascades a render on each character typed.
+   *
+   * Deliberately *only* an offer. Accepting it is a click, and only then does the
+   * row record `size_source: 'prompt_hint'`.
+   */
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(async () => {
+      const text = prompt.trim();
+      const hint = text ? await fetchSizeHint(text) : null;
+      if (live) setSizeHint(hint);
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [prompt]);
 
   if (!isRunning) {
     const profileName = printerNameFromProfile(configDefaults.profile);
@@ -713,6 +797,51 @@ export function NewJob() {
                         <ChevronDown size={10} strokeWidth={1.5} className={styles.selectChevron} aria-hidden="true" />
                       </span>
                     </div>
+                    {/* Height, and it says height: the Engineer scales the Z extent
+                        after seating the part, so this is the dimension that comes
+                        out. Every job before this control existed printed at 50mm
+                        along its *longest* edge, whatever the prompt asked for. */}
+                    <div className={styles.sizeRow}>
+                      <label className="label-tight" htmlFor="size-custom">Height</label>
+                      <div className={`seg ${styles.sizeSeg}`} role="group" aria-label="Print height">
+                        {SIZE_PRESETS.map((preset) => (
+                          <button
+                            key={preset.key}
+                            type="button"
+                            className={sizePreset === preset.key ? 'is-active' : undefined}
+                            aria-pressed={sizePreset === preset.key}
+                            disabled={!printerReady}
+                            onClick={() => {
+                              setSizePreset(preset.key);
+                              setSizeFromHint(false);
+                              reportUi('size', `${preset.key} · ${preset.mm}mm`);
+                            }}
+                          >
+                            {preset.key}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        id="size-custom"
+                        className={`input ${styles.mmInput}`}
+                        type="number"
+                        min={1}
+                        max={maxHeightMm ?? undefined}
+                        inputMode="numeric"
+                        placeholder="mm"
+                        aria-label="Print height in millimetres"
+                        value={sizePreset === 'custom' ? customHeight : ''}
+                        disabled={!printerReady}
+                        onChange={(e) => {
+                          setSizePreset('custom');
+                          setCustomHeight(e.target.value);
+                          setSizeFromHint(false);
+                        }}
+                      />
+                      <span className={styles.sizeReadout} aria-live="polite">
+                        {resolvedHeightMm !== undefined ? `${resolvedHeightMm} mm` : '—'}
+                      </span>
+                    </div>
                     <div className={styles.footerRight}>
                       {/* Appears only near the ceiling. See MAX_PROMPT_CHARS. */}
                       <span
@@ -753,6 +882,29 @@ export function NewJob() {
                     </div>
                   </div>
 
+                  {/* A size written in the prompt is offered, never applied. `.hint`
+                      and not `.notice`: the latter is the failure treatment, and a
+                      neutral suggestion rendered in the error colour is the same class
+                      of mistake as captioning a fixture blueprint as drawn. */}
+                  {sizeHint && resolvedHeightMm !== sizeHint.mm && (
+                    <p className={`hint ${styles.sizeHint}`}>
+                      Your prompt says <b>{sizeHint.text}</b>.{' '}
+                      <button
+                        type="button"
+                        className={styles.hintApply}
+                        disabled={!printerReady}
+                        onClick={() => {
+                          setSizePreset('custom');
+                          setCustomHeight(String(sizeHint.mm));
+                          setSizeFromHint(true);
+                          reportUi('size', `hint accepted · ${sizeHint.mm}mm`);
+                        }}
+                      >
+                        Use {sizeHint.mm} mm
+                      </button>
+                    </p>
+                  )}
+
                   {showAdvanced && (
                     <div className={styles.advanced} id="job-details">
                       <input
@@ -786,6 +938,8 @@ export function NewJob() {
                     </div>
                   )}
                 </Blueprint>
+
+                <PromptNotice className={styles.promptNotice} />
 
                 <div className={styles.submitRow}>
                   {/* `blueprint` is what scopes the corner marks; `.btn`'s own transparent
@@ -954,6 +1108,30 @@ export function NewJob() {
           </button>
         </div>
       </div>
+
+      {/* Phase 2 waits here, in the same place and for the same reason Phase 5 does
+          below: a decision about the whole job belongs under the header, not in a
+          380px column. This one is the cheaper of the two to get wrong — everything
+          after it costs a paid reconstruction and then hours of printing. */}
+      {currentJob?.blueprint_gate_state === 'awaiting_approval' && (
+        <BlueprintGate
+          jobId={jobId}
+          subject={currentJob.blueprint_gate_subject ?? null}
+          onApproved={() => {
+            // Phase 2 is starting in a fresh subprocess, so the socket has to be
+            // re-attached: the one that streamed Phase 1 closed when that invocation
+            // exited. Same reasoning as the dispatch gate's reconnect below.
+            setCurrentJob(prev => (prev ? { ...prev, blueprint_gate_state: 'approved' } : prev));
+            setPhases(prev => prev.map(p => (p.phase === 2 ? { ...p, status: 'running' } : p)));
+            connectWebSocket(jobId);
+            getJob(jobId).then(setCurrentJob).catch(() => {});
+          }}
+          onRejected={() => {
+            setCurrentJob(prev => (prev ? { ...prev, blueprint_gate_state: 'rejected' } : prev));
+            getJob(jobId).then(setCurrentJob).catch(() => {});
+          }}
+        />
+      )}
 
       {/* Phase 5 waits here. Directly under the header rather than in the rail: it is a
           decision about the whole job, and a 380px column is where controls go to be

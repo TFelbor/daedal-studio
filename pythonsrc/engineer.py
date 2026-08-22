@@ -60,6 +60,11 @@ class Engineer:
         self._repair_stats: dict | None = None
         self._fallback_stats: dict = {}
         self._last_scale_factor: float | None = None
+        # Which axis the last scale actually used — "height", "longest", or "none"
+        # when there was nothing to scale. Recorded rather than assumed: two
+        # conventions now exist, and a bare `target_mm` in a historical row cannot
+        # say which one produced it.
+        self._last_scale_axis: str | None = None
 
     # ── Repair ────────────────────────────────────────────────────────────────
     @staticmethod
@@ -494,19 +499,72 @@ class Engineer:
         return remeshed
 
     # ── Scale ─────────────────────────────────────────────────────────────────
-    def scale_to_dimensions(self, mesh: trimesh.Trimesh, target_mm: float) -> trimesh.Trimesh:
-        """Uniformly scale so the longest bounding-box edge equals *target_mm* mm."""
+    #: The axes `scale_to_dimensions` can size against.
+    SCALE_AXES = ("height", "longest")
+
+    def scale_to_dimensions(
+        self,
+        mesh: trimesh.Trimesh,
+        target_mm: float,
+        scale_axis: str = "height",
+    ) -> trimesh.Trimesh:
+        """Uniformly scale so one bounding-box extent equals *target_mm* mm.
+
+        Which extent is the whole question. This scaled the **longest** edge, which
+        is defensible for a machine and wrong for a person: "how big is it" means
+        height. A figurine with its arms out is wider than it is tall, so a request
+        for 50 mm produced a part 50 mm across and 38 mm high — smaller than asked
+        in the only dimension the requester was picturing.
+
+        Height is the Z extent, and that is only true *after* `orient_for_print`,
+        which translates the part onto Z = 0 without rotating (Phase 2 already
+        established Z-up from the backend's declared `up_axis`). Scaling is
+        origin-based, so calling this after orienting preserves both the seating and
+        the X/Y centring; calling it before would scale the offset too.
+
+        Args:
+            mesh: The mesh to scale. Not modified.
+            target_mm: Desired size of the reference extent, in millimetres.
+            scale_axis: "height" to size the Z extent, "longest" to size the longest
+                bounding-box edge.
+
+        Returns:
+            A scaled copy, or the mesh unchanged when the reference extent is zero.
+
+        Raises:
+            ValueError: If `scale_axis` is not one of `SCALE_AXES`. Deliberately not
+                a silent fallback: a typo would otherwise pick a convention nobody
+                chose, and the result differs by whatever the aspect ratio is.
+        """
+        if scale_axis not in self.SCALE_AXES:
+            raise ValueError(
+                f"Unknown scale_axis {scale_axis!r}; expected one of {self.SCALE_AXES}"
+            )
+
         current_size = mesh.bounds[1] - mesh.bounds[0]
-        max_dim = current_size.max()
-        if max_dim == 0:
-            logger.warning("Mesh has zero extent — skipping scale.")
+        reference = float(current_size[2]) if scale_axis == "height" else float(current_size.max())
+
+        # A nameplate or coaster lying in XY has a legitimately zero Z extent, so
+        # height mode needs the same guard `_voxel_remesh` uses rather than the old
+        # "no extent at all" test.
+        if not np.isfinite(reference) or reference <= 0:
+            logger.warning(
+                "Mesh has no %s extent to scale (%r) — leaving it at its own size.",
+                scale_axis, reference,
+            )
             self._last_scale_factor = None
+            self._last_scale_axis = "none"
             return mesh
-        scale_factor = target_mm / max_dim
+
+        scale_factor = target_mm / reference
         self._last_scale_factor = float(scale_factor)
+        self._last_scale_axis = scale_axis
         scaled = mesh.copy()
         scaled.apply_scale(scale_factor)
-        logger.debug("Scaled by %.4f (max dim %.2f → %.2f mm)", scale_factor, max_dim, target_mm)
+        logger.debug(
+            "Scaled by %.4f (%s extent %.2f → %.2f mm)",
+            scale_factor, scale_axis, reference, target_mm,
+        )
         return scaled
 
     # ── Orient ────────────────────────────────────────────────────────────────
@@ -615,6 +673,7 @@ class Engineer:
         target_mm: float = 50.0,
         hollow: bool = False,
         wall_thickness: float = 1.2,
+        scale_axis: str = "height",
     ) -> Path:
         input_path = Path(input_path)
         output_path = Path(output_path)
@@ -631,8 +690,8 @@ class Engineer:
         mesh = self.orient_for_print(mesh)
 
         scale_target = self.target_dimensions if self.target_dimensions else target_mm
-        logger.info("Scaling to %.1f mm…", scale_target)
-        mesh = self.scale_to_dimensions(mesh, scale_target)
+        logger.info("Scaling to %.1f mm (%s)…", scale_target, scale_axis)
+        mesh = self.scale_to_dimensions(mesh, scale_target, scale_axis=scale_axis)
 
         if hollow:
             logger.info("Hollowing mesh…")
@@ -644,13 +703,21 @@ class Engineer:
         stl_output_path = output_path.with_suffix(".stl")
         mesh.export(str(stl_output_path))
 
+        final_analysis = self.analyze_mesh(mesh)
         logger.info("Engineering complete → %s (and .stl)", output_path)
-        logger.info("Output analysis: %s", self.analyze_mesh(mesh))
+        logger.info("Output analysis: %s", final_analysis)
 
         self.last_report = {
             **(self._repair_stats or {}),
             "scale_factor": self._last_scale_factor,
             "target_mm": float(scale_target),
+            # What the scale was measured against, and what came out. Written
+            # unconditionally — including "none" — because an absent key in an
+            # unschematised blob cannot be told apart from a pre-change row, and
+            # the extents are of the *exported* mesh, so hollowing (which rebuilds
+            # from a voxel grid and shrinks the part) is visible rather than hidden.
+            "scale_axis": self._last_scale_axis or scale_axis,
+            "achieved_extent_mm": final_analysis.get("extent_mm"),
             "hollowed": bool(hollow),
             "wall_thickness_mm": float(wall_thickness) if hollow else None,
         }
@@ -664,7 +731,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="p2p-mesh Phase 3 — Engineer")
     parser.add_argument("input", nargs="?", default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"), help="Input .obj path")
     parser.add_argument("output", nargs="?", default=os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"), help="Output .obj path")
-    parser.add_argument("target_mm", nargs="?", type=float, default=50.0, help="Target longest dimension in mm")
+    parser.add_argument("target_mm", nargs="?", type=float, default=50.0, help="Target size in mm, measured along --scale-axis")
+    parser.add_argument("--scale-axis", choices=Engineer.SCALE_AXES, default="height", help="Which extent target_mm describes (default: height)")
     parser.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     parser.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness in mm (default: 1.2)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
@@ -679,4 +747,5 @@ if __name__ == "__main__":
         target_mm=args.target_mm,
         hollow=args.hollow,
         wall_thickness=args.wall,
+        scale_axis=args.scale_axis,
     )

@@ -287,6 +287,27 @@ failure prediction.
 
 ---
 
+## What we retain
+
+Every job stores the following, and none of it is recoverable after the fact if it is
+not captured at the moment it happens — which is why it is captured:
+
+- **Your prompt, verbatim** (`print_job.prompt`), and the engineered variant actually
+  sent to the image model (`blueprint_prompt_engineered`). They differ: a clay-render
+  wrapper is appended that you never see, so a change to that wrapper would otherwise
+  be invisible when comparing results across time.
+- **The blueprint image**, in the job's own output directory, plus its SHA-256.
+- **The mesh** before and after repair, as hashes and geometry feature snapshots.
+- **The slice result**, including failures, and the printer the G-code was sent to.
+- **Your verdict on the print**, if you give one, and the fact that you were asked.
+
+Prompts are stored permanently at present. A retention window is a decision still to
+be made — see `docs/deferred-legal-tasks.md`.
+
+**Original designs only.** You must hold the rights to whatever you describe. Prompts
+naming protected characters or brands are refused, and a job can be refused or
+cancelled at any stage.
+
 ## License
 
 This project is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).

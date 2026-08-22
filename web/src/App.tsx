@@ -62,6 +62,11 @@ function Attribution() {
         <span>3D reconstruction by TRELLIS.2 (© Microsoft, MIT)</span>
         <span className={styles.sep} aria-hidden="true">·</span>
         <span>Blueprints by FLUX.2-klein</span>
+        <span className={styles.sep} aria-hidden="true">·</span>
+        {/* Not a licence obligation like the DINOv3 line above it, but the same kind
+            of statement: what this app does with what you give it, said where it can
+            be found rather than only in a document nobody opens. */}
+        <span>Original designs only · prompts kept with the job</span>
       </div>
       <span className={styles.plate}>PROMPT2PRINT</span>
     </footer>

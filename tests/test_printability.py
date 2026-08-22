@@ -302,3 +302,119 @@ def test_report_round_trips_through_json(fdm):
     assert len(restored.checks) == len(report.checks)
     assert restored.features == report.features
     assert restored.evaluated_at == report.evaluated_at
+
+
+# ── Pre-flight size feasibility ───────────────────────────────────────────────
+#
+# The wall check runs *after* scaling, so "your walls are too thin" arrives once the
+# size is already fixed and the only remedy — print it bigger — is never offered.
+# `size_feasibility` answers the question in the other direction: at what size does
+# this geometry become printable at all.
+#
+# It is a prediction and it says so. True wall thickness is exactly linear in a
+# uniform scale factor, but the *measurement* is quantised to a voxel pitch whose
+# dominant term switches from absolute (min_wall/4) to proportional (extent/256) as
+# the part grows. Measured against a 10x10x0.3mm plate, linear prediction tracks the
+# real measurement to within one pitch — close enough to choose a size, not close
+# enough to report as measured. So a suggestion is confirmed by re-measuring.
+
+
+def _thin_plate() -> trimesh.Trimesh:
+    """A plate whose walls really do fail at its own size: 0.375mm measured."""
+    return on_bed(trimesh.creation.box(extents=[10, 10, 0.3]))
+
+
+def test_a_suggested_size_actually_clears_the_wall_check(fdm):
+    """The point of the suggestion is that scaling to it fixes the thing it names."""
+    from pythonsrc.printability import size_feasibility
+
+    thin = _thin_plate()
+    assert check(evaluate_printability(thin, fdm), "min_wall_thickness").status == "fail"
+
+    feasibility = size_feasibility(thin, fdm, scale_axis="longest")
+    assert feasibility["smallest_viable_mm"] is not None
+
+    scaled = thin.copy()
+    scaled.apply_scale(feasibility["smallest_viable_mm"] / max(thin.extents))
+    assert check(
+        evaluate_printability(on_bed(scaled), fdm), "min_wall_thickness",
+    ).status != "fail"
+
+
+def test_a_part_that_is_already_thick_enough_is_not_told_to_grow(fdm):
+    """The suggestion is a floor, not a target — a sound mesh is already above it."""
+    from pythonsrc.printability import size_feasibility
+
+    solid = on_bed(trimesh.creation.box(extents=[30, 30, 20]))
+    feasibility = size_feasibility(solid, fdm, scale_axis="longest")
+
+    assert feasibility["smallest_viable_mm"] <= max(solid.extents) + 1e-6
+    assert feasibility["predicted_status"] == "pass"
+
+
+@pytest.mark.parametrize("candidate,expected", [(10.0, "fail"), (60.0, "pass")])
+def test_the_predicted_status_matches_evaluation_at_that_size(fdm, candidate, expected):
+    """Prediction and verdict come from one implementation of the wall banding.
+
+    Two copies of the three-way banding would drift, and the user would be shown a
+    prediction the report then contradicts. Both ends of the range are checked
+    because a predictor that always answers "pass" would satisfy only one of them.
+    """
+    from pythonsrc.printability import size_feasibility
+
+    thin = _thin_plate()
+    predicted = size_feasibility(
+        thin, fdm, candidate_mm=candidate, scale_axis="longest",
+    )["predicted_status"]
+
+    scaled = thin.copy()
+    scaled.apply_scale(candidate / max(thin.extents))
+    actual = check(
+        evaluate_printability(on_bed(scaled), fdm), "min_wall_thickness",
+    ).status
+
+    assert predicted == actual == expected
+
+
+def test_a_suggestion_beyond_the_build_volume_is_reported_as_not_fitting():
+    """A size the machine cannot reach is not a suggestion, and must say so."""
+    from pythonsrc.printability import size_feasibility
+
+    profile = ProcessProfile(build_volume_mm=[20.0, 20.0, 20.0])
+    feasibility = size_feasibility(_thin_plate(), profile, scale_axis="longest")
+
+    assert feasibility["max_size_mm"] == pytest.approx(20.0, rel=1e-3)
+    assert feasibility["smallest_viable_mm"] > feasibility["max_size_mm"]
+    assert feasibility["fits"] is False
+    assert "build volume" in (feasibility["reason"] or "").lower()
+
+
+def test_the_axis_the_sizes_are_measured_along_is_the_one_asked_for(fdm):
+    """Sizes are expressed along `scale_axis`, matching what the Engineer will scale.
+
+    A feasibility figure quoted along the longest edge, fed to an Engineer scaling
+    by height, is the silent-wrong-size bug with extra steps.
+    """
+    from pythonsrc.printability import size_feasibility
+
+    thin = _thin_plate()                        # 10 x 10 x 0.3
+    longest = size_feasibility(thin, fdm, scale_axis="longest")
+    height = size_feasibility(thin, fdm, scale_axis="height")
+
+    assert longest["scale_axis"] == "longest"
+    assert height["scale_axis"] == "height"
+    # Same scale factor, different reference extent: 10mm against 0.3mm.
+    ratio = longest["smallest_viable_mm"] / height["smallest_viable_mm"]
+    assert ratio == pytest.approx(10.0 / 0.3, rel=1e-3)
+
+
+def test_an_open_mesh_gets_a_reason_rather_than_a_division(fdm):
+    """Thickness abstains on a non-watertight mesh, so feasibility must abstain too."""
+    from pythonsrc.printability import size_feasibility
+
+    box = trimesh.creation.box(extents=[20, 20, 20])
+    shell = trimesh.Trimesh(vertices=box.vertices, faces=box.faces[:-2], process=False)
+    feasibility = size_feasibility(on_bed(shell), fdm, scale_axis="longest")
+
+    assert feasibility["smallest_viable_mm"] is None
+    assert feasibility["reason"]
