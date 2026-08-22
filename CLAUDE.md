@@ -62,7 +62,13 @@ placement only:
 Phase 2's placement is a *separate* decision made by `sculptors.resolve_backend_name`, because
 `platform_utils` knows nothing about the worker URL that makes a GPU-less host viable.
 
-Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate artifacts.
+Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate
+artifacts. `--skip-visualizer` with no blueprint fabricates a flat stand-in image;
+**`--skip-sculptor` with no mesh is a hard failure**, and deliberately so. It used to
+export a 50mm cube and carry on, which nothing downstream can distinguish from the
+requested model — the cube is watertight, has no overhangs and sits flat, so repair,
+printability, slicing and dispatch all pass it. An image is input to a phase that names
+its own model; a mesh is the deliverable.
 
 Between Phase 3 and Phase 4 the pipeline runs the **printability gate** (`pythonsrc/printability.py`).
 It is deliberately *not* a numbered phase: the `.status` protocol, the WebSocket phase updates and
@@ -483,6 +489,17 @@ gets a mesh with no consistent inside and printability scores it unprintable.
   hole to fill, a non-manifold edge is a face to remove, and different code fixes
   each. `process` logs the pair either side of repair, so a repair that did
   nothing is visible in the log rather than three phases later.
+- **`hollow_mesh` maps its shell back out of voxel space.**
+  `VoxelGrid.marching_cubes` is `ops.matrix_to_marching_cubes(matrix=self.matrix)`:
+  it meshes the occupancy array at a spacing of one and **ignores the grid's own
+  transform**, so the surface comes back in index space — one unit per voxel, origin
+  at the grid corner. Hollowing runs *after* scaling and orienting, so returning that
+  unmapped turned a 50mm sphere into a 43mm one with its base 0.5mm under the plate
+  and its centre 21mm off in X and Y, on every `--hollow` job, and nothing downstream
+  could notice: the shell is watertight, it slices and it prints. `process` then
+  re-scales and re-seats, because voxelising at a `wall_thickness` pitch leaves the
+  isosurface up to a voxel outside the input's surface. The same omission in
+  `_voxel_remesh` is harmless only because repair runs before scale and orientation.
 - **Repair is not bit-exact even on a clean mesh**: `_to_manifold` hands vertices
   to the kernel as float32, so coordinates round-trip through single precision.
   Sub-micron on a 50mm part, but not zero.
@@ -527,13 +544,55 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
   Choosing a better *print* orientation is a real optimisation, but it is a search over
   candidate rotations scored against the process profile, not an argmin over three
   numbers.
-- **Adhesion follows the measurement** (`pipeline._adhesion_args`). The bundled
-  definition slices with a skirt, which primes the nozzle and touches nothing. When
-  `bed_contact` does not pass, Phase 4 is given `-s adhesion_type=brim`. A brim rather
+- **Adhesion follows the measurement** (`pipeline._adhesion_args`). The profiles ask
+  for a skirt, which primes the nozzle and touches nothing. When `bed_contact` does not
+  pass, Phase 4 is given `-s adhesion_type=brim -s brim_line_count=N`. A brim rather
   than modelled base geometry: it peels off, and it does not print a part other than the
-  one that was asked for. Note that `adhesion_type` in `pythonsrc/profiles/*.json` is
-  **not** read by the slicer — those are printer-connection profiles; CuraEngine's
-  settings come from the `-j` definitions and `-s` overrides.
+  one that was asked for. **The knob is `brim_line_count`, not `brim_width`** —
+  `brim_width` is a Cura *frontend* setting that the UI divides by the line width before
+  calling the engine, so the override this used to pass had no effect whatsoever
+  (measured on CuraEngine 4.13: `brim_line_count=5` → 119 adhesion moves, `=20` → 907,
+  `brim_width=2` → exactly the default). N is derived from `BRIM_WIDTH_MM` and the
+  process profile's nozzle, so 8mm is 20 lines at 0.4mm and 10 at 0.8mm.
+- **`fdmprinter`'s own default adhesion is `brim`, 20 lines.** Until the profile
+  translation below existed, that default was what every job got, whatever the profile
+  said and whatever `bed_contact` measured. A part with an adequate footprint now gets
+  the skirt its profile asks for, so the brim means something when it appears.
+
+### Slicer — Phase 4 (pythonsrc/slicer.py)
+
+Subprocess wrapper around the CuraEngine CLI (AGPL — see Licensing). Four things about
+the command line it builds are load-bearing, and each of them was once wrong:
+
+- **A printer profile is translated into `-s` overrides.** `pythonsrc/profiles/*.json`
+  carry `layer_height`, `machine_width`, `material_print_temperature`,
+  `infill_sparse_density` and a dozen more, named exactly as CuraEngine names them —
+  and none of it used to reach the engine. `_resolve_definitions` accepted a profile
+  only when the filename ended in `.def.json`; anything else fell through to the
+  bundled Ender 3 definition, silently. Selecting the Anycubic Mega therefore sliced
+  for an Ender 3 at 210/60 °C on a 220×220 bed instead of 200/55 on 210×210, while
+  `printability` scored the mesh against the profile's nozzle and layer height and
+  `process_params` recorded settings the print never used. Verified in the pipeline
+  image: the same box now yields `M104 S200` / `M140 S55` under one profile and
+  `M104 S210` / `M140 S60` under the other, where the two G-code files used to be
+  byte-identical.
+- **Setting names are validated against `fdmprinter.def.json`** (`known_cura_settings`),
+  because CuraEngine accepts `-s anything=1` without complaint — an unknown key is not
+  an error, it is a setting that never applies and never says so. That is not
+  hypothetical: `ender3_base.def.json` set the bed size as
+  `machine_buildvolume_width`, which is not a setting, so the engine kept slicing for
+  its 100×100 mm default. Connection keys (`firmware`, `base_url`, `api_key`) are
+  dropped in silence; anything else unrecognised is warned about.
+- **Every `-s` is emitted before `-l`.** CuraEngine applies a setting to whatever
+  object is current and `-l` makes the loaded mesh current, so a setting after it lands
+  in per-mesh scope where slicing does not read it. Measured: `-s adhesion_type=none`
+  after `-l` left all 906 adhesion moves in the G-code; the same argument before `-l`
+  removed every one. The adhesion override had been sitting in that dead position since
+  it was written. `extra_args` follow the profile's own settings, so a later `-s` wins
+  on any key both name.
+- Booleans are rendered `true`/`false` (`format_setting_value`): `str(True)` is
+  `"True"`, which CuraEngine parses as neither, so `retraction_enable` would have
+  arrived disabled.
 
 ### Printer Operators (pythonsrc/operators/)
 
@@ -611,4 +670,4 @@ at runtime, then update `THIRD-PARTY-NOTICES.md`.
 - `data/` directories including logs, inputs, outputs are all runtime-only and gitignored
 - Phase 1 (FLUX) on Docker/CPU takes ~84 minutes; native macOS MPS is ~30 seconds — the MPS-native path is the primary dev workflow on Mac
 - Docker images are `linux/amd64` only; on Apple Silicon, Docker Desktop emulates via Rosetta 2. The one exception is `trellis2-worker.Dockerfile`, which is built against a CUDA devel image and only runs on an NVIDIA host
-- Phase 2 has **no CPU path at all**. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5
+- Phase 2 has **no CPU path at all**, and no fallback geometry either. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5; that path must exist, since a missing mesh now fails the run instead of substituting a cube

@@ -142,16 +142,19 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
 #: default, and about 20 extruded lines at a 0.4mm nozzle.
 BRIM_WIDTH_MM = 8.0
 
+#: Nozzle width assumed when the process profile does not state one. Only used to
+#: turn BRIM_WIDTH_MM into a line count.
+DEFAULT_NOZZLE_MM = 0.4
 
-def _adhesion_args(report) -> list[str]:
+
+def _adhesion_args(report, profile=None) -> list[str]:
     """Slice with a brim when the part's own footprint will not hold it down.
 
-    The bundled definition slices with a *skirt*, which primes the nozzle and
-    touches nothing: it contributes no adhesion at all. That is fine for a part
-    with a flat base and useless for anything standing on a small one — a real job
-    reached the plate with a 6mm² footprint against the 25mm² the process profile
-    wants, and `bed_contact` had been warning about exactly that while the slicer
-    ignored it.
+    A part with a flat base is held by its own first layer, and the printer
+    profiles ask for a *skirt* — which primes the nozzle and touches nothing.
+    That is useless for anything standing on a small base: a real job reached the
+    plate with a 6mm² footprint against the 25mm² the process profile wants, and
+    `bed_contact` had been warning about exactly that while the slicer ignored it.
 
     A brim is the right mechanism rather than a modelled plinth: it is one flat
     ring of material around the first layer, it peels off, and it does not alter
@@ -161,8 +164,17 @@ def _adhesion_args(report) -> list[str]:
     Switched on from the measurement rather than always, because a brim on a part
     that does not need one is wasted filament and a finishing job.
 
+    **The knob is `brim_line_count`, not `brim_width`.** `brim_width` is a Cura
+    *frontend* setting: the UI divides it by the line width and hands CuraEngine
+    the count. CuraEngine itself never reads the width, so the override this
+    function used to emit did nothing at all. Measured with CuraEngine 4.13 on the
+    bundled definitions: `brim_line_count=5` produced 119 adhesion moves, `=20`
+    produced 907, and `brim_width=2` on its own produced exactly the default.
+
     Args:
         report: The printability report, or None when scoring was skipped.
+        profile: The `ProcessProfile` the mesh was scored against, used for its
+            nozzle width. None falls back to `DEFAULT_NOZZLE_MM`.
 
     Returns:
         CuraEngine arguments, empty when the footprint is already sufficient.
@@ -172,11 +184,21 @@ def _adhesion_args(report) -> list[str]:
     bed = next((c for c in report.checks if c.check == "bed_contact"), None)
     if bed is None or bed.status == "pass":
         return []
+    nozzle = getattr(profile, "nozzle_diameter_mm", None) or DEFAULT_NOZZLE_MM
+    line_count = max(1, round(BRIM_WIDTH_MM / nozzle))
     logger.info(
-        "Adding a %.0fmm brim — %s", BRIM_WIDTH_MM, bed.detail,
+        "Adding a %.0fmm brim (%d lines at a %.2fmm nozzle) — %s",
+        BRIM_WIDTH_MM,
+        line_count,
+        nozzle,
+        bed.detail,
     )
-    print(f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm (small first-layer footprint)", flush=True)
-    return ["-s", "adhesion_type=brim", "-s", f"brim_width={BRIM_WIDTH_MM}"]
+    print(
+        f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm / {line_count} lines "
+        "(small first-layer footprint)",
+        flush=True,
+    )
+    return ["-s", "adhesion_type=brim", "-s", f"brim_line_count={line_count}"]
 
 
 def _record_generation(args, model, model_version, backend, params, cost_eur, duration_s) -> None:
@@ -643,14 +665,25 @@ def run(args: argparse.Namespace) -> None:
     else:
         logger.info("Skipping Phase 2 — using existing mesh: %s", raw_mesh_path)
         if not raw_mesh_path.exists():
-            logger.warning("Raw mesh not found, generating a dummy fallback cube...")
-            try:
-                import trimesh
-                mesh = trimesh.creation.box(extents=(50, 50, 50))
-                mesh.export(raw_mesh_path)
-            except Exception as e:
-                logger.error("Failed to generate fallback mesh: %s", e)
-                sys.exit(1)
+            # No fallback geometry. This used to export a 50mm cube and carry on,
+            # which is the worst available outcome: the cube passes repair, scores
+            # well on printability (it is watertight, has no overhangs and sits flat),
+            # slices cleanly and gets dispatched to the printer. Nothing downstream
+            # can tell it apart from the model that was asked for, so the failure
+            # surfaced as filament spent on a cube, and as telemetry rows whose mesh
+            # features describe a box under a prompt that asked for something else.
+            # The placeholder *blueprint* is a different case — an image is only ever
+            # input to a phase that names its own model, and Phase 2 refuses to pay
+            # for it. A mesh is the deliverable.
+            message = (
+                f"--skip-sculptor was passed but there is no mesh at {raw_mesh_path}. "
+                "Phase 2 is the only thing that can produce one: point --mesh at an "
+                "existing mesh, or drop --skip-sculptor to reconstruct it."
+            )
+            logger.error(message)
+            print(f"[P2P] ERROR: {message}", flush=True)
+            _write_status(2, "error", message)
+            sys.exit(1)
 
     # ── Phase 3: Engineer ─────────────────────────────────────────────────────
     t0 = _phase_start(3)
@@ -675,6 +708,9 @@ def run(args: argparse.Namespace) -> None:
     # updates and the UI progress bar all key off phases 1-5, and renumbering would
     # silently change what every historical .status file means.
     printability_report = None
+    # Held outside the try so Phase 4 can read the nozzle width off it: the brim
+    # override is a line *count*, which only means something against a line width.
+    process_profile = None
     print("\n[P2P] ─── PRINTABILITY START ───", flush=True)
     t0 = time.time()
     try:
@@ -759,7 +795,7 @@ def run(args: argparse.Namespace) -> None:
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
-                extra_args=_adhesion_args(printability_report),
+                extra_args=_adhesion_args(printability_report, process_profile),
             )
             _record_slice(args, gcode_path, time.time() - t0, status="success")
             _phase_pass(4, t0, str(gcode_path))

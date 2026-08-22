@@ -512,9 +512,21 @@ class Engineer:
         - Voxelise the mesh at a pitch equal to *wall_thickness*.
         - Erode the voxel grid by one voxel layer inward to get the interior volume.
         - Subtract the interior from the original voxel grid to get the shell.
-        - Convert back to a mesh.
+        - Convert back to a mesh, **in the original mesh's coordinate frame**.
 
         This approach requires no external boolean engine (no Blender dependency).
+
+        That last step is not a formality. ``VoxelGrid.marching_cubes`` is
+        ``ops.matrix_to_marching_cubes(matrix=self.matrix)`` — it meshes the
+        occupancy array at a spacing of one and **ignores the grid's own
+        transform**, so the surface comes back in *voxel-index* space: one unit
+        per voxel, origin at the grid corner. Hollowing runs after scaling and
+        orienting (see `process`), so shipping that unmapped meant a 50 mm sphere
+        left Phase 3 as a 43 mm one, its base 0.5 mm below the plate and its
+        centre 21 mm off in X and Y — a part of the wrong size in the wrong place,
+        for every ``--hollow`` job. Mapping index space back through
+        ``vox_filled.transform`` is what makes the shell the same object as the
+        input rather than a scale model of it.
         """
         logger.info("Hollowing mesh with voxel strategy (wall=%.2f mm)…", wall_thickness)
         try:
@@ -531,13 +543,20 @@ class Engineer:
             # Shell = filled minus inner
             shell_matrix = matrix & ~inner
 
-            # Reconstruct mesh from shell voxels
+            # Reconstruct mesh from shell voxels, then map the index-space surface
+            # back onto the input's frame: `marching_cubes` does not apply the
+            # grid transform, and the caller has already scaled and placed the part.
             shell_vox = trimesh.voxel.VoxelGrid(shell_matrix, vox_filled.transform)
             hollow = shell_vox.marching_cubes
+            if len(hollow.faces) == 0:
+                logger.warning("Hollowing produced an empty surface — returning solid mesh.")
+                return mesh
+            hollow.apply_transform(vox_filled.transform)
             logger.info(
-                "Hollow mesh — faces: %d, watertight: %s",
+                "Hollow mesh — faces: %d, watertight: %s, extents: %s",
                 len(hollow.faces),
                 hollow.is_watertight,
+                np.round(hollow.extents, 2).tolist(),
             )
             return hollow
         except Exception as exc:
@@ -595,6 +614,14 @@ class Engineer:
         if hollow:
             logger.info("Hollowing mesh…")
             mesh = self.hollow_mesh(mesh, wall_thickness)
+            # Voxelising at a `wall_thickness` pitch puts the shell's surface half
+            # a voxel outside the original one, so a hollowed part comes back
+            # slightly larger than the target with its base below Z=0 — geometry
+            # CuraEngine silently truncates. Re-scale and re-seat so the exported
+            # part is the size that was asked for and sits on the plate. A no-op
+            # when hollowing fell back to the solid mesh, which is already both.
+            mesh = self.scale_to_dimensions(mesh, scale_target)
+            mesh = self.orient_for_print(mesh)
 
         mesh.export(str(output_path))
         
