@@ -97,6 +97,15 @@ and Phase 2 then has two subjects for `_largest_component` to choose between. Va
 words ("small", "miniature") are deliberately **left in place**: those are style, not
 measurement, and editing them out would change what the person asked for.
 
+**`hollow` re-scales, and it must be told the axis.** `hollow_mesh` voxelises at a
+`wall_thickness` pitch, so the shell comes back slightly larger than the target with its
+base below Z = 0, and `process` re-scales and re-seats afterwards. That second
+`scale_to_dimensions` call takes `scale_axis` explicitly — left to the default it would
+size a `longest` request by *height*, so the part would be scaled by one convention and
+then silently re-scaled by another. The `achieved_extent_mm` in `last_report` is measured
+after this, on the exported mesh, which is why it is the honest figure rather than the
+one the first scale produced.
+
 **Height mode bounds one axis and not the other two.** A wide model asked for a tall
 height can come out past the bed. It is deliberately **not** shrunk — a part quietly
 scaled to something other than what was asked for is the bug this whole change set
@@ -147,7 +156,29 @@ fixture must not sit in the real namespace looking like one a model made.
 `_will_use_reference_assets` is the predicate, and it is deliberately narrower than "a
 phase was skipped": the primary Mac workflow always passes `--skip-visualizer` because
 Phase 1 just ran natively, and `--skip-sculptor --mesh real.obj` supplies its own. Only a
-*substitution* earns the prefix. `_blueprint_is_stand_in` recognises the reference
+*substitution* earns the prefix.
+
+**Both phases skipped is the commonest dev configuration, and it used to get no
+blueprint at all.** `SKIP_VISUALIZER` + `SKIP_SCULPTOR` in the config store is how the
+UI runs Phases 3-5 on a machine with no GPU, and the install condition read `if not
+blueprint_path.exists() and not args.skip_sculptor` — withholding the image whenever
+Phase 2 was skipped too, on the reasoning that a skipped Phase 2 has nothing to hand it
+to. Phase 2 is not the blueprint's only consumer: it is the first thing the running view
+shows and its hash is the job's only Phase 1 provenance. Those runs exited 0 with a
+`dev-` directory holding `raw_mesh.obj` alone, an empty blueprint stage, NULL for every
+`blueprint_*` column, and nothing in the log saying so.
+`_should_install_reference_blueprint` is the decision now: skipped Phase 1, nothing at
+the path, **and no `--mesh`**. That last clause is the honest exception — a run that
+supplied its own geometry is not a fixture run, its outputs land in the real namespace,
+and inventing a blueprint there would stamp a fabricated input's hash as this job's
+provenance. That case logs a warning instead, because an unexplained empty first stage
+reads as a broken pipeline.
+
+**The fixture flag is carried out to the UI, not only to the dataset.**
+`GET /jobs/{id}` returns `used_reference_assets`, and the running view shows a
+`Fixture inputs` badge and re-captions the blueprint and mesh stages. Without it the
+page captions a bundled image "Blueprint drawn from the prompt" — the same lie the
+`dev-` prefix exists to prevent, told to the person instead of to the query. `_blueprint_is_stand_in` recognises the reference
 blueprint by hash and the legacy flat rectangles by pixels — that guard is the only thing
 stopping a per-generation backend from being billed to reconstruct a fixture, and the old
 files persist on the shared blueprint path.
@@ -673,6 +704,17 @@ gets a mesh with no consistent inside and printability scores it unprintable.
   hole to fill, a non-manifold edge is a face to remove, and different code fixes
   each. `process` logs the pair either side of repair, so a repair that did
   nothing is visible in the log rather than three phases later.
+- **`hollow_mesh` maps its shell back out of voxel space.**
+  `VoxelGrid.marching_cubes` is `ops.matrix_to_marching_cubes(matrix=self.matrix)`:
+  it meshes the occupancy array at a spacing of one and **ignores the grid's own
+  transform**, so the surface comes back in index space — one unit per voxel, origin
+  at the grid corner. Hollowing runs *after* scaling and orienting, so returning that
+  unmapped turned a 50mm sphere into a 43mm one with its base 0.5mm under the plate
+  and its centre 21mm off in X and Y, on every `--hollow` job, and nothing downstream
+  could notice: the shell is watertight, it slices and it prints. `process` then
+  re-scales and re-seats, because voxelising at a `wall_thickness` pitch leaves the
+  isosurface up to a voxel outside the input's surface. The same omission in
+  `_voxel_remesh` is harmless only because repair runs before scale and orientation.
 - **Repair is not bit-exact even on a clean mesh**: `_to_manifold` hands vertices
   to the kernel as float32, so coordinates round-trip through single precision.
   Sub-micron on a 50mm part, but not zero.
@@ -728,13 +770,55 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
   Choosing a better *print* orientation is a real optimisation, but it is a search over
   candidate rotations scored against the process profile, not an argmin over three
   numbers.
-- **Adhesion follows the measurement** (`pipeline._adhesion_args`). The bundled
-  definition slices with a skirt, which primes the nozzle and touches nothing. When
-  `bed_contact` does not pass, Phase 4 is given `-s adhesion_type=brim`. A brim rather
+- **Adhesion follows the measurement** (`pipeline._adhesion_args`). The profiles ask
+  for a skirt, which primes the nozzle and touches nothing. When `bed_contact` does not
+  pass, Phase 4 is given `-s adhesion_type=brim -s brim_line_count=N`. A brim rather
   than modelled base geometry: it peels off, and it does not print a part other than the
-  one that was asked for. Note that `adhesion_type` in `pythonsrc/profiles/*.json` is
-  **not** read by the slicer — those are printer-connection profiles; CuraEngine's
-  settings come from the `-j` definitions and `-s` overrides.
+  one that was asked for. **The knob is `brim_line_count`, not `brim_width`** —
+  `brim_width` is a Cura *frontend* setting that the UI divides by the line width before
+  calling the engine, so the override this used to pass had no effect whatsoever
+  (measured on CuraEngine 4.13: `brim_line_count=5` → 119 adhesion moves, `=20` → 907,
+  `brim_width=2` → exactly the default). N is derived from `BRIM_WIDTH_MM` and the
+  process profile's nozzle, so 8mm is 20 lines at 0.4mm and 10 at 0.8mm.
+- **`fdmprinter`'s own default adhesion is `brim`, 20 lines.** Until the profile
+  translation below existed, that default was what every job got, whatever the profile
+  said and whatever `bed_contact` measured. A part with an adequate footprint now gets
+  the skirt its profile asks for, so the brim means something when it appears.
+
+### Slicer — Phase 4 (pythonsrc/slicer.py)
+
+Subprocess wrapper around the CuraEngine CLI (AGPL — see Licensing). Four things about
+the command line it builds are load-bearing, and each of them was once wrong:
+
+- **A printer profile is translated into `-s` overrides.** `pythonsrc/profiles/*.json`
+  carry `layer_height`, `machine_width`, `material_print_temperature`,
+  `infill_sparse_density` and a dozen more, named exactly as CuraEngine names them —
+  and none of it used to reach the engine. `_resolve_definitions` accepted a profile
+  only when the filename ended in `.def.json`; anything else fell through to the
+  bundled Ender 3 definition, silently. Selecting the Anycubic Mega therefore sliced
+  for an Ender 3 at 210/60 °C on a 220×220 bed instead of 200/55 on 210×210, while
+  `printability` scored the mesh against the profile's nozzle and layer height and
+  `process_params` recorded settings the print never used. Verified in the pipeline
+  image: the same box now yields `M104 S200` / `M140 S55` under one profile and
+  `M104 S210` / `M140 S60` under the other, where the two G-code files used to be
+  byte-identical.
+- **Setting names are validated against `fdmprinter.def.json`** (`known_cura_settings`),
+  because CuraEngine accepts `-s anything=1` without complaint — an unknown key is not
+  an error, it is a setting that never applies and never says so. That is not
+  hypothetical: `ender3_base.def.json` set the bed size as
+  `machine_buildvolume_width`, which is not a setting, so the engine kept slicing for
+  its 100×100 mm default. Connection keys (`firmware`, `base_url`, `api_key`) are
+  dropped in silence; anything else unrecognised is warned about.
+- **Every `-s` is emitted before `-l`.** CuraEngine applies a setting to whatever
+  object is current and `-l` makes the loaded mesh current, so a setting after it lands
+  in per-mesh scope where slicing does not read it. Measured: `-s adhesion_type=none`
+  after `-l` left all 906 adhesion moves in the G-code; the same argument before `-l`
+  removed every one. The adhesion override had been sitting in that dead position since
+  it was written. `extra_args` follow the profile's own settings, so a later `-s` wins
+  on any key both name.
+- Booleans are rendered `true`/`false` (`format_setting_value`): `str(True)` is
+  `"True"`, which CuraEngine parses as neither, so `retraction_enable` would have
+  arrived disabled.
 
 ### Printer readiness (`printer_status`)
 

@@ -129,6 +129,39 @@ def _install_dev_asset(source: Path, destination: Path, what: str) -> None:
     )
 
 
+def _should_install_reference_blueprint(args, blueprint_path: Path) -> bool:
+    """Whether this run needs the bundled blueprint stood in for Phase 1.
+
+    True when Phase 1 was skipped with nothing at that path — including when Phase 2 is
+    skipped as well. That last case used to be excluded (`and not args.skip_sculptor`),
+    on the reasoning that a skipped Phase 2 has nothing to hand the image to. It is the
+    commonest dev configuration there is: both `SKIP_VISUALIZER` and `SKIP_SCULPTOR` set
+    in the config store is how the UI runs Phases 3-5 on a machine with no GPU. Those
+    runs installed the reference mesh, no blueprint, and said nothing — exit 0, a `dev-`
+    directory holding `raw_mesh.obj` alone, an empty blueprint stage in the running view
+    and NULL for every Phase 1 provenance column. Phase 2 is not the blueprint's only
+    consumer.
+
+    False when `--mesh` supplied the geometry. That run is not a fixture run — nothing
+    in it came from `assets/dev_reference/`, so `_will_use_reference_assets` is False and
+    its outputs land in the real namespace. Standing a blueprint in there would put a
+    fabricated input beside real artifacts and record its hash as this job's Phase 1
+    provenance, which is the one thing the `dev-` prefix exists to prevent.
+
+    Args:
+        args: Parsed CLI arguments.
+        blueprint_path: Where Phase 1's output is expected.
+
+    Returns:
+        True if the bundled reference blueprint should be copied to `blueprint_path`.
+    """
+    if not args.skip_visualizer:
+        return False
+    if blueprint_path.exists():
+        return False
+    return not args.mesh
+
+
 def _blueprint_is_stand_in(path: Path) -> bool:
     """True when this image is a stand-in rather than something Phase 1 rendered.
 
@@ -196,16 +229,19 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
 #: default, and about 20 extruded lines at a 0.4mm nozzle.
 BRIM_WIDTH_MM = 8.0
 
+#: Nozzle width assumed when the process profile does not state one. Only used to
+#: turn BRIM_WIDTH_MM into a line count.
+DEFAULT_NOZZLE_MM = 0.4
 
-def _adhesion_args(report) -> list[str]:
+
+def _adhesion_args(report, profile=None) -> list[str]:
     """Slice with a brim when the part's own footprint will not hold it down.
 
-    The bundled definition slices with a *skirt*, which primes the nozzle and
-    touches nothing: it contributes no adhesion at all. That is fine for a part
-    with a flat base and useless for anything standing on a small one — a real job
-    reached the plate with a 6mm² footprint against the 25mm² the process profile
-    wants, and `bed_contact` had been warning about exactly that while the slicer
-    ignored it.
+    A part with a flat base is held by its own first layer, and the printer
+    profiles ask for a *skirt* — which primes the nozzle and touches nothing.
+    That is useless for anything standing on a small base: a real job reached the
+    plate with a 6mm² footprint against the 25mm² the process profile wants, and
+    `bed_contact` had been warning about exactly that while the slicer ignored it.
 
     A brim is the right mechanism rather than a modelled plinth: it is one flat
     ring of material around the first layer, it peels off, and it does not alter
@@ -215,8 +251,17 @@ def _adhesion_args(report) -> list[str]:
     Switched on from the measurement rather than always, because a brim on a part
     that does not need one is wasted filament and a finishing job.
 
+    **The knob is `brim_line_count`, not `brim_width`.** `brim_width` is a Cura
+    *frontend* setting: the UI divides it by the line width and hands CuraEngine
+    the count. CuraEngine itself never reads the width, so the override this
+    function used to emit did nothing at all. Measured with CuraEngine 4.13 on the
+    bundled definitions: `brim_line_count=5` produced 119 adhesion moves, `=20`
+    produced 907, and `brim_width=2` on its own produced exactly the default.
+
     Args:
         report: The printability report, or None when scoring was skipped.
+        profile: The `ProcessProfile` the mesh was scored against, used for its
+            nozzle width. None falls back to `DEFAULT_NOZZLE_MM`.
 
     Returns:
         CuraEngine arguments, empty when the footprint is already sufficient.
@@ -226,11 +271,21 @@ def _adhesion_args(report) -> list[str]:
     bed = next((c for c in report.checks if c.check == "bed_contact"), None)
     if bed is None or bed.status == "pass":
         return []
+    nozzle = getattr(profile, "nozzle_diameter_mm", None) or DEFAULT_NOZZLE_MM
+    line_count = max(1, round(BRIM_WIDTH_MM / nozzle))
     logger.info(
-        "Adding a %.0fmm brim — %s", BRIM_WIDTH_MM, bed.detail,
+        "Adding a %.0fmm brim (%d lines at a %.2fmm nozzle) — %s",
+        BRIM_WIDTH_MM,
+        line_count,
+        nozzle,
+        bed.detail,
     )
-    print(f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm (small first-layer footprint)", flush=True)
-    return ["-s", "adhesion_type=brim", "-s", f"brim_width={BRIM_WIDTH_MM}"]
+    print(
+        f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm / {line_count} lines "
+        "(small first-layer footprint)",
+        flush=True,
+    )
+    return ["-s", "adhesion_type=brim", "-s", f"brim_line_count={line_count}"]
 
 
 def _record_generation(args, model, model_version, backend, params, cost_eur, duration_s) -> None:
@@ -784,12 +839,21 @@ def run(args: argparse.Namespace) -> None:
             _phase_fail(1, t0, exc)
     else:
         logger.info("Skipping Phase 1 — using existing blueprint: %s", blueprint_path)
-        if not blueprint_path.exists() and not args.skip_sculptor:
+        if _should_install_reference_blueprint(args, blueprint_path):
             try:
                 _install_dev_asset(DEV_REFERENCE_BLUEPRINT, blueprint_path, "blueprint")
             except Exception as e:
                 logger.error("Failed to install the reference blueprint: %s", e)
                 sys.exit(1)
+        elif not blueprint_path.exists():
+            # `--skip-sculptor --mesh real.obj` with no blueprint: legitimately nothing
+            # to show. Said out loud, because the running view's first stage will be
+            # empty and an unexplained empty stage reads as a broken pipeline.
+            logger.warning(
+                "No blueprint at %s and none will be installed — the mesh came from "
+                "--mesh, so there is no Phase 1 output to show or hash.",
+                blueprint_path,
+            )
 
         # Checked by content every time, not just when this run installed it: a stand-in
         # left behind by an earlier run is still a stand-in, and Phase 2 must refuse to
@@ -966,6 +1030,17 @@ def run(args: argparse.Namespace) -> None:
     else:
         logger.info("Skipping Phase 2 — using existing mesh: %s", raw_mesh_path)
         if not raw_mesh_path.exists():
+            # Stand the bundled reference mesh in rather than fabricating geometry.
+            # A 50mm `trimesh.creation.box` used to be exported here, which is the
+            # worst available outcome: a cube is watertight, convex, has no boundary
+            # or non-manifold edges, no thin walls and no overhangs, so repair has
+            # nothing to repair, printability scores geometry no reconstruction
+            # produces, the adhesion rule never fires and the slicer sees six faces
+            # instead of six figures. `assets/dev_reference/raw_mesh.obj` is a real
+            # O-Voxel reconstruction carrying the defects Phases 3-5 exist to handle,
+            # and a run that installs it is marked as a fixture run twice over: the
+            # output directory is named `dev-{job_id}` and `used_reference_assets` is
+            # set on the telemetry row.
             try:
                 _install_dev_asset(DEV_REFERENCE_MESH, raw_mesh_path, "mesh")
             except Exception as e:
@@ -1036,6 +1111,9 @@ def run(args: argparse.Namespace) -> None:
     # updates and the UI progress bar all key off phases 1-5, and renumbering would
     # silently change what every historical .status file means.
     printability_report = None
+    # Held outside the try so Phase 4 can read the nozzle width off it: the brim
+    # override is a line *count*, which only means something against a line width.
+    process_profile = None
     print("\n[P2P] ─── PRINTABILITY START ───", flush=True)
     t0 = time.time()
     try:
@@ -1157,7 +1235,7 @@ def run(args: argparse.Namespace) -> None:
             )
             # Slicer (CuraEngine) needs .stl, Engineer outputs both .obj and .stl
             stl_mesh_path = final_mesh_path.with_suffix(".stl")
-            slicer_overrides = _adhesion_args(printability_report)
+            slicer_overrides = _adhesion_args(printability_report, process_profile)
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,

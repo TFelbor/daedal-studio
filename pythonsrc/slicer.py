@@ -14,15 +14,88 @@ Usage (standalone):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
-from config import CURA_ENGINE_PATH
+try:
+    from config import CURA_ENGINE_PATH
+except ImportError:  # pragma: no cover - depends on how the caller set sys.path
+    from pythonsrc.config import CURA_ENGINE_PATH  # type: ignore[no-redef]
 
 logger = logging.getLogger("p2p.slicer")
+
+#: Profile keys that say how to *reach* a printer, not how to slice for it. Skipped
+#: silently; every other unrecognised key is warned about, because a mistyped
+#: setting name is otherwise indistinguishable from one that had no effect.
+CONNECTION_KEYS = frozenset({"firmware", "base_url", "api_key"})
+
+
+@lru_cache(maxsize=4)
+def known_cura_settings(definitions_dir: Path) -> frozenset[str]:
+    """Every setting name CuraEngine accepts, read out of the bundled definitions.
+
+    The engine is the authority on its own vocabulary and the vocabulary is already
+    on disk — 591 settings in ``fdmprinter.def.json`` alone. A hard-coded allow-list
+    here would be a second copy of that, diverging the first time the definitions are
+    updated.
+
+    The list is needed because CuraEngine accepts ``-s anything=1`` without
+    complaint: an unknown key is not an error, it is a setting that silently never
+    applies. ``machine_buildvolume_width`` is what that looks like in practice — the
+    bundled Ender 3 definition set the bed size under that name, no such setting
+    exists, and the engine went on slicing for the 100 x 100 mm default bed.
+
+    Args:
+        definitions_dir: Directory holding ``fdmprinter.def.json``.
+
+    Returns:
+        The set of valid setting keys; empty if the definitions cannot be read.
+    """
+    keys: set[str] = set()
+
+    def walk(node: dict) -> None:
+        for key, value in node.items():
+            keys.add(key)
+            if isinstance(value, dict) and isinstance(value.get("children"), dict):
+                walk(value["children"])
+
+    for name in ("fdmprinter.def.json", "fdmextruder.def.json"):
+        path = definitions_dir / name
+        if not path.exists():
+            continue
+        try:
+            with open(path) as handle:
+                walk(json.load(handle).get("settings", {}))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Could not read setting names from %s: %s", path, exc)
+    return frozenset(keys)
+
+
+def format_setting_value(value) -> str | None:
+    """Render a profile value the way CuraEngine's parser expects it.
+
+    Booleans are the reason this exists: ``str(True)`` is ``"True"``, which
+    CuraEngine reads as neither true nor false, so ``retraction_enable`` would come
+    out of a Python profile disabled.
+
+    Args:
+        value: The value as it appears in the profile JSON.
+
+    Returns:
+        The string to pass after ``key=``, or None for values with nothing to send.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float, str)):
+        return str(value)
+    return json.dumps(value)
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -43,13 +116,30 @@ class CuraSlicer:
     """
     Subprocess wrapper around the CuraEngine CLI using bundled definition files.
 
+    Two kinds of file can be passed as *profile*, and they are used differently:
+
+    * A ``.def.json`` **printer definition** is handed to CuraEngine as ``-j``,
+      inheriting from the bundled ``fdmprinter.def.json``.
+    * A ``pythonsrc/profiles/*.json`` **printer profile** — the file the server and
+      the operators read — is *translated* into ``-s key=value`` overrides.
+
+    That translation is the whole point. Those profiles carry `layer_height`,
+    `machine_width`, `material_print_temperature` and a dozen more, all named
+    exactly as CuraEngine names them, and none of it used to reach the engine: a
+    file that is not a ``.def.json`` fell through to the bundled Ender 3
+    definition, silently. Selecting the Anycubic Mega profile therefore sliced for
+    an Ender 3 at 210/60 degC instead of 200/55, and `printability` scored the mesh
+    against a nozzle and layer height the slicer never saw. The profile snapshot on
+    the telemetry row (`process_params`) claimed those settings too, which made the
+    dataset wrong rather than merely incomplete.
+
     Parameters
     ----------
     cura_engine:
         Path to the CuraEngine binary.
     profile:
-        Path to a .def.json printer definition file. If None, the bundled
-        Ender 3 definition is used.
+        Path to a .def.json printer definition *or* a printer profile JSON. If
+        None, the bundled Ender 3 definition is used.
     """
 
     DEFINITIONS_DIR = Path(__file__).parent / "profiles" / "definitions"
@@ -61,6 +151,7 @@ class CuraSlicer:
     ) -> None:
         self.cura_engine = cura_engine
         self.profile_path: Path | None = self._load_profile(profile)
+        self.profile_settings: dict[str, str] = self._profile_settings(self.profile_path)
         self._check_cura_available()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -76,6 +167,69 @@ class CuraSlicer:
             raise FileNotFoundError(f"Printer definition not found: {path}")
         logger.debug("Using custom printer definition from '%s'.", path)
         return path
+
+    @classmethod
+    def _is_definition(cls, path: Path | None) -> bool:
+        """True for a CuraEngine printer definition, as opposed to a p2p profile."""
+        return path is not None and path.name.endswith(".def.json")
+
+    @classmethod
+    def _profile_settings(cls, path: Path | None) -> dict[str, str]:
+        """Translate a printer profile into CuraEngine setting overrides.
+
+        A key is emitted when CuraEngine has a setting by that name; connection keys
+        are dropped in silence, and anything else is warned about. Validating rather
+        than forwarding everything matters because the engine accepts an unknown
+        ``-s`` without complaint, so a wrong name is a setting that never applies and
+        never says so.
+
+        Args:
+            path: The profile, or None. A ``.def.json`` yields nothing — it is passed
+                to the engine as a definition instead.
+
+        Returns:
+            Setting name to formatted value, in profile order.
+        """
+        if path is None or cls._is_definition(path):
+            return {}
+
+        try:
+            with open(path) as handle:
+                profile = json.load(handle)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SlicerError(f"Could not read printer profile {path}: {exc}") from exc
+        if not isinstance(profile, dict):
+            raise SlicerError(f"Printer profile {path} is not a JSON object.")
+
+        known = known_cura_settings(cls.DEFINITIONS_DIR)
+        settings: dict[str, str] = {}
+        for key, raw in profile.items():
+            if key in CONNECTION_KEYS:
+                continue
+            if key not in known:
+                logger.warning(
+                    "Profile key '%s' is not a CuraEngine setting — ignoring it.", key
+                )
+                continue
+            value = format_setting_value(raw)
+            if value is None:
+                continue
+            settings[key] = value
+
+        logger.info(
+            "Translated %d setting(s) from profile '%s' for CuraEngine.",
+            len(settings),
+            path.name,
+        )
+        logger.debug("Profile settings: %s", settings)
+        return settings
+
+    def _profile_setting_args(self) -> list[str]:
+        """Return the profile's settings as CuraEngine ``-s`` arguments."""
+        args: list[str] = []
+        for key, value in self.profile_settings.items():
+            args += ["-s", f"{key}={value}"]
+        return args
 
     def _check_cura_available(self) -> None:
         if shutil.which(self.cura_engine) is None and not Path(self.cura_engine).exists():
@@ -99,7 +253,7 @@ class CuraSlicer:
                 f"{self.DEFINITIONS_DIR}."
             )
 
-        if self.profile_path is not None and self.profile_path.suffix == ".json" and self.profile_path.name.endswith(".def.json"):
+        if self._is_definition(self.profile_path):
             return [str(base_def), str(self.profile_path)]
 
         return [
@@ -125,12 +279,24 @@ class CuraSlicer:
         output_path:
             Desired path for the output ``.gcode`` file.
         extra_args:
-            Raw CLI arguments forwarded to CuraEngine.
+            Raw CLI arguments forwarded to CuraEngine, after the profile's own
+            settings so that they win on any key both name.
 
         Returns
         -------
         Path
             Resolved path to the generated ``.gcode`` file.
+
+        Notes
+        -----
+        **Every ``-s`` is emitted before ``-l``, and that is not cosmetic.**
+        CuraEngine applies a setting to whatever object is current, and ``-l``
+        makes the loaded mesh current — so a ``-s`` after it lands in per-mesh
+        scope, where the settings that drive slicing are not read from. Measured on
+        the bundled definitions with CuraEngine 4.13: ``-s adhesion_type=none``
+        placed after ``-l`` left all 906 adhesion moves in the G-code, and the same
+        argument before ``-l`` removed every one of them. The adhesion override
+        Phase 4 has been passing since it was written sat in that dead position.
         """
         input_path = Path(input_path).resolve()
         output_path = Path(output_path).resolve()
@@ -149,10 +315,10 @@ class CuraSlicer:
         cmd: list[str] = [self.cura_engine, "slice"]
         for def_path in definition_paths:
             cmd += ["-j", def_path]
-        cmd += ["-o", str(output_path), "-l", str(input_path)]
-
+        cmd += self._profile_setting_args()
         if extra_args:
             cmd.extend(extra_args)
+        cmd += ["-o", str(output_path), "-l", str(input_path)]
 
         logger.info("Slicing '%s' → '%s'…", input_path.name, output_path.name)
         logger.debug("Execution command length: %d parts", len(cmd))
@@ -198,7 +364,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", "-o", required=True, metavar="PATH", help=".gcode output path")
     parser.add_argument(
         "--profile", "-p", metavar="PATH",
-        help="Path to a .def.json printer definition file (default: bundled Ender 3)",
+        help=(
+            "Path to a .def.json printer definition, or a printer profile JSON "
+            "whose settings are translated into overrides (default: bundled Ender 3)"
+        ),
     )
     parser.add_argument("--engine", default=CURA_ENGINE_PATH, metavar="BIN", help="CuraEngine binary path")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")

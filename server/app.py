@@ -637,6 +637,12 @@ class JobStatusResponse(BaseModel):
     layer_count: Optional[int] = None
     outcome_source: Optional[str] = None
     awaiting_verdict: bool = False
+    #: True when a bundled fixture stood in for Phase 1 or Phase 2. Carried out to the
+    #: UI, not only to the dataset: the running view captions the blueprint "drawn from
+    #: the prompt" and shows the mesh as this job's reconstruction, and for a fixture run
+    #: both statements are false. None on rows written before the column existed, which
+    #: is deliberately distinct from a verified False.
+    used_reference_assets: Optional[bool] = None
     #: "not_ready" | "awaiting_confirmation" | "dispatched". See `dispatch_state`.
     dispatch_state: str = "not_ready"
     #: "not_ready" | "awaiting_approval" | "approved" | "rejected". See
@@ -1885,6 +1891,9 @@ async def get_job(job_id: str):
         layer_count=job.layer_count,
         outcome_source=job.outcome_source,
         awaiting_verdict=job.outcome == "awaiting_verdict",
+        used_reference_assets=(
+            None if job.used_reference_assets is None else bool(job.used_reference_assets)
+        ),
         dispatch_state=job_dispatch_state,
         dispatch_target=job_dispatch_target,
     )
