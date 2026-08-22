@@ -15,6 +15,11 @@ export default defineConfig({
       // unmatched path with index.html, so `res.ok` is true and `res.json()` throws
       // on HTML. The pilot's response rate is measured through these two endpoints.
       '/feedback': 'http://localhost:8000',
+      // Same failure mode, two more endpoints: unproxied, Vite answers with index.html,
+      // `res.ok` is true and the JSON parse throws. `/prompt` carries the size hint the
+      // composer prefills from; `/activity` carries the UI event stream.
+      '/prompt': 'http://localhost:8000',
+      '/activity': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true

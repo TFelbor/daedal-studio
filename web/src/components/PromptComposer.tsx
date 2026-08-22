@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PromptNotice } from './PromptNotice';
 import { ArrowRight, X } from 'lucide-react';
 import { Marks } from './Blueprint';
 import { reportUi } from '../api/activity';
@@ -106,6 +107,7 @@ export function PromptComposer({ open, busy, error, onSubmit, onCancel }: Prompt
               }
             }}
           />
+          <PromptNotice className={styles.notice} />
           <div className={styles.footer}>
             <span className={styles.hint}>
               {error ? (

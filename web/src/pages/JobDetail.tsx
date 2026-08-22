@@ -211,6 +211,23 @@ export function JobDetail() {
         material_brand: job.material_brand || undefined,
         material_colour: job.material_colour || undefined,
         parent_job_id: job.job_id,
+        // The size *is* carried over, unlike the seed. Regenerating means the result
+        // was not wanted, not that the size was wrong — and this request is rebuilt
+        // from the row, so a size omitted here silently falls back to the pipeline
+        // default and the difference gets blamed on the model. `size_source` is
+        // carried too, but only as a value the server will accept: it re-derives
+        // "default" itself when no size is sent.
+        target_mm: job.requested_size_mm ?? undefined,
+        scale_axis:
+          job.requested_size_mm != null
+            ? ((job.requested_scale_axis as 'height' | 'longest' | null) ?? 'height')
+            : undefined,
+        size_source:
+          job.requested_size_mm != null && job.size_source === 'prompt_hint'
+            ? 'prompt_hint'
+            : job.requested_size_mm != null
+              ? 'user'
+              : undefined,
         // A new seed on purpose: regenerating means the last result was not wanted, so
         // reusing its seed would reproduce exactly what the user rejected.
       });

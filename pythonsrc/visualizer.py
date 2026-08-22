@@ -23,6 +23,7 @@ try:
         SEED_SPACE,
         BlueprintResult,
         engineer_prompt,
+        normalise_colour,
         resolve_seed,
         write_sidecar,
     )
@@ -31,9 +32,19 @@ except ImportError:
         SEED_SPACE,
         BlueprintResult,
         engineer_prompt,
+        normalise_colour,
         resolve_seed,
         write_sidecar,
     )
+
+# Imported at module scope on purpose: this module already pulls in torch for the
+# diffusion pipeline, so there is no import-cost argument, and a screen that is
+# imported lazily is a screen that can be missing at the moment it matters. The heavy
+# imports inside `ip_screen_image` are the ones that stay deferred.
+try:
+    from ip_screen_image import save_screened
+except ImportError:
+    from pythonsrc.ip_screen_image import save_screened
 
 logger = logging.getLogger("p2p.visualizer")
 
@@ -92,6 +103,7 @@ class Visualizer:
         seed: int | None = None,
         height: int = 1024,
         width: int = 1024,
+        colour: str | None = None,
     ) -> BlueprintResult:
         """Generate a clay-render blueprint image.
 
@@ -107,6 +119,9 @@ class Visualizer:
             seed: Explicit seed; one is drawn when omitted.
             height: Image height in pixels.
             width: Image width in pixels.
+            colour: The requester's filament colour, rendered into the blueprint so
+                the preview matches the part. Blueprint only — Phase 2 discards
+                appearance and the print is single-colour either way.
 
         Returns:
             A BlueprintResult carrying the path, seed and conditioning used.
@@ -114,13 +129,18 @@ class Visualizer:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        engineered_prompt = engineer_prompt(prompt)
+        engineered_prompt = engineer_prompt(prompt, colour)
         seed = resolve_seed(seed)
         params = {
             "num_inference_steps": num_inference_steps,
             "guidance_scale": guidance_scale,
             "height": height,
             "width": width,
+            # Recorded even when None. `params` becomes `blueprint_params` and the
+            # sidecar's params, and without it two runs of the same prompt in
+            # different colours are indistinguishable in the dataset — the colour
+            # changes the image, so it is part of the conditioning.
+            "filament_colour": normalise_colour(colour),
         }
 
         logger.info("Generating blueprint (seed %d) for: '%s'", seed, engineered_prompt)
@@ -128,13 +148,29 @@ class Visualizer:
 
         # Always use CPU generator — Generator("mps") and Generator("cuda") can
         # cause issues, and the seed is only for reproducibility, not computation.
+        # `params` carries provenance as well as conditioning, so the recorded copy
+        # is not the kwargs copy: `filament_colour` is already inside the engineered
+        # prompt and the pipeline would reject it as an unknown argument.
+        conditioning = {k: v for k, v in params.items() if k != "filament_colour"}
         image = self.pipe(
             prompt=engineered_prompt,
             generator=torch.Generator("cpu").manual_seed(seed),
-            **params,
+            **conditioning,
         ).images[0]
 
-        image.save(str(output_path))
+        # Screened before it is written, never after. The path here is the shared
+        # data/inputs/blueprint.png — Phase 2's input and the fallback the artifact
+        # endpoints serve for any job — so a refused render saved "to look at later"
+        # becomes some other job's input. `save_screened` raises rather than saving
+        # when the screen is enforcing; a flag rides along on `params` instead.
+        screen_verdict = save_screened(image, output_path)
+        if screen_verdict.action != "allow":
+            params["ip_image_screen"] = {
+                "action": screen_verdict.action,
+                "term": screen_verdict.term,
+                "score": screen_verdict.score,
+                "reason": screen_verdict.reason,
+            }
         elapsed = time.time() - start
         logger.info("Blueprint saved to %s (seed %d, %.2fs)", output_path, seed, elapsed)
         result = BlueprintResult(
@@ -171,6 +207,13 @@ if __name__ == "__main__":
         default=None,
         help="RNG seed; a random one is drawn and reported if omitted",
     )
+    parser.add_argument(
+        "--colour",
+        "--color",
+        dest="colour",
+        default=None,
+        help="Filament colour to render the blueprint in (blueprint only; the print is single-colour regardless)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -190,6 +233,7 @@ if __name__ == "__main__":
         output_path=args.output,
         num_inference_steps=args.steps,
         seed=args.seed,
+        colour=args.colour,
     )
     # Printed so an interactive run can reproduce its own result with --seed.
     print(f"[P2P] Blueprint seed: {result.seed}")

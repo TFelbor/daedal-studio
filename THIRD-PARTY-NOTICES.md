@@ -7,7 +7,7 @@ listed below, each under its own licence.
 This file exists to satisfy the attribution and source-offer obligations those
 licences impose. It is reviewed whenever a dependency is added or bumped.
 
-Last reviewed: 2026-08-20.
+Last reviewed: 2026-08-22.
 
 ---
 
@@ -89,6 +89,9 @@ This is the most common place for a licence problem to enter unnoticed.
 | DINOv3 ViT-L/16 (`facebook/dinov3-vitl16-pretrain-lvd1689m`) | [DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/) | Yes, with conditions | © Meta Platforms. TRELLIS.2's `image_cond_model`. Attribution, Acceptable Use Policy and trade-control terms apply — see below |
 | BiRefNet (`ZhengPeng7/BiRefNet`) | MIT | Yes | Background removal. **Substituted by this project** for the checkpoint's configured default — see below |
 | ~~BRIA RMBG-2.0 (`briaai/RMBG-2.0`)~~ | CC BY-NC 4.0 | **No** — paid BRIA agreement required | Upstream TRELLIS.2's configured matte model. **Never loaded.** Overridden before construction — see below |
+| SigLIP base/16-224 (`google/siglip-base-patch16-224`) | Apache-2.0 | Yes | © Google. Zero-shot screen on the generated blueprint (`pythonsrc/ip_screen_image.py`). Natively supported by `transformers`, so no `trust_remote_code`. Compared image↔**text**: **no reference images of protected characters are stored in this repository** |
+| ~~OpenAI CLIP (`openai/clip-vit-*`)~~ | MIT *tag*, but see Notes | **No** | Considered for the blueprint screen and **rejected**. The repository is tagged MIT while its own model card states that *"Any deployed use case of the model — whether commercial or not — is currently out of scope."* Reading the tag is not reading the licence. On the deny list in `ip_screen_image.DENIED_MODEL_REPOS`; construction raises |
+| ~~SigLIP 2 (`google/siglip2-*`)~~ | Apache-2.0 | Yes, but unused | Permissively licensed and a candidate for the same role, deferred on a correctness report rather than a licence one — `huggingface/transformers` issue #43994 reports nonsensical `AutoModel`/pipeline output for `siglip2-base-patch16-224`. Revisit when that closes |
 
 #### Built with DINOv3
 

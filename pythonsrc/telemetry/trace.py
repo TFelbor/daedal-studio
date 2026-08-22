@@ -87,6 +87,10 @@ STAGES: tuple[Stage, ...] = (
             "material_colour",
             "nozzle_diameter_mm",
             "process_params",
+            "requested_size_mm",
+            "size_source",
+            "requested_scale_axis",
+            "request_params",
             "parent_job_id",
             "regeneration_reason",
         ),
@@ -152,6 +156,10 @@ STAGES: tuple[Stage, ...] = (
         trigger="repair + scale, before/after pair",
         writer="db.update_job_mesh_lineage()",
         call_site="pythonsrc/pipeline.py:323",
+        # repair_report rides along with the lineage pair because the same call
+        # writes it: which repair path ran, how many rounds, faces dropped and the
+        # scale factor. Without it "did the voxel remesh hurt outcomes" is not a
+        # query, and the before/after hashes cannot say which path produced them.
         columns=(
             "raw_mesh_sha256",
             "raw_mesh_features",
@@ -246,6 +254,7 @@ STAGES: tuple[Stage, ...] = (
 
 # Columns held as JSON text; summarised rather than dumped unless -v is given.
 _JSON_COLUMNS = frozenset({
+    "request_params",
     "process_params",
     "blueprint_params",
     "generation_params",
@@ -280,6 +289,10 @@ _EXPECTED_NULL = {
     "blueprint_prompt_engineered": "absent under --skip-visualizer",
     "outcome_reported_at": "only set once a human answers",
     "support_filament_mm3": "only set when supports were generated",
+    "dispatched_printer_url": "only set once a print is dispatched",
+    "print_duration_s": "only set once the printer reports one",
+    "requested_size_mm": "only set when a size was chosen; the default applied otherwise",
+    "requested_scale_axis": "only set when a size was chosen",
 }
 
 

@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -23,7 +24,45 @@ logger = logging.getLogger("p2p.blueprint_spec")
 SEED_SPACE = 2 ** 32
 
 
-def engineer_prompt(prompt: str) -> str:
+#: Longest filament colour description worth putting in a prompt. `material_colour`
+#: is free text from the composer with no vocabulary behind it, so this is a bound on
+#: an unbounded field rather than a considered limit on how colours are named.
+MAX_COLOUR_CHARS = 32
+
+# A colour is words, possibly hyphenated or slashed ("matte black", "off-white",
+# "glow-in-the-dark green"). Anything else is not a colour, and interpolating it would
+# make `material_colour` a second prompt channel — one that any screen inspecting
+# only `prompt` would never see.
+_COLOUR_PATTERN = re.compile(r"^[A-Za-z][A-Za-z \-/]*$")
+
+
+def normalise_colour(colour: str | None) -> str | None:
+    """Reduce a free-text filament colour to something safe to put in a prompt.
+
+    `material_colour` arrives from the composer as unvalidated free text and ends up
+    in the string sent to the model, which makes it a second way to write a prompt.
+    A value that is not plausibly a colour name is therefore dropped rather than
+    sanitised into something else: the blueprint is then rendered exactly as it would
+    have been with no colour given, which is a defensible outcome, whereas a partly
+    stripped injection attempt is not.
+
+    Args:
+        colour: The requester's filament colour, or None.
+
+    Returns:
+        The trimmed colour in lower case, or None if there was nothing usable.
+    """
+    if not colour:
+        return None
+    candidate = colour.strip()
+    if not candidate or len(candidate) > MAX_COLOUR_CHARS:
+        return None
+    if not _COLOUR_PATTERN.match(candidate):
+        return None
+    return candidate.lower()
+
+
+def engineer_prompt(prompt: str, colour: str | None = None) -> str:
     """Wrap a user prompt in the clay-render keywords Phase 2 depends on.
 
     Phase 2 reconstructs a single object cut out from its background, so the blueprint
@@ -37,16 +76,46 @@ def engineer_prompt(prompt: str) -> str:
     this wrapper would otherwise be invisible in the dataset — every result before and
     after it would look like the same experiment.
 
+    "A single object centred in frame" is the positive form of "no scale reference".
+    A prompt that mentions size makes the model draw one — a hand holding the part, a
+    coin beside it — and Phase 2 then has two subjects to choose between: the matte
+    cuts out whatever it finds and `_largest_component` keeps whichever has more
+    faces. It has to be phrased as something to draw because **this checkpoint takes
+    no negative prompt**: `FLUX.2-klein-4B` is distilled, so the classifier-free
+    guidance branch upstream gates on `not is_distilled` never runs, and the
+    `guidance_scale` recorded per job is inert.
+
+    A named filament colour is rendered into the blueprint, because the running view
+    shows the blueprint first and a grey preview of a part someone ordered in red is
+    a small lie told at the most visible moment. **It changes the blueprint only** —
+    Phase 2 strips appearance for every backend and CuraEngine cannot use a material,
+    so the print is single-colour regardless. Worth knowing before trusting it: a
+    very dark or heavily saturated colour works against two things this wrapper
+    deliberately asks for, the matte's need for a separable subject and the clay
+    shading Phase 2 reads shape from. That trade has not been measured on real
+    renders yet.
+
     Args:
         prompt: The user's prompt.
+        colour: The requester's filament colour, free text. Dropped unless it looks
+            like a colour name — see `normalise_colour`.
 
     Returns:
         The full prompt sent to the diffusion model.
     """
+    material = "clay material"
+    normalised = normalise_colour(colour)
+    if normalised:
+        # One uniform colour, because that is what the printer produces. A two-tone
+        # render would promise something FDM cannot do and would give Phase 2's matte
+        # a second region to argue about.
+        material = f"uniform {normalised} clay material, single colour throughout"
+
     return (
         f"3d blender render of {prompt}, "
+        "a single object centred in frame, no hands, no props, "
         "neutral background, high fidelity, 8k, soft studio lighting, "
-        "solid object, thick solid geometry, smooth curves, clay material"
+        f"solid object, thick solid geometry, smooth curves, {material}"
     )
 
 

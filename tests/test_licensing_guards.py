@@ -374,3 +374,74 @@ def test_a_pinned_encumbered_revision_is_refused_at_construction(monkeypatch):
     finally:
         monkeypatch.delenv("P2P_BIREFNET_MODEL_ID", raising=False)
         importlib.reload(bg)
+
+
+# ── The blueprint image screen's own weights ─────────────────────────────────
+#
+# The screen added for IP detection is itself a model load, which makes it the newest
+# instance of the rule this file exists for: **weights carry a licence independent of
+# the library that loads them, and independent of the repository's own tag.**
+#
+# `openai/clip-vit-base-patch32` is the sharpest example this project has found. Its
+# Hugging Face repo is tagged MIT. Its model card says: "Any deployed use case of the
+# model - whether commercial or not - is currently out of scope." A dependency audit
+# that reads tags would clear it.
+
+
+def test_the_blueprint_screen_defaults_to_a_permissive_checkpoint():
+    from pythonsrc.ip_screen_image import DEFAULT_MODEL_ID, assert_permissive_vision_model
+
+    assert assert_permissive_vision_model(DEFAULT_MODEL_ID)
+
+
+def test_openai_clip_is_on_the_deny_list_for_its_model_card_not_its_tag():
+    """The tag says MIT; the card forbids deployed use. The card governs."""
+    from pythonsrc.ip_screen_image import DENIED_MODEL_REPOS
+
+    reason = DENIED_MODEL_REPOS["openai/clip-vit-base-patch32"]
+    assert "out of scope" in reason.lower()
+
+
+def test_the_screen_refuses_to_load_a_denied_checkpoint():
+    import pytest as _pytest
+
+    from pythonsrc.ip_screen_image import assert_permissive_vision_model
+
+    with _pytest.raises(ValueError, match="not permissively licensed"):
+        assert_permissive_vision_model("openai/clip-vit-base-patch32")
+
+
+def test_notices_records_the_screen_model_and_the_rejected_one():
+    """An undocumented model choice is not an audit trail, and the *rejection* is the
+    part a future reader needs: without it, someone swaps in CLIP for better recall."""
+    notices = (REPO_ROOT / "THIRD-PARTY-NOTICES.md").read_text()
+
+    assert "google/siglip-base-patch16-224" in notices
+    assert "openai/clip-vit-" in notices
+    assert "out of scope" in notices
+
+
+def test_the_screen_stores_no_reference_images():
+    """Recall could be improved by caching crops of the characters being detected.
+
+    That would mean this repository shipping the material the screen exists to keep
+    out, so the candidates are text and this asserts they stay text.
+    """
+    from pythonsrc.ip_screen_image import candidate_labels
+
+    assert all(isinstance(label, str) for label in candidate_labels())
+
+
+def test_the_image_screen_is_not_imported_by_the_api_server():
+    """`infra/docker/server.Dockerfile` installs no torch, transformers or numpy.
+
+    An import of the image screen at module scope in `server/app.py` would take the
+    api-server image down at start-up — and it is the one image that does not need it,
+    because the screen runs in the pipeline and visualizer processes.
+    """
+    app_source = (REPO_ROOT / "server" / "app.py").read_text()
+
+    assert "ip_screen_image" not in app_source, (
+        "server/app.py imports the image screen. The api-server image has no torch; "
+        "keep the image screen in the pipeline and visualizer processes."
+    )

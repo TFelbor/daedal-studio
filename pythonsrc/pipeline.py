@@ -626,6 +626,38 @@ def _filament_diameter(args) -> float:
         return DEFAULT_FILAMENT_DIAMETER_MM
 
 
+def _should_stop_after(stop_after_phase: int | None, phase_num: int) -> bool:
+    """Whether the run must end now that *phase_num* has completed.
+
+    Inclusive of the named phase: `--stop-after-phase 1` means Phase 1 ran and nothing
+    after it may. The comparison is `>=` rather than `==` so a stop point that is never
+    reached exactly — because an earlier phase was skipped — still stops the run rather
+    than silently running to the end.
+
+    Args:
+        stop_after_phase: The requested stop point, or None to run everything.
+        phase_num: The phase that has just completed.
+
+    Returns:
+        True when the run should exit cleanly here.
+    """
+    if stop_after_phase is None:
+        return False
+    return phase_num >= stop_after_phase
+
+
+def _stop_here(phase_num: int, reason: str) -> None:
+    """End the run cleanly after a completed phase, saying why.
+
+    Exits 0: this is a run that did what it was asked, not a failure. The banner is
+    deliberately in the printability form (`─── NAME ───`) and **not** the phase form
+    (`═══ PHASE n ═══`), which the server parses into progress updates — a gate is a
+    note about a phase, not a phase.
+    """
+    print(f"[P2P] ─── STOPPED AFTER PHASE {phase_num} ─── {reason}", flush=True)
+    sys.exit(0)
+
+
 def _phase_start(phase_num: int) -> float:
     """Print a phase start banner and return the start timestamp."""
     name = _PHASE_NAMES.get(phase_num, "Unknown")
@@ -696,7 +728,11 @@ def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     parent, so a mesh that came from a fixture reads exactly like one a model made.
 
     An existing directory always wins, so re-running the same job id cannot split one
-    job's artifacts across two locations.
+    job's artifacts across two locations. The one exception is a directory holding
+    *only* a blueprint snapshot and its sidecar: that is the approval gate's work,
+    created before Phase 2 has run, and treating it as a claim on the plain namespace
+    would let a run that then substitutes a fixture mesh write into
+    `data/outputs/{job_id}` — the one thing the `dev-` prefix exists to prevent.
 
     Args:
         args: Parsed CLI arguments; `job_id` must be set.
@@ -711,7 +747,16 @@ def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     if dev.exists():
         return dev
     if plain.exists():
-        return plain
+        contents = list(plain.iterdir())
+        # A directory holding *only* a blueprint snapshot is the approval gate's work,
+        # not a previous run's output. An empty one still counts as claimed — that is
+        # the pre-existing contract and nothing is being split by honouring it.
+        snapshot_only = bool(contents) and all(
+            child.name == "blueprint.png" or child.name.endswith(".provenance.json")
+            for child in contents
+        )
+        if not snapshot_only:
+            return plain
     mesh_candidates = [Path(args.mesh)] if args.mesh else [plain / "raw_mesh.obj", dev / "raw_mesh.obj"]
     return dev if _will_use_reference_assets(args, blueprint_path, mesh_candidates) else plain
 
@@ -785,6 +830,7 @@ def run(args: argparse.Namespace) -> None:
                 output_path=blueprint_path,
                 num_inference_steps=args.steps,
                 seed=args.seed,
+                colour=args.colour,
             )
             print(f"[P2P] Blueprint seed: {blueprint_result.seed}", flush=True)
             _record_blueprint(args, blueprint_path, blueprint_result)
@@ -854,6 +900,50 @@ def run(args: argparse.Namespace) -> None:
             )
         _record_blueprint(args, blueprint_path, sidecar_result)
 
+    if _should_stop_after(args.stop_after_phase, 1):
+        _stop_here(1, f"blueprint at {blueprint_path}")
+
+    # The image screen has to run on this path too. On the primary Mac workflow the
+    # blueprint was rendered by a *different process* (run_phase1_native.sh) and
+    # `visualizer.save_screened` already covered it there — but a blueprint supplied
+    # with `--blueprint` was not screened by anyone, and it is about to be handed to a
+    # backend that may charge for it.
+    #
+    # A stand-in is deliberately exempt: it is a bundled fixture, screening it wastes
+    # a model load on a known image, and the same guard already stops Phase 2 from
+    # paying to reconstruct it.
+    blueprint_screen = None
+    if args.skip_visualizer and blueprint_path.exists() and not blueprint_is_stand_in:
+        try:
+            from PIL import Image
+
+            try:
+                from ip_screen_image import screen_image
+            except ImportError:
+                from pythonsrc.ip_screen_image import screen_image
+
+            with Image.open(blueprint_path) as handle:
+                blueprint_screen = screen_image(handle.convert("RGB"))
+
+            if blueprint_screen.action == "block":
+                print(
+                    f"[P2P] ─── BLUEPRINT REFUSED ─── {blueprint_screen.reason}",
+                    flush=True,
+                )
+                _write_status(1, "error", blueprint_screen.reason or "blueprint refused")
+                sys.exit(1)
+            if blueprint_screen.action == "flag":
+                # Not a phase banner: the server's regex turns `═══ PHASE n ═══` into a
+                # progress update, and this is a note about one, not a phase of its own.
+                print(
+                    f"[P2P] ─── BLUEPRINT FLAGGED ─── {blueprint_screen.reason}",
+                    flush=True,
+                )
+        except SystemExit:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Blueprint image screen did not run: %s", exc)
+
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
         t0 = _phase_start(2)
@@ -901,6 +991,7 @@ def run(args: argparse.Namespace) -> None:
                     "smooth_iterations": args.smooth,
                     "target_faces": args.faces,
                     "target_mm": args.target_mm,
+                    "scale_axis": args.scale_axis,
                     "hollow": args.hollow,
                 },
                 cost_eur=getattr(sculptor, "last_generation_cost_eur", None),
@@ -956,6 +1047,22 @@ def run(args: argparse.Namespace) -> None:
                 logger.error("Failed to install the reference mesh: %s", e)
                 sys.exit(1)
 
+    if _should_stop_after(args.stop_after_phase, 2):
+        _stop_here(2, f"raw mesh at {raw_mesh_path}")
+
+    # The machine's limits, read once. Needed before Phase 3 so the oversize check can
+    # run against the size that was just applied, rather than being discovered in the
+    # printability report after the fact.
+    process_profile_limits = None
+    try:
+        with open(args.profile or "pythonsrc/profiles/ender3.json", "r") as handle:
+            profile_data = json.load(handle)
+        keys = ("machine_width", "machine_depth", "machine_height")
+        if all(profile_data.get(k) is not None for k in keys):
+            process_profile_limits = [float(profile_data[k]) for k in keys]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("No build volume available for the oversize check: %s", exc)
+
     # ── Phase 3: Engineer ─────────────────────────────────────────────────────
     t0 = _phase_start(3)
     try:
@@ -968,11 +1075,36 @@ def run(args: argparse.Namespace) -> None:
             target_mm=args.target_mm,
             hollow=args.hollow,
             wall_thickness=args.wall,
+            scale_axis=args.scale_axis,
         )
+        # Height mode bounds one axis by construction and the other two not at all, so
+        # a wide model asked for a tall height can come out past the bed. The size is
+        # *not* silently reduced — a part quietly scaled to something other than what
+        # was asked for is the bug this whole change set exists to remove — but it is
+        # said plainly here, and `build_volume_fit` (critical, weight 2.0) fails it in
+        # the printability report a few lines below.
+        achieved = (eng.last_report or {}).get("achieved_extent_mm")
+        if achieved and process_profile_limits:
+            over = [
+                f"{axis} {extent:.0f}mm > {limit:.0f}mm"
+                for axis, extent, limit in zip("XYZ", achieved, process_profile_limits)
+                if extent > limit
+            ]
+            if over:
+                print(
+                    "[P2P] ─── OVERSIZE ─── the scaled part exceeds the build volume: "
+                    + ", ".join(over)
+                    + ". It was not shrunk; choose a smaller size or a bigger printer.",
+                    flush=True,
+                )
+
         _record_mesh_lineage(args, raw_mesh_path, final_mesh_path, eng.last_report)
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:
         _phase_fail(3, t0, exc)
+
+    if _should_stop_after(args.stop_after_phase, 3):
+        _stop_here(3, f"engineered mesh at {final_mesh_path}")
 
     # ── Phase 3.5: Printability gate ──────────────────────────────────────────
     # Deliberately not a numbered phase: the .status protocol, the WebSocket phase
@@ -1015,6 +1147,41 @@ def run(args: argparse.Namespace) -> None:
             print(f"[P2P]   ✗ {check.check}: {check.detail}", flush=True)
         for check in report.warnings():
             print(f"[P2P]   ! {check.check}: {check.detail}", flush=True)
+        # A thin-walled part is reported as unprintable at a size that is already
+        # fixed, and the one remedy — print it bigger — was never named. Derived only
+        # when the wall check actually complained, because the measurement costs a
+        # voxelisation and a distance transform. Hollowing voxelises at an absolute
+        # pitch, so the prediction does not hold for it and is not offered.
+        wall_check = next(
+            (c for c in report.checks if c.check == "min_wall_thickness"), None,
+        )
+        if wall_check is not None and wall_check.status in {"fail", "warn"} and not args.hollow:
+            try:
+                try:
+                    from printability import size_feasibility
+                except ImportError:
+                    from pythonsrc.printability import size_feasibility
+
+                import trimesh as _trimesh
+
+                feasibility = size_feasibility(
+                    _trimesh.load(str(final_mesh_path), force="mesh"),
+                    process_profile,
+                    scale_axis=args.scale_axis,
+                )
+                if feasibility["smallest_viable_mm"] is not None and feasibility["fits"]:
+                    print(
+                        f"[P2P]   → at about {feasibility['smallest_viable_mm']:.0f}mm "
+                        f"({args.scale_axis}) this mesh's walls would clear the "
+                        f"{process_profile.min_wall_mm:.2f}mm minimum; it was scaled to "
+                        f"{args.target_mm:.0f}mm.",
+                        flush=True,
+                    )
+                elif feasibility["reason"]:
+                    print(f"[P2P]   → {feasibility['reason']}", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not derive a size suggestion: %s", exc)
+
         print(f"[P2P] ─── PRINTABILITY DONE ({time.time() - t0:.1f}s) → {report_path} ───\n", flush=True)
 
         if args.job_id:
@@ -1273,6 +1440,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # Phase 1 options
     p1 = parser.add_argument_group("Phase 1 — Visualizer")
     p1.add_argument("--steps", type=int, default=4, metavar="N", help="Diffusion inference steps")
+    # The blueprint is rendered in the requester's filament colour when they named
+    # one, so the preview matches the part. Blueprint only: Phase 2 strips appearance
+    # and CuraEngine has no use for a material.
+    p1.add_argument("--colour", "--color", dest="colour", default=None, metavar="NAME", help="Filament colour to render the blueprint in")
     p1.add_argument(
         "--seed",
         type=int,
@@ -1317,9 +1488,27 @@ def _build_parser() -> argparse.ArgumentParser:
              "rounds off exactly the sharp features the model recovers.",
     )
 
+    # Where to stop. The blueprint approval gate needs a seam after Phase 1: the
+    # docker strategies run all five phases in one `docker compose run`, so without
+    # this there is nowhere for a job to park and be picked up again. The continuation
+    # is a second invocation with --skip-visualizer, whose provenance is complete
+    # because Phase 1 left a sidecar beside the PNG.
+    parser.add_argument(
+        "--stop-after-phase",
+        type=int,
+        default=None,
+        metavar="N",
+        choices=(1, 2, 3, 4),
+        help="Exit cleanly once phase N has completed (used by the approval gate)",
+    )
+
     # Phase 3 options
     p3 = parser.add_argument_group("Phase 3 — Engineer")
-    p3.add_argument("--target-mm", type=float, default=50.0, metavar="MM", help="Target longest dimension in mm")
+    p3.add_argument("--target-mm", type=float, default=50.0, metavar="MM", help="Target size in mm, measured along --scale-axis")
+    # Which extent the size describes. Height by default because that is what a
+    # person means by "how big"; "longest" is the old behaviour, kept reachable for
+    # anything that depended on it.
+    p3.add_argument("--scale-axis", choices=("height", "longest"), default="height", help="Which extent --target-mm describes (default: height)")
     p3.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     p3.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness for hollowing in mm")
 
