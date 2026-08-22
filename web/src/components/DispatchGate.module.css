@@ -1,0 +1,162 @@
+/* The confirmation step, drawn as a held plate across the page: one accent rule along
+   the top edge, the same device the verdict banner uses for "this needs a person". */
+
+.gate {
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid var(--rule);
+  background: var(--void);
+  padding: 22px var(--gutter) 24px;
+  /* The last handoff on the line: the sliced job arrives at the person. */
+  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate {
+    animation: none;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.headNote {
+  font-size: 13.5px;
+  color: var(--ink-58);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 24px 34px;
+  align-items: start;
+}
+
+.targetFrame {
+  border-color: var(--field-line);
+  padding: 16px 18px;
+}
+
+.targetName {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.rows {
+  margin: 0;
+  border-top: 1px solid var(--rule-sub);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule-sub);
+  font-size: 13px;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row dt {
+  color: var(--ink-42);
+  white-space: nowrap;
+}
+
+.row dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* The numbers being confirmed. Same four-cell rhythm as the slice plate. */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cell {
+  padding: 4px 18px;
+  border-left: 1px solid var(--rule-row);
+  min-width: 0;
+}
+
+.cell:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.figureMax {
+  font-size: 12px;
+  color: var(--ink-35);
+  margin-left: 2px;
+}
+
+.verdictReady { color: var(--ok); }
+.verdictRisky { color: var(--bad-ink); }
+.verdictBad { color: var(--bad); }
+
+.cellLabel {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-42);
+  margin-top: 6px;
+}
+
+.error {
+  margin-top: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+
+.send {
+  position: relative;
+  padding: 13px 24px;
+  font-size: 15px;
+}
+
+.download {
+  gap: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 0;
+  }
+
+  .cell:nth-child(3) {
+    padding-left: 0;
+    border-left: none;
+  }
+}

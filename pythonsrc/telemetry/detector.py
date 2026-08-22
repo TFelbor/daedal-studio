@@ -164,9 +164,9 @@ class AnomalyDetector:
         
         self._check_thermal_runaway(job_id, current, history, state)
         self._check_extrusion_stall(job_id, current, history, state, progress)
-        self._check_layer_shift(job_id, current, history)
+        self._check_layer_shift(job_id, current, history, state)
         self._check_bed_adhesion(job_id, current, history, state, progress)
-        self._check_extrusion_issue(job_id, current, history)
+        self._check_extrusion_issue(job_id, current, history, state)
 
     def _check_thermal_runaway(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str) -> None:
         """Evaluate Rule 1: Thermal runaway.
@@ -246,16 +246,23 @@ class AnomalyDetector:
             if clog:
                 self._trigger_failure(job_id, current, "clog", history[-10:])
 
-    def _check_layer_shift(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+    def _check_layer_shift(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str) -> None:
         """Evaluate Rule 3: Layer shift (Z regression).
 
-        Condition: z_height_mm decreases by > 0.5mm between consecutive samples.
+        Condition: z_height_mm decreases by > 0.5mm between consecutive samples,
+        while the printer is actually printing. Without the state guard, the
+        end-of-print park and the homing before the next job — both of which drop
+        Z by far more than 0.5mm — were written up as layer shifts on healthy
+        prints.
 
         Args:
             job_id: The unique identifier of the job.
             current: The most recent telemetry sample.
             history: A list of recent telemetry samples for the job.
+            state: The printer state; only "printing" can shift a layer.
         """
+        if state != "printing":
+            return
         if len(history) >= 2:
             prev = history[-2]
             if prev.z_height_mm is not None and current.z_height_mm is not None:
@@ -277,22 +284,31 @@ class AnomalyDetector:
         cache = self._state_cache.get(job_id, {})
         prev_state = cache.get("prev_state", "printing")
         if current.z_height_mm is not None and current.z_height_mm < 1.0 and progress < 10.0:
-            if prev_state == "printing" and state in ("error", "cancelled"):
+            # "error" only — deliberately not "cancelled". A cancellation is a
+            # person's action, made for any reason including changing their mind,
+            # and writing it up as a machine-observed adhesion failure fabricates
+            # evidence about the part. If it really was adhesion, the human's own
+            # verdict (the outcome prompt) is where that gets said.
+            if prev_state == "printing" and state == "error":
                 self._trigger_failure(job_id, current, "adhesion", history[-1:])
-                
+
         # Update prev_state
         cache["prev_state"] = state
 
-    def _check_extrusion_issue(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample]) -> None:
+    def _check_extrusion_issue(self, job_id: str, current: TelemetrySample, history: List[TelemetrySample], state: str) -> None:
         """Evaluate Rule 5: Extrusion issue.
 
-        Condition: extrusion_factor_pct <= 10.0 for 5 consecutive samples.
+        Condition: extrusion_factor_pct <= 10.0 for 5 consecutive samples, while
+        printing — an idle extruder after the job settles is not a fault.
 
         Args:
             job_id: The unique identifier of the job.
             current: The most recent telemetry sample.
             history: A list of recent telemetry samples for the job.
+            state: The printer state; only "printing" is evidence.
         """
+        if state != "printing":
+            return
         if len(history) >= 5:
             slow_extrusion = True
             for s in history[-5:]:

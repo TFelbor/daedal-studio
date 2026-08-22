@@ -1,0 +1,161 @@
+/* The prompt at reading size, on a plate above the page. Nothing here is a new visual
+   language: same frame, same marks, same rules — one step larger and one layer up. */
+
+.shell {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* Shallow on purpose. Deep enough to say "look here", not deep enough to read as a
+   different screen: the page behind is still the page you were on. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 13, 13, 0.62);
+  backdrop-filter: blur(2px);
+  cursor: default;
+  animation: scrim-in 160ms ease both;
+}
+
+.panel {
+  position: relative;
+  width: min(820px, 100%);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  padding: clamp(20px, 2.6vw, 30px);
+  /* The one drop shadow in the app. It is what "hovers there" means: the plate has to
+     read as lifted off the surface, and every other object in this design sits on it. */
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.55);
+  animation: panel-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .panel {
+    animation: none;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.collapse {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--ink-50);
+  transition: color 0.15s ease;
+}
+
+.collapse:hover {
+  color: var(--accent);
+}
+
+.frame {
+  padding: 20px 20px 18px;
+}
+
+/* Reading size, and a height that scales with the screen rather than with a drag. The
+   ceiling is what the removed resize handle never had. */
+.input {
+  width: 100%;
+  min-height: clamp(180px, 34vh, 340px);
+  max-height: 52vh;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 20px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.input::placeholder {
+  color: var(--ink-35);
+}
+
+.input:disabled {
+  opacity: 0.45;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-35);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid var(--rule-strong);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-50);
+}
+
+.right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Held in the layout at zero opacity so its arrival does not shift the button. */
+.counter {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-35);
+  opacity: 0;
+  transition: opacity 180ms ease, color 180ms ease;
+}
+
+.counterShown {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.go {
+  padding: 12px 20px;
+  font-size: 15px;
+}
+
+.go:disabled {
+  opacity: 0.4;
+}

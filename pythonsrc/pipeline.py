@@ -71,43 +71,130 @@ _PHASE_NAMES = {
 
 CURRENT_JOB_ID = None
 
-#: The fabricated stand-in blueprint: a flat square written when Phase 1 is
-#: skipped and no real blueprint exists, so Phases 3-5 can still be exercised.
-#: Matches `Visualizer.generate_blueprint`'s 1024x1024 default, because the stand-in
-#: fills the same slot a real render will: at half the size it occupied half the
-#: blueprint stage, and the artifact jumped in scale the moment Phase 1 ran.
-_PLACEHOLDER_SIZE = (1024, 1024)
-#: Sizes earlier versions wrote. Those files persist on the shared blueprint path,
-#: and the guard exists precisely so a stand-in from an earlier run is not mistaken
-#: for a real render and sent to a backend billed per generation — so growing the
-#: placeholder must not make the old ones invisible.
-_LEGACY_PLACEHOLDER_SIZES = ((512, 512),)
+#: Real Phase 1 and Phase 2 outputs, shipped with the source. A debugging run that
+#: skips those phases installs these instead of fabricating something.
+#:
+#: The pipeline used to make its own stand-ins: a flat blue rectangle and a 50mm
+#: `trimesh.creation.box`. A cube is watertight, convex, has no boundary edges, no
+#: non-manifold edges, no thin walls and no overhangs — so Phase 3 had nothing to
+#: repair, the printability gate scored geometry no reconstruction produces, the
+#: adhesion rule never fired, and the slicer saw six faces instead of six figures.
+#: Every defect the phases downstream exist to handle was absent from the only mesh
+#: most dev runs ever saw. See `pythonsrc/assets/dev_reference/README.md`.
+DEV_REFERENCE_DIR = Path(__file__).parent / "assets" / "dev_reference"
+DEV_REFERENCE_BLUEPRINT = DEV_REFERENCE_DIR / "blueprint.png"
+DEV_REFERENCE_MESH = DEV_REFERENCE_DIR / "raw_mesh.obj"
+
+#: Prefix for the output directory of a run that installed one of those files.
+#: `data/outputs/` holds real jobs and debugging runs side by side, and a mesh made
+#: from a fixture must not be mistaken for one a model produced — by a person reading
+#: the directory listing, or by anything that walks it later.
+DEV_OUTPUT_PREFIX = "dev-"
+
+#: The flat square earlier versions wrote in place of a blueprint, in both sizes they
+#: used. No longer written, still recognised: those files persist on the *shared*
+#: blueprint path, and the only thing stopping a per-generation backend from being
+#: billed to reconstruct one is that this guard knows what they look like.
+_LEGACY_PLACEHOLDER_SIZES = ((1024, 1024), (512, 512))
 _PLACEHOLDER_COLOUR = (73, 109, 137)
 
 
-def _write_placeholder_blueprint(path: Path) -> None:
-    from PIL import Image
+def _install_dev_asset(source: Path, destination: Path, what: str) -> None:
+    """Copy a bundled reference asset into place, or fail loudly.
 
-    Image.new("RGB", _PLACEHOLDER_SIZE, color=_PLACEHOLDER_COLOUR).save(path)
+    Args:
+        source: The file under `assets/dev_reference/`.
+        destination: Where the phase that was skipped would have written.
+        what: Human name for the log line.
+
+    Raises:
+        FileNotFoundError: If the reference asset is missing. Silently continuing
+            would leave the next phase reading whatever happened to be on disk.
+    """
+    if not source.exists():
+        raise FileNotFoundError(
+            f"The dev reference {what} is missing: {source}. It ships with the source; "
+            "restore it, or supply a real file instead of skipping the phase."
+        )
+    import shutil
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    logger.warning(
+        "Installed the dev reference %s at %s — this run's %s came from a fixture, "
+        "not from a model.",
+        what,
+        destination,
+        what,
+    )
+
+
+def _should_install_reference_blueprint(args, blueprint_path: Path) -> bool:
+    """Whether this run needs the bundled blueprint stood in for Phase 1.
+
+    True when Phase 1 was skipped with nothing at that path — including when Phase 2 is
+    skipped as well. That last case used to be excluded (`and not args.skip_sculptor`),
+    on the reasoning that a skipped Phase 2 has nothing to hand the image to. It is the
+    commonest dev configuration there is: both `SKIP_VISUALIZER` and `SKIP_SCULPTOR` set
+    in the config store is how the UI runs Phases 3-5 on a machine with no GPU. Those
+    runs installed the reference mesh, no blueprint, and said nothing — exit 0, a `dev-`
+    directory holding `raw_mesh.obj` alone, an empty blueprint stage in the running view
+    and NULL for every Phase 1 provenance column. Phase 2 is not the blueprint's only
+    consumer.
+
+    False when `--mesh` supplied the geometry. That run is not a fixture run — nothing
+    in it came from `assets/dev_reference/`, so `_will_use_reference_assets` is False and
+    its outputs land in the real namespace. Standing a blueprint in there would put a
+    fabricated input beside real artifacts and record its hash as this job's Phase 1
+    provenance, which is the one thing the `dev-` prefix exists to prevent.
+
+    Args:
+        args: Parsed CLI arguments.
+        blueprint_path: Where Phase 1's output is expected.
+
+    Returns:
+        True if the bundled reference blueprint should be copied to `blueprint_path`.
+    """
+    if not args.skip_visualizer:
+        return False
+    if blueprint_path.exists():
+        return False
+    return not args.mesh
+
+
+def _blueprint_is_stand_in(path: Path) -> bool:
+    """True when this image is a stand-in rather than something Phase 1 rendered.
+
+    Two kinds, and both matter. The bundled reference blueprint is matched by hash —
+    it is a real image, so nothing about its pixels gives it away, and it is a file
+    this repo controls byte for byte. The flat rectangles earlier versions wrote are
+    matched by `_blueprint_is_placeholder` below.
+
+    The check is by content, not by remembering that this run installed it: a stand-in
+    goes to the *shared* blueprint path and then persists, so the next run finds a
+    file that exists and cannot otherwise tell it from a fresh render. That is how a
+    flat blue rectangle came to be sent repeatedly to a backend billed per generation.
+    """
+    if not path.exists():
+        return False
+    if DEV_REFERENCE_BLUEPRINT.exists():
+        if _file_sha256(path) == _file_sha256(DEV_REFERENCE_BLUEPRINT):
+            return True
+    return _blueprint_is_placeholder(path)
 
 
 def _blueprint_is_placeholder(path: Path) -> bool:
-    """True when this image is the fabricated stand-in, not a real blueprint.
+    """True when this image is one of the flat rectangles earlier versions wrote.
 
-    Detected by content rather than by remembering that we just wrote it, because
-    the placeholder goes to the *shared* blueprint path and then persists. The next
-    run finds a file that exists, has no way to tell it from a real render, and
-    happily sends a flat blue rectangle to a backend that bills per generation —
-    which is exactly how that happened repeatedly.
-
-    Pixels rather than a hash so the check survives a Pillow upgrade re-encoding
-    the same image differently.
+    Pixels rather than a hash so the check survives a Pillow upgrade re-encoding the
+    same image differently — these files were written by code that is gone, and the
+    ones on disk are the only copies there will ever be.
     """
     try:
         from PIL import Image
 
         with Image.open(path) as img:
-            if img.size != _PLACEHOLDER_SIZE and img.size not in _LEGACY_PLACEHOLDER_SIZES:
+            if img.size not in _LEGACY_PLACEHOLDER_SIZES:
                 return False
             colours = img.convert("RGB").getcolors(maxcolors=2)
     except Exception:
@@ -244,6 +331,48 @@ def _record_generation(args, model, model_version, backend, params, cost_eur, du
         logger.warning("Could not record generation provenance: %s", exc)
 
 
+def _resolve_git_sha() -> str | None:
+    """The commit of the code running this job, or None when unknowable.
+
+    Delegates to the shared torch-free helper so the server (which stamps
+    `$P2P_GIT_SHA` into container subprocesses) and the pipeline resolve the
+    value the same way.
+    """
+    from pythonsrc.telemetry.run_context import resolve_git_sha
+
+    return resolve_git_sha()
+
+
+def _record_run_context(args, used_reference_assets: bool) -> None:
+    """Persist which code ran this job and whether its inputs were real.
+
+    The fixture flag exists only in this process's head: the output directory's
+    `dev-` prefix says it on disk, but nothing queryable said it in the database,
+    so a training query could not exclude fixture runs without comparing hashes
+    by hand. False is recorded too — "verified real" is not the same row state as
+    "predates the column".
+
+    Args:
+        args: Parsed CLI arguments; nothing is recorded without --job-id.
+        used_reference_assets: Whether a bundled dev-reference asset stands in
+            for a phase's output on this run.
+    """
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        db = TelemetryDB()
+        db.update_job_run_context(
+            args.job_id,
+            git_sha=_resolve_git_sha(),
+            used_reference_assets=used_reference_assets,
+        )
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not record run context: %s", exc)
+
+
 def _file_sha256(path) -> str | None:
     """Hash a file's contents.
 
@@ -301,7 +430,7 @@ def _record_blueprint(args, blueprint_path, result=None) -> None:
         logger.warning("Could not record blueprint provenance: %s", exc)
 
 
-def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
+def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path, repair_report=None) -> None:
     """Persist a before/after description of the mesh around repair.
 
     Repair is the pipeline's least observable step: it can rescue a broken mesh or
@@ -316,6 +445,8 @@ def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
         args: Parsed CLI arguments; nothing is recorded without --job-id.
         raw_mesh_path: The sculptor's output, before repair.
         repaired_mesh_path: The engineer's output, after repair.
+        repair_report: `Engineer.last_report` — which repair path ran and the
+            scale factor applied, previously visible only in the log.
     """
     if not args.job_id:
         return
@@ -348,13 +479,59 @@ def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path) -> None:
             raw_features=raw_features,
             repaired_sha256=repaired_hash,
             repaired_features=repaired_features,
+            repair_report=repair_report,
         )
         db.close()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not record mesh lineage: %s", exc)
 
 
-def _record_slice(args, gcode_path, duration_s, status="success", error=None) -> None:
+def _record_printability_failure(args, outputs_dir, exc) -> None:
+    """Persist the fact that scoring itself broke.
+
+    Printability is advisory, so a crash in the scorer must never fail the job — which
+    used to mean it left no trace at all: no artifact, no telemetry row, nothing. The UI
+    then could not tell "nothing measured this mesh" from "the measurement broke", and
+    rendered both as the same empty panel. An empty quality panel reads as a clean one,
+    which is the one thing a gate must not look like.
+
+    The envelope is deliberately *not* a PrintabilityReport. There is no score, and
+    inventing one — 0 for safety, 100 for convenience — would be a fabricated
+    measurement in the column the pilot is measured from. It carries the reason instead,
+    which is the only part anyone can act on.
+
+    Args:
+        args: Parsed CLI arguments; telemetry is only written with --job-id.
+        outputs_dir: The job's output directory, where the artifact is written.
+        exc: The exception the scorer raised.
+    """
+    envelope = {
+        "job_id": args.job_id,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "status": "error",
+        "error": str(exc) or exc.__class__.__name__,
+        "error_type": exc.__class__.__name__,
+    }
+
+    try:
+        with open(Path(outputs_dir) / "printability.json", "w") as f:
+            json.dump(envelope, f, indent=2)
+    except Exception as write_exc:  # noqa: BLE001
+        logger.warning("Could not write the printability failure artifact: %s", write_exc)
+
+    if not args.job_id:
+        return
+    try:
+        from pythonsrc.telemetry.db import TelemetryDB
+
+        db = TelemetryDB()
+        db.update_job_printability(args.job_id, report=envelope)
+        db.close()
+    except Exception as db_exc:  # noqa: BLE001
+        logger.warning("Could not persist the printability failure: %s", db_exc)
+
+
+def _record_slice(args, gcode_path, duration_s, status="success", error=None, extra_args=None) -> None:
     """Persist the slicer's verdict and its material estimates.
 
     Called on failure as well as success: "this mesh could not be sliced" is a result,
@@ -370,6 +547,9 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
         duration_s: Wall-clock slicing seconds.
         status: "success", "failed" or "skipped".
         error: Slicer error text, when it failed.
+        extra_args: CuraEngine overrides this run added (e.g. the brim decision).
+            Recorded because the profile alone no longer describes the slice, and
+            "did the adhesion brim help" is a question the dataset must answer.
     """
     if not args.job_id:
         return
@@ -392,6 +572,10 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Could not parse G-code statistics: %s", exc)
 
+        stats_payload = stats.to_dict() if stats else {}
+        if extra_args:
+            stats_payload["slicer_overrides"] = list(extra_args)
+
         db = TelemetryDB()
         db.update_job_slice(
             args.job_id,
@@ -404,7 +588,7 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None) ->
             filament_used_g=getattr(stats, "filament_used_g", None),
             support_filament_mm3=getattr(stats, "support_filament_mm3", None),
             layer_count=getattr(stats, "layer_count", None),
-            stats=stats.to_dict() if stats else None,
+            stats=stats_payload or None,
         )
         db.close()
 
@@ -480,6 +664,58 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
+def _will_use_reference_assets(args, blueprint_path: Path, mesh_candidates: list[Path]) -> bool:
+    """Whether this run will stand a bundled fixture in for a model's output.
+
+    True exactly when a skipped phase has nothing real to work from. That is a
+    narrower thing than "a phase was skipped": the primary Mac workflow always passes
+    `--skip-visualizer` because Phase 1 ran natively a moment earlier, and its
+    blueprint is as real as they get. Likewise `--skip-sculptor --mesh real.obj`.
+
+    Args:
+        args: Parsed CLI arguments.
+        blueprint_path: Where Phase 1's output is expected.
+        mesh_candidates: Every path Phase 2's output could already be at.
+
+    Returns:
+        True if the blueprint or the mesh will come from `assets/dev_reference/`.
+    """
+    if args.skip_visualizer and not blueprint_path.exists():
+        return True
+    if args.skip_sculptor and not any(path.exists() for path in mesh_candidates):
+        return True
+    return False
+
+
+def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
+    """Choose this job's output directory, and say in its name where the assets came from.
+
+    A run that installs a reference asset writes to `dev-{job_id}`. Without that,
+    `data/outputs/` mixes real jobs with debugging runs and nothing distinguishes them:
+    the artifacts have the same filenames, the same shapes and the same job-id-looking
+    parent, so a mesh that came from a fixture reads exactly like one a model made.
+
+    An existing directory always wins, so re-running the same job id cannot split one
+    job's artifacts across two locations.
+
+    Args:
+        args: Parsed CLI arguments; `job_id` must be set.
+        outputs_root: `data/outputs`.
+        blueprint_path: Where Phase 1's output is expected.
+
+    Returns:
+        The directory to write into. Not created here.
+    """
+    plain = outputs_root / args.job_id
+    dev = outputs_root / f"{DEV_OUTPUT_PREFIX}{args.job_id}"
+    if dev.exists():
+        return dev
+    if plain.exists():
+        return plain
+    mesh_candidates = [Path(args.mesh)] if args.mesh else [plain / "raw_mesh.obj", dev / "raw_mesh.obj"]
+    return dev if _will_use_reference_assets(args, blueprint_path, mesh_candidates) else plain
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 def run(args: argparse.Namespace) -> None:
     pipeline_start = time.time()
@@ -487,24 +723,39 @@ def run(args: argparse.Namespace) -> None:
     os.makedirs(INPUTS_DIR, exist_ok=True)
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
+    # Resolved before the output directory, because whether this run is a debugging one
+    # depends on whether a real blueprint is already sitting there.
+    blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
+
     # Per-job output directory. Without this every job overwrites the same
     # engineered_mesh.* files, so downloading job A's G-code can hand you job B's.
     # Runs without a --job-id (manual CLI use) keep the flat layout.
     if args.job_id:
-        outputs_dir = Path(OUTPUTS_DIR) / args.job_id
+        outputs_dir = _job_outputs_dir(args, Path(OUTPUTS_DIR), blueprint_path)
         outputs_dir.mkdir(parents=True, exist_ok=True)
     else:
         outputs_dir = Path(OUTPUTS_DIR)
 
-    blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
     raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
     final_mesh_path = outputs_dir / "engineered_mesh.obj"
     gcode_path = outputs_dir / "engineered_mesh.gcode"
 
+    # Written before any phase runs: the fixture decision and the code version are
+    # facts about this run, not about any phase's outcome, and a run that dies in
+    # Phase 1 should still be excludable from (or attributable in) the dataset.
+    if args.job_id:
+        _record_run_context(
+            args,
+            used_reference_assets=(
+                outputs_dir.name.startswith(DEV_OUTPUT_PREFIX)
+                or _will_use_reference_assets(args, blueprint_path, [raw_mesh_path])
+            ),
+        )
+
     # ── Phase 1: Visualizer ───────────────────────────────────────────────────
-    # True only when the blueprint had to be fabricated below. Phase 2 consults it
+    # True when the blueprint is a stand-in rather than a render. Phase 2 consults it
     # before handing the image to a backend that charges per generation.
-    blueprint_is_placeholder = False
+    blueprint_is_stand_in = False
 
     if not args.skip_visualizer:
         if not args.prompt:
@@ -542,43 +793,66 @@ def run(args: argparse.Namespace) -> None:
             _phase_fail(1, t0, exc)
     else:
         logger.info("Skipping Phase 1 — using existing blueprint: %s", blueprint_path)
-        if not blueprint_path.exists() and not args.skip_sculptor:
-            logger.warning("Blueprint not found, generating a flat stand-in image...")
+        if _should_install_reference_blueprint(args, blueprint_path):
             try:
-                _write_placeholder_blueprint(blueprint_path)
+                _install_dev_asset(DEV_REFERENCE_BLUEPRINT, blueprint_path, "blueprint")
             except Exception as e:
-                logger.error("Failed to generate fallback blueprint: %s", e)
+                logger.error("Failed to install the reference blueprint: %s", e)
                 sys.exit(1)
+        elif not blueprint_path.exists():
+            # `--skip-sculptor --mesh real.obj` with no blueprint: legitimately nothing
+            # to show. Said out loud, because the running view's first stage will be
+            # empty and an unexplained empty stage reads as a broken pipeline.
+            logger.warning(
+                "No blueprint at %s and none will be installed — the mesh came from "
+                "--mesh, so there is no Phase 1 output to show or hash.",
+                blueprint_path,
+            )
 
-        # Checked by content every time, not just when this run wrote it: a
-        # placeholder left behind by an earlier run is still a placeholder, and
-        # Phase 2 must refuse to pay for it below.
+        # Checked by content every time, not just when this run installed it: a stand-in
+        # left behind by an earlier run is still a stand-in, and Phase 2 must refuse to
+        # pay for it below.
         if blueprint_path.exists():
-            blueprint_is_placeholder = _blueprint_is_placeholder(blueprint_path)
-            if blueprint_is_placeholder:
+            blueprint_is_stand_in = _blueprint_is_stand_in(blueprint_path)
+            if blueprint_is_stand_in:
                 logger.warning(
-                    "%s is the flat stand-in blueprint, not a real render. Phases 3-5 "
-                    "can run on it; reconstruction of it is refused for any backend "
-                    "that charges per generation.",
+                    "%s is a stand-in blueprint, not a fresh render. Phases 3-5 can run "
+                    "on it; reconstruction of it is refused for any backend that charges "
+                    "per generation.",
                     blueprint_path,
                 )
 
     # Snapshot the blueprint this job actually used. Phase 1 may run natively and
     # write the shared data/inputs/blueprint.png, so copy it in for provenance.
-    # A placeholder is not provenance — snapshotting it just fills data/outputs with
-    # identical flat rectangles, which is what it used to do.
-    if args.job_id and blueprint_path.exists() and not blueprint_is_placeholder:
+    # The reference blueprint *is* copied in — it is a real image, the UI's blueprint
+    # stage has something to show, and the `dev-` directory name is what says it did not
+    # come from a model. A flat legacy rectangle is not: snapshotting those only filled
+    # data/outputs with identical blue squares, which is what it used to do.
+    if args.job_id and blueprint_path.exists() and not _blueprint_is_placeholder(blueprint_path):
         try:
             import shutil
             shutil.copy2(blueprint_path, outputs_dir / "blueprint.png")
         except Exception as exc:
             logger.warning("Could not snapshot blueprint for job %s: %s", args.job_id, exc)
 
-    # A skipped Phase 1 has no seed or prompt to record, but the image still needs
-    # identifying — without a hash there is nothing to distinguish two runs that were
-    # handed different blueprints.
+    # A skipped Phase 1 usually still has full provenance to record: the primary Mac
+    # workflow runs the visualizer natively and it leaves a sidecar beside the PNG.
+    # Reading it back is what stops every job on that path from recording NULL for
+    # seed, prompt and model. When there is no (valid) sidecar the hash alone is
+    # recorded — it is the only thing that identifies a user-supplied blueprint.
     if args.skip_visualizer and blueprint_path.exists():
-        _record_blueprint(args, blueprint_path, None)
+        try:
+            from blueprint_spec import read_sidecar
+        except ImportError:
+            from pythonsrc.blueprint_spec import read_sidecar
+
+        sidecar_result = read_sidecar(blueprint_path)
+        if sidecar_result is not None:
+            print(
+                f"[P2P] Blueprint provenance restored from sidecar (seed {sidecar_result.seed})",
+                flush=True,
+            )
+        _record_blueprint(args, blueprint_path, sidecar_result)
 
     # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
     if not args.skip_sculptor:
@@ -594,14 +868,14 @@ def run(args: argparse.Namespace) -> None:
             )
             print(f"[P2P] Sculptor backend: {sculptor.describe()}", flush=True)
 
-            # Never pay to reconstruct the placeholder. A backend that bills per call
-            # turns a missing blueprint from a harmless dev convenience into a charge
-            # for a flat blue rectangle — which is exactly what happened, repeatedly,
-            # when an unmocked test triggered the pipeline. Free backends may proceed:
-            # the placeholder is still useful for exercising Phases 3-5.
-            if blueprint_is_placeholder and getattr(sculptor, "BACKEND", "") == "hosted_api":
+            # Never pay to reconstruct a stand-in. A backend that bills per call turns
+            # a missing blueprint from a harmless dev convenience into a charge for a
+            # fixture — which is exactly what happened, repeatedly, when an unmocked
+            # test triggered the pipeline. Free backends may proceed: the reference
+            # blueprint is a real image and reconstructing it is a real exercise.
+            if blueprint_is_stand_in and getattr(sculptor, "BACKEND", "") == "hosted_api":
                 raise RuntimeError(
-                    f"Refusing to spend money reconstructing a placeholder blueprint. "
+                    f"Refusing to spend money reconstructing a stand-in blueprint. "
                     f"The '{sculptor.name}' backend bills per generation and "
                     f"{blueprint_path} was auto-generated because no real blueprint "
                     "existed. Provide a blueprint, drop --skip-visualizer so Phase 1 "
@@ -698,7 +972,7 @@ def run(args: argparse.Namespace) -> None:
             hollow=args.hollow,
             wall_thickness=args.wall,
         )
-        _record_mesh_lineage(args, raw_mesh_path, final_mesh_path)
+        _record_mesh_lineage(args, raw_mesh_path, final_mesh_path, eng.last_report)
         _phase_pass(3, t0, str(final_mesh_path))
     except Exception as exc:
         _phase_fail(3, t0, exc)
@@ -779,6 +1053,11 @@ def run(args: argparse.Namespace) -> None:
         # Scoring is diagnostic; never fail a print because the scorer itself broke.
         logger.warning("Printability evaluation failed (%s) — continuing without a score.", exc)
         print("[P2P] ─── PRINTABILITY SKIPPED (evaluation error) ───\n", flush=True)
+        # Only when there is no report to protect: a failure *after* a successful score
+        # (a failed write, a dead database) must not overwrite the score with its own
+        # excuse.
+        if printability_report is None:
+            _record_printability_failure(args, outputs_dir, exc)
 
     # ── Phase 4: Slicer ───────────────────────────────────────────────────────
     if getattr(args, "slice", False) or args.print:
@@ -792,12 +1071,17 @@ def run(args: argparse.Namespace) -> None:
             )
             # Slicer (CuraEngine) needs .stl, Engineer outputs both .obj and .stl
             stl_mesh_path = final_mesh_path.with_suffix(".stl")
+            slicer_overrides = _adhesion_args(printability_report)
             gcode_path = slicer.slice(
                 input_path=stl_mesh_path,
                 output_path=gcode_path,
                 extra_args=_adhesion_args(printability_report, process_profile),
+                extra_args=slicer_overrides,
             )
-            _record_slice(args, gcode_path, time.time() - t0, status="success")
+            _record_slice(
+                args, gcode_path, time.time() - t0,
+                status="success", extra_args=slicer_overrides,
+            )
             _phase_pass(4, t0, str(gcode_path))
         except Exception as exc:
             # Recorded before _phase_fail, which exits the process. A mesh that could
@@ -821,7 +1105,11 @@ def run(args: argparse.Namespace) -> None:
             
             firmware = os.environ.get("P2P_FIRMWARE", profile_data.get("firmware", "octoprint"))
             base_url = os.environ.get("P2P_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
-            
+
+            # Recorded before the Docker rewrite below: host.docker.internal is a
+            # container artifact, not the address anyone configured.
+            dispatch_url = base_url
+
             # Rewrite localhost if running inside docker so it can reach the host
             if "localhost" in base_url or "127.0.0.1" in base_url:
                 if os.path.exists("/.dockerenv"):
@@ -846,6 +1134,19 @@ def run(args: argparse.Namespace) -> None:
             op.upload_file(str(gcode_path), gcode_path.name)
             logger.info(f"Upload complete — file available on {firmware}.")
 
+            # The dispatch moment is the only moment the target URL is true: profiles
+            # are resolved on read and edited in place, and this URL is what later
+            # distinguishes simulator telemetry from real-hardware telemetry.
+            if args.job_id:
+                try:
+                    from pythonsrc.telemetry.db import TelemetryDB as _DispatchDB
+
+                    _ddb = _DispatchDB()
+                    _ddb.update_job_dispatch(args.job_id, printer_url=dispatch_url)
+                    _ddb.close()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not record the dispatch target: %s", exc)
+
             if args.start_print:
                 logger.info("Starting print…")
                 op.start_print(gcode_path.name)
@@ -861,13 +1162,18 @@ def run(args: argparse.Namespace) -> None:
                     parsed = urlparse(base_url)
                     port = parsed.port or (443 if parsed.scheme == "https" else 80)
                     
-                    # Ensure job exists in DB
+                    # A CLI-launched job may have a row with no start time. Stamp
+                    # started_at — not completed_at, which this used to write:
+                    # `update_job_outcome`'s second timestamp is the *completion*
+                    # column, so every print marked its finish at the moment it began.
                     job = db.get_job(args.job_id)
                     if job and job.outcome == 'unknown' and not job.started_at:
-                        import datetime
-                        db.update_job_outcome(args.job_id, 'unknown', datetime.datetime.now(datetime.timezone.utc))
+                        db.update_job_start_time(args.job_id, datetime.now(timezone.utc))
 
-                    collector = OctoPrintCollector(parsed.hostname or "localhost", port, api_key or "", args.job_id, db)
+                    collector = OctoPrintCollector(
+                        parsed.hostname or "localhost", port, api_key or "",
+                        args.job_id, db, gcode_filename=gcode_path.name,
+                    )
                     await collector.start()
 
                     # Consume the collector's samples so automated failure detection

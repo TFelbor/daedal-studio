@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BootMark } from '../components/BootMark';
 import { listJobs } from '../api/client';
 import type { PaginatedJobs } from '../api/client';
 import { Blueprint } from '../components/Blueprint';
@@ -30,6 +31,8 @@ type FilterValue = (typeof FILTERS)[number]['value'];
 type JobRow = PaginatedJobs['jobs'][number] & {
   material_type?: string | null;
   awaiting_verdict?: boolean;
+  /** Sliced and never sent — Phase 5 is waiting for a person to confirm the printer. */
+  awaiting_dispatch?: boolean;
   outcome_source?: string | null;
 };
 
@@ -42,6 +45,11 @@ function rowStatus(job: JobRow): { label: string; className: string } {
   if (isAwaitingVerdict(job)) {
     // The printer reached the end of the file; nobody has confirmed the part.
     return { label: 'No verdict', className: styles.statusAwaiting };
+  }
+  if (job.awaiting_dispatch) {
+    // The pipeline finished and stopped: Phase 5 is holding for a person to confirm the
+    // printer. Calling this "Success" would describe a part that does not exist.
+    return { label: 'To send', className: styles.statusAwaiting };
   }
   switch (job.outcome) {
     case 'success':
@@ -203,10 +211,7 @@ export function JobList() {
       )}
 
       {loading && jobs.length === 0 ? (
-        <div className={styles.loading}>
-          <Loader2 size={18} strokeWidth={1.5} className="spin" />
-          <span>Loading jobs</span>
-        </div>
+        <BootMark block label="Reading the job log" />
       ) : jobs.length === 0 ? (
         <div className="empty">
           {statusFilter === 'all' ? (

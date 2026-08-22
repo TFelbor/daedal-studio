@@ -230,6 +230,39 @@ def test_printability_endpoint_returns_the_report():
     assert body["checks"][0]["check"] == "bed_contact"
 
 
+def test_printability_endpoint_returns_a_recorded_scoring_failure():
+    """A scorer that crashed is reported as a crash, not as an absent report.
+
+    The two are different facts and the UI renders them differently: "nothing measured
+    this mesh" versus "the measurement broke, here is why". Collapsing them into a 404
+    is what let a broken gate look like a clean one.
+    """
+    job_id = str(uuid.uuid4())
+    database = TelemetryDB()
+    database.init_schema()
+    database.insert_job(make_job(job_id))
+    envelope = {
+        "job_id": job_id,
+        "evaluated_at": "2026-08-21T18:00:00+00:00",
+        "status": "error",
+        "error": "Voxelisation failed at every pitch",
+        "error_type": "MemoryError",
+    }
+    database.update_job_printability(job_id, report=envelope)
+    job = database.get_job(job_id)
+    # No score is invented for a run that produced none.
+    assert job.printability_score is None
+    assert job.printability_verdict is None
+    database.close()
+
+    resp = client.get(f"/jobs/{job_id}/printability")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "error"
+    assert body["error_type"] == "MemoryError"
+    assert "checks" not in body
+
+
 def test_printability_endpoint_404s_without_a_report():
     job_id = str(uuid.uuid4())
     database = TelemetryDB()

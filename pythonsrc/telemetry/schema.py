@@ -8,6 +8,37 @@ import dataclasses
 from datetime import datetime
 from typing import Literal, Dict, Any, Type, TypeVar
 
+#: Every value `PrintJob.outcome` may hold.
+#:
+#: Most describe what happened to the part. Four do not, and the distinction matters
+#: when querying:
+#:
+#: - ``unknown`` — the pipeline has not finished. This is a *sentinel*, not a verdict:
+#:   the API maps it back to "running", so nothing settled may ever be written as
+#:   ``unknown``.
+#: - ``awaiting_verdict`` — the printer reached the end of the file and no human has
+#:   said whether the part survived.
+#: - ``dev`` — a developer's test run. Settled, and deliberately **excluded from
+#:   analysis**: verifying a pipeline change by printing a cube must not land in the
+#:   column the pilot's success rate is computed from.
+#: - ``declined`` — the user was asked, asked again, and does not want to be asked
+#:   about this print. Distinct from never being asked (no ``outcome_prompt_shown``
+#:   event) and from a single skip (``outcome_prompt_dismissed``).
+VALID_OUTCOMES = frozenset({
+    "success",
+    "failure",
+    "cancelled",
+    "unknown",
+    "awaiting_verdict",
+    "dev",
+    "declined",
+})
+
+#: Outcomes that are not evidence about a printed part, and must be filtered out of
+#: any success-rate or failure-mode query.
+NON_EVIDENCE_OUTCOMES = frozenset({"unknown", "awaiting_verdict", "dev", "declined"})
+
+
 @dataclasses.dataclass
 class PrintJob:
     """Represents a print job in the telemetry system."""
@@ -219,14 +250,45 @@ class PrintJob:
     outcome_reported_at: datetime | None = None
     """When a human recorded their verdict."""
 
+    # ── Run context and dispatch provenance ───────────────────────────────────
+    # Which code produced this row, whether the inputs were real, and which machine
+    # actually received the G-code. None can be recovered after the fact: the working
+    # tree moves on, the fixture flag lives only in the pipeline's own head, and the
+    # printer URL is resolved from a profile someone will edit next week.
+
+    git_sha: str | None = None
+    """Short git commit of the code that ran this job. A change to the prompt
+    template, the repair kernel or the scoring weights silently mixes populations
+    in the dataset unless rows can be split by code version."""
+
+    used_reference_assets: int | None = None
+    """1 when the pipeline substituted the bundled dev-reference blueprint/mesh
+    (see `_will_use_reference_assets`), 0 when it confirmed real inputs, None on
+    rows from before this column existed. A fixture run must be excludable from
+    any training query without comparing hashes by hand."""
+
+    dispatched_printer_url: str | None = None
+    """The printer base URL the G-code was actually sent to, captured at the moment
+    of dispatch. This is what distinguishes a simulator print (localhost:5001) from
+    real hardware — `printer_id` is a constant and profiles are resolved on read."""
+
+    repair_report: Dict[str, Any] | None = None
+    """What Phase 3 actually did to the mesh: which repair path ran, how many close
+    rounds, whether the volumetric remesh fired, and the scale factor applied.
+    Without it, "did voxel remeshing hurt outcomes" is unanswerable."""
+
+    print_duration_s: float | None = None
+    """Actual wall-clock print duration as reported by the printer at its terminal
+    event. The slicer's `estimated_print_time_s` is a prediction; this is the
+    measurement it must be judged against."""
+
     def __post_init__(self):
         """Validate the instantiated PrintJob fields.
 
         Raises:
             ValueError: If the outcome field is not a valid predefined state.
         """
-        valid_outcomes = {"success", "failure", "cancelled", "unknown", "awaiting_verdict"}
-        if self.outcome not in valid_outcomes:
+        if self.outcome not in VALID_OUTCOMES:
             raise ValueError(f"Invalid outcome: {self.outcome}")
         if self.outcome_source is not None and self.outcome_source not in {"machine", "user"}:
             raise ValueError(f"Invalid outcome_source: {self.outcome_source}")
@@ -345,6 +407,35 @@ class TelemetrySample:
             if s.endswith('Z'): s = s[:-1] + '+00:00'
             d['sampled_at'] = datetime.fromisoformat(s)
         return cls(**d)
+#: Every value `FailureEvent.failure_type` may hold.
+#:
+#: The first five are the `AnomalyDetector`'s own rule names, and the human-reported
+#: list in the UI reuses them deliberately: when the detector fires and a person
+#: agrees, both records must use the same word, or "how often is the detector right"
+#: cannot be answered with a query.
+#:
+#: The rest are reported by people only. ``other`` is the escape hatch, and it is the
+#: one value that means nothing on its own — a report carrying it is expected to carry
+#: ``notes`` as well, which is where the actual failure mode is written.
+VALID_FAILURE_TYPES = frozenset({
+    # Detector rules
+    "thermal_runaway",
+    "layer_shift",
+    "clog",
+    "adhesion",
+    "extrusion_issue",
+    # Human-reported only
+    "detached",
+    "supports",
+    "surface",
+    "dimensional",
+    "filament_out",
+    "user_cancelled",
+    "other",
+    "unknown",
+})
+
+
 @dataclasses.dataclass
 class FailureEvent:
     """Represents a failure event detected during a print job."""
@@ -387,8 +478,7 @@ class FailureEvent:
         Raises:
             ValueError: If failure_type or source is not a valid value.
         """
-        valid_types = {"thermal_runaway", "layer_shift", "clog", "adhesion", "extrusion_issue", "user_cancelled", "unknown"}
-        if self.failure_type not in valid_types:
+        if self.failure_type not in VALID_FAILURE_TYPES:
             raise ValueError(f"Invalid failure_type: {self.failure_type}")
         valid_sources = {"manual", "automated"}
         if self.source not in valid_sources:
@@ -434,12 +524,28 @@ JOB_EVENT_KINDS = (
     "outcome_prompt_shown",
     "outcome_prompt_dismissed",
     "outcome_reported",
+    "dispatch_confirmed",
+    # Printer lifecycle, written by the collector as the events arrive on the
+    # socket. Sparse and discrete, so rows rather than sample columns: a pause is
+    # a fact about the print ("someone intervened at layer 40") that no success
+    # metric can reconstruct later, and the terminal event's detail carries the
+    # firmware's own reason string, which exists only in that one payload.
+    "print_paused",
+    "print_resumed",
+    "printer_terminal",
 )
 """Recognised `JobEvent.kind` values.
 
 These are the user-engagement signals that cannot be reconstructed after the fact:
 nothing else records that someone downloaded a result, asked for another one, or was
 shown a feedback prompt and chose not to answer it.
+
+`dispatch_confirmed` is the newest and the only one that gates an action rather than
+describing one: a print reaches a machine because a person looked at the target and
+said yes, and the row carries what they were shown. It lives here rather than in a
+`print_job` column for the same reason as the others — one table absorbs a new signal
+without a migration — and because "who authorised this print" is a decision record,
+which is not what the outcome column is for.
 """
 
 

@@ -51,6 +51,15 @@ class Engineer:
     def __init__(self, target_dimensions: float | None = None, layer_height: float = 0.2) -> None:
         self.target_dimensions = target_dimensions
         self.layer_height = layer_height
+        # What the last `process` call actually did — which repair path ran, how
+        # hard it had to work, and the scale factor applied. Everything in it was
+        # previously visible only in the log, which made "did voxel remeshing hurt
+        # outcomes" unanswerable from the dataset. Read it after process(); the
+        # pipeline persists it to `print_job.repair_report`.
+        self.last_report: dict | None = None
+        self._repair_stats: dict | None = None
+        self._fallback_stats: dict = {}
+        self._last_scale_factor: float | None = None
 
     # ── Repair ────────────────────────────────────────────────────────────────
     @staticmethod
@@ -116,6 +125,23 @@ class Engineer:
             before_faces,
         )
 
+        self._fallback_stats = {}
+
+        def note(method: str, result: trimesh.Trimesh, unioned: int = 0) -> trimesh.Trimesh:
+            # One record per repair, written at whichever exit actually ships a
+            # mesh — the log already says all of this, but a log line cannot be
+            # joined against a print outcome.
+            self._repair_stats = {
+                "repair_method": method,
+                "watertight_before": bool(before_watertight),
+                "watertight_after": bool(result.is_watertight),
+                "faces_before": before_faces,
+                "faces_after": len(result.faces),
+                "unioned_components": unioned,
+                **self._fallback_stats,
+            }
+            return result
+
         try:
             # ── Stage 1: close the surface with trimesh ───────────────────────
             # manifold3d validates topology, it does not create it. Anything
@@ -137,7 +163,7 @@ class Engineer:
                 )
                 remeshed = self._voxel_remesh(closed)
                 if remeshed is None:
-                    return closed
+                    return note("trimesh_fallback", closed)
                 man = self._to_manifold(remeshed)
                 if man.status() != manifold3d.Error.NoError:
                     logger.warning(
@@ -145,8 +171,11 @@ class Engineer:
                         "trimesh-only repair.",
                         man.status(),
                     )
-                    return closed
+                    return note("trimesh_fallback", closed)
                 closed = remeshed
+                via_remesh = True
+            else:
+                via_remesh = False
 
             # ── Stage 3: union the components ─────────────────────────────────
             # Interpenetrating shells are common in generated meshes and are a
@@ -154,6 +183,7 @@ class Engineer:
             # slicer sees contradictory inside/outside tests. A boolean union
             # collapses them into one solid.
             parts = man.decompose()
+            unioned = 0
             if len(parts) > 1:
                 man = manifold3d.Manifold.batch_boolean(parts, manifold3d.OpType.Add)
                 if man.status() != manifold3d.Error.NoError:
@@ -161,12 +191,13 @@ class Engineer:
                         "manifold3d union failed (%s) — keeping trimesh-only repair.",
                         man.status(),
                     )
-                    return closed
+                    return note("voxel_remesh" if via_remesh else "trimesh_fallback", closed)
                 logger.debug("Unioned %d interpenetrating components into one solid.", len(parts))
+                unioned = len(parts)
 
             if man.is_empty():
                 logger.warning("manifold3d produced an empty solid — keeping trimesh-only repair.")
-                return closed
+                return note("voxel_remesh" if via_remesh else "trimesh_fallback", closed)
 
             repaired = self._from_manifold(man)
 
@@ -179,14 +210,14 @@ class Engineer:
                 man.genus(),
                 improved,
             )
-            return repaired
+            return note("voxel_remesh" if via_remesh else "manifold", repaired, unioned)
 
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "manifold3d repair failed (%s) — falling back to trimesh-only repair.",
                 exc,
             )
-            return self._repair_mesh_fallback(mesh)
+            return note("trimesh_fallback", self._repair_mesh_fallback(mesh))
 
     @staticmethod
     def _edge_face_counts(mesh: trimesh.Trimesh) -> tuple[np.ndarray, np.ndarray]:
@@ -321,8 +352,11 @@ class Engineer:
         # globally inconsistent mesh. One traversal at the end therefore does
         # the work that two used to.
 
+        total_dropped = total_stitched = rounds_used = 0
         for round_index in range(MAX_CLOSE_ROUNDS):
+            rounds_used = round_index + 1
             dropped = self._drop_nonmanifold_faces(repaired)
+            total_dropped += dropped
             trimesh.repair.fill_holes(repaired)
 
             _, counts = self._edge_face_counts(repaired)
@@ -348,6 +382,7 @@ class Engineer:
                 stitched = len(patch)
                 if stitched:
                     repaired = self._graft(repaired, patch)
+            total_stitched += stitched
             if not dropped and not stitched:
                 logger.warning(
                     "Surface still open after %d round(s) — %d boundary edge(s), "
@@ -370,6 +405,11 @@ class Engineer:
         else:
             trimesh.repair.fix_normals(repaired, multibody=True)
 
+        self._fallback_stats = {
+            "close_rounds": rounds_used,
+            "faces_dropped": total_dropped,
+            "faces_stitched": total_stitched,
+        }
         logger.debug(
             "After fallback repair — watertight: %s, faces: %d",
             repaired.is_watertight,
@@ -460,8 +500,10 @@ class Engineer:
         max_dim = current_size.max()
         if max_dim == 0:
             logger.warning("Mesh has zero extent — skipping scale.")
+            self._last_scale_factor = None
             return mesh
         scale_factor = target_mm / max_dim
+        self._last_scale_factor = float(scale_factor)
         scaled = mesh.copy()
         scaled.apply_scale(scale_factor)
         logger.debug("Scaled by %.4f (max dim %.2f → %.2f mm)", scale_factor, max_dim, target_mm)
@@ -624,13 +666,21 @@ class Engineer:
             mesh = self.orient_for_print(mesh)
 
         mesh.export(str(output_path))
-        
+
         # Also export as .stl for the Slicer (CuraEngine)
         stl_output_path = output_path.with_suffix(".stl")
         mesh.export(str(stl_output_path))
-        
+
         logger.info("Engineering complete → %s (and .stl)", output_path)
         logger.info("Output analysis: %s", self.analyze_mesh(mesh))
+
+        self.last_report = {
+            **(self._repair_stats or {}),
+            "scale_factor": self._last_scale_factor,
+            "target_mm": float(scale_target),
+            "hollowed": bool(hollow),
+            "wall_thickness_mm": float(wall_thickness) if hollow else None,
+        }
         return output_path
 
 

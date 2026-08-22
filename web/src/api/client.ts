@@ -35,6 +35,31 @@ export interface PrintabilityReport {
   features: Record<string, unknown>;
 }
 
+/**
+ * What the pipeline records when the scorer itself breaks.
+ *
+ * Scoring is advisory, so a crash in it never fails a job — which used to mean it left
+ * no trace at all, and the UI could not tell "nothing measured this mesh" from "the
+ * measurement broke". Both then rendered as the same quiet empty state, which is the
+ * one thing a quality gate must never look like.
+ */
+export interface PrintabilityFailure {
+  job_id: string | null;
+  evaluated_at: string | null;
+  status: 'error';
+  error: string;
+  error_type?: string | null;
+}
+
+export type PrintabilityResult = PrintabilityReport | PrintabilityFailure;
+
+/** Distinguishes a scored mesh from a recorded scoring failure. */
+export function isPrintabilityReport(
+  result: PrintabilityResult,
+): result is PrintabilityReport {
+  return Array.isArray((result as PrintabilityReport).checks);
+}
+
 export interface JobStatusResponse {
   job_id: string;
   status: string;
@@ -49,6 +74,9 @@ export interface JobStatusResponse {
   profile_name: string | null;
   machine_name: string | null;
   layer_height_mm: number | null;
+  /** [width, depth, height] in mm. Null when the printer profile does not declare one. */
+  build_volume_mm: number[] | null;
+  nozzle_diameter_mm: number | null;
   printability_score: number | null;
   printability_verdict: string | null;
   material_type: string | null;
@@ -66,6 +94,21 @@ export interface JobStatusResponse {
   outcome_source: string | null;
   /** The printer finished, but no human has confirmed the part survived. */
   awaiting_verdict: boolean;
+  /** A bundled fixture stood in for Phase 1 or Phase 2 — nothing here came from a
+   *  model. Null on rows written before the column existed, which is not the same
+   *  as a verified false. */
+  used_reference_assets: boolean | null;
+  /** Where the job stands with Phase 5. See `dispatch_state` in server/app.py. */
+  dispatch_state?: 'not_ready' | 'awaiting_confirmation' | 'dispatched';
+  /** The printer a dispatch would go to, resolved when the job was read. */
+  dispatch_target?: DispatchTarget | null;
+}
+
+export interface DispatchTarget {
+  profile: string;
+  firmware: string;
+  base_url: string | null;
+  machine_name: string | null;
 }
 
 export interface TelemetrySample {
@@ -129,7 +172,12 @@ export interface PendingFeedbackJob {
 }
 
 export interface OutcomeRequest {
-  verdict: 'success' | 'failure' | 'cancelled';
+  /**
+   * `dev` marks a developer's test run so it can be excluded from analysis; `declined`
+   * records that the user was asked twice and does not want to be asked again. Neither
+   * describes a part. See `OutcomeRequest` in server/app.py.
+   */
+  verdict: 'success' | 'failure' | 'cancelled' | 'dev' | 'declined';
   failure_type?: string;
   notes?: string;
   layer_pct?: number;
@@ -294,10 +342,43 @@ export async function listJobs(limit = 20, offset = 0, status = 'all'): Promise<
   return res.json();
 }
 
-export async function getJobPrintability(jobId: string): Promise<PrintabilityReport | null> {
+/**
+ * Send an already-sliced job to its printer.
+ *
+ * `confirmed` is the human in the loop, and the server requires it. The target is echoed
+ * back as it was displayed, so a profile swapped in Settings while the confirmation was
+ * on screen is answered with a 409 rather than a print to a machine nobody chose.
+ */
+export async function dispatchPrint(
+  jobId: string,
+  target?: DispatchTarget | null,
+): Promise<{ status: string; target: DispatchTarget }> {
+  const res = await fetch(`/jobs/${jobId}/print-dispatch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      confirmed: true,
+      profile: target?.profile ?? null,
+      base_url: target?.base_url ?? null,
+    }),
+  });
+  if (!res.ok) {
+    let detail = `The server answered ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) detail = String(data.detail);
+    } catch {
+      /* not JSON — the status code is the whole story */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function getJobPrintability(jobId: string): Promise<PrintabilityResult | null> {
   const res = await fetch(`/jobs/${jobId}/printability`);
   if (res.status === 404) return null;   // not every job reaches the Engineer
-  if (!res.ok) throw new Error('Failed to fetch printability report');
+  if (!res.ok) throw new Error(`The server answered ${res.status} for this report`);
   return res.json();
 }
 

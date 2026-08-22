@@ -1,19 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- Filament feeding into the block -->
-  <rect x="29" y="4" width="6" height="14" fill="#bc3823" />
-  
-  <!-- Heater block -->
-  <rect x="14" y="16" width="36" height="16" rx="3" fill="#1a1a1a" />
-  
-  <!-- Heater cartridge hole -->
-  <circle cx="22" cy="24" r="4" fill="#f9f9f9" />
-  
-  <!-- Nozzle Hex Base -->
-  <path d="M 20 32 L 44 32 L 40 42 L 24 42 Z" fill="#bc3823" />
-  
-  <!-- Nozzle Tip -->
-  <path d="M 24 42 L 40 42 L 36 52 L 28 52 Z" fill="#a32f1c" />
-  
-  <!-- Drop of filament -->
-  <path d="M 32 52 C 32 52, 36 56, 32 60 C 28 56, 32 52, 32 52 Z" fill="#bc3823" />
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Prompt2Print">
+  <!-- Candidate 1B, "the lay-down", at its 16px cut: filament, nozzle, three layers.
+       The tile is part of the mark, not a backdrop. A favicon lands on whatever colour
+       the browser's tab strip happens to be, and this identity is a near-black ground
+       with one orange on it — carrying that ground makes the icon read the same on a
+       light strip as on a dark one, which a bare orange glyph does not.
+
+       Strokes are 4 units on a 64 grid, not the 2 the 88px logo uses: at 16px a
+       hairline drops below one device pixel and the nozzle dissolves into grey. This
+       is the pixel-tuned cut, so it is deliberately heavier than the large form. -->
+  <rect width="64" height="64" fill="#0d0d0d"/>
+
+  <!-- Filament feeding in -->
+  <path d="M32 8 V15" stroke="#eb8724" stroke-width="4" fill="none" stroke-linecap="butt"/>
+
+  <!-- Nozzle body, squared off — no curve anywhere in this identity -->
+  <path d="M22 15 H42 L36 27 H28 Z" stroke="#eb8724" stroke-width="4" fill="none" stroke-linejoin="miter"/>
+
+  <!-- The bead leaving the tip -->
+  <path d="M28 28 H36 L34 33 H30 Z" fill="#eb8724"/>
+
+  <!-- Three laid layers. The top one is being written now; the two under it have
+       already cooled, which is what the stepped opacity says. -->
+  <rect x="17" y="38" width="30" height="6" fill="#eb8724"/>
+  <rect x="17" y="47" width="30" height="6" fill="#eb8724" opacity="0.72"/>
+  <rect x="17" y="56" width="30" height="6" fill="#eb8724" opacity="0.5"/>
 </svg>

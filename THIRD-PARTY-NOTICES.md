@@ -265,8 +265,14 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 
 All production dependencies are permissive — MIT, ISC, Apache-2.0 or
 BSD-3-Clause. No copyleft. Principal packages: React and React DOM (MIT),
-react-router-dom (MIT), three (MIT), recharts (MIT), gcode-preview (MIT),
-lucide-react (ISC), Vite (MIT), TypeScript (Apache-2.0).
+react-router-dom (MIT), three (MIT), recharts (MIT), gcode-preview (MIT)
+and its transitive `lil-gui` (MIT), lucide-react (ISC), Vite (MIT),
+TypeScript (Apache-2.0).
+
+`gcode-preview` pins `three@^0.159` while the app is on `0.184`, so npm installs a
+second nested copy rather than deduplicating. That is a bundle-size cost, not a
+licence one — both copies are MIT — and it is deliberate: deduplicating would run the
+previewer against a three.js eleven minors newer than the one it was tested on.
 
 ---
 

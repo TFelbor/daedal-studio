@@ -26,10 +26,22 @@ import pytest
 from pythonsrc.telemetry.db import TelemetryDB
 
 
+def _insert_stub_job(database: TelemetryDB, job_id: str = "job-1") -> None:
+    """Foreign keys are enforced, so event rows need a parent job to exist."""
+    database.conn.execute(
+        "INSERT INTO print_job (job_id, prompt, printer_id, printer_firmware, "
+        "slicer, profile_name, outcome) VALUES (?, 'p', 'pr', 'octoprint', 'cura', "
+        "'ender3', 'unknown')",
+        (job_id,),
+    )
+    database.conn.commit()
+
+
 @pytest.fixture
 def db(tmp_path):
     database = TelemetryDB(db_path=str(tmp_path / "telemetry.db"))
     database.init_schema()
+    _insert_stub_job(database)
     yield database
     database.close()
 
@@ -82,6 +94,7 @@ def test_a_corrupt_database_is_reported_rather_than_raising(tmp_path):
     path = tmp_path / "telemetry.db"
     sound = TelemetryDB(db_path=str(path))
     sound.init_schema()
+    _insert_stub_job(sound)
     for i in range(200):
         sound.conn.execute(
             "INSERT INTO job_event (event_id, job_id, occurred_at, kind) "

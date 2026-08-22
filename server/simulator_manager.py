@@ -127,6 +127,28 @@ class SimulatorManager:
 
     # ── Container lookup ─────────────────────────────────────────────────────
 
+    @staticmethod
+    def _prefer_running(containers):
+        """Pick a running container over a stopped one, else the first available.
+
+        The same service can have several container records at once: compose derives
+        its project name from the directory it is invoked in, so running the
+        documented command from the repo root and from `infra/` leaves
+        `p2p-mesh-poc-docker-octoprint-simulator-1` and
+        `infra-octoprint-simulator-1` side by side, plus whatever earlier runs left
+        behind. `containers.list(all=True)` returns them in no useful order, so taking
+        `[0]` reported "stopped" while a working simulator was up on port 5001 — and
+        the UI then refused to start a job against a printer that was answering.
+
+        The question this class exists to answer is "is a simulator running", so a
+        live container wins over a dead one regardless of which project created it.
+        """
+        containers = list(containers)
+        for container in containers:
+            if container.status == "running":
+                return container
+        return containers[0] if containers else None
+
     def _get_container(self, client=None):
         client = client or self.require_client()
 
@@ -136,16 +158,20 @@ class SimulatorManager:
                 f"com.docker.compose.service={self.service_name}",
             ]
         }
-        containers = client.containers.list(all=True, filters=filters)
-        if containers:
-            return containers[0]
+        matched = self._prefer_running(client.containers.list(all=True, filters=filters))
+        if matched is not None and matched.status == "running":
+            return matched
 
-        # Fallback for a container created before the project name was pinned.
-        for container in client.containers.list(all=True):
-            if self.service_name in container.name:
-                return container
+        # Nothing live under our own project name. Fall back to the service name,
+        # which also covers a container created under a different project — and only
+        # then settle for whatever stopped record the label filter found.
+        by_name = self._prefer_running(
+            c for c in client.containers.list(all=True) if self.service_name in c.name
+        )
+        if by_name is not None and by_name.status == "running":
+            return by_name
 
-        return None
+        return matched or by_name
 
     # ── Moonraker: deprecated, kept so callers get a truthful answer ──────────
 

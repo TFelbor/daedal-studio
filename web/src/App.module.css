@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 0 40px;
+  padding: 0 var(--gutter);
   background: rgba(13, 13, 13, 0.92);
   border-bottom: 1px solid var(--rule);
   position: sticky;
@@ -76,7 +76,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px 24px;
-  padding: 16px 40px;
+  padding: 16px var(--gutter);
   background: var(--void);
   border-top: 1px solid var(--rule);
   font-size: 11.5px;
@@ -99,9 +99,10 @@
   letter-spacing: 0.1em;
 }
 
+/* The gutter itself narrows on the token ladder in global.css; these are only the
+   things that have to give up space beyond it. */
 @media (max-width: 720px) {
   .nav {
-    padding: 0 20px;
     gap: 12px;
   }
 
@@ -111,9 +112,5 @@
 
   .navLinks {
     gap: 18px;
-  }
-
-  .attribution {
-    padding: 16px 20px;
   }
 }

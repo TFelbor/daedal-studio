@@ -70,6 +70,53 @@ requested model — the cube is watertight, has no overhangs and sits flat, so r
 printability, slicing and dispatch all pass it. An image is input to a phase that names
 its own model; a mesh is the deliverable.
 
+**A skipped phase installs a real asset, and the output directory says so.** When Phase 1
+or Phase 2 is skipped with nothing real to work from, the pipeline copies in
+`pythonsrc/assets/dev_reference/{blueprint.png,raw_mesh.obj}` — actual outputs of job
+`ec076d7e`. It used to fabricate them: a flat blue rectangle and a 50mm
+`trimesh.creation.box`. The cube is watertight, convex and single-component, so
+`repair_mesh` had nothing to remove, `_largest_component` nothing to choose between, and
+the printability gate scored geometry no reconstruction produces; the reference mesh
+arrives with 138 non-manifold edges across 95 components, which is what those paths were
+written for. Such a run writes to **`data/outputs/dev-{job_id}`** — a mesh built from a
+fixture must not sit in the real namespace looking like one a model made.
+`resolve_job_artifact` searches both, so the endpoints still serve it.
+`_will_use_reference_assets` is the predicate, and it is deliberately narrower than "a
+phase was skipped": the primary Mac workflow always passes `--skip-visualizer` because
+Phase 1 just ran natively, and `--skip-sculptor --mesh real.obj` supplies its own. Only a
+*substitution* earns the prefix.
+
+**Both phases skipped is the commonest dev configuration, and it used to get no
+blueprint at all.** `SKIP_VISUALIZER` + `SKIP_SCULPTOR` in the config store is how the
+UI runs Phases 3-5 on a machine with no GPU, and the install condition read `if not
+blueprint_path.exists() and not args.skip_sculptor` — withholding the image whenever
+Phase 2 was skipped too, on the reasoning that a skipped Phase 2 has nothing to hand it
+to. Phase 2 is not the blueprint's only consumer: it is the first thing the running view
+shows and its hash is the job's only Phase 1 provenance. Those runs exited 0 with a
+`dev-` directory holding `raw_mesh.obj` alone, an empty blueprint stage, NULL for every
+`blueprint_*` column, and nothing in the log saying so.
+`_should_install_reference_blueprint` is the decision now: skipped Phase 1, nothing at
+the path, **and no `--mesh`**. That last clause is the honest exception — a run that
+supplied its own geometry is not a fixture run, its outputs land in the real namespace,
+and inventing a blueprint there would stamp a fabricated input's hash as this job's
+provenance. That case logs a warning instead, because an unexplained empty first stage
+reads as a broken pipeline.
+
+**The fixture flag is carried out to the UI, not only to the dataset.**
+`GET /jobs/{id}` returns `used_reference_assets`, and the running view shows a
+`Fixture inputs` badge and re-captions the blueprint and mesh stages. Without it the
+page captions a bundled image "Blueprint drawn from the prompt" — the same lie the
+`dev-` prefix exists to prevent, told to the person instead of to the query. `_blueprint_is_stand_in` recognises the reference
+blueprint by hash and the legacy flat rectangles by pixels — that guard is the only thing
+stopping a per-generation backend from being billed to reconstruct a fixture, and the old
+files persist on the shared blueprint path.
+
+**Phase 5 does not follow Phase 4 for a UI job.** `POST /jobs` from the web app sends
+`print: false, start_print: false`, so the pipeline stops after the slicer and the job
+waits for a person to confirm the printer — see **Dispatch gate** below. `--print
+--start-print` still dispatch immediately, which is what the CLI and any automation
+use: there is nobody to ask there.
+
 Between Phase 3 and Phase 4 the pipeline runs the **printability gate** (`pythonsrc/printability.py`).
 It is deliberately *not* a numbered phase: the `.status` protocol, the WebSocket phase updates and
 the UI progress bar all key off phases 1–5, so renumbering would change what every historical
@@ -77,7 +124,7 @@ the UI progress bar all key off phases 1–5, so renumbering would change what e
 `data/outputs/{job_id}/printability.json`, and persists score/verdict/features/report onto the
 job's telemetry row. Scoring is **advisory** — a low score never blocks a print unless
 `--min-printability SCORE` is passed, and a crash in the scorer is logged and skipped rather than
-failing the job.
+failing the job (but it is *recorded* — see the error envelope under **Printability**).
 
 ### Sculptor — Phase 2 (pythonsrc/sculptors/)
 
@@ -231,7 +278,10 @@ FastAPI application with:
   reports the response rate. The outcome endpoint takes an optional signed token from the outset
   so email or webhook delivery is a config change rather than a refactor.
 - `GET /jobs/{id}/download` logs a `download` event and increments `download_count` before
-  streaming — the response is lazy and may be abandoned mid-flight.
+  streaming — the response is lazy and may be abandoned mid-flight. `?preview=1` serves the
+  same bytes and records nothing: the toolpath viewer polls this endpoint to *render* the
+  G-code, and without the flag `download_count` was a component-mount counter, not the
+  "a person chose to keep this" signal it is documented as.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[P2P]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
@@ -289,11 +339,34 @@ FastAPI application with:
   gave every job started in the same second an identical image. `blueprint_spec.py` holds the
   seed and prompt logic torch-free so the pipeline, server and tests can use it without the
   Phase 1 stack.
+- **The blueprint sidecar carries Phase 1 provenance across the process boundary.** The
+  primary Mac workflow runs the visualizer as its own native process and the pipeline with
+  `--skip-visualizer`, which used to record only the image hash — seed, prompt, model all
+  NULL for every job on that path. `write_sidecar()`/`read_sidecar()` in `blueprint_spec.py`
+  serialize the `BlueprintResult` next to the PNG; the sidecar stores the image's own sha256
+  and a mismatch reads as *no sidecar*, because the blueprint path is shared and a stale
+  sidecar attributing an old seed to a new image is worse than none. The pipeline reads it
+  back on the skip path; do not "simplify" this into recording only the hash again.
+- **Run context**: `git_sha` and `used_reference_assets`, written by
+  `pipeline._record_run_context()` before any phase runs. The fixture flag used to exist only
+  in the output directory's `dev-` prefix — nothing queryable — which made fixture runs the
+  largest training-set contamination risk. False is written as 0, not skipped: "verified real"
+  must stay distinguishable from "predates the column". `git_sha` resolves via
+  `pythonsrc/telemetry/run_context.py` ($P2P_GIT_SHA beats `git rev-parse`; the server stamps
+  it into the container env, which carries no .git).
+- **Dispatch provenance**: `dispatched_printer_url`, written at the moment of dispatch by the
+  gate endpoint, the pipeline's Phase 5 and `run_operator.py` — deliberately the *pre*-Docker-
+  rewrite URL, since `host.docker.internal` is a container artifact. This is the only thing
+  that distinguishes simulator telemetry (localhost:5001) from real hardware; `printer_id` is
+  a constant and profiles are resolved on read.
 - **Mesh lineage**: `raw_mesh_sha256` / `raw_mesh_features` and `repaired_mesh_sha256` /
   `repaired_mesh_features` bracket Phase 3, making repair's effect measurable. `mesh_features`
   keeps its existing meaning — the printed mesh. Written by `pipeline._record_mesh_lineage()`
   via `printability.extract_features(mesh, thickness=False)` on the raw mesh; the voxel wall
   thickness pass is skipped there because it is expensive and meaningless before scaling.
+  `repair_report` (from `Engineer.last_report`) rides along: which repair path ran
+  (manifold / trimesh_fallback / voxel_remesh), rounds, faces dropped, and the scale factor —
+  previously log-only, which made "did voxel remeshing hurt outcomes" unanswerable.
 - **Slice results**: `slice_status` (`success`/`failed`/`skipped`), `slice_error`,
   `slice_duration_s`, `estimated_print_time_s`, `filament_used_mm`/`_mm3`/`_g`,
   `support_filament_mm3`, `layer_count`, `slice_stats`. Recorded on failure too — a dataset of
@@ -368,20 +441,46 @@ FastAPI application with:
   the file*, so enabling it from the host would leave the container unable to open
   the database at all. The real fix is one writer, which the existing
   `internal_telemetry.send_internal_telemetry` relay already makes possible; until
-  then, `db.integrity_check()` runs in the server's startup event and logs loudly,
-  `GET /health` reports `database.healthy`, and `db.backup_to()` takes a rotating
-  snapshot (`DB_BACKUP_COPIES`) using SQLite's online backup API — **only when the
-  check passes**, so a corrupt file cannot launder itself through every slot. It
-  refuses rather than hangs if the caller holds an open transaction.
+  then, `db.integrity_check()` runs in the server's startup event, again every
+  `$P2P_DB_BACKUP_INTERVAL_MIN` minutes (default 360, 0 disables), and on
+  `POST /system/database/backup`; `GET /health` reports `database.healthy`, and
+  `db.backup_to()` takes a rotating snapshot (`$P2P_DB_BACKUP_COPIES`, default 5)
+  using SQLite's online backup API — **only when the check passes**, so a corrupt
+  file cannot launder itself through every slot. It refuses rather than hangs if
+  the caller holds an open transaction.
+
+  **Off-disk mirror**: every verified snapshot is additionally copied to
+  `$P2P_DB_BACKUP_MIRROR_DIR` when that is set (it is deliberately unset until the
+  data is worth keeping; the intended target is the Drive-synced data-collection
+  folder). The copy runs on a **daemon thread**, staged as `.part` then renamed —
+  the Drive File Provider mount was measured blocking a directory listing for 10+
+  seconds, so nothing Drive-facing may ever run on the event loop or the startup
+  path. `$P2P_DB_BACKUP_MIRROR_COPIES` (default 10) prunes the mirror.
+  `tests/test_db_backup_policy.py` holds all of this.
 
   `tests/test_single_database.py` is the regression guard: it fails if compose or
   `.env.template` starts pinning the variable again, or if a telemetry volume reappears.
-- **`job_event` has no foreign key onto `print_job`**, so deleting a job leaves its
-  events behind. `feedback_funnel()` and `count_job_events()` therefore join `print_job`,
-  and `count_orphaned_job_events()` reports the debris. Without the join the pilot's
-  headline response rate is computed over jobs that no longer exist — on one real
-  database that read as a confident 40% when the honest answer was "no data".
+- **Foreign keys are enforced** (`PRAGMA foreign_keys = ON`, per connection in
+  `_configure_connection`). They were declared and decorative — SQLite's default —
+  which is the actual root cause of the orphaned-events incident. A sample, job
+  event or failure event for a nonexistent job is now refused at write time.
+  `feedback_funnel()` and `count_job_events()` keep their `print_job` joins and
+  `count_orphaned_job_events()` stays, because databases written before the pragma
+  still carry orphans. Tests that need a legacy orphan suspend the pragma explicitly.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **The server-side collector attaches when Phase 5 starts, not at job creation**
+  (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
+  banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
+  the job for the entire pipeline — hours of a machine printing nothing, shaped exactly
+  like print telemetry. `OctoPrintCollector` also takes a `gcode_filename` and ignores
+  printer events naming any other file: the socket reports every print on the machine,
+  and a Benchy someone started from the OctoPrint UI used to settle our job's outcome.
+  Its `_on_event` respects the single-writer claim, records `print_paused`/`print_resumed`/
+  `printer_terminal` job events (the terminal detail carries the firmware's own `reason`),
+  writes the printer-reported duration to `print_duration_s` (deliberately outside the
+  outcome-precedence guard — it is a measurement, not a verdict), and fills the sample's
+  `gcode_line` with `progress.filepos` — the same byte-offset semantics Moonraker uses,
+  which is also what lets the clog rule fire on OctoPrint at all.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
   **Arbitration being unavailable is not the same as the database being broken.** Only
   `no such table` takes the fail-open branch — that is an older database with no claim
@@ -395,6 +494,23 @@ FastAPI application with:
   cannot masquerade as a dropped socket and tear down a working websocket once per
   sample. Repeat failures are demoted to DEBUG until one succeeds, because telemetry
   arrives about once a second.
+- **Two outcomes describe the dataset, not the part.** `VALID_OUTCOMES` in
+  `schema.py` now also carries `dev` and `declined`, and `NON_EVIDENCE_OUTCOMES` names
+  everything a success-rate query must filter out. `dev` is a developer's test run —
+  the third verdict button, gated behind `import.meta.env.DEV` so it is dropped from
+  the production bundle rather than merely hidden — and exists so that verifying a
+  pipeline change by printing a cube does not land in the column the pilot is measured
+  from. `declined` records that someone was asked twice and does not want to be asked
+  again; it is deliberately **not** `unknown`, because `job_status_from_outcome` maps
+  `unknown` back to `running` and a settled job written that way would claim to be
+  mid-pipeline forever.
+- **`VALID_FAILURE_TYPES` is shared between the detector and the human form.** The
+  first five values are the `AnomalyDetector`'s own rule names, reused by the UI's
+  dropdown on purpose: when the detector fires and a person agrees, both rows must use
+  the same word or "how often is the detector right" is not a query. `other` is the
+  escape hatch and means nothing without `notes`. `OutcomeRequest` validates the field
+  on the *request model*, not in the handler — validating later wrote the verdict and
+  then refused the request, leaving the row marked `failure` behind a 422.
 - **Print outcome is a product feature, not a column** (`outcome`, `outcome_source`,
   `outcome_reported_at`). `outcome_source` is `machine` or `user`, and **only `user` is ground
   truth**. A pipeline that exits 0 after dispatching a print, and an OctoPrint `PrintDone` event,
@@ -412,8 +528,12 @@ FastAPI application with:
   (`outcome_prompt_dismissed`) — whether pilot users report at all is the thing being measured,
   so declining must be distinguishable from never being asked. `GET /feedback/stats` counts over
   prompted *jobs*, not raw events; dividing total reports by total prompts lets an unprompted
-  verdict push the rate above 1.
-- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C`, actual more than 25°C below target for 5 consecutive samples, **and the gap not closing** — a cold hotend climbing to 210°C satisfies the first two conditions exactly, and used to be reported as a fault seconds after dispatch; the rule is also gated on the printer still printing, so a job someone cancelled stops accruing automated failures), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → error/cancelled), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples). Each type fires at most once per job. Rules that read progress need an operator; rules that read `gcode_line` or `extrusion_factor_pct` are Klipper-only, since `OctoPrintCollector` leaves those fields None. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
+  verdict push the rate above 1. **`declined` and `dev` verdicts are responses, not answers**:
+  `feedback_funnel()` excludes them from `answered` (via the verdict in the event detail) and
+  reports `declined` separately — "don't ask me again" used to inflate the exact number the
+  pilot is measured by. The dashboard buckets them the same way: `GET /jobs` stats has `dev`
+  and `declined` keys, and neither counts as `failed`.
+- **Detector** (`detector.py`): Five rules, all evaluated per sample over a 20-sample history — thermal runaway (`hotend_target > 150°C`, actual more than 25°C below target for 5 consecutive samples, **and the gap not closing** — a cold hotend climbing to 210°C satisfies the first two conditions exactly, and used to be reported as a fault seconds after dispatch), clog (progress > 5% and `gcode_line` unchanged across 10 samples while printing), layer shift (Z drops more than 0.5mm between samples, **while printing** — end-of-print parking and homing drop Z legitimately and used to be written up on healthy jobs), adhesion (`z < 1.0mm` and progress < 10% when state goes printing → **error, deliberately not cancelled**: a person cancelling a print is not machine-observed evidence about the part; if it really was adhesion, the human's own verdict says so), and extrusion issue (`extrusion_factor_pct <= 10` for 5 consecutive samples, while printing). Each type fires at most once per job (per process — the set is in-memory). Rules that read progress need an operator; `extrusion_factor_pct` is still Klipper-only, but `gcode_line` is now filled on OctoPrint too (file position), so the clog rule can fire on both firmwares. Start one per collector via `attach_detector()` — a collector's `sample_queue` is otherwise never consumed.
 
 ### Slice statistics (pythonsrc/gcode_stats.py)
 
@@ -532,6 +652,17 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
 - Escape-hole detection finds components whose bounding box nests inside another's, which is
   exactly what `Engineer.hollow_mesh`'s voxel erosion produces: a sealed cavity. It is fatal only
   when the mesh was actually hollowed.
+- **A crash in the scorer is recorded, not swallowed.** Scoring never fails a job, which used to
+  mean a scorer exception left no trace at all: no artifact, no telemetry, and a UI that could not
+  tell "nothing measured this mesh" from "the measurement broke". Both rendered as the same empty
+  panel, and an empty quality panel reads as a clean one.
+  `pipeline._record_printability_failure()` now writes an **error envelope** —
+  `{job_id, evaluated_at, status: "error", error, error_type}` — to `printability.json` and to
+  `printability_report`, leaving `printability_score`/`printability_verdict` NULL because there is
+  no score and inventing one (0 for safety, 100 for convenience) would be a fabricated measurement.
+  It is written only when no report exists, so a failure *after* a good score cannot overwrite it.
+  `GET /jobs/{id}/printability` passes the envelope through; the UI distinguishes it from a report
+  by the absence of `checks` (`isPrintabilityReport`).
 
 ### Orientation and adhesion (Phase 3 → Phase 4)
 
@@ -594,6 +725,68 @@ the command line it builds are load-bearing, and each of them was once wrong:
   `"True"`, which CuraEngine parses as neither, so `retraction_enable` would have
   arrived disabled.
 
+### Printer readiness (`printer_status`)
+
+`GET /system/printer/status` answers two different questions and they must not be
+conflated: `configured` means a target is set, `running` means **we asked it and it
+answered**. It used to return `running: True` for any profile file that existed,
+without opening a connection — so a profile pointing at a switched-off printer read as
+ready, the pipeline view opened, and the failure surfaced four phases later at dispatch,
+after Phase 2 had already been billed on the hosted sculptor. `POST /jobs` now refuses
+on `running`, not just `configured`, and the probe delegates to `test_connection` rather
+than reimplementing reachability — two probes that can disagree about one printer is how
+a "ready" badge ends up beside a dead machine.
+
+`SimulatorManager._get_container` had the same class of bug independently: compose
+derives its project name from the directory it is invoked in, so the same service
+accumulates container records under several project names
+(`p2p-mesh-poc-docker-octoprint-simulator-1`, `infra-octoprint-simulator-1`, …).
+Listing them and taking `[0]` reported "stopped" while a working simulator answered on
+port 5001. A **running** container now wins over a stopped one regardless of which
+project created it, and "stopped" stays distinguishable from "absent".
+
+A 401/403 from a printer is reported as *reached and refused*, naming the credential to
+check — not as a connection failure. Surfacing OctoPrint's stock Flask 403 body
+("You don't have the permission to access the requested resource") sent people looking
+at their network for a wrong API key.
+
+### Dispatch gate — Phase 5 waits on a person
+
+A print is the only step that heats a nozzle for hours, spends filament and cannot be undone,
+and it used to start on its own: the pipeline was launched with `--print --start-print`, so the
+first time anyone saw which machine a part was going to was in the past tense.
+
+- **The state is derived, not stored** (`server.dispatch_state`). `dispatched` when a
+  `dispatch_confirmed` job event exists or the outcome is `awaiting_verdict`;
+  `awaiting_confirmation` when the pipeline finished (`outcome == "success"`), the slice
+  succeeded and the G-code artifact is on disk; `not_ready` otherwise. No new outcome value and
+  no migration: the outcome column says what the *software* did, and "a person has not decided
+  yet" is a decision record, which is what `job_event` is for. Requiring `outcome == "success"`
+  is deliberate — a pipeline still running may have been launched with `--print` and would
+  dispatch itself.
+- **`POST /jobs/{id}/print-dispatch` requires `confirmed: true`.** Nothing else in the system
+  stops a print, so the flag *is* the gate and there is no unconfirmed code path left — the rail's
+  old "Print" button (which posted an empty body from `JobControlPanel`) is gone. The body also
+  carries the target **as it was displayed** (`profile`, `base_url`); when those no longer match
+  what the server resolves, the answer is **409**, because confirming a printer you are no longer
+  looking at is not confirming. The printer is then re-probed via `printer_status()` and a dead
+  one is 409'd *before* the operator subprocess runs.
+- **`dispatch_target` is resolved on read, not frozen at creation** — the point of showing it is
+  that it reflects a profile someone changed in Settings five minutes ago.
+- On confirmation the endpoint records the event, sets `awaiting_verdict` (dispatched is not
+  printed — see Telemetry), appends a phase-5 `running` record with `_append_phase_status` so the
+  rail moves, and **follows the operator to its exit** rather than firing and forgetting: a
+  non-zero exit writes phase 5 `error` and records `failure`, so a dispatch that never started
+  does not leave a row asking a person about a part that does not exist.
+- **`GET /jobs?status=awaiting_dispatch`** is what makes the step survive a page reload: such a
+  job is finished as far as the pipeline is concerned, so it is absent from the running list, and
+  the pending decision used to vanish on refresh. The dashboard marks the row `To send`
+  (`awaiting_dispatch` per row) rather than `Success`, and `NewJob` re-attaches on mount — but
+  **only to the job that tab was watching** (`sessionStorage['p2p.watchedJob']`, re-checked
+  against `dispatch_state`), not to whatever the filter returns newest. "Sliced and not sent"
+  has no time limit, so one job nobody ever confirmed would otherwise own the landing page
+  for good. Everything else is reached from the dashboard.
+
 ### Printer Operators (pythonsrc/operators/)
 
 Abstract base class `BasePrinterOperator` defines: `connect()`, `upload_file()`, `start_print()`, `cancel_print()`, `pause_print()`, `resume_print()`, `get_printer_state()`. Shared code (`pipeline.py`, `run_operator.py`) must call these with the base signature only — `OctoPrintOperator.upload_file` accepts an extra `start_print` kwarg that no other operator has, and passing it raises `TypeError` on Klipper and Bambu (`tests/test_operator_contract.py` guards this). `PrinterFactory` accepts `moonraker` as an alias for `klipper`, because the UI and config store persist the former while profiles use the latter. `PrinterFactory.create(firmware, base_url, api_key)` returns the appropriate implementation. Profiles at `pythonsrc/profiles/*.json` specify `firmware`, `base_url`, and optionally `api_key`.
@@ -605,6 +798,54 @@ All images are pinned to `linux/amd64` (CuraEngine is only available as amd64 ap
 ### Frontend (web/)
 
 React 19 + Vite 8 + TypeScript 6. Dependencies: `react-router-dom` (routing), `recharts` (telemetry charts), `three` + `@types/three` (3D mesh viewer). Vite dev server proxies `/jobs` and `/health` to `localhost:8000`. Production build goes to `web/dist/` which is copied into the API server Docker image.
+
+Four layout rules are load-bearing enough to name, because breaking them is invisible in a
+diff and obvious on screen:
+
+- **`--gutter` and `--rail` are the page's symmetry lines** (`global.css`). Every full-width
+  edge — nav, footer, `.sheet`, the split cells, the job header, the stage, the rail, the
+  verdict banner, the dispatch gate — uses `var(--gutter)`, so the logo, the hero and the
+  credits stand on one line. They previously ranged 40–56px per scene, which read as a wobble
+  down the left side of the product. `--rail` is the one side-column width (was 380/400/400).
+- **`.surface` is a flex column and page roots take `flex: 1`.** A page must own the height
+  between the nav and the footer; `NewJob`'s split stopped at 620px, so its closing rule landed
+  mid-page with a band of bare grid beneath it. The idle split spends the extra height *above*
+  the composer (`.composeGroup { margin-top: auto }`) so the field and the printer plate sit on
+  the same closing rule.
+- **A framed field expresses focus once** (`.field-frame`). The frame *is* the input, so the
+  textarea's own `:focus-visible` ring — 2px of accent, 2px inside the frame — is suppressed and
+  the frame carries the state: accent at line strength, the ground opens, the registration marks
+  close in. Two nested orange rectangles around the biggest object on the page read as an alarm.
+- **Prompt fields do not resize and do not accept unbounded text.** `MAX_PROMPT_CHARS`
+  (`components/promptLimits.ts`) caps both fields with a counter that only appears near the
+  ceiling; `resize` is `none` and `PromptZoom` replaces the handle — the same text on a centred
+  plate, page dimmed shallowly. A resize grip asks the writer to do layout, and its uncapped
+  drag could push the submit button off screen.
+
+The running view's stage follows the pipeline: it advances to the mesh when Phase 3 completes
+and to the **toolpath as soon as the slice exists**, and the printability report is rendered
+under the mesh stage (`PrintabilityCard` with `pending` for the window where the mesh is done
+and the score is not). The G-code preview used to be duplicated in a 240px slot in the rail,
+which is not where a 200-layer toolpath is read.
+
+**`NewJob` shows one of two pages, and `jobId` decides which — so nothing may set it
+without a way to unset it.** The running view was a one-way door: `setJobId(null)` was
+called nowhere, so a tab that attached to a job could not reach the landing composer
+again, and "New job" opens the inline composer *beside* the running job rather than
+going back. `leaveJob` is the way back — it closes the socket, forgets the watched job
+and leaves the job itself alone. The other half of the same bug was on the server:
+`GET /jobs` answered an unrecognised `status` filter with the *unfiltered* list, newest
+first, so a browser one deploy ahead of the server was handed a finished job by
+`status=awaiting_dispatch` and dropped into the running view on every load. Unknown
+filters are now a 400 (`JOB_LIST_STATUSES`), and the client checks the row it got back
+rather than the fact that a row came back.
+
+**A WebSocket closed while still `CONNECTING` is aborted, not closed** — the spec says
+to fail the connection, so the browser resets the TCP socket mid-handshake and the Vite
+proxy logs `ws proxy error: read ECONNRESET` twice. StrictMode discards the first socket
+of every effect, so this fired on every dev page load and read like a dead backend.
+`api/ws.ts`'s `closeSocket` waits for the upgrade before closing; use it instead of
+`ws.close()` in effect cleanups.
 
 ## Configuration
 

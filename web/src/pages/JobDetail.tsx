@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { ArrowLeft, Download, Loader2, Printer, RefreshCw } from 'lucide-react';
-import { createJob, getJob, getJobTelemetry, reportOutcome } from '../api/client';
+import { createJob, dispatchPrint, getJob, getJobTelemetry, reportOutcome } from '../api/client';
 import type { FailureEvent, JobStatusResponse, TelemetrySample } from '../api/client';
+import { BootMark } from '../components/BootMark';
+import { DeadChannel } from '../components/DeadChannel';
 import { PhaseProgress, derivePhases } from '../components/PhaseProgress';
+import { WaitingStage } from '../components/WaitingStage';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { FailureButton } from '../components/FailureButton';
 import { MeshViewer } from '../components/MeshViewer';
@@ -200,8 +203,10 @@ export function JobDetail() {
         profile: job.profile_name && job.profile_name !== 'default' ? job.profile_name : '',
         skip_visualizer: false,
         skip_sculptor: false,
-        print: true,
-        start_print: true,
+        // Sliced but not sent, like every other job: the regenerated part stops at the
+        // confirmation panel too.
+        print: false,
+        start_print: false,
         material_type: job.material_type || undefined,
         material_brand: job.material_brand || undefined,
         material_colour: job.material_colour || undefined,
@@ -218,16 +223,21 @@ export function JobDetail() {
     }
   };
 
+  /**
+   * Send this job's existing G-code to the printer.
+   *
+   * The target goes back to the server exactly as it was rendered on this page, which
+   * is what lets it refuse when the profile has been changed in Settings since. Pressing
+   * the button *is* the confirmation — there is no unconfirmed dispatch path left.
+   */
   const handlePrint = async () => {
     if (!job) return;
     setPrinting(true);
     try {
-      const res = await fetch(`/jobs/${job.job_id}/print-dispatch`, { method: 'POST' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to dispatch print');
-      }
-      alert('Print job dispatched successfully!');
+      const result = await dispatchPrint(job.job_id, job.dispatch_target ?? null);
+      const where = result.target.machine_name || result.target.base_url || 'the printer';
+      alert(`Sent to ${where}.`);
+      setJob(await getJob(job.job_id));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to dispatch print');
     } finally {
@@ -258,10 +268,7 @@ export function JobDetail() {
   if (loading || !job) {
     return (
       <div className="sheet">
-        <div className={styles.loading}>
-          <Loader2 className="spin" size={28} strokeWidth={1.5} />
-          <span className="label">Loading job</span>
-        </div>
+        <BootMark block label="Reading the job record" />
       </div>
     );
   }
@@ -355,12 +362,18 @@ export function JobDetail() {
                 Regenerate
               </button>
             )}
-            {isCompleted && printerConfigured && (
+            {/* Offered on the state, not on the status: "sliced and never sent" is the
+                only condition under which this job has a print to authorise, and it
+                says so rather than offering "Print again" for a part already made. */}
+            {job.dispatch_state === 'awaiting_confirmation' && printerConfigured && (
               <button
                 type="button"
                 className="btn btn-primary blueprint marked-accent"
                 onClick={handlePrint}
                 disabled={printing}
+                title={
+                  job.dispatch_target?.machine_name || job.dispatch_target?.base_url || undefined
+                }
               >
                 <Marks />
                 {printing ? (
@@ -368,7 +381,7 @@ export function JobDetail() {
                 ) : (
                   <Printer size={16} strokeWidth={1.5} />
                 )}
-                {printing ? 'Dispatching' : 'Print again'}
+                {printing ? 'Sending' : 'Send to printer'}
               </button>
             )}
           </div>
@@ -390,9 +403,18 @@ export function JobDetail() {
                       onError={() => setBlueprintOk(false)}
                     />
                   ) : (
-                    <span className={styles.frameEmpty}>
-                      The blueprint appears here after phase 1
-                    </span>
+                    // On a running job the sheet is genuinely still being drawn, so the
+                    // frame draws it. On a settled job nothing is coming, and the drawn
+                    // stage stands still with the phase named rather than pulsing.
+                    <div className={styles.frameSlot}>
+                      <WaitingStage
+                        kind="blueprint"
+                        running={phases[0]?.status === 'running'}
+                        logLines={job.log_tail}
+                        note="no blueprint on file for this job"
+                        showHint={false}
+                      />
+                    </div>
                   )}
                 </Blueprint>
               </div>
@@ -401,7 +423,12 @@ export function JobDetail() {
                 <span className={`label ${styles.blockLabel}`}>Mesh</span>
                 <Blueprint tone="accent" className={styles.frame}>
                   <div className={styles.frameSlot}>
-                    <MeshViewer jobId={job.job_id} status={job.status} phases={phases} />
+                    <MeshViewer
+                      jobId={job.job_id}
+                      status={job.status}
+                      phases={phases}
+                      logLines={job.log_tail}
+                    />
                   </div>
                 </Blueprint>
               </div>
@@ -449,10 +476,11 @@ export function JobDetail() {
                   </div>
                 </Blueprint>
               ) : (
-                <div className="empty">
-                  <span>No temperature readings for this job</span>
-                  <span>The hotend charts here once the printer starts reporting</span>
-                </div>
+                <DeadChannel height={148}>
+                  {printIsLive
+                    ? 'The hotend charts here once the printer starts reporting'
+                    : 'No temperature readings for this job'}
+                </DeadChannel>
               )}
             </div>
           </div>

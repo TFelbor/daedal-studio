@@ -176,7 +176,8 @@ before collection, and the Pixazo backend refuses to construct when that flag is
 
 **Target: MVP launch by 31 December 2026**, then a defensible 3D-printing-native product
 through 2027. The phases and dates below come from the internal MVP-to-Moat roadmap
-(18 August 2026); the status of each item is what the code does today, not what was planned.
+(18 August 2026); the status of each item is what the code does today (21 August 2026),
+not what was planned.
 
 Two things are never cut, because they *are* the product: **printability scoring as a
 first-class pre-print step**, and the **telemetry capture schema**. A signal has exactly one
@@ -200,9 +201,12 @@ GPU access is reserved for *fine-tuning* (Bet 1), not production serving.
 - [x] **Phase 5: Operator** — OctoPrint and Moonraker upload, pre-flight checks, job control
 - [x] **Printability gate** *(pulled forward from Phase 1)* — 11 deterministic checks, weighted 0–100 score, `ready`/`risky`/`unprintable` verdict, per-job `printability.json`, persisted to telemetry and served over REST. Advisory by default; `--min-printability` makes it blocking
 - [x] **Telemetry capture schema** — blueprint and generation provenance, mesh lineage bracketing repair, slice results (recorded on failure too), engagement events, cost in EUR, single-writer collector arbitration
-- [x] **Print-outcome feedback loop** *(pulled forward from Phase 2)* — a verdict prompt in the app shell, `/feedback/*` endpoints, and the rule that a machine write never overwrites a human one
+- [x] **Capture hardening pass** — run context per job (git sha, whether the dev-reference fixtures were substituted), the dispatched printer URL (what distinguishes simulator rows from hardware), Phase 3's repair report, the printer-reported print duration, pause/resume/terminal events with the firmware's own reason, blueprint provenance carried across the native-Mac process boundary via a hash-bound sidecar, and foreign keys actually enforced. Collectors attach when Phase 5 starts rather than at job creation, printer events are matched to the job's own file, and the detector's rules only fire while printing — a user cancel is no longer written up as a machine-observed adhesion failure
+- [x] **Dispatch gate** — Phase 5 waits on a person: UI jobs stop after slicing, `POST /jobs/{id}/print-dispatch` requires an explicit confirmation of the exact target shown (409 if it drifted), and the pending decision survives a page reload
+- [x] **Database self-defence** — `PRAGMA integrity_check` at startup and every `P2P_DB_BACKUP_INTERVAL_MIN` minutes, rotating snapshots taken only when the check passes, an off-disk mirror of each verified snapshot to `P2P_DB_BACKUP_MIRROR_DIR` (off until set; intended for the Drive-synced data-collection folder, copied on a background thread because that mount blocks), and `POST /system/database/backup` for a manual flash
+- [x] **Print-outcome feedback loop** *(pulled forward from Phase 2)* — a verdict prompt in the app shell, `/feedback/*` endpoints, and the rule that a machine write never overwrites a human one. `dev` and `declined` have their own dashboard buckets and are excluded from the response rate — a test print is not a failure and "don't ask again" is not an answer
 - [x] **Licence compliance** — GPL `pymeshfix` replaced by manifold3d; non-commercial BRIA matte weights substituted with MIT BiRefNet; `nvdiffrast`/`nvdiffrec` structurally excluded; DINOv3 attributed. Enforced by `tests/test_licensing_guards.py`
-- [x] **Web UI** — React SPA served by FastAPI: submission, live phase progress, blueprint and mesh preview, G-code preview, telemetry charts, printability report
+- [x] **Web UI** — React SPA served by FastAPI: submission, live phase progress, blueprint and mesh preview, G-code preview, telemetry charts, printability report, waiting-state canvases with a live process log, and a one-directional motion vocabulary — each phase's output arrives from upstream, so the running view reads as a production line rather than a set of panels
 - [ ] **Real-hardware bring-up** — the whole dispatch path has only ever run against the OctoPrint virtual printer. **This is the open Phase 0 item and the first real integration risk.** Printers arrive at the end of August
 - [x] **Bambu decision** — answered: the accessible fleet is Bambu Lab (A1 Mini, A1, X2), which makes `BambuOperator` a hard Phase 1 requirement rather than an optional adapter
 - [ ] **University GPU access requests** (KTH + Trento) — filed early only because approval lag is long; the hardware is not needed until Bet 1 in Q1 2027
@@ -212,7 +216,7 @@ GPU access is reserved for *fine-tuning* (Bet 1), not production serving.
 ### 🔨 Phase 1 — MVP Core Build (1–30 September 2026)
 
 - [ ] **Bambu MQTT operator** — protocol already documented in [`docs/bambu_protocol.md`](docs/bambu_protocol.md); every method currently raises `NotImplementedError`
-- [ ] **Show printability before the user commits to print** — the report is computed and served, but the UI submits jobs with printing already enabled, so the score currently arrives *after* dispatch. This is a launch-gate requirement, not a nicety
+- [x] **Show printability before the user commits to print** — done via the dispatch gate: UI jobs stop after slicing, and the confirmation step shows the printability score and verdict beside the target printer before anything is sent. `--print --start-print` remains the unattended CLI path
 - [ ] **Mesh orientation and hollowing correctness** — `orient_for_print` re-orients away from the Z-up frame Phase 2 establishes, and `hollow_mesh` loses millimetre scale. Both fail silently: the part simply prints on its side or at the wrong size
 - [ ] **Printer profile → slicer settings** — CuraEngine ignores any profile that is not a `.def.json`, so layer height, temperatures and infill from `pythonsrc/profiles/*.json` never reach it and every machine slices as a default Ender 3
 - [ ] **Minimal auth** — a user model, sessions, and `PrintJob` rows tied to a user. No endpoint is authenticated today
@@ -228,7 +232,8 @@ GPU access is reserved for *fine-tuning* (Bet 1), not production serving.
 - [ ] **Closed beta on our own printers**, running continuously — this is where the labelled print-outcome dataset actually starts accumulating
 - [ ] **Bounded job queue** — replace fire-and-forget task dispatch, which today has no concurrency limit and no backpressure, with a bounded queue before concurrent traffic reaches it
 - [ ] **Continuous integration** — nothing currently runs the licence, cost or database-safety guards automatically; they execute only when a developer remembers
-- [ ] **Re-tune `AnomalyDetector` against observed failures** — the thermal rule presently matches every normal heat-up ramp, and the clog rule cannot fire on either firmware. Repair precedes tuning
+- [ ] **Re-tune `AnomalyDetector` against observed failures** — the false-positive class is closed (the thermal rule no longer matches a warm-up ramp, layer-shift and extrusion rules only fire while printing, adhesion no longer fires on a user cancel, and the clog rule can now fire on OctoPrint since the file position is recorded), but the thresholds themselves have never met a real failure. Tuning needs the hardware
+- [ ] **Klipper telemetry usability** — Moonraker pushes partial status deltas and the collector writes them as-is, so most Klipper sample rows carry one or two fields; a forward-fill/resample step is needed before that stream is a time series. Deferred deliberately: the Trento fleet is Bambu, so the Klipper path has no pilot user yet
 - [ ] **Printer setup / connection-test wizard** — firmware detection, profile selection, a connection test that works for every firmware, first-print walkthrough
 - [ ] **Decision: no billing at launch.** Ship free or waitlisted; payments come after retention is validated, not before
 

@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 40px;
+  padding: 14px var(--gutter);
   text-align: left;
   color: var(--ink);
   background: none;
@@ -60,7 +60,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 16px 24px;
-  padding: 18px 40px;
+  padding: 18px var(--gutter);
   border-bottom: 1px solid var(--rule-sub);
 }
 
@@ -187,4 +187,32 @@
     padding-left: 20px;
     padding-right: 20px;
   }
+}
+
+/* The developer verdict. Blue, not green or red: it is not a judgement on the part,
+   it is a marker saying "this row is not real data". Present only in dev builds. */
+.dev {
+  border-color: var(--run-line);
+  color: var(--run);
+}
+
+.dev:hover:not(:disabled) {
+  border-color: var(--run);
+  background: rgba(92, 156, 230, 0.07);
+}
+
+/* The second ask. Deliberately quiet — one sentence and one control, since the point
+   is to offer a way out rather than to argue. */
+.skipAgain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule-row);
+  margin-top: 12px;
+  padding-top: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-50);
 }

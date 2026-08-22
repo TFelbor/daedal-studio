@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { getJob } from '../api/client';
 import type { JobStatusResponse } from '../api/client';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
+import { BootMark } from './BootMark';
 import styles from './PhaseProgress.module.css';
 
 export type PipelinePhaseStatus = 'pending' | 'running' | 'complete' | 'error';
@@ -58,8 +59,14 @@ export function derivePhases(job: JobStatusResponse | null): PipelinePhase[] {
   }));
   if (!job) return phases;
 
+  // A job that has stopped has no running phase, whatever its `.status` file still
+  // says. `cancelled` used to fall through to the `current_phase` branch below and be
+  // rendered as running forever, because a killed pipeline never gets to write the
+  // line that would have closed the phase out.
+  const stopped = job.outcome === 'failure' || job.outcome === 'cancelled' || job.status === 'cancelled';
+
   let activeIndex = -1;
-  if (job.outcome === 'failure') {
+  if (stopped) {
     activeIndex = job.current_phase?.phase ? job.current_phase.phase - 1 : -1;
   } else if (job.status === 'completed' || job.outcome === 'success') {
     activeIndex = phases.length;
@@ -73,7 +80,7 @@ export function derivePhases(job: JobStatusResponse | null): PipelinePhase[] {
     if (i < activeIndex) {
       phases[i].status = 'complete';
     } else if (i === activeIndex) {
-      phases[i].status = job.outcome === 'failure' ? 'error' : 'running';
+      phases[i].status = stopped ? 'error' : 'running';
     }
   }
   return phases;
@@ -155,10 +162,7 @@ export function PhaseProgress({ jobId }: PhaseProgressProps) {
 
   if (!jobStatus) {
     return (
-      <div className={styles.loading}>
-        <Loader2 size={14} className="spin" strokeWidth={1.5} />
-        <span className="label">Reading pipeline state</span>
-      </div>
+      <BootMark block ground label="Reading pipeline state" />
     );
   }
 

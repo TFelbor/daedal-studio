@@ -93,7 +93,11 @@ def test_health_check_empty_db():
     # Empty DB
     db = TelemetryDB()
     db.init_schema()
-    db.conn.execute('DELETE FROM print_job')
+    # Children first: foreign keys are enforced, so deleting a parent that
+    # still has rows pointing at it is refused.
+    for table in ('job_event', 'failure_event', 'telemetry_sample',
+                  'telemetry_collector_claim', 'print_job'):
+        db.conn.execute(f'DELETE FROM {table}')
     db.conn.commit()
     db.close()
     

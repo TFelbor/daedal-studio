@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pause, Play, Square } from 'lucide-react';
 import { Blueprint, Marks } from './Blueprint';
+import { DeadChannel } from './DeadChannel';
 import { printerAction } from '../api/client';
 import styles from './PrinterStateCard.module.css';
 
@@ -60,10 +61,9 @@ export function PrinterStateCard({ jobId, printerState, startedAt, layerHeightMm
             <h3 className="subheading">Print status</h3>
             <span className="status status-off">Waiting</span>
           </div>
-          <div className="empty">
-            <span>The printer has not reported yet.</span>
-            <span>Progress, times and temperatures appear here once it does.</span>
-          </div>
+          <DeadChannel height={120}>
+            Progress, times and temperatures appear here once it reports
+          </DeadChannel>
         </div>
       </Blueprint>
     );

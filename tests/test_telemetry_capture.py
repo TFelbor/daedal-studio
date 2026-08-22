@@ -590,17 +590,27 @@ def test_engineer_prompt_is_recorded_separately_from_the_user_prompt():
 
 
 def _orphan_event(db, kind: str, job_id: str) -> None:
-    """Insert an event for a job that does not exist, as a deleted job leaves behind."""
+    """Insert an event for a job that does not exist, as a deleted job leaves behind.
+
+    Foreign keys are enforced now, so a fresh orphan cannot be written the normal
+    way — but databases from before the pragma still carry them, and the join
+    defences below must keep working against that legacy debris. Enforcement is
+    suspended for this one insert to simulate such a row.
+    """
     from pythonsrc.telemetry.schema import JobEvent
 
-    db.insert_job_event(
-        JobEvent(
-            event_id=str(uuid.uuid4()),
-            job_id=job_id,
-            kind=kind,
-            occurred_at=datetime.now(timezone.utc),
+    db.conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.insert_job_event(
+            JobEvent(
+                event_id=str(uuid.uuid4()),
+                job_id=job_id,
+                kind=kind,
+                occurred_at=datetime.now(timezone.utc),
+            )
         )
-    )
+    finally:
+        db.conn.execute("PRAGMA foreign_keys = ON")
 
 
 def test_the_response_rate_ignores_events_whose_job_is_gone(tmp_path):

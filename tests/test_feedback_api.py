@@ -361,3 +361,123 @@ def test_job_listing_buckets_pending_separately():
     make_job()
     stats = client.get("/jobs").json()["stats"]
     assert stats["awaiting_verdict"] >= 1
+
+
+# ── Developer and declined verdicts ───────────────────────────────────────────
+#
+# Two outcomes that exist to keep the dataset honest rather than to describe a part.
+# `dev` marks a test run so a cube printed to verify a pipeline change does not land in
+# the column the pilot is measured from. `declined` records that someone was asked
+# twice and does not want to be asked again.
+
+def test_a_dev_verdict_is_accepted_and_settles_the_job():
+    job_id = make_job(outcome="awaiting_verdict")
+
+    res = client.post(f"/jobs/{job_id}/outcome", json={"verdict": "dev"})
+    assert res.status_code == 200
+
+    job = read_job(job_id)
+    assert job.outcome == "dev"
+    assert job.outcome_source == "user"
+
+    # Settled, so the banner stops asking about it.
+    pending = client.get("/feedback/pending").json()
+    assert all(j["job_id"] != job_id for j in pending["jobs"])
+    # And it reads as finished rather than as still running.
+    assert client.get(f"/jobs/{job_id}").json()["status"] == "completed"
+
+
+def test_a_declined_verdict_settles_the_job_without_claiming_an_outcome():
+    job_id = make_job(outcome="awaiting_verdict")
+
+    assert client.post(f"/jobs/{job_id}/outcome", json={"verdict": "declined"}).status_code == 200
+
+    assert read_job(job_id).outcome == "declined"
+
+    pending = client.get("/feedback/pending").json()
+    assert all(j["job_id"] != job_id for j in pending["jobs"])
+
+
+def test_declined_is_not_the_unknown_sentinel():
+    """`unknown` means "the pipeline has not finished" — reusing it would resurrect the job.
+
+    This is the trap the `declined` value exists to avoid: `job_status_from_outcome`
+    maps `unknown` back to `running`, so a "don't ask again" written as `unknown` would
+    make a settled job start claiming it was still in the pipeline.
+    """
+    from server.app import job_status_from_outcome
+
+    started = datetime.now(timezone.utc)
+    assert job_status_from_outcome("unknown", started) == "running"
+    assert job_status_from_outcome("declined", started) == "completed"
+    assert job_status_from_outcome("dev", started) == "completed"
+
+
+def test_a_machine_event_cannot_overwrite_a_dev_verdict():
+    """`dev` is user-sourced, so the precedence rule has to protect it like any verdict."""
+    job_id = make_job(outcome="awaiting_verdict")
+    client.post(f"/jobs/{job_id}/outcome", json={"verdict": "dev"})
+
+    db = TelemetryDB()
+    db.update_job_outcome_verdict(job_id, "failure", source="machine")
+    db.close()
+    assert read_job(job_id).outcome == "dev"
+
+
+def test_a_nonsense_verdict_is_still_rejected():
+    job_id = make_job(outcome="awaiting_verdict")
+    assert client.post(f"/jobs/{job_id}/outcome", json={"verdict": "probably"}).status_code == 422
+
+
+def test_a_failure_carries_a_free_text_reason():
+    """The "Other:" path — the failures worth hearing about are the unlisted ones."""
+    job_id = make_job(outcome="awaiting_verdict")
+
+    res = client.post(
+        f"/jobs/{job_id}/outcome",
+        json={
+            "verdict": "failure",
+            "failure_type": "other",
+            "notes": "the bed levelling probe caught on a clip",
+        },
+    )
+    assert res.status_code == 200
+
+    events = client.get(f"/jobs/{job_id}/failure").json()
+    assert len(events) == 1
+    assert events[0]["failure_type"] == "other"
+    assert "clip" in events[0]["notes"]
+
+
+def test_every_failure_option_the_ui_offers_is_accepted():
+    """The UI's dropdown and the schema's allowed set must not drift apart.
+
+    They did: six of the eleven options added to the form were rejected by
+    `FailureEvent.__post_init__`, and the rejection surfaced as an unhandled 500 that
+    threw the verdict away with it. This is the test that keeps the two lists in step.
+    """
+    offered = [
+        "adhesion", "layer_shift", "extrusion_issue", "clog", "thermal_runaway",
+        "detached", "supports", "surface", "dimensional", "filament_out", "other",
+    ]
+    for failure_type in offered:
+        job_id = make_job(outcome="awaiting_verdict")
+        res = client.post(
+            f"/jobs/{job_id}/outcome",
+            json={"verdict": "failure", "failure_type": failure_type, "notes": "n"},
+        )
+        assert res.status_code == 200, f"{failure_type} was rejected: {res.text}"
+        assert read_job(job_id).outcome == "failure"
+
+
+def test_an_unknown_failure_type_is_a_422_not_a_500():
+    job_id = make_job(outcome="awaiting_verdict")
+    res = client.post(
+        f"/jobs/{job_id}/outcome",
+        json={"verdict": "failure", "failure_type": "invented", "notes": "n"},
+    )
+    assert res.status_code == 422
+    assert "invented" in res.text
+    # The verdict was not half-written before the refusal: validation happens on the
+    # request model, so the handler never ran.
+    assert read_job(job_id).outcome == "awaiting_verdict"

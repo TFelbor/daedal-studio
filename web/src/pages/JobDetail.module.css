@@ -6,17 +6,6 @@
   margin: 0 auto;
 }
 
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 120px 0;
-  color: var(--ink-42);
-  font-size: 13px;
-}
-
 .backLink {
   display: inline-flex;
   align-items: center;
@@ -79,7 +68,8 @@
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  /* One rail width across every scene that has one. See --rail. */
+  grid-template-columns: 1fr var(--rail);
   gap: 44px;
   align-items: start;
 }
@@ -137,20 +127,6 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-}
-
-.frameEmpty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 22px;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-28);
 }
 
 /* ── Temperature chart ──────────────────────────────────────────────────── */

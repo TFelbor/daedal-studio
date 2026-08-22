@@ -190,16 +190,6 @@ span.statusAwaiting::before {
   margin-bottom: 24px;
 }
 
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 44px 0;
-  font-size: 13px;
-  color: var(--ink-42);
-}
-
 .emptyAction {
   margin-top: 14px;
 }
