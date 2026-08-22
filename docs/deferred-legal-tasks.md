@@ -200,7 +200,18 @@ which is the entire business. `microsoft/TRELLIS.2-4B` is MIT with no restrictio
 generated output, which is why Phase 2 is viable; that needs confirming per checkpoint
 rather than assumed.
 
-Current state, all recorded in `THIRD-PARTY-NOTICES.md`:
+**This audit has now been done once, in full**, for every dependency — libraries,
+tools, base images, models and the hosted service — in
+`THIRD-PARTY-NOTICES.md` § 0 *Commercial-use audit*. It records the three answers per
+component, marks whether each was read from the source or taken from declared metadata,
+and ends with five findings. The headline: **nothing in the current dependency set
+restricts commercial use of the output**, so the business model is not blocked. What
+remains is the Pixazo contract question below, plus four hygiene items (a narrow NVIDIA
+redistribution route for the worker image, an unused LGPLv3 Qt payload in
+`opencv-python`, LGPL `gmpy2`, and a publishing toolchain pinned into the runtime
+requirements).
+
+Summary of the model path, all recorded in `THIRD-PARTY-NOTICES.md`:
 
 | Checkpoint | Status | What still needs doing |
 |---|---|---|
