@@ -62,13 +62,7 @@ placement only:
 Phase 2's placement is a *separate* decision made by `sculptors.resolve_backend_name`, because
 `platform_utils` knows nothing about the worker URL that makes a GPU-less host viable.
 
-Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate
-artifacts. `--skip-visualizer` with no blueprint fabricates a flat stand-in image;
-**`--skip-sculptor` with no mesh is a hard failure**, and deliberately so. It used to
-export a 50mm cube and carry on, which nothing downstream can distinguish from the
-requested model — the cube is watertight, has no overhangs and sits flat, so repair,
-printability, slicing and dispatch all pass it. An image is input to a phase that names
-its own model; a mesh is the deliverable.
+Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate artifacts.
 
 **A skipped phase installs a real asset, and the output directory says so.** When Phase 1
 or Phase 2 is skipped with nothing real to work from, the pipeline copies in
@@ -911,4 +905,4 @@ at runtime, then update `THIRD-PARTY-NOTICES.md`.
 - `data/` directories including logs, inputs, outputs are all runtime-only and gitignored
 - Phase 1 (FLUX) on Docker/CPU takes ~84 minutes; native macOS MPS is ~30 seconds — the MPS-native path is the primary dev workflow on Mac
 - Docker images are `linux/amd64` only; on Apple Silicon, Docker Desktop emulates via Rosetta 2. The one exception is `trellis2-worker.Dockerfile`, which is built against a CUDA devel image and only runs on an NVIDIA host
-- Phase 2 has **no CPU path at all**, and no fallback geometry either. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5; that path must exist, since a missing mesh now fails the run instead of substituting a cube
+- Phase 2 has **no CPU path at all**. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5
