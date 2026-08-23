@@ -500,3 +500,79 @@ def test_a_decided_job_returns_to_the_running_list_while_phase_2_runs():
 
     ids = {row["job_id"] for row in client.get("/jobs?status=running").json()["jobs"]}
     assert approved in ids
+
+
+# ── The snapshot has to find the image Phase 1 actually wrote ─────────────────
+#
+# Per-job blueprints and this gate were built on separate branches, and the seam
+# between them conflicts in no file: `_snapshot_blueprint` read only the flat
+# `data/inputs/blueprint.png`, while a gated run renders to
+# `data/inputs/{job_id}/blueprint.png` so that two concurrent jobs cannot overwrite
+# each other's image. So every gated job found nothing to approve —
+# `_park_at_blueprint_gate` returned False and `_run_pipeline` failed a job whose
+# Phase 1 had just succeeded — and with a stale shared PNG present it was worse: the
+# gate snapshotted another job's render and bound this approval to it. Neither branch's
+# suite noticed, because each was green on its own.
+
+def _clear(*paths):
+    for path in paths:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def test_the_snapshot_prefers_this_jobs_own_input_directory():
+    """Phase 1 renders per job; the shared path belongs to whoever wrote it last."""
+    from pathlib import Path
+
+    repo_root = Path(app_module.__file__).parent.parent
+    job_id = "gate-snap-0000-0000-000000000001"
+    per_job = repo_root / "data" / "inputs" / job_id / "blueprint.png"
+    shared = repo_root / "data" / "inputs" / "blueprint.png"
+    snapshot = repo_root / "data" / "outputs" / job_id / "blueprint.png"
+
+    per_job.parent.mkdir(parents=True, exist_ok=True)
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    per_job.write_bytes(b"this job's render")
+    shared.write_bytes(b"some other job's render")
+    try:
+        assert app_module._snapshot_blueprint(job_id) == snapshot
+        assert snapshot.read_bytes() == b"this job's render"
+    finally:
+        _clear(per_job, shared, snapshot)
+
+
+def test_the_snapshot_falls_back_to_the_shared_input_path():
+    """The skip-Phase-1 configuration deliberately reuses the flat path."""
+    from pathlib import Path
+
+    repo_root = Path(app_module.__file__).parent.parent
+    job_id = "gate-snap-0000-0000-000000000002"
+    shared = repo_root / "data" / "inputs" / "blueprint.png"
+    sidecar = shared.with_name("blueprint.provenance.json")
+    snapshot = repo_root / "data" / "outputs" / job_id / "blueprint.png"
+
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    shared.write_bytes(b"reused render")
+    # Carried across with the PNG, or the continuation's skip-visualizer path records
+    # NULL for seed, prompt and model.
+    sidecar.write_text(json.dumps({"seed": 7}))
+    try:
+        assert app_module._snapshot_blueprint(job_id) == snapshot
+        assert snapshot.read_bytes() == b"reused render"
+        assert (snapshot.parent / sidecar.name).exists()
+    finally:
+        _clear(shared, sidecar, snapshot, snapshot.parent / sidecar.name)
+
+
+def test_a_job_with_no_blueprint_anywhere_does_not_park():
+    """Parking on an empty gate would ask a person to approve nothing."""
+    from pathlib import Path
+
+    repo_root = Path(app_module.__file__).parent.parent
+    shared = repo_root / "data" / "inputs" / "blueprint.png"
+    if shared.exists():
+        pytest.skip("a shared blueprint is present in this working tree")
+
+    assert app_module._snapshot_blueprint("gate-snap-0000-0000-000000000003") is None

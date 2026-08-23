@@ -152,10 +152,11 @@ def resolve_job_artifact(
         job_id: The job whose artifact is wanted.
         filename: Artifact filename, e.g. "engineered_mesh.gcode".
         per_job_only: Skip the flat-layout and shared-input fallbacks and answer only
-            from this job's own directory. The blueprint gate needs this: the shared
-            `data/inputs/blueprint.png` is deleted by every `POST /jobs`, so a parked
-            job asked about it would show a *different* job's image, or none, and a
-            person would approve something that was never theirs.
+            from this job's own directory. The blueprint gate needs this: the flat
+            `data/inputs/blueprint.png` is written by whichever skip-Phase-1 run put it
+            there and by no particular job, so a parked job asked about it would show a
+            *different* job's image, or none, and a person would approve something that
+            was never theirs.
 
     Returns:
         The path to the artifact, or None if no location has it.
@@ -357,9 +358,9 @@ def blueprint_gate_state(job, db: TelemetryDB) -> str:
         logger.warning("Could not read blueprint park events for %s: %s", job.job_id, exc)
         return "not_ready"
 
-    # This job's *own* blueprint, not the shared `data/inputs/blueprint.png`: POST
-    # /jobs deletes that on every submission, so a parked job asked about the shared
-    # path would show a different job's image, or none.
+    # This job's *own* blueprint, not the flat `data/inputs/blueprint.png`: that path
+    # belongs to no particular job — it is what the skip-Phase-1 configuration reuses —
+    # so a parked job asked about it would show a different job's image, or none.
     if resolve_job_artifact(job.job_id, "blueprint.png", per_job_only=True) is not None:
         return "awaiting_approval"
     return "not_ready"
@@ -1191,39 +1192,6 @@ def _attach_job_telemetry(job_id: str, firmware: str, base_url: str, api_key) ->
         )
 
 
-async def _run_pipeline(job_id: str, request: JobRequest):
-    repo_root = Path(__file__).parent.parent
-    log_dir = repo_root / "data" / "logs"
-    log_file = log_dir / f"{job_id}.log"
-    
-    strategy = get_resolved_strategy()
-    
-    pipeline_args = []
-    
-    skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
-    skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
-
-    # Phase 1 writes one blueprint per job, not one per machine.
-    # `data/inputs/blueprint.png` is a single filename shared by every run, and Phase 1
-    # overwrites it in place — whether it runs natively on this host or inside the
-    # pipeline container. Two jobs started within a few minutes of each other race for
-    # it, and the loser sculpts, slices and prints the winner's image while recording
-    # its own prompt and seed against it. Nothing downstream can tell: the file exists,
-    # it is a real render, and its hash is whatever landed last.
-    #
-    # `skip_viz` is the deliberate exception. That configuration exists to *reuse* an
-    # image already sitting at the shared path, so nothing generates one there and
-    # nothing races for it; pointing it at an empty per-job directory would make the
-    # pipeline stand a fixture in instead of using the blueprint someone put there.
-    blueprint_rel = (
-        Path("data") / "inputs" / "blueprint.png"
-        if skip_viz
-        else Path("data") / "inputs" / job_id / "blueprint.png"
-    )
-    blueprint_container_path = "/app/" + blueprint_rel.as_posix()
-
-    if skip_viz:
-        pipeline_args.extend(["--skip-visualizer", "--blueprint", blueprint_container_path])
 def _pipeline_args(
     request: JobRequest,
     *,
@@ -1253,8 +1221,10 @@ def _pipeline_args(
     if skip_viz:
         # `blueprint_path` was declared on `JobRequest` and forwarded nowhere, which is
         # what let the approval gate approve one image and reconstruct another: the
-        # continuation was launched against the *shared* input path, and `POST /jobs`
-        # deletes that on every submission. A resumed run names its own snapshot.
+        # continuation was launched against the flat input path, which belongs to no
+        # particular job. A resumed run names its own snapshot. The flat path is still
+        # the right default here, because this branch runs only when Phase 1 is skipped
+        # — the one configuration that deliberately reuses whatever sits there.
         args.extend([
             "--skip-visualizer",
             "--blueprint",
@@ -1370,6 +1340,25 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     
     skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
     skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+    # Phase 1 writes one blueprint per job, not one per machine.
+    # `data/inputs/blueprint.png` is a single filename shared by every run, and Phase 1
+    # overwrites it in place — whether it runs natively on this host or inside the
+    # pipeline container. Two jobs started within a few minutes of each other race for
+    # it, and the loser sculpts, slices and prints the winner's image while recording
+    # its own prompt and seed against it. Nothing downstream can tell: the file exists,
+    # it is a real render, and its hash is whatever landed last.
+    #
+    # `skip_viz` is the deliberate exception. That configuration exists to *reuse* an
+    # image already sitting at the shared path, so nothing generates one there and
+    # nothing races for it; pointing it at an empty per-job directory would make the
+    # pipeline stand a fixture in instead of using the blueprint someone put there.
+    blueprint_rel = (
+        Path("data") / "inputs" / "blueprint.png"
+        if skip_viz
+        else Path("data") / "inputs" / job_id / "blueprint.png"
+    )
+    blueprint_container_path = "/app/" + blueprint_rel.as_posix()
+
     profile = request.profile or config_store.get("DEFAULT_PROFILE")
 
     pipeline_args = _pipeline_args(
@@ -1534,9 +1523,11 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 ] + docker_env_args + [
                     "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
-                    "--skip-visualizer", "--blueprint", blueprint_container_path,
                     "--skip-visualizer",
-                    "--blueprint", request.blueprint_path or "/app/data/inputs/blueprint.png",
+                    # The approved snapshot when this is a gate continuation, else this
+                    # job's own per-job render — never the shared path, which belongs to
+                    # whichever run wrote it last.
+                    "--blueprint", request.blueprint_path or blueprint_container_path,
                     "--job-id", job_id
                 ] + _strip_stop_after(clean_args)
             elif strategy == "nvidia_docker":
@@ -1692,10 +1683,10 @@ async def create_job(request: JobRequest):
         )
 
     # Screened here, and here specifically: after the printer checks (a job that
-    # cannot print should fail for that reason first) but before `job_id` is minted
-    # and before the artifact-cleanup loop below, which unconditionally deletes the
-    # shared blueprint and the flat mesh and G-code. A refusal after that point
-    # destroys the previous job's output in order to reject a job that never existed.
+    # cannot print should fail for that reason first) but before `job_id` is minted and
+    # before the artifact-cleanup loop below, which unconditionally deletes the flat
+    # mesh and G-code. A refusal after that point destroys the previous job's output in
+    # order to reject a job that never existed.
     #
     # Every field that reaches the model is passed, not just the prompt:
     # `material_colour` is interpolated into the string sent to FLUX, so a screen
@@ -2147,14 +2138,21 @@ class BlueprintApprovalRequest(BaseModel):
 
 
 def _snapshot_blueprint(job_id: str) -> Path | None:
-    """Copy the shared blueprint into this job's own directory.
+    """Copy this job's rendered blueprint into its own output directory.
 
-    Load-bearing for the approval gate. `POST /jobs` unconditionally deletes
-    `data/inputs/blueprint.png`, so a job parked at the gate would have the image it
-    is asking about destroyed the moment anyone submits another job — and
-    `resolve_job_artifact`'s fallback is that same shared path, so the gate would then
-    show a *different* job's blueprint. Snapshotting binds the decision to an image
-    that cannot be replaced underneath it.
+    Load-bearing for the approval gate: it binds the decision to an image that cannot
+    be replaced underneath it, and gives the continuation a path to name explicitly
+    rather than re-reading whatever sits on the input path by the time someone clicks.
+
+    **This job's own input directory is searched first.** Phase 1 renders to
+    `data/inputs/{job_id}/blueprint.png` (see `pipeline._blueprint_path`) precisely so
+    that two concurrent jobs cannot overwrite each other's image. Reading only the flat
+    `data/inputs/blueprint.png` — which is what this did before per-job inputs existed —
+    finds nothing for a gated run, so `_park_at_blueprint_gate` reports "no blueprint to
+    approve" and `_run_pipeline` fails a job whose Phase 1 had just succeeded. Worse
+    when a stale shared PNG happens to be present: the gate then snapshots *another
+    job's* render and binds this approval to it. The flat path stays as the fallback
+    because the skip-Phase-1 configuration deliberately reuses it.
 
     The provenance sidecar is copied too: it is matched to the PNG by hash, and a
     blueprint that moves without it records NULL for seed, prompt and model on the
@@ -2169,8 +2167,11 @@ def _snapshot_blueprint(job_id: str) -> Path | None:
     import shutil
 
     repo_root = Path(__file__).parent.parent
-    source = repo_root / "data" / "inputs" / "blueprint.png"
-    if not source.exists():
+    inputs = repo_root / "data" / "inputs"
+    for source in (inputs / job_id / "blueprint.png", inputs / "blueprint.png"):
+        if source.exists():
+            break
+    else:
         return None
 
     target_dir = repo_root / "data" / "outputs" / job_id
@@ -2362,10 +2363,11 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
                 **stored,
                 "prompt": stored.get("prompt") or job.prompt,
                 "printer_id": stored.get("printer_id") or job.printer_id or "default_printer",
-                # The image that was approved, by its container path. Not the shared
-                # input: `POST /jobs` deletes that on every submission, so between
-                # parking and approving it may be a different job's render entirely —
-                # which is what the hash check would have been guarding for nothing.
+                # The image that was approved, by its container path. Not the flat
+                # input path: nothing binds that to this job, and a skip-Phase-1 run
+                # started while this one was parked would leave a different render
+                # there entirely — which is what the hash check would then have been
+                # guarding for nothing.
                 "blueprint_path": f"/app/data/outputs/{job_id}/blueprint.png",
                 "skip_visualizer": True,
             })
