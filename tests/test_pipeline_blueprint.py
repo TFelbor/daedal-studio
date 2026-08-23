@@ -17,12 +17,14 @@ from pathlib import Path
 
 from PIL import Image
 
+from pythonsrc.blueprint_spec import BlueprintResult, read_sidecar, write_sidecar
 from pythonsrc.pipeline import (
     DEV_OUTPUT_PREFIX,
     DEV_REFERENCE_BLUEPRINT,
     DEV_REFERENCE_MESH,
     _blueprint_is_placeholder,
     _blueprint_is_stand_in,
+    _blueprint_path,
     _install_dev_asset,
     _should_install_reference_blueprint,
     _job_outputs_dir,
@@ -33,7 +35,9 @@ _LEGACY_COLOUR = (73, 109, 137)
 
 
 def _args(**overrides) -> argparse.Namespace:
-    base = dict(job_id="job-1", skip_visualizer=False, skip_sculptor=False, mesh=None)
+    base = dict(
+        job_id="job-1", skip_visualizer=False, skip_sculptor=False, mesh=None, blueprint=None
+    )
     base.update(overrides)
     return argparse.Namespace(**base)
 
@@ -311,3 +315,145 @@ def test_the_fixture_flag_reaches_the_running_view():
 
     body = TestClient(app).get(f"/jobs/{job_id}").json()
     assert body["used_reference_assets"] is True
+
+
+# ── One blueprint per job, not one per machine ──────────────────────────────
+#
+# `data/inputs/blueprint.png` is a single filename that every run wrote in place.
+# Phase 1 takes ~30s natively and minutes in Docker, so two jobs started in that window
+# race for it — and the loser goes on to sculpt, slice and print the winner's image
+# while recording its own prompt and seed against it. Nothing downstream can notice:
+# the file exists, it is a real render, and its hash is whatever landed last. The row
+# that results is a mislabelled example in the one dataset this project exists to
+# collect, and on a per-generation sculptor backend it is money spent reconstructing
+# the wrong picture.
+#
+# Snapshotting into `data/outputs/{job_id}/` afterwards does not fix it — that copies
+# whichever image won.
+
+
+def test_each_job_renders_into_its_own_directory(tmp_path: Path):
+    inputs = tmp_path / "inputs"
+
+    first = _blueprint_path(_args(job_id="job-a"), inputs)
+    second = _blueprint_path(_args(job_id="job-b"), inputs)
+
+    assert first != second, "two jobs would still overwrite one another's blueprint"
+    assert first == inputs / "job-a" / "blueprint.png"
+    assert second == inputs / "job-b" / "blueprint.png"
+
+
+def test_a_run_without_a_job_id_keeps_the_flat_layout(tmp_path: Path):
+    """Manual CLI use. There is no job to name a directory after, and nothing to race.
+
+    The same reasoning as the flat `data/outputs/` fallback: a person running the
+    pipeline by hand gets the documented paths, unchanged.
+    """
+    inputs = tmp_path / "inputs"
+    assert _blueprint_path(_args(job_id=None), inputs) == inputs / "blueprint.png"
+
+
+def test_an_explicit_blueprint_always_wins(tmp_path: Path):
+    """`--blueprint` is how a caller supplies its own image.
+
+    It is also how the skip-Phase-1 configuration reuses the one already sitting at the
+    shared path — that run generates nothing, so there is nothing for it to race for,
+    and redirecting it to an empty per-job directory would make the pipeline stand a
+    fixture in instead of using the blueprint someone deliberately put there.
+    """
+    supplied = tmp_path / "somewhere" / "mine.png"
+    resolved = _blueprint_path(_args(job_id="job-a", blueprint=str(supplied)), tmp_path)
+    assert resolved == supplied
+
+
+def test_a_concurrent_job_cannot_overwrite_another_jobs_blueprint(tmp_path: Path):
+    """The race, played out: two jobs render one after the other and both survive.
+
+    On the shared path the second `save` replaced the first, and the first job carried
+    on with an image of the wrong prompt.
+    """
+    inputs = tmp_path / "inputs"
+
+    first = _blueprint_path(_args(job_id="job-a"), inputs)
+    first.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (1024, 1024), color=(10, 20, 30)).save(first)
+
+    second = _blueprint_path(_args(job_id="job-b"), inputs)
+    second.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (1024, 1024), color=(40, 50, 60)).save(second)
+
+    with Image.open(first) as img:
+        assert img.convert("RGB").getpixel((0, 0)) == (10, 20, 30)
+
+
+def test_each_job_keeps_its_own_provenance_sidecar(tmp_path: Path):
+    """The other half of the race, and the one that cost the *winner*.
+
+    `write_sidecar` puts the seed and engineered prompt beside the PNG, and
+    `read_sidecar` refuses a sidecar whose recorded hash does not match the image next
+    to it. On one shared path the loser's sidecar was the file left on disk, so the
+    winner's own provenance was discarded as stale and its job recorded NULL for seed,
+    prompt and model — the columns the sidecar exists to fill.
+    """
+    inputs = tmp_path / "inputs"
+
+    for job_id, colour, seed in (("job-a", (10, 20, 30), 111), ("job-b", (40, 50, 60), 222)):
+        path = _blueprint_path(_args(job_id=job_id), inputs)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (1024, 1024), color=colour).save(path)
+        write_sidecar(
+            BlueprintResult(
+                path=path,
+                seed=seed,
+                prompt=f"prompt for {job_id}",
+                engineered_prompt=f"prompt for {job_id}, clay render",
+                params={},
+                duration_s=1.0,
+                model_id="flux",
+            )
+        )
+
+    for job_id, seed in (("job-a", 111), ("job-b", 222)):
+        restored = read_sidecar(_blueprint_path(_args(job_id=job_id), inputs))
+        assert restored is not None, f"{job_id} lost its provenance"
+        assert restored.seed == seed
+        assert restored.prompt == f"prompt for {job_id}"
+
+
+def test_the_server_serves_a_jobs_own_blueprint_not_the_shared_one():
+    """`resolve_job_artifact` must not hand back another run's image.
+
+    Its last resort is the shared input path, which is right for rows written before
+    inputs were per-job and for the skip-Phase-1 configuration. It is wrong for a job
+    that has an input directory of its own: that job rendered into it, so the shared
+    file demonstrably belongs to some other run, and serving it would commit the same
+    mis-attribution in the endpoint that the per-job path removed from the pipeline.
+    """
+    import uuid
+
+    from server.app import resolve_job_artifact
+
+    repo_root = Path(__file__).parent.parent
+    job_id = str(uuid.uuid4())
+    inputs = repo_root / "data" / "inputs"
+    job_inputs = inputs / job_id
+    job_inputs.mkdir(parents=True)
+    mine = job_inputs / "blueprint.png"
+    Image.new("RGB", (1024, 1024), color=(10, 20, 30)).save(mine)
+
+    shared = inputs / "blueprint.png"
+    shared_existed = shared.exists()
+    if not shared_existed:
+        Image.new("RGB", (1024, 1024), color=(40, 50, 60)).save(shared)
+
+    try:
+        assert resolve_job_artifact(job_id, "blueprint.png") == mine
+
+        # With its own directory but nothing in it, the job still must not be handed
+        # the shared image — an empty first stage is honest, a foreign one is not.
+        mine.unlink()
+        assert resolve_job_artifact(job_id, "blueprint.png") is None
+    finally:
+        job_inputs.rmdir()
+        if not shared_existed:
+            shared.unlink()

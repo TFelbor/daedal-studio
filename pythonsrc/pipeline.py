@@ -719,6 +719,46 @@ def _will_use_reference_assets(args, blueprint_path: Path, mesh_candidates: list
     return False
 
 
+def _blueprint_path(args, inputs_root: Path) -> Path:
+    """Where this run's blueprint is written and read.
+
+    **A job gets its own directory.** `data/inputs/blueprint.png` is one path shared
+    by every run on the machine, and Phase 1 writes it in place. Two jobs started
+    close together therefore race for it, and the loser sculpts, slices and prints
+    the winner's image while recording its own prompt and seed against it — a
+    mislabelled row in the one dataset this project exists to collect, and on a
+    per-generation sculptor backend, money spent reconstructing the wrong picture.
+    Nothing downstream can notice: the file exists, it is a real render, and its
+    hash is whatever was written last.
+
+    The per-job snapshot `run()` takes afterwards does not fix this. It copies
+    whichever image won the race into the job's output directory, which preserves
+    the mistake rather than preventing it.
+
+    The provenance sidecar shares the directory for the same reason. `read_sidecar`
+    refuses a sidecar whose recorded hash does not match the image beside it, so a
+    race cost the *winner* its seed and engineered prompt as well — the loser's
+    sidecar was the one left on disk.
+
+    Two paths deliberately stay flat. A run without a `--job-id` is manual CLI use
+    and keeps the old layout, and an explicit `--blueprint` always wins: that is how
+    a caller supplies its own image, and how the skip-Phase-1 configuration reuses
+    the one already sitting at the shared path.
+
+    Args:
+        args: Parsed CLI arguments.
+        inputs_root: `data/inputs`.
+
+    Returns:
+        The blueprint path. Its parent is not created here.
+    """
+    if args.blueprint:
+        return Path(args.blueprint)
+    if args.job_id:
+        return inputs_root / args.job_id / "blueprint.png"
+    return inputs_root / "blueprint.png"
+
+
 def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     """Choose this job's output directory, and say in its name where the assets came from.
 
@@ -770,7 +810,8 @@ def run(args: argparse.Namespace) -> None:
 
     # Resolved before the output directory, because whether this run is a debugging one
     # depends on whether a real blueprint is already sitting there.
-    blueprint_path = Path(args.blueprint) if args.blueprint else Path(os.path.join(INPUTS_DIR, "blueprint.png"))
+    blueprint_path = _blueprint_path(args, Path(INPUTS_DIR))
+    blueprint_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Per-job output directory. Without this every job overwrites the same
     # engineered_mesh.* files, so downloading job A's G-code can hand you job B's.
@@ -868,8 +909,12 @@ def run(args: argparse.Namespace) -> None:
                     blueprint_path,
                 )
 
-    # Snapshot the blueprint this job actually used. Phase 1 may run natively and
-    # write the shared data/inputs/blueprint.png, so copy it in for provenance.
+    # Snapshot the blueprint this job actually used, so the job's outputs are
+    # self-contained: Phase 1 may have run natively, in another process, writing under
+    # data/inputs/ — and a run given --blueprint reads a file this job does not own at
+    # all. Provenance that lives only in an input directory is provenance the outputs
+    # cannot vouch for. It is a copy, not the source of truth: `_blueprint_path` is
+    # what stops two jobs sharing one image in the first place.
     # The reference blueprint *is* copied in — it is a real image, the UI's blueprint
     # stage has something to show, and the `dev-` directory name is what says it did not
     # come from a model. A flat legacy rectangle is not: snapshotting those only filled
@@ -1412,7 +1457,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Paths
     paths = parser.add_argument_group("paths")
-    paths.add_argument("--blueprint", metavar="PATH", help="Override blueprint image path")
+    paths.add_argument(
+        "--blueprint",
+        metavar="PATH",
+        help="Override the blueprint image path (default: data/inputs/{job-id}/blueprint.png "
+             "with --job-id, data/inputs/blueprint.png without)",
+    )
     paths.add_argument("--mesh", metavar="PATH", help="Override raw mesh path")
     
     # Telemetry

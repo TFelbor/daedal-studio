@@ -13,10 +13,16 @@ set -e
 
 PROMPT="${1:?Usage: bash infra/scripts/run_phase1_native.sh \"your prompt here\" [extra visualizer args]}"
 shift  # anything after the prompt (e.g. --seed N, --steps N) is forwarded verbatim
-OUTPUT="data/inputs/blueprint.png"
+
+# Where to write. The default is the shared path, which is what a person running this
+# by hand expects. $P2P_BLUEPRINT_OUTPUT is how the API server points it at a per-job
+# directory instead: this script and the pipeline container are two processes writing
+# one filename, so two jobs started close together used to race for it and the loser
+# went on to sculpt, slice and print the winner's image under its own prompt and seed.
+OUTPUT="${P2P_BLUEPRINT_OUTPUT:-data/inputs/blueprint.png}"
 
 # Ensure output directory exists
-mkdir -p data/inputs
+mkdir -p "$(dirname "$OUTPUT")"
 
 echo "[p2p] Running Phase 1 natively on Mac (MPS accelerated)..."
 python pythonsrc/visualizer.py --prompt "$PROMPT" \
@@ -29,5 +35,5 @@ echo "[p2p] Now run Phases 2-5 in Docker:"
 echo ""
 echo "  docker compose -f infra/docker-compose.yml run --rm pipeline-runner \\"
 echo "    python pythonsrc/pipeline.py \"$PROMPT\" \\"
-echo "    --skip-visualizer --blueprint /app/data/inputs/blueprint.png \\"
+echo "    --skip-visualizer --blueprint /app/$OUTPUT \\"
 echo "    --print --start-print --verbose"

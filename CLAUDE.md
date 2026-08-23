@@ -36,6 +36,16 @@ docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pytho
 docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
 curl -s http://<gpu-host>:8100/health | python -m json.tool   # check before submitting jobs
 
+# CI (.github/workflows/ci.yml) runs the same two commands on every push and PR:
+#   pytest tests/test_licensing_guards.py   # named separately — a licence break is not
+#   pytest tests/                           #   an ordinary failure
+# plus `npm run build` (which is `tsc -b`, so it is the type check too) in web/.
+# It installs CPU torch wheels, `cura-engine` from universe (CuraSlicer refuses to
+# construct without the binary, even in tests that stub the call) and copies
+# `config.template.py` into place — which is also what keeps that template from rotting.
+# `npm run lint` runs non-blocking: it has 27 pre-existing errors, and a gate that is
+# red the day it lands teaches everyone to ignore the red.
+
 # Makefile shortcuts
 make build                     # docker compose build
 make up                        # start API server
@@ -52,6 +62,18 @@ cp pythonsrc/config.template.py pythonsrc/config.py  # if running natively (not 
 ### Pipeline (pythonsrc/pipeline.py)
 
 The core pipeline runs 5 phases sequentially. Phase banners (`[P2P] ═══ PHASE N START/PASS/FAIL ...`) are parsed by the server to emit WebSocket progress updates. The pipeline writes a `.status` file per job to `data/logs/{job_id}.status`.
+
+**The banners are a contract between two processes that share no code**, and it is the
+most fragile one in the project. `_phase_start`/`_phase_pass`/`_phase_fail` print them;
+`server.app.PHASE_BANNER_RE` recognises them. Reword a banner, drop the trailing `═══`
+or renumber a phase and the pipeline still runs to completion, still exits 0 and still
+writes every artifact — while the UI sits at "phase 01 pending" for the whole run.
+Invisible in a diff, total at runtime. `tests/test_phase_banners.py` binds the two
+halves: it generates banners with the real emitters and parses them with the real
+parser, so neither side carries a copy of the other's format. The regex and
+`PHASE_NAMES` are module-level in `server/app.py` (they were locals inside
+`_stream_output`) for exactly that reason — a test retyping the regex would agree with
+itself forever.
 
 Execution strategies are auto-detected by `platform_utils.py`. These decide **Phase 1's**
 placement only:
@@ -157,6 +179,28 @@ fixture must not sit in the real namespace looking like one a model made.
 phase was skipped": the primary Mac workflow always passes `--skip-visualizer` because
 Phase 1 just ran natively, and `--skip-sculptor --mesh real.obj` supplies its own. Only a
 *substitution* earns the prefix.
+
+**The blueprint is per job.** `data/inputs/blueprint.png` was one filename every run
+wrote in place — the native Mac process, the pipeline container, all of them. Phase 1
+takes ~30s natively and minutes in Docker, so two jobs started in that window raced for
+it, and the loser sculpted, sliced and printed the winner's image while recording its
+own prompt and seed against it. Nothing downstream could notice: the file exists, it is
+a real render, and its hash is whatever landed last. The result is a mislabelled row in
+the one dataset this project exists to collect, and on a per-generation sculptor backend
+it is money spent reconstructing the wrong picture. The per-job snapshot into
+`data/outputs/{job_id}/blueprint.png` does not fix it — that copies whichever image won.
+`pipeline._blueprint_path` is the decision: `--blueprint` wins, else
+`data/inputs/{job_id}/blueprint.png` when there is a `--job-id`, else the flat path for
+manual CLI use. The sidecar shares the directory, which is the other half — `read_sidecar`
+rejects a sidecar whose hash does not match the image beside it, so a race used to cost
+the *winner* its provenance too. The server sends the native Phase 1 there via
+`$P2P_BLUEPRINT_OUTPUT` (`run_phase1_native.sh`) and hands the container the same path.
+Two deliberate exceptions: the **skip-Phase-1 configuration keeps the shared path**,
+because it exists to reuse an image already sitting there and generates nothing to race
+for; and `POST /jobs` **no longer deletes** `data/inputs/blueprint.png` in its
+stale-artifact sweep, which was the same race from the other side — creating one job
+removed the blueprint a concurrent one was still reading, and deleted the very input a
+skip-Phase-1 run was about to use.
 
 **Both phases skipped is the commonest dev configuration, and it used to get no
 blueprint at all.** `SKIP_VISUALIZER` + `SKIP_SCULPTOR` in the config store is how the
@@ -424,8 +468,10 @@ FastAPI application with:
   `--skip-visualizer`, which used to record only the image hash — seed, prompt, model all
   NULL for every job on that path. `write_sidecar()`/`read_sidecar()` in `blueprint_spec.py`
   serialize the `BlueprintResult` next to the PNG; the sidecar stores the image's own sha256
-  and a mismatch reads as *no sidecar*, because the blueprint path is shared and a stale
-  sidecar attributing an old seed to a new image is worse than none. The pipeline reads it
+  and a mismatch reads as *no sidecar*, because a stale sidecar attributing an old seed
+  to a new image is worse than none. That guard is now belt-and-braces rather than the
+  only line of defence: a job renders into `data/inputs/{job_id}/`, so the sidecar has
+  the directory to itself (see **The blueprint is per job** below). The pipeline reads it
   back on the skip path; do not "simplify" this into recording only the hash again.
 - **Requested size**: `requested_size_mm`, `size_source`, `requested_scale_axis`,
   written at insert time by `POST /jobs`. `requested_size_mm` is **NULL when nobody
@@ -577,6 +623,15 @@ FastAPI application with:
   `gcode_line` with `progress.filepos` — the same byte-offset semantics Moonraker uses,
   which is also what lets the clog rule fire on OctoPrint at all.
 - **Single writer** (`collector_claim.py`): the API server, `pipeline.py` and `run_operator.py` can all construct a collector for the same job. Each claims a row in `telemetry_collector_claim` at the moment its first sample arrives; non-holders stand down instead of duplicating every row. Claims are released on `stop()` and can be taken over after 120s without a heartbeat.
+  **Every claim write is a compare-and-swap**, guarded on the `(owner, heartbeat_at)`
+  the SELECT read, with `rowcount` as the verdict. `try_claim_collector` reads, decides,
+  then writes, and the writes used to be bare `WHERE job_id = ?` — so two collectors
+  that both saw the same stale claim both updated it and both were told they had won.
+  That is the exact double-writer the table exists to prevent, reachable only after a
+  collector has already crashed, which is when the telemetry matters most. A heartbeat
+  is guarded too: it must *confirm* ownership, not assert it, or it silently takes back
+  a claim a rival won in the window. Losing the swap returns False, so the loser
+  declines at `insert_sample` rather than merely logging.
   **Arbitration being unavailable is not the same as the database being broken.** Only
   `no such table` takes the fail-open branch — that is an older database with no claim
   table and therefore no rival collector, and the sample can still be written. Every
@@ -1103,7 +1158,7 @@ of every effect, so this fired on every dev page load and read like a dead backe
 
 System config (`.env` template at `.env.template`) is loaded by Docker Compose. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry SQLite database (`app_config` table). The encryption key file `.config_key` is gitignored and auto-generated on first use.
 
-Key pipeline paths: `data/inputs/` (blueprint), `data/outputs/{job_id}/` (per-job mesh, G-code and a blueprint snapshot — runs without `--job-id` still use flat `data/outputs/`), `data/logs/` (per-job logs and status files). Server artifact endpoints resolve the per-job path first and fall back to the flat layout for pre-existing rows. These are gitignored runtime directories.
+Key pipeline paths: `data/inputs/{job_id}/` (blueprint and its provenance sidecar; runs without `--job-id` use flat `data/inputs/`), `data/outputs/{job_id}/` (per-job mesh, G-code and a blueprint snapshot — runs without `--job-id` still use flat `data/outputs/`), `data/logs/` (per-job logs and status files). Server artifact endpoints resolve the per-job path first and fall back to the flat layout for pre-existing rows. These are gitignored runtime directories.
 
 ## Licensing Constraints
 
