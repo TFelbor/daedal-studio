@@ -40,9 +40,13 @@ curl -s http://<gpu-host>:8100/health | python -m json.tool   # check before sub
 #   pytest tests/test_licensing_guards.py   # named separately — a licence break is not
 #   pytest tests/                           #   an ordinary failure
 # plus `npm run build` (which is `tsc -b`, so it is the type check too) in web/.
-# It installs CPU torch wheels, `cura-engine` from universe (CuraSlicer refuses to
-# construct without the binary, even in tests that stub the call) and copies
-# `config.template.py` into place — which is also what keeps that template from rotting.
+# It installs CPU torch wheels, copies `config.template.py` into place — which is also
+# what keeps that template from rotting — and puts `infra/ci/curaengine_stub.sh` on PATH
+# as `CuraEngine`, because `CuraSlicer` refuses to construct without the binary even in
+# tests that stub the call. A stub, not the real engine: `apt-get install cura-engine`
+# broke when `ubuntu-latest` moved to 24.04 (the package is in universe on 22.04 and
+# again from 25.10, but noble has no candidate), and nothing in the default selection
+# executes it — verified, since the suite passes with a stub that exits 70 if invoked.
 # `npm run lint` runs non-blocking: it has 27 pre-existing errors, and a gate that is
 # red the day it lands teaches everyone to ignore the red.
 

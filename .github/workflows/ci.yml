@@ -48,14 +48,28 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-base.txt
 
-      - name: Install CuraEngine
+      - name: Provide a CuraEngine stand-in
         # Phase 4 is a subprocess wrapper, and `CuraSlicer.__init__` refuses to
-        # construct without the binary on PATH — so the slicer tests need it present
-        # even though they stub the call itself. `cura-engine` lives in universe.
+        # construct without the binary on PATH — so the slicer tests need *a file by
+        # that name*. They do not need a slicer: each stubs `subprocess.run` and
+        # asserts on the argv, and the whole suite passes with this stand-in, which
+        # exits 70 on any real invocation rather than faking a successful slice.
+        #
+        # This step used to be `apt-get install -y cura-engine`, and it broke when
+        # `ubuntu-latest` moved to 24.04. `cura-engine` is in universe on jammy
+        # (22.04, 4.13) and again from 25.10 (5.0.0) onward, but noble has no
+        # candidate — only a reference to it from `cura` — so apt failed with
+        # "Package 'cura-engine' has no installation candidate".
+        #
+        # A stand-in rather than pinning `runs-on: ubuntu-22.04`: that would freeze
+        # the whole job on a deprecated runner image in order to install a binary
+        # nothing in the default selection executes. See
+        # `infra/ci/curaengine_stub.sh` for why it fails loudly instead of quietly.
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cura-engine
-          CuraEngine --version || curaengine --version
+          mkdir -p "$HOME/.local/bin"
+          install -m 755 infra/ci/curaengine_stub.sh "$HOME/.local/bin/CuraEngine"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/CuraEngine" --version
 
       - name: Install Python dependencies
         # CPU wheels, from PyTorch's own index. Nothing under test imports torch —
