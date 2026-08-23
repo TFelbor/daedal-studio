@@ -4,6 +4,7 @@ This module defines the REST API for creating, monitoring, and retrieving
 results from the 3D printing pipeline, as well as managing telemetry.
 """
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,8 @@ from pythonsrc.telemetry.detector import attach_detector
 from pythonsrc.telemetry.run_context import resolve_git_sha
 from pythonsrc.operators import PrinterFactory
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
+from pythonsrc.size_hint import parse_size_hint
+from pythonsrc.ip_screen import screen_prompt
 import httpx
 from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
@@ -131,7 +134,9 @@ active_pipelines: dict[str, asyncio.subprocess.Process] = {}
 cancelled_jobs: set[str] = set()
 
 
-def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
+def resolve_job_artifact(
+    job_id: str, filename: str, *, per_job_only: bool = False,
+) -> Path | None:
     """Locate a job's artifact, preferring its per-job directory.
 
     The pipeline writes artifacts to ``data/outputs/{job_id}/`` so that jobs cannot
@@ -146,6 +151,11 @@ def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
     Args:
         job_id: The job whose artifact is wanted.
         filename: Artifact filename, e.g. "engineered_mesh.gcode".
+        per_job_only: Skip the flat-layout and shared-input fallbacks and answer only
+            from this job's own directory. The blueprint gate needs this: the shared
+            `data/inputs/blueprint.png` is deleted by every `POST /jobs`, so a parked
+            job asked about it would show a *different* job's image, or none, and a
+            person would approve something that was never theirs.
 
     Returns:
         The path to the artifact, or None if no location has it.
@@ -155,6 +165,9 @@ def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
         candidate = directory / filename
         if candidate.exists():
             return candidate
+
+    if per_job_only:
+        return None
 
     legacy = outputs / filename
     if legacy.exists():
@@ -271,6 +284,87 @@ def dispatch_state(job, db: TelemetryDB) -> str:
     return "not_ready"
 
 
+def _file_sha256(path: Path) -> str:
+    """The hash of a file on disk, streamed.
+
+    Used to bind an approval to the exact image that was displayed. Streamed rather
+    than read whole because the caller is an endpoint and a blueprint is a megabyte
+    of PNG per request.
+
+    Args:
+        path: The file to hash.
+
+    Returns:
+        The lowercase hex digest, or "" if it could not be read.
+    """
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not hash %s: %s", path, exc)
+        return ""
+    return digest.hexdigest()
+
+
+def blueprint_gate_state(job, db: TelemetryDB) -> str:
+    """Where a job stands with respect to Phase 2.
+
+    Four states. The one that matters is `awaiting_approval`: **Phase 2 does not start
+    until a person has looked at the blueprint.** That is a legal control — an
+    automated screen cannot be the last word on whether a render reproduces someone
+    else's character — and, more often, a product one: the honest answer to many
+    prompts is a rough, unpainted approximation, and the requester should see that in
+    thirty seconds rather than after four minutes and a paid reconstruction.
+
+    Derived, exactly like `dispatch_state`, and for the same reasons: no new outcome
+    value, no migration, and the decision lives in `job_event` because that is where
+    decisions live. Deriving it also makes it survive a server restart, which a gate
+    that parked by awaiting inside `_run_pipeline` could not.
+
+    Args:
+        job: A PrintJob row.
+        db: An open database handle, used to look for the decision events.
+
+    Returns:
+        "approved", "rejected", "awaiting_approval" or "not_ready".
+    """
+    try:
+        if db.get_job_events(job.job_id, kind="blueprint_approved"):
+            return "approved"
+        if db.get_job_events(job.job_id, kind="blueprint_rejected"):
+            return "rejected"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read blueprint gate events for %s: %s", job.job_id, exc)
+        return "not_ready"
+
+    # A settled row is not waiting for anything, whatever is on disk. Mirrors
+    # `dispatch_state`'s insistence on `outcome == "success"`: the point of checking
+    # the outcome is that a pipeline which has moved on must not be re-entered.
+    if job.outcome != "unknown":
+        return "not_ready"
+
+    # And the run must actually have stopped. Derived from the *event*, not from the
+    # presence of an image: `pipeline.py` snapshots a blueprint into the per-job
+    # directory on every run with a `--job-id`, so an ungated run — anything with
+    # SKIP_VISUALIZER or `print: true` — used to report itself as awaiting approval
+    # seconds in, and approving it started a second pipeline for the same job.
+    try:
+        if not db.get_job_events(job.job_id, kind="blueprint_gate_parked"):
+            return "not_ready"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read blueprint park events for %s: %s", job.job_id, exc)
+        return "not_ready"
+
+    # This job's *own* blueprint, not the shared `data/inputs/blueprint.png`: POST
+    # /jobs deletes that on every submission, so a parked job asked about the shared
+    # path would show a different job's image, or none.
+    if resolve_job_artifact(job.job_id, "blueprint.png", per_job_only=True) is not None:
+        return "awaiting_approval"
+    return "not_ready"
+
+
 def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | None, str | None]:
     """Resolve which printer a job talks to, from one place.
 
@@ -346,6 +440,19 @@ def _read_current_phase(job_id: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+#: Phase names as `pipeline._write_status` writes them, so a record appended by the
+#: server and one written by the pipeline agree about what a phase is called. The last
+#: line of the `.status` file *is* `current_phase`, so a disagreement here shows up in
+#: the UI as a phase that changed its name mid-run.
+_PHASE_STATUS_NAMES = {
+    1: "visualizer",
+    2: "sculptor",
+    3: "engineer",
+    4: "slicer",
+    5: "operator",
+}
+
+
 def _append_phase_status(job_id: str, phase: int, status: str, error: str | None = None) -> None:
     """Append one phase record to a job's `.status` file.
 
@@ -365,7 +472,13 @@ def _append_phase_status(job_id: str, phase: int, status: str, error: str | None
         log_dir.mkdir(parents=True, exist_ok=True)
         record = {
             "phase": phase,
-            "name": "operator" if phase == 5 else str(phase),
+            # The pipeline writes the phase's *name* here ("visualizer", "sculptor",
+            # …); this wrote the number as a string for anything but Phase 5, so a
+            # record appended by the server disagreed with one written by the
+            # pipeline about what the same phase is called. `operator` is kept for
+            # Phase 5 because that is what the pipeline writes and what the dispatch
+            # gate's test pins.
+            "name": _PHASE_STATUS_NAMES.get(phase, str(phase)),
             "status": status,
             "ts": datetime.now(timezone.utc).isoformat(),
         }
@@ -420,7 +533,9 @@ class JobRequest(BaseModel):
     # adhesion failure, and nothing else in the system records it.
     material_type: Optional[str] = None
     material_brand: Optional[str] = None
-    material_colour: Optional[str] = None
+    # Bounded for the same reasons as the prompt, and because it is interpolated
+    # into the string sent to the image model — an unbounded second prompt channel.
+    material_colour: Optional[str] = Field(None, max_length=64)
     # Reproducibility and lineage.
     seed: Optional[int] = None
     parent_job_id: Optional[str] = None
@@ -431,6 +546,22 @@ class JobRequest(BaseModel):
         None, pattern="^(512|1024|1024_cascade|1536_cascade)$"
     )
     mesh_seed: Optional[int] = None
+    # How big the finished part should be. Validated on the model rather than in the
+    # handler: `OutcomeRequest` made that mistake once and wrote the row before
+    # refusing the request. `None` means "nobody chose", and the flag is then not
+    # forwarded at all so `pipeline.py`'s own 50.0 stays the single default — a
+    # second copy in the server would drift the first time either moved. The ceiling
+    # is a sanity bound, not a build volume; the real limit is the printer profile's,
+    # and it is enforced where the profile is known.
+    target_mm: Optional[float] = Field(None, gt=0, le=1000)
+    # Which extent `target_mm` describes, as it was labelled for the requester. The
+    # pattern is the enforcement: an axis the Engineer does not implement must not
+    # reach the subprocess, and a typo must not fall back to the other convention.
+    scale_axis: Optional[str] = Field(None, pattern="^(height|longest)$")
+    # Whether the person typed the size or accepted a suggestion parsed out of their
+    # prompt. Only the client knows, so only the client can say — but "default" is
+    # not the client's to claim: the server writes that itself when no size arrived.
+    size_source: Optional[str] = Field(None, pattern="^(user|prompt_hint)$")
 
 
 class OutcomeRequest(BaseModel):
@@ -500,6 +631,15 @@ class JobStatusResponse(BaseModel):
     material_type: Optional[str] = None
     material_brand: Optional[str] = None
     material_colour: Optional[str] = None
+    #: The size the requester asked for, in mm, or None when they did not choose one.
+    #: Returned so a regeneration can echo the same size back: `JobDetail` rebuilds
+    #: the request from this row, so a size that is not here silently resets to the
+    #: pipeline default on every regenerate and misattributes the change to the model.
+    requested_size_mm: Optional[float] = None
+    #: "default" | "user" | "prompt_hint". See `VALID_SIZE_SOURCES`.
+    size_source: Optional[str] = None
+    #: "height" | "longest" — which extent `requested_size_mm` described.
+    requested_scale_axis: Optional[str] = None
     blueprint_seed: Optional[int] = None
     parent_job_id: Optional[str] = None
     download_count: int = 0
@@ -519,9 +659,45 @@ class JobStatusResponse(BaseModel):
     used_reference_assets: Optional[bool] = None
     #: "not_ready" | "awaiting_confirmation" | "dispatched". See `dispatch_state`.
     dispatch_state: str = "not_ready"
+    #: "not_ready" | "awaiting_approval" | "approved" | "rejected". See
+    #: `blueprint_gate_state`. Phase 2 does not run until this is "approved".
+    blueprint_gate_state: str = "not_ready"
+    #: What the person is being asked to approve: the blueprint's own sha256 and the
+    #: url it is served from. Sent back with the approval so the server can refuse an
+    #: approval of an image that has since changed.
+    blueprint_gate_subject: Optional[dict] = None
     #: The printer this job's Phase 5 would go to, resolved now — the thing a person is
     #: being asked to confirm. See `dispatch_target`.
     dispatch_target: Optional[dict] = None
+
+
+def _profile_build_volume(source: dict) -> Optional[List[float]]:
+    """[width, depth, height] in mm from a profile dict, or None if it does not say.
+
+    Module level and single-implementation on purpose. It answers two questions that
+    must not diverge: the G-code preview draws the build envelope around the toolpath,
+    and the composer clamps a requested size before any job exists. A wrong envelope
+    is worse than none — a part that fits reads as overflowing a machine it was never
+    sliced for — and a clamp derived from a second reader of the same keys would
+    disagree with `printability`'s own `build_volume_fit` check.
+
+    "The profile does not say" is a first-class answer, not a zero: `bambu_test.json`
+    declares no machine dimensions at all, and a caller that assumed a number would
+    clamp every size to nothing for that printer.
+
+    Args:
+        source: A parsed printer profile, or a job's frozen `process_params`.
+
+    Returns:
+        The three dimensions as floats, or None when any is missing or unparseable.
+    """
+    keys = ("machine_width", "machine_depth", "machine_height")
+    if not all(source.get(k) is not None for k in keys):
+        return None
+    try:
+        return [float(source[k]) for k in keys]
+    except (TypeError, ValueError):
+        return None
 
 
 def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float]]:
@@ -1048,34 +1224,174 @@ async def _run_pipeline(job_id: str, request: JobRequest):
 
     if skip_viz:
         pipeline_args.extend(["--skip-visualizer", "--blueprint", blueprint_container_path])
+def _pipeline_args(
+    request: JobRequest,
+    *,
+    skip_viz: bool,
+    skip_sculpt: bool,
+    profile: Optional[str],
+) -> List[str]:
+    """Build the pipeline subprocess arguments for one job request.
+
+    Lifted out of `_run_pipeline` to be testable at all: every job-submission test
+    patches `_run_pipeline` wholesale — it shells out to docker and bills the hosted
+    sculptor — so the argv it assembles was unreachable from the suite. A flag
+    declared on `JobRequest` and never forwarded is silently inert, which is what
+    happened to `--target-mm` and is still true of `blueprint_path`.
+
+    Args:
+        request: The submitted job request.
+        skip_viz: Whether Phase 1 is being skipped (from the request or config).
+        skip_sculpt: Whether Phase 2 is being skipped.
+        profile: The resolved printer profile path, or None.
+
+    Returns:
+        The argument list to append after the pipeline's positional prompt.
+    """
+    args: List[str] = []
+
+    if skip_viz:
+        # `blueprint_path` was declared on `JobRequest` and forwarded nowhere, which is
+        # what let the approval gate approve one image and reconstruct another: the
+        # continuation was launched against the *shared* input path, and `POST /jobs`
+        # deletes that on every submission. A resumed run names its own snapshot.
+        args.extend([
+            "--skip-visualizer",
+            "--blueprint",
+            request.blueprint_path or "/app/data/inputs/blueprint.png",
+        ])
     if skip_sculpt:
-        pipeline_args.append("--skip-sculptor")
-        
-    profile = request.profile or config_store.get("DEFAULT_PROFILE")
+        args.append("--skip-sculptor")
+
     if profile:
-        pipeline_args.extend(["--profile", profile])
-        
-    pipeline_args.append("--slice")
+        args.extend(["--profile", profile])
+
+    args.append("--slice")
 
     # Forwarded so the pipeline can record them: the seed is what makes a blueprint
     # reproducible, and the material selects the density behind the mass estimate.
     if request.seed is not None:
-        pipeline_args.extend(["--seed", str(request.seed)])
+        args.extend(["--seed", str(request.seed)])
     if request.material_type:
-        pipeline_args.extend(["--material-type", request.material_type])
+        args.extend(["--material-type", request.material_type])
+    # Reaches Phase 1, where it changes the blueprint. Sanitised in
+    # `blueprint_spec.normalise_colour`, not here — one implementation, and the CLI
+    # path has to be covered by it too.
+    if request.material_colour:
+        args.extend(["--colour", request.material_colour])
+    # Reaches Phase 1, where it changes the blueprint. Sanitised in
+    # `blueprint_spec.normalise_colour`, not here — one implementation, and the CLI
+    # path has to be covered by it too.
     # Phase 2's own seed and resolution. `--mesh-seed` is deliberately not `--seed`:
     # one reproduces the blueprint, the other the reconstruction, and a single value
     # for both would make it impossible to re-sculpt one image two ways.
     if request.pipeline_type:
-        pipeline_args.extend(["--pipeline-type", request.pipeline_type])
+        args.extend(["--pipeline-type", request.pipeline_type])
     if request.mesh_seed is not None:
-        pipeline_args.extend(["--mesh-seed", str(request.mesh_seed)])
+        args.extend(["--mesh-seed", str(request.mesh_seed)])
+    # Omitted when unset, so the pipeline's own default remains the only default.
+    if request.target_mm is not None:
+        args.extend(["--target-mm", str(request.target_mm)])
+    if request.scale_axis:
+        args.extend(["--scale-axis", request.scale_axis])
 
     if request.print:
-        pipeline_args.append("--print")
+        args.append("--print")
     if request.start_print:
-        pipeline_args.append("--start-print")
-        
+        args.append("--start-print")
+
+    return args
+
+
+def _strip_stop_after(args: List[str]) -> List[str]:
+    """Drop `--stop-after-phase N` from an argument list.
+
+    The mps_native strategy parks *itself*, after its own native Phase 1, and then
+    hands Phases 2-5 to a container. A stop flag surviving into that invocation would
+    stop the continuation after Phase 1 as well — which, since Phase 1 is skipped
+    there, means stopping before anything ran.
+
+    Args:
+        args: A pipeline argument list.
+
+    Returns:
+        The list without the flag or its value.
+    """
+    kept: List[str] = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--stop-after-phase":
+            skip_next = True
+            continue
+        kept.append(arg)
+    return kept
+
+
+def _strip_phase1_args(args: List[str]) -> List[str]:
+    """Drop the Phase 1 arguments the mps_native strategy supplies for itself.
+
+    That strategy has already run the visualizer as a native process, so it appends
+    its own `--skip-visualizer --blueprint <path>` and must remove any copy coming
+    from `_pipeline_args`. The filter is value-blind by design — it drops the token
+    after `--blueprint` whatever it looks like — which also means every other
+    flag/value pair has to survive it intact. A size that lost its number here would
+    be consumed by the pipeline from the *next* argument.
+
+    Args:
+        args: The full pipeline argument list.
+
+    Returns:
+        The list with `--skip-visualizer` and `--blueprint <path>` removed.
+    """
+    kept: List[str] = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--skip-visualizer":
+            continue
+        if arg == "--blueprint":
+            skip_next = True
+            continue
+        kept.append(arg)
+    return kept
+
+
+async def _run_pipeline(job_id: str, request: JobRequest):
+    repo_root = Path(__file__).parent.parent
+    log_dir = repo_root / "data" / "logs"
+    log_file = log_dir / f"{job_id}.log"
+    
+    strategy = get_resolved_strategy()
+    
+    skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
+    skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+    profile = request.profile or config_store.get("DEFAULT_PROFILE")
+
+    pipeline_args = _pipeline_args(
+        request, skip_viz=skip_viz, skip_sculpt=skip_sculpt, profile=profile,
+    )
+
+    # Whether this invocation stops after Phase 1 and waits for a person.
+    #
+    # Gated exactly when Phase 1 actually runs here. That is also what makes the
+    # continuation terminate: `_continue_pipeline` re-enters with
+    # `skip_visualizer=True`, so `skip_viz` is set, so it is not gated, so it runs
+    # through. Without that coupling the gate would re-arm on every approval.
+    #
+    # `--print` opts out. The CLI and any automation pass it, and there is nobody to
+    # ask there — the same reasoning that makes Phase 5 unattended on that path.
+    gated = not skip_viz and not request.print
+    if gated and strategy != "mps_native":
+        # The docker strategies run all five phases in one `docker compose run`, so the
+        # seam has to be asked for. mps_native already has one: it runs Phase 1 as its
+        # own process.
+        pipeline_args = ["--stop-after-phase", "1"] + pipeline_args
+
     try:
         # Mark job as started
         db_start = TelemetryDB()
@@ -1127,7 +1443,15 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         else:
             pipeline_env["P2P_API_URL"] = "http://host.docker.internal:8000"
 
-        with open(log_file, "w") as f:
+        # Appended, not truncated. The blueprint gate resumes a job as a *second*
+        # invocation against the same log file, and "w" threw away the Phase 1 record —
+        # the seed line, any screen verdict — the moment someone approved. The file is
+        # job-scoped, so appending cannot mix two jobs together.
+        log_mode = "a" if request.blueprint_path else "w"
+        with open(log_file, log_mode) as f:
+            if log_mode == "a":
+                f.write("\n[P2P] ─── resumed after blueprint approval ───\n")
+                f.flush()
             docker_env_args = ["-e", "P2P_LOGS_DIR=/app/data/logs"]
             if "TELEMETRY_DB_PATH" in pipeline_env:
                 docker_env_args.extend(["-e", f"TELEMETRY_DB_PATH={pipeline_env['TELEMETRY_DB_PATH']}"])
@@ -1161,6 +1485,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     # and used never.
                     if request.seed is not None:
                         phase1_cmd.extend(["--seed", str(request.seed)])
+                    # Same reason as the seed: dropped on this path it would be
+                    # recorded nowhere and used never.
+                    if request.material_colour:
+                        phase1_cmd.extend(["--colour", request.material_colour])
                     process1 = await asyncio.create_subprocess_exec(
                         *phase1_cmd,
                         stdout=asyncio.subprocess.PIPE,
@@ -1185,20 +1513,21 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                         )
                         
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "complete", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
-                
-                clean_args = []
-                skip_next = False
-                for arg in pipeline_args:
-                    if skip_next:
-                        skip_next = False
-                        continue
-                    if arg == "--skip-visualizer":
-                        continue
-                    if arg == "--blueprint":
-                        skip_next = True
-                        continue
-                    clean_args.append(arg)
-                    
+
+                    # Park here, before the container that would run Phase 2 is
+                    # started. Returning rather than awaiting is what makes the wait
+                    # durable: the job's state is a row plus a snapshotted image, so
+                    # it survives a server restart and has no time limit.
+                    if gated:
+                        if await _park_at_blueprint_gate(job_id):
+                            return
+                        raise Exception(
+                            "Phase 1 completed but the job could not be parked for "
+                            "approval, so Phase 2 was not started."
+                        )
+
+                clean_args = _strip_phase1_args(pipeline_args)
+
                 cmd = [
                     "docker", "compose", "-f", "infra/docker-compose.yml",
                     "run", "--rm"
@@ -1206,8 +1535,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
                     "--skip-visualizer", "--blueprint", blueprint_container_path,
+                    "--skip-visualizer",
+                    "--blueprint", request.blueprint_path or "/app/data/inputs/blueprint.png",
                     "--job-id", job_id
-                ] + clean_args
+                ] + _strip_stop_after(clean_args)
             elif strategy == "nvidia_docker":
                 cmd = [
                     "docker", "compose",
@@ -1241,7 +1572,27 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             await _stream_output(process, f, job_id, on_phase=on_phase)
             await process.wait()
             returncode = process.returncode
-            
+
+            # A gated run that exited cleanly stopped *on purpose*, after Phase 1. It
+            # must not be recorded as a finished job: writing "success" here would make
+            # `dispatch_state` report a job with no mesh and no G-code as ready to
+            # print. The outcome column is deliberately left as it is — see
+            # `_park_at_blueprint_gate`.
+            if gated and returncode == 0 and job_id not in cancelled_jobs:
+                if await _park_at_blueprint_gate(job_id):
+                    return
+                # The run stopped after Phase 1 as instructed but could not be parked —
+                # no blueprint to show, or the decision could not be recorded. Falling
+                # through would let Phase 2 spend money on an image nobody approved,
+                # which is the one outcome this gate exists to prevent, so it fails
+                # instead. A failed gate is a failed job, loudly.
+                logger.error(
+                    "Job %s stopped for approval but could not be parked — failing it "
+                    "rather than continuing past the gate.", job_id,
+                )
+                _append_phase_status(job_id, 1, "error", "could not park for approval")
+                returncode = 1
+
             db = TelemetryDB()
             if job_id in cancelled_jobs:
                 # A stopped pipeline exits non-zero, exactly like a crash. Only the
@@ -1340,6 +1691,32 @@ async def create_job(request: JobRequest):
                    + (status_res.get("detail") or "Test the connection in Settings."),
         )
 
+    # Screened here, and here specifically: after the printer checks (a job that
+    # cannot print should fail for that reason first) but before `job_id` is minted
+    # and before the artifact-cleanup loop below, which unconditionally deletes the
+    # shared blueprint and the flat mesh and G-code. A refusal after that point
+    # destroys the previous job's output in order to reject a job that never existed.
+    #
+    # Every field that reaches the model is passed, not just the prompt:
+    # `material_colour` is interpolated into the string sent to FLUX, so a screen
+    # reading `prompt` alone leaves the colour box unwatched.
+    screen = screen_prompt(request.prompt, request.material_colour)
+    if screen.action == "block":
+        activity.action(
+            "job refused",
+            [
+                ("reason", "ip screen"),
+                ("term", screen.term),
+                ("score", screen.score),
+                ("prompt", request.prompt),
+            ],
+            outcome="refused before the job row was created",
+            status="warn",
+        )
+        # The 4xx is already pushed into the activity feed by the request middleware,
+        # so this block records the *decision* rather than the response.
+        raise HTTPException(status_code=400, detail=screen.detail)
+
     job_id = str(uuid.uuid4())
 
     repo_root = Path(__file__).parent.parent
@@ -1393,6 +1770,18 @@ async def create_job(request: JobRequest):
         material_colour=request.material_colour,
         nozzle_diameter_mm=nozzle_diameter_mm,
         process_params=process_params,
+        # "the default applied" is a different fact from "they chose 50 mm", so the
+        # source is always written even when the size is not.
+        # The request as submitted, so the approval gate's continuation — a different
+        # process, after a human decision that has no time limit — reruns the same job
+        # rather than a reconstruction of it.
+        request_params=request.model_dump(mode="json"),
+        requested_size_mm=request.target_mm,
+        size_source=(
+            (request.size_source or "user") if request.target_mm is not None
+            else "default"
+        ),
+        requested_scale_axis=request.scale_axis,
         parent_job_id=request.parent_job_id,
         regeneration_reason=request.regeneration_reason,
     )
@@ -1407,11 +1796,25 @@ async def create_job(request: JobRequest):
             ("firmware", firmware),
             ("material", request.material_type or "unset"),
             ("seed", request.seed if request.seed is not None else "drawn at run time"),
+            ("size", f"{request.target_mm} mm" if request.target_mm is not None
+                     else "50 mm (default)"),
             ("regen of", request.parent_job_id[:8] if request.parent_job_id else None),
         ],
         outcome="queued; pipeline subprocess starting",
         status="ok",
     )
+
+    # A weak match proceeds and is recorded, so the person approving the blueprint
+    # sees it and "how often does this fire" stays a query rather than a log grep.
+    if screen.action == "flag":
+        try:
+            db.record_job_event(job_id, "ip_screen_flagged", {
+                "term": screen.term,
+                "score": screen.score,
+                "detail": screen.detail,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record ip_screen_flagged event: %s", exc)
 
     # A regeneration is an implicit judgement on the parent — the user looked at that
     # result and asked for another. Recorded against the parent, which is the job the
@@ -1451,8 +1854,21 @@ async def get_job(job_id: str):
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
-    # Phase 5 waits on a person. Derived on the open handle rather than from a second
-    # connection, and before the 404 so the row is read exactly once.
+    # Both gates are derived here, on the open handle rather than from a second
+    # connection: this database has exactly one writer by design over a VirtioFS bind
+    # mount, and an extra reader is not free. Guarded on `job` because the 404 below
+    # is deliberately raised *after* `db.close()`, so a missing row reaches this point.
+    job_blueprint_gate_state = blueprint_gate_state(job, db) if job else "not_ready"
+    blueprint_gate_subject = None
+    if job and job_blueprint_gate_state == "awaiting_approval":
+        artifact = resolve_job_artifact(job.job_id, "blueprint.png", per_job_only=True)
+        if artifact is not None:
+            blueprint_gate_subject = {
+                "sha256": _file_sha256(artifact),
+                "url": f"/jobs/{job.job_id}/blueprint",
+            }
+
+    # Phase 5 waits on a person too — see `dispatch_state`.
     job_dispatch_state = dispatch_state(job, db) if job else "not_ready"
     db.close()
 
@@ -1489,25 +1905,10 @@ async def get_job(job_id: str):
     layer_height_mm = None
     build_volume_mm = None
 
-    def _volume(source: dict) -> list[float] | None:
-        """[width, depth, height] in mm, or None if the profile does not say.
-
-        The G-code preview draws the bed and the build envelope around the toolpath,
-        and a wrong envelope is worse than none: a part that fits reads as overflowing
-        a machine it was never sliced for.
-        """
-        keys = ("machine_width", "machine_depth", "machine_height")
-        if not all(source.get(k) is not None for k in keys):
-            return None
-        try:
-            return [float(source[k]) for k in keys]
-        except (TypeError, ValueError):
-            return None
-
     if job.process_params:
         machine_name = job.process_params.get("machine_name")
         layer_height_mm = job.process_params.get("layer_height")
-        build_volume_mm = _volume(job.process_params)
+        build_volume_mm = _profile_build_volume(job.process_params)
     else:
         profile_path_str = job.profile_name
         if profile_path_str and profile_path_str != "default":
@@ -1518,7 +1919,7 @@ async def get_job(job_id: str):
                         profile_data = json.load(pf)
                         machine_name = profile_data.get("machine_name")
                         layer_height_mm = profile_data.get("layer_height")
-                        build_volume_mm = _volume(profile_data)
+                        build_volume_mm = _profile_build_volume(profile_data)
             except Exception:
                 pass
 
@@ -1549,6 +1950,11 @@ async def get_job(job_id: str):
         material_type=job.material_type,
         material_brand=job.material_brand,
         material_colour=job.material_colour,
+        blueprint_gate_state=job_blueprint_gate_state,
+        blueprint_gate_subject=blueprint_gate_subject,
+        requested_size_mm=job.requested_size_mm,
+        size_source=job.size_source,
+        requested_scale_axis=job.requested_scale_axis,
         blueprint_seed=job.blueprint_seed,
         parent_job_id=job.parent_job_id,
         download_count=job.download_count or 0,
@@ -1722,6 +2128,260 @@ class DispatchRequest(BaseModel):
     confirmed: bool = False
     profile: Optional[str] = None
     base_url: Optional[str] = None
+
+
+class BlueprintApprovalRequest(BaseModel):
+    """A person's decision about a rendered blueprint."""
+
+    confirmed: bool = False
+    """Must be true. The flag *is* the gate — there is deliberately no unconfirmed
+    code path, so an empty body cannot start a reconstruction."""
+
+    approve: bool = True
+    """True to continue into Phase 2, false to record a rejection and stop."""
+
+    sha256: Optional[str] = None
+    """The blueprint's hash **as displayed**. When it no longer matches what the
+    server resolves, the answer is 409: approving an image you are no longer looking
+    at is not approving. Same rule as the dispatch gate's target check."""
+
+
+def _snapshot_blueprint(job_id: str) -> Path | None:
+    """Copy the shared blueprint into this job's own directory.
+
+    Load-bearing for the approval gate. `POST /jobs` unconditionally deletes
+    `data/inputs/blueprint.png`, so a job parked at the gate would have the image it
+    is asking about destroyed the moment anyone submits another job — and
+    `resolve_job_artifact`'s fallback is that same shared path, so the gate would then
+    show a *different* job's blueprint. Snapshotting binds the decision to an image
+    that cannot be replaced underneath it.
+
+    The provenance sidecar is copied too: it is matched to the PNG by hash, and a
+    blueprint that moves without it records NULL for seed, prompt and model on the
+    continuation's skip-visualizer path.
+
+    Args:
+        job_id: The job to snapshot for.
+
+    Returns:
+        The snapshot path, or None if there was nothing to copy.
+    """
+    import shutil
+
+    repo_root = Path(__file__).parent.parent
+    source = repo_root / "data" / "inputs" / "blueprint.png"
+    if not source.exists():
+        return None
+
+    target_dir = repo_root / "data" / "outputs" / job_id
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / "blueprint.png"
+        shutil.copy2(source, target)
+
+        sidecar = source.with_name(source.stem + ".provenance.json")
+        if sidecar.exists():
+            shutil.copy2(sidecar, target_dir / sidecar.name)
+        return target
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not snapshot the blueprint for %s: %s", job_id, exc)
+        return None
+
+
+async def _park_at_blueprint_gate(job_id: str) -> bool:
+    """Leave a job waiting for a person to approve its blueprint.
+
+    Records nothing in the outcome column on purpose. The outcome says what the
+    *software* did, and "a person has not decided yet" is a decision record — which is
+    `job_event`'s job, and is why `blueprint_gate_state` derives from events. Writing
+    "success" here would also make `dispatch_state` report the job as ready to print.
+
+    Args:
+        job_id: The job to park.
+
+    Returns:
+        True when there is a blueprint to approve, False when there is nothing to show
+        and the caller should carry on rather than park on an empty gate.
+    """
+    snapshot = _snapshot_blueprint(job_id)
+    if snapshot is None:
+        logger.warning(
+            "Job %s produced no blueprint to approve — not parking at the gate.", job_id,
+        )
+        return False
+
+    # The record that this run stopped and is waiting. Written before anything else,
+    # because `blueprint_gate_state` derives from it: a park that is not recorded is a
+    # job that silently continues past the gate.
+    try:
+        db = TelemetryDB()
+        db.record_job_event(job_id, "blueprint_gate_parked", {
+            "sha256": _file_sha256(snapshot),
+        })
+        db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not record the blueprint park for %s: %s", job_id, exc)
+        return False
+
+    _append_phase_status(job_id, 1, "complete")
+    await broadcaster.broadcast(job_id, {
+        "type": "blueprint_gate",
+        "data": {
+            "job_id": job_id,
+            "state": "awaiting_approval",
+            "sha256": _file_sha256(snapshot),
+            "url": f"/jobs/{job_id}/blueprint",
+        },
+    })
+    activity.action(
+        "blueprint awaiting approval",
+        [("job", job_id[:8])],
+        outcome="Phase 2 held until a person approves the blueprint",
+        status="ok",
+    )
+    logger.info("Job %s parked at the blueprint approval gate.", job_id)
+    return True
+
+
+async def _continue_pipeline(job_id: str, request: JobRequest):
+    """Run Phases 2-5 for a job whose blueprint has been approved.
+
+    A second subprocess invocation rather than a resumed one, which is what makes the
+    gate durable: the decision is a row in the database, so the wait has no time limit
+    and survives a server restart. `--skip-visualizer` loses nothing, because Phase 1
+    left a provenance sidecar beside the PNG.
+
+    Args:
+        job_id: The approved job.
+        request: The original request, rebuilt from `print_job.request_params`.
+    """
+    resumed = request.model_copy(update={"skip_visualizer": True})
+    await _run_pipeline(job_id, resumed)
+
+
+@app.post("/jobs/{job_id}/blueprint-approval")
+async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | None = None):
+    """Approve or reject a rendered blueprint, and continue the job if approved.
+
+    This is the gate that stops Phase 2 running on an image nobody has seen. It is the
+    only recovery path for a false positive from the image screen, and the only point
+    at which a person can decline a result cheaply — before a paid reconstruction and
+    before hours of printing.
+
+    Checks, in the order they must happen:
+
+    1. `confirmed: true`, refused **before any database read**, so an empty body cannot
+       reach anything.
+    2. The job exists.
+    3. It is actually waiting — an already-decided job is a 409, because two clicks
+       must not buy two reconstructions.
+    4. The blueprint still hashes to what the caller was shown, or 409.
+
+    Args:
+        job_id: The job whose blueprint is being decided.
+        request: The decision.
+
+    Returns:
+        The recorded decision and the resulting gate state.
+
+    Raises:
+        HTTPException: 400 unconfirmed, 404 unknown job, 409 already decided or the
+            blueprint changed underneath the caller.
+    """
+    if request is None or not request.confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="A blueprint approval must be explicitly confirmed.",
+        )
+
+    db = TelemetryDB()
+    try:
+        job = db.get_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+        state = blueprint_gate_state(job, db)
+        if state in {"approved", "rejected"}:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This blueprint has already been {state}.",
+            )
+        if state != "awaiting_approval":
+            raise HTTPException(
+                status_code=409,
+                detail="This job has no blueprint awaiting approval yet.",
+            )
+
+        artifact = resolve_job_artifact(job_id, "blueprint.png", per_job_only=True)
+        current = _file_sha256(artifact) if artifact else None
+        if request.sha256 and current and request.sha256 != current:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The blueprint has changed since it was shown to you. Reload and "
+                    "look at the current one before approving it."
+                ),
+            )
+
+        kind = "blueprint_approved" if request.approve else "blueprint_rejected"
+        try:
+            db.record_job_event(job_id, kind, {
+                "sha256": current,
+                "displayed_sha256": request.sha256,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Could not record %s for %s: %s", kind, job_id, exc)
+            raise HTTPException(
+                status_code=500,
+                detail="The decision could not be recorded, so nothing was started.",
+            )
+
+        activity.action(
+            "blueprint " + ("approved" if request.approve else "rejected"),
+            [("job", job_id[:8]), ("sha256", (current or "")[:12])],
+            outcome="continuing into Phase 2" if request.approve else "stopped by the requester",
+            status="ok",
+        )
+
+        if not request.approve:
+            # Settled, or the row reads as *running* forever: `job_status_from_outcome`
+            # maps "unknown" to running, so a declined job would stay in the running
+            # list and `NewJob` would re-attach to it on every page load — making the
+            # landing composer unreachable. "cancelled" is the existing value for
+            # stopped-on-request, and is already excluded from the success rate.
+            db.update_job_outcome_verdict(
+                job_id, "cancelled", source="user",
+                completed_at=datetime.now(timezone.utc),
+            )
+            _append_phase_status(job_id, 1, "complete")
+            return {"job_id": job_id, "decision": "rejected", "blueprint_gate_state": "rejected"}
+
+        stored = job.request_params or {}
+        try:
+            resumed = JobRequest(**{
+                **stored,
+                "prompt": stored.get("prompt") or job.prompt,
+                "printer_id": stored.get("printer_id") or job.printer_id or "default_printer",
+                # The image that was approved, by its container path. Not the shared
+                # input: `POST /jobs` deletes that on every submission, so between
+                # parking and approving it may be a different job's render entirely —
+                # which is what the hash check would have been guarding for nothing.
+                "blueprint_path": f"/app/data/outputs/{job_id}/blueprint.png",
+                "skip_visualizer": True,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Could not rebuild the request for %s: %s", job_id, exc)
+            raise HTTPException(
+                status_code=500,
+                detail="The original request could not be read, so the job cannot continue.",
+            )
+    finally:
+        db.close()
+
+    _append_phase_status(job_id, 2, "running")
+    asyncio.create_task(_continue_pipeline(job_id, resumed))
+
+    return {"job_id": job_id, "decision": "approved", "blueprint_gate_state": "approved"}
 
 
 @app.post("/jobs/{job_id}/print-dispatch")
@@ -2091,6 +2751,7 @@ JOB_LIST_STATUSES = (
     "failed",
     "awaiting_verdict",
     "awaiting_dispatch",
+    "awaiting_blueprint_approval",
 )
 
 
@@ -2101,6 +2762,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     Raises:
         HTTPException: 400 when `status` is not one of `JOB_LIST_STATUSES`.
     """
+    arbitrate_blueprint_gate = False
     if status not in JOB_LIST_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -2117,13 +2779,44 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     params = []
     
     if status == 'running':
-        where_clause = "WHERE outcome = 'unknown'"
+        # Parked at the blueprint gate is waiting, not running, and it has its own
+        # filter. Left in here it would own the landing page: `NewJob` attaches to the
+        # newest running job on mount, so one job nobody ever decides would drop every
+        # new tab into its running view and make the composer unreachable — exactly the
+        # failure `awaiting_dispatch` was introduced to fix, one gate earlier.
+        where_clause = (
+            "WHERE outcome = 'unknown' "
+            "AND job_id NOT IN ("
+            "  SELECT job_id FROM job_event WHERE kind = 'blueprint_gate_parked' "
+            "  AND job_id NOT IN (SELECT job_id FROM job_event "
+            "    WHERE kind IN ('blueprint_approved', 'blueprint_rejected'))"
+            ")"
+        )
     elif status == 'completed':
         where_clause = "WHERE outcome = 'success'"
     elif status == 'failed':
         where_clause = "WHERE outcome IN ('failure', 'cancelled')"
     elif status == 'awaiting_verdict':
         where_clause = "WHERE outcome = 'awaiting_verdict'"
+    elif status == 'awaiting_blueprint_approval':
+        # Parked after Phase 1, waiting on a person. Its own filter because such a job
+        # is not "running" by any other definition, so without this the pending
+        # decision vanishes on a page reload — which for a human-in-the-loop gate
+        # means it does not survive at all.
+        #
+        # The SQL is only the candidate set: "outcome is unknown" is every running job.
+        # Whether a job is *actually* waiting depends on a park event and an artifact
+        # on disk, so the rows are arbitrated by `blueprint_gate_state` below — the
+        # same function the job endpoint answers with, so the list and the page cannot
+        # disagree about who is waiting.
+        arbitrate_blueprint_gate = True
+        where_clause = (
+            "WHERE outcome = 'unknown' "
+            "AND job_id IN (SELECT job_id FROM job_event "
+            "WHERE kind = 'blueprint_gate_parked') "
+            "AND job_id NOT IN (SELECT job_id FROM job_event "
+            "WHERE kind IN ('blueprint_approved', 'blueprint_rejected'))"
+        )
     elif status == 'awaiting_dispatch':
         # Sliced, finished, and never sent: the jobs whose Phase 5 is waiting on a
         # person. Without this the confirmation step would not survive a page reload,
@@ -2205,7 +2898,57 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             ),
         })
     db.close()
+
+    # The park event is checked in SQL; whether the image is actually on disk is not
+    # something SQL can answer, so the candidate rows are arbitrated here. Without it
+    # the dashboard would offer to approve blueprints that do not exist — and the list
+    # and `GET /jobs/{id}` would disagree about who is waiting, which is the shape of
+    # bug that puts a "ready" badge beside a dead machine.
+    if arbitrate_blueprint_gate:
+        jobs = [
+            job for job in jobs
+            if resolve_job_artifact(job["job_id"], "blueprint.png", per_job_only=True)
+            is not None
+        ]
+        total = len(jobs)
+
     return {"jobs": jobs, "total": total, "limit": limit, "offset": offset, "stats": stats}
+
+class SizeHintRequest(BaseModel):
+    """A prompt to look for a physical size in."""
+    prompt: str = ""
+
+
+@app.post("/prompt/size-hint")
+async def prompt_size_hint(request: SizeHintRequest):
+    """Offer the size written in a prompt, so the composer can prefill the control.
+
+    A suggestion and nothing more. It does not touch a job, it does not persist, and
+    nothing here can set `target_mm` — the person accepts it and the client sends it
+    back with `size_source="prompt_hint"`. Parsing a size and applying it silently
+    would put a number on the row that nobody chose.
+
+    Its own endpoint rather than a field on the POST /jobs response because the
+    composer calls it while the prompt is being typed; a hint delivered after
+    submission could only explain what already happened.
+
+    Args:
+        request: The prompt to inspect.
+
+    Returns:
+        `{"hint": {...}}` with the size in millimetres, the matched text and its
+        span, and the axis the phrasing implies — or `{"hint": None}`.
+    """
+    hint = parse_size_hint(request.prompt)
+    if hint is None:
+        return {"hint": None}
+    return {"hint": {
+        "mm": hint.mm,
+        "text": hint.text,
+        "span": list(hint.span),
+        "axis": hint.axis,
+    }}
+
 
 @app.get("/health")
 async def health_check():
@@ -3149,6 +3892,21 @@ async def printer_status():
     reimplemented: two probes that can disagree about the same printer is how a
     "ready" badge ends up next to a dead machine.
     """
+    # The composer has to clamp a requested size before a job exists, and this is the
+    # only endpoint it can ask. Reported on every branch — including the refusals —
+    # because "no printer" and "a printer that declares no dimensions" are different
+    # answers that happen to imply the same thing: do not clamp.
+    def _ceiling(profile_ref: Optional[str]) -> Optional[List[float]]:
+        if not profile_ref:
+            return None
+        candidate = Path(__file__).parent.parent / profile_ref
+        try:
+            with open(candidate if candidate.exists() else profile_ref, "r") as handle:
+                return _profile_build_volume(json.load(handle))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not read a build volume from %s: %s", profile_ref, exc)
+            return None
+
     sim_status = simulator_manager.get_status()
     if sim_status.get("octoprint", {}).get("running"):
         # The container being up is not the same as OctoPrint answering inside it, and
@@ -3159,23 +3917,26 @@ async def printer_status():
             "type": "simulator",
             "running": bool(probe.get("success")),
             "detail": probe.get("message"),
+            # This branch resolves no profile of its own, so it answers with the
+            # default one — the profile a job submitted right now would slice against.
+            "build_volume_mm": _ceiling(config_store.get("DEFAULT_PROFILE")),
         }
 
     profile = config_store.get("DEFAULT_PROFILE")
     if not profile:
         return {"configured": False, "type": "none", "running": False,
-                "detail": "No printer profile selected."}
+                "detail": "No printer profile selected.", "build_volume_mm": None}
 
     profile_path = Path(__file__).parent.parent / profile
     if not profile_path.exists():
         return {"configured": False, "type": "none", "running": False,
-                "detail": f"Profile file not found: {profile}"}
+                "detail": f"Profile file not found: {profile}", "build_volume_mm": None}
 
     try:
         firmware, _base_url, _api_key = resolve_printer_target(str(profile_path))
     except Exception as exc:  # noqa: BLE001
         return {"configured": True, "type": "real", "running": False,
-                "detail": f"Could not read {profile}: {exc}"}
+                "detail": f"Could not read {profile}: {exc}", "build_volume_mm": None}
 
     service = {"klipper": "moonraker", "moonraker": "moonraker",
                "bambu": "bambu"}.get(firmware, "octoprint")
@@ -3185,6 +3946,7 @@ async def printer_status():
         "type": "real",
         "running": bool(probe.get("success")),
         "detail": probe.get("message"),
+        "build_volume_mm": _ceiling(profile),
     }
 
 @app.get("/jobs/{job_id}/blueprint")

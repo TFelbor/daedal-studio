@@ -20,6 +20,7 @@ that check reports `not_checked` with the reason instead of silently passing.
 from __future__ import annotations
 
 import dataclasses
+import math
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
@@ -337,6 +338,73 @@ def _component_analysis(mesh: trimesh.Trimesh, profile: ProcessProfile) -> tuple
     return len(parts), floating, enclosed
 
 
+def _thickness_pitch(extents, profile: ProcessProfile) -> float:
+    """Voxel pitch the wall measurement would use for a mesh of these extents.
+
+    Shared with `size_feasibility` rather than copied, because the pitch *is* the
+    measurement tolerance: a predictor using its own formula would quote a
+    confidence interval the real check does not have. Two terms compete —
+    `min_wall/4` is absolute and `max_extent/256` is proportional — so which one
+    dominates flips as the part is scaled, and a prediction that assumed the
+    tolerance simply scales with size would be wrong on both sides of that crossover.
+
+    Args:
+        extents: The mesh's bounding-box extents, in millimetres.
+        profile: Process limits supplying the wall threshold.
+
+    Returns:
+        The pitch in millimetres, after coarsening to stay under the voxel budget.
+    """
+    extents = np.asarray(extents, dtype=float)
+    # Resolve walls to a quarter of the threshold — and, for plate-like meshes, to a
+    # quarter of the thinnest bounding-box extent, so a 0.5mm plate is not measured with
+    # a 0.2mm ruler. Grid size is bounded below.
+    thinnest_extent = float(np.min(extents[extents > 0])) if (extents > 0).any() else profile.min_wall_mm
+    pitch = max(
+        min(profile.min_wall_mm / 4.0, thinnest_extent / 4.0),
+        float(extents.max()) / MAX_CELLS_PER_AXIS,
+        1e-3,
+    )
+    while np.prod(np.ceil(extents / pitch) + 2) > MAX_THICKNESS_VOXELS:
+        pitch *= 1.5
+    return pitch
+
+
+def _wall_status(
+    thickness: Optional[float], tolerance: float, profile: ProcessProfile,
+) -> tuple[str, str]:
+    """Band a wall measurement into pass / warn / fail, with the sentence to show.
+
+    One implementation, used by `evaluate_printability` and by `size_feasibility`, so
+    a predicted verdict and the real one cannot disagree about where the boundaries
+    are. The middle band exists because the measurement is quantised: a wall within
+    one voxel of the minimum is a warning, not a failure, and the report states its
+    own tolerance so the reader can see why.
+
+    Args:
+        thickness: Measured thinnest wall in millimetres, or None if unmeasured.
+        tolerance: The measurement's uncertainty — one voxel pitch.
+        profile: Process limits supplying the minimum wall.
+
+    Returns:
+        A (status, detail) tuple.
+    """
+    if thickness is None:
+        return "not_checked", "Mesh could not be voxelised, so wall thickness is unknown."
+    if thickness + tolerance < profile.min_wall_mm:
+        return "fail", (
+            f"Thinnest wall about {thickness:.2f}mm (±{tolerance:.2f}mm), below the "
+            f"{profile.min_wall_mm:.2f}mm minimum for a {profile.nozzle_diameter_mm:.2f}mm nozzle. "
+            "It will extrude as gaps or not at all."
+        )
+    if thickness - tolerance < profile.min_wall_mm:
+        return "warn", (
+            f"Thinnest wall about {thickness:.2f}mm (±{tolerance:.2f}mm) — within measurement "
+            f"tolerance of the {profile.min_wall_mm:.2f}mm minimum."
+        )
+    return "pass", f"Thinnest wall about {thickness:.2f}mm (±{tolerance:.2f}mm)."
+
+
 def _min_wall_thickness(mesh: trimesh.Trimesh, profile: ProcessProfile) -> tuple[Optional[float], float]:
     """Estimate the thinnest wall in the mesh.
 
@@ -357,17 +425,7 @@ def _min_wall_thickness(mesh: trimesh.Trimesh, profile: ProcessProfile) -> tuple
     if float(extents.max()) <= 0:
         return None, 0.0
 
-    # Resolve walls to a quarter of the threshold — and, for plate-like meshes, to a
-    # quarter of the thinnest bounding-box extent, so a 0.5mm plate is not measured with
-    # a 0.2mm ruler. Grid size is bounded below.
-    thinnest_extent = float(np.min(extents[extents > 0])) if (extents > 0).any() else profile.min_wall_mm
-    pitch = max(
-        min(profile.min_wall_mm / 4.0, thinnest_extent / 4.0),
-        float(extents.max()) / MAX_CELLS_PER_AXIS,
-        1e-3,
-    )
-    while np.prod(np.ceil(extents / pitch) + 2) > MAX_THICKNESS_VOXELS:
-        pitch *= 1.5
+    pitch = _thickness_pitch(extents, profile)
 
     # trimesh's subdivide voxeliser gives up ("max_iter exceeded") when a large mesh has
     # to be refined to a fine pitch, so raise its iteration budget and fall back to
@@ -628,6 +686,181 @@ def extract_features(
     )
 
 
+#: Axes a target size can be measured along. Mirrors `Engineer.SCALE_AXES` — a
+#: feasibility figure quoted along one axis and applied along the other is the
+#: silent-wrong-size bug with extra steps.
+FEASIBILITY_AXES = ("height", "longest")
+
+
+def size_feasibility(
+    mesh: trimesh.Trimesh,
+    profile: Optional[ProcessProfile] = None,
+    *,
+    candidate_mm: Optional[float] = None,
+    scale_axis: str = "height",
+) -> Dict[str, Any]:
+    """Ask at what size this geometry becomes printable, before it is scaled.
+
+    The wall check runs after scaling, so a thin-walled part is reported as
+    unprintable once the size is already fixed, and the one remedy — print it
+    bigger — is never offered. This runs the same measurement and inverts it.
+
+    **It is a prediction, and the returned sizes must be treated as one.** Wall
+    thickness in the geometry is exactly linear in a uniform scale factor, but the
+    measurement is quantised to a voxel pitch (`_thickness_pitch`) whose dominant
+    term switches from absolute to proportional as the part grows. Measured against a
+    10x10x0.3mm plate, the linear estimate tracks the real measurement to within one
+    pitch across a 20x range — enough to choose a size, not enough to report as
+    measured. A caller that acts on `smallest_viable_mm` should re-measure there.
+
+    Three sizes are returned rather than one because the tolerance band is real:
+    `nofail_mm` is where the check stops saying *fail*, `smallest_viable_mm` is where
+    it clears the band entirely and also satisfies bed adhesion, and `max_size_mm` is
+    the machine's own ceiling. A suggestion above the ceiling is not a suggestion,
+    which is what `fits` reports.
+
+    Args:
+        mesh: The repaired, oriented mesh, in millimetres.
+        profile: Process limits; defaults to the FDM profile.
+        candidate_mm: A size to predict the wall verdict at. Defaults to the mesh's
+            current size, i.e. "what would the check say right now".
+        scale_axis: Which extent every returned size is measured along — "height"
+            (Z, after the part is seated) or "longest".
+
+    Returns:
+        A dict with `scale_axis`, `reference_extent_mm`, the measured wall and its
+        tolerance, `nominal_mm` / `nofail_mm` / `smallest_viable_mm` /
+        `bed_limited_mm` / `max_size_mm`, `fits`, `predicted_status`,
+        `predicted_wall_mm`, and `reason` — a sentence whenever a size could not be
+        computed, or the ceiling was exceeded, and None otherwise.
+
+    Raises:
+        ValueError: If `scale_axis` is not one of `FEASIBILITY_AXES`.
+    """
+    if scale_axis not in FEASIBILITY_AXES:
+        raise ValueError(
+            f"Unknown scale_axis {scale_axis!r}; expected one of {FEASIBILITY_AXES}"
+        )
+
+    profile = profile or ProcessProfile()
+    extents = np.asarray(mesh.bounds[1] - mesh.bounds[0], dtype=float)
+    reference = float(extents[2]) if scale_axis == "height" else float(extents.max())
+
+    result: Dict[str, Any] = {
+        "scale_axis": scale_axis,
+        "reference_extent_mm": round(reference, 4) if np.isfinite(reference) else None,
+        "measured_wall_mm": None,
+        "measured_tolerance_mm": None,
+        "nominal_mm": None,
+        "nofail_mm": None,
+        "bed_limited_mm": None,
+        "smallest_viable_mm": None,
+        "max_size_mm": None,
+        "fits": True,
+        "predicted_status": "not_checked",
+        "predicted_wall_mm": None,
+        "reason": None,
+    }
+
+    if not np.isfinite(reference) or reference <= 0:
+        result["reason"] = (
+            f"The mesh has no {scale_axis} extent to scale, so no size can be derived."
+        )
+        return result
+
+    # The machine ceiling is independent of the wall measurement, so it is worth
+    # reporting even when the wall measurement abstains. Positional: no rotation
+    # search, matching the build_volume_fit check.
+    if profile.build_volume_mm and (extents > 0).all():
+        ratios = [
+            limit / float(extent)
+            for limit, extent in zip(profile.build_volume_mm, extents)
+        ]
+        result["max_size_mm"] = round(reference * min(ratios), 4)
+
+    features = extract_features(mesh, profile)
+
+    # Same gate `evaluate_printability` applies, and for the same reason: voxel
+    # filling cannot tell inside from outside on an open surface, so any thickness
+    # read off one is meaningless rather than merely imprecise.
+    if not features["is_watertight"]:
+        result["reason"] = (
+            "Wall thickness needs a closed volume — the mesh is open, so no size can "
+            "be derived from it. Fix watertightness first."
+        )
+        return result
+
+    measured = features["min_wall_thickness_mm"]
+    tolerance = float(features["min_wall_tolerance_mm"] or 0.0)
+    if measured is None:
+        result["reason"] = (
+            "The mesh could not be voxelised, so its thinnest wall is unknown and no "
+            "size can be derived from it."
+        )
+        return result
+    if measured <= 0:
+        result["reason"] = (
+            "The measured wall thickness is zero, which no amount of scaling changes."
+        )
+        return result
+
+    result["measured_wall_mm"] = measured
+    result["measured_tolerance_mm"] = round(tolerance, 4)
+
+    minimum = profile.min_wall_mm
+    result["nominal_mm"] = round(reference * minimum / measured, 4)
+    result["nofail_mm"] = round(reference * minimum / (measured + tolerance), 4)
+
+    # Clearing the tolerance band, not merely the nominal threshold: a size chosen at
+    # the nominal figure lands in the warn band about half the time, and being told
+    # "print it at 27mm" only to be warned at 27mm is worse than not being told.
+    clear = measured - tolerance
+    pass_mm = reference * minimum / clear if clear > 0 else float("inf")
+
+    # Bed contact scales with the square of the factor, so adhesion can set a higher
+    # floor than the walls do on a small-footprint part.
+    bed_contact = float(features.get("bed_contact_mm2") or 0.0)
+    if bed_contact > 0:
+        exact = reference * float(np.sqrt(profile.min_bed_contact_mm2 / bed_contact))
+        # Rounded *up*, and by a hair more than the rounding. The size at which the
+        # footprint exactly equals the minimum is the size at which the check still
+        # warns, and being told "print it at 27mm" and then warned at 27mm is worse
+        # than not being told. Same reasoning as using the tolerance-clearing wall
+        # figure rather than the nominal one.
+        result["bed_limited_mm"] = math.ceil(exact * 100.0 + 1.0) / 100.0
+
+    floor = max(pass_mm, result["bed_limited_mm"] or 0.0)
+    result["smallest_viable_mm"] = round(floor, 4) if np.isfinite(floor) else None
+
+    # The prediction: geometry is linear, the ruler is re-derived at the new size.
+    target = float(candidate_mm) if candidate_mm is not None else reference
+    factor = target / reference
+    predicted_wall = measured * factor
+    status, _ = _wall_status(
+        predicted_wall, _thickness_pitch(extents * factor, profile), profile,
+    )
+    result["predicted_wall_mm"] = round(predicted_wall, 4)
+    result["predicted_status"] = status
+
+    ceiling = result["max_size_mm"]
+    if ceiling is not None and result["smallest_viable_mm"] is not None:
+        result["fits"] = result["smallest_viable_mm"] <= ceiling
+        if not result["fits"]:
+            result["reason"] = (
+                f"This geometry needs about {result['smallest_viable_mm']:.1f}mm along "
+                f"its {scale_axis} to print its thinnest wall, but the build volume "
+                f"allows at most {ceiling:.1f}mm. It cannot be printed at any size on "
+                "this machine without thickening the model itself."
+            )
+    elif result["smallest_viable_mm"] is None:
+        result["fits"] = False
+        result["reason"] = (
+            "No finite size clears the wall tolerance for this geometry."
+        )
+
+    return result
+
+
 def evaluate_printability(
     mesh: trimesh.Trimesh,
     profile: Optional[ProcessProfile] = None,
@@ -768,25 +1001,8 @@ def evaluate_printability(
             "cannot distinguish inside from outside. Fix watertightness first."
         )
         thickness = None
-    elif thickness is None:
-        wall_status = "not_checked"
-        wall_detail = "Mesh could not be voxelised, so wall thickness is unknown."
-    elif thickness + thickness_tol < profile.min_wall_mm:
-        wall_status = "fail"
-        wall_detail = (
-            f"Thinnest wall about {thickness:.2f}mm (±{thickness_tol:.2f}mm), below the "
-            f"{profile.min_wall_mm:.2f}mm minimum for a {profile.nozzle_diameter_mm:.2f}mm nozzle. "
-            "It will extrude as gaps or not at all."
-        )
-    elif thickness - thickness_tol < profile.min_wall_mm:
-        wall_status = "warn"
-        wall_detail = (
-            f"Thinnest wall about {thickness:.2f}mm (±{thickness_tol:.2f}mm) — within measurement "
-            f"tolerance of the {profile.min_wall_mm:.2f}mm minimum."
-        )
     else:
-        wall_status = "pass"
-        wall_detail = f"Thinnest wall about {thickness:.2f}mm (±{thickness_tol:.2f}mm)."
+        wall_status, wall_detail = _wall_status(thickness, thickness_tol, profile)
 
     checks.append(CheckResult(
         check="min_wall_thickness",

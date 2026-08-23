@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { PromptNotice } from './PromptNotice';
 import { ArrowRight, Minimize2 } from 'lucide-react';
 import { Marks } from './Blueprint';
 import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from './promptLimits';
@@ -122,6 +123,7 @@ export function PromptZoom({ value, busy, onChange, onSubmit, onClose }: PromptZ
         </div>
 
         <div className={styles.footer}>
+          <PromptNotice className={styles.notice} />
           <span className={styles.hint}>
             <kbd className={styles.kbd}>⌘</kbd>
             <kbd className={styles.kbd}>↵</kbd> to start · <kbd className={styles.kbd}>Esc</kbd> to

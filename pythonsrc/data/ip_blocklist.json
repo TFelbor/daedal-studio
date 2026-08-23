@@ -1,0 +1,414 @@
+{
+  "_comment": [
+    "Names that a prompt describing a figurine most often means as a reproduction of",
+    "someone else's protected character or brand. Descriptive only: this file records",
+    "that a name is high-risk, and nothing about whether any particular use of it",
+    "would infringe. That judgement is not a JSON file's to make, and the accompanying",
+    "note in docs/deferred-legal-tasks.md is where the reasoning lives.",
+    "",
+    "Kept in-tree as data rather than in the encrypted config store so it is reviewable",
+    "in a diff and testable, and because ConfigStore.set refuses unregistered keys.",
+    "",
+    "`aliases` exist for names whose common spelling differs from the canonical one.",
+    "Fuzzy matching handles typos and spacing; it does not handle synonyms.",
+    "",
+    "`strength` is 'strong' (the default, omitted) or 'ambiguous'. An ambiguous term is",
+    "also ordinary English or an ordinary given name \u2014 a joker is a playing card, frozen",
+    "is a temperature, a creeper is a vine, stitch is sewing, mario is a common name. For",
+    "those the match is *correct* and the inference is not, so they are flagged for a",
+    "person rather than refused. Word-boundary matching does not help there; only context",
+    "does, which is why an ambiguous term seen alongside a strong one is refused."
+  ],
+  "entries": [
+    {
+      "term": "pikachu",
+      "category": "character"
+    },
+    {
+      "term": "pokemon",
+      "category": "franchise",
+      "aliases": [
+        "pok\u00e9mon",
+        "pocket monsters"
+      ]
+    },
+    {
+      "term": "charizard",
+      "category": "character"
+    },
+    {
+      "term": "eevee",
+      "category": "character"
+    },
+    {
+      "term": "bulbasaur",
+      "category": "character"
+    },
+    {
+      "term": "squirtle",
+      "category": "character"
+    },
+    {
+      "term": "mario",
+      "category": "character",
+      "aliases": [
+        "super mario"
+      ]
+    },
+    {
+      "term": "luigi",
+      "category": "character"
+    },
+    {
+      "term": "bowser",
+      "category": "character"
+    },
+    {
+      "term": "yoshi",
+      "category": "character"
+    },
+    {
+      "term": "zelda",
+      "category": "franchise",
+      "aliases": [
+        "legend of zelda"
+      ]
+    },
+    {
+      "term": "kirby",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "sonic the hedgehog",
+      "category": "character"
+    },
+    {
+      "term": "nintendo",
+      "category": "brand"
+    },
+    {
+      "term": "darth vader",
+      "category": "character"
+    },
+    {
+      "term": "baby yoda",
+      "category": "character",
+      "aliases": [
+        "grogu"
+      ]
+    },
+    {
+      "term": "stormtrooper",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "star wars",
+      "category": "franchise"
+    },
+    {
+      "term": "mandalorian",
+      "category": "franchise"
+    },
+    {
+      "term": "mickey mouse",
+      "category": "character"
+    },
+    {
+      "term": "minnie mouse",
+      "category": "character"
+    },
+    {
+      "term": "elsa",
+      "category": "character"
+    },
+    {
+      "term": "olaf",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "frozen",
+      "category": "franchise",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "disney",
+      "category": "brand"
+    },
+    {
+      "term": "pixar",
+      "category": "brand"
+    },
+    {
+      "term": "buzz lightyear",
+      "category": "character"
+    },
+    {
+      "term": "woody",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "toy story",
+      "category": "franchise"
+    },
+    {
+      "term": "spider-man",
+      "category": "character",
+      "aliases": [
+        "spiderman"
+      ]
+    },
+    {
+      "term": "iron man",
+      "category": "character"
+    },
+    {
+      "term": "captain america",
+      "category": "character"
+    },
+    {
+      "term": "hulk",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "thanos",
+      "category": "character"
+    },
+    {
+      "term": "groot",
+      "category": "character"
+    },
+    {
+      "term": "deadpool",
+      "category": "character"
+    },
+    {
+      "term": "wolverine",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "marvel",
+      "category": "brand",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "batman",
+      "category": "character"
+    },
+    {
+      "term": "superman",
+      "category": "character"
+    },
+    {
+      "term": "wonder woman",
+      "category": "character"
+    },
+    {
+      "term": "joker",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "harley quinn",
+      "category": "character"
+    },
+    {
+      "term": "dc comics",
+      "category": "brand"
+    },
+    {
+      "term": "harry potter",
+      "category": "character"
+    },
+    {
+      "term": "hogwarts",
+      "category": "franchise"
+    },
+    {
+      "term": "gandalf",
+      "category": "character"
+    },
+    {
+      "term": "gollum",
+      "category": "character"
+    },
+    {
+      "term": "lord of the rings",
+      "category": "franchise"
+    },
+    {
+      "term": "warhammer",
+      "category": "franchise",
+      "aliases": [
+        "warhammer 40k",
+        "warhammer 40000"
+      ]
+    },
+    {
+      "term": "space marine",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "games workshop",
+      "category": "brand"
+    },
+    {
+      "term": "hello kitty",
+      "category": "character"
+    },
+    {
+      "term": "sanrio",
+      "category": "brand"
+    },
+    {
+      "term": "totoro",
+      "category": "character"
+    },
+    {
+      "term": "studio ghibli",
+      "category": "brand"
+    },
+    {
+      "term": "goku",
+      "category": "character"
+    },
+    {
+      "term": "dragon ball",
+      "category": "franchise"
+    },
+    {
+      "term": "naruto",
+      "category": "character"
+    },
+    {
+      "term": "pichu",
+      "category": "character"
+    },
+    {
+      "term": "sailor moon",
+      "category": "character"
+    },
+    {
+      "term": "optimus prime",
+      "category": "character"
+    },
+    {
+      "term": "transformers",
+      "category": "franchise"
+    },
+    {
+      "term": "minions",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "shrek",
+      "category": "character"
+    },
+    {
+      "term": "spongebob",
+      "category": "character",
+      "aliases": [
+        "spongebob squarepants"
+      ]
+    },
+    {
+      "term": "lego",
+      "category": "brand",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "funko",
+      "category": "brand"
+    },
+    {
+      "term": "baby groot",
+      "category": "character"
+    },
+    {
+      "term": "stitch",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "winnie the pooh",
+      "category": "character"
+    },
+    {
+      "term": "bluey",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "paw patrol",
+      "category": "franchise"
+    },
+    {
+      "term": "peppa pig",
+      "category": "character"
+    },
+    {
+      "term": "among us",
+      "category": "franchise",
+      "aliases": [
+        "crewmate"
+      ],
+      "strength": "ambiguous"
+    },
+    {
+      "term": "minecraft",
+      "category": "franchise",
+      "aliases": []
+    },
+    {
+      "term": "fortnite",
+      "category": "franchise"
+    },
+    {
+      "term": "sackboy",
+      "category": "character"
+    },
+    {
+      "term": "kratos",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "master chief",
+      "category": "character",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "pac-man",
+      "category": "character",
+      "aliases": [
+        "pacman"
+      ]
+    },
+    {
+      "term": "hatsune miku",
+      "category": "character"
+    },
+    {
+      "term": "creeper",
+      "category": "character",
+      "strength": "ambiguous"
+    }
+  ],
+  "weak_signals": [
+    "official",
+    "licensed",
+    "copyrighted",
+    "trademark",
+    "screen accurate",
+    "movie accurate",
+    "as seen in the film",
+    "cosplay replica"
+  ]
+}

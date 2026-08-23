@@ -86,6 +86,84 @@ Phase 2's placement is a *separate* decision made by `sculptors.resolve_backend_
 
 Skip flags (`--skip-visualizer`, `--skip-sculptor`) allow resuming from intermediate artifacts.
 
+**How big the part comes out is a request, and it used to be a constant.** Phase 3
+scales the mesh, and `--target-mm` (default 50.0) has existed since it was written —
+but nothing forwarded it. `POST /jobs` had no size field at all, so *every* job
+submitted through the web app printed at 50 mm regardless of the prompt: "small
+pikachu figurine" and "giant pikachu statue" came out identical. `JobRequest.target_mm`
+now carries it, `_pipeline_args` forwards it, and **omitting it forwards nothing** so
+the pipeline's own default stays the only default — a copy of 50.0 in the server would
+drift the first time either moved.
+
+**`--scale-axis` decides which extent the size describes, and it defaults to
+`height`.** `scale_to_dimensions` sized the **longest bounding-box edge**, which is
+defensible for a machine and wrong for a person: a figurine with its arms out is wider
+than it is tall, so a request for 50 mm produced a part 50 mm across and 38 mm high —
+smaller than asked in the one dimension the requester was picturing. Height is the Z
+extent, and that is true *only after* `orient_for_print`, which translates onto Z = 0
+without rotating; `apply_scale` is origin-based, so scaling after orienting preserves
+both the seating and the X/Y centring. **This is a behaviour change for existing
+callers** — a wide, short model asked for 50 mm is now 50 mm tall and much wider, which
+can newly exceed `build_volume_mm`. `longest` remains reachable by name.
+
+**A size written in the prompt is offered, never applied** (`pythonsrc/size_hint.py`,
+`POST /prompt/size-hint`). "a 10cm tall vase" already answers the question the composer
+is asking, and the parser reads it — in millimetres, converting imperial at the boundary
+— along with the axis the phrasing implies ("tall" vs "wide"). But it only ever
+*prefills*: applying it would make `prompt` and `requested_size_mm` disagree about who
+decided, which is the same fabrication as a fixture mesh sitting in the real namespace.
+A bare number is never a size — a count, a year and `d20` all contain digits — so a unit
+is required. `strip_size_phrase` drops the matched phrase once the number is a
+parameter, because saying it twice makes FLUX draw a scale reference (a hand, a coin)
+and Phase 2 then has two subjects for `_largest_component` to choose between. Vague size
+words ("small", "miniature") are deliberately **left in place**: those are style, not
+measurement, and editing them out would change what the person asked for.
+
+**`hollow` re-scales, and it must be told the axis.** `hollow_mesh` voxelises at a
+`wall_thickness` pitch, so the shell comes back slightly larger than the target with its
+base below Z = 0, and `process` re-scales and re-seats afterwards. That second
+`scale_to_dimensions` call takes `scale_axis` explicitly — left to the default it would
+size a `longest` request by *height*, so the part would be scaled by one convention and
+then silently re-scaled by another. The `achieved_extent_mm` in `last_report` is measured
+after this, on the exported mesh, which is why it is the honest figure rather than the
+one the first scale produced.
+
+**Height mode bounds one axis and not the other two.** A wide model asked for a tall
+height can come out past the bed. It is deliberately **not** shrunk — a part quietly
+scaled to something other than what was asked for is the bug this whole change set
+removes — so Phase 3 prints an `--- OVERSIZE ---` line naming the axes, and
+`build_volume_fit` (critical, weight 2.0) fails it in the printability report.
+
+**`printability.size_feasibility` inverts the wall check.** The min-wall check runs
+*after* scaling, so "your walls are too thin" arrives once the size is fixed and the one
+remedy — print it bigger — was never named. It reuses `_thickness_pitch` and
+`_wall_status` rather than copying them, because the pitch *is* the tolerance and a
+predictor with its own formula would quote a confidence interval the real check does not
+have. Wall thickness is exactly linear in the scale factor; the *measurement* is
+quantised, and the pitch's dominant term flips from absolute (`min_wall/4`) to
+proportional (`max_extent/256`) as the part grows — so a suggested size is confirmed by
+re-measuring there and never reported as measured. Hollowing voxelises at an absolute
+pitch, so the prediction does not hold for it and is not offered.
+
+**Filament colour reaches the blueprint and nothing else.** When the requester named a
+colour, `engineer_prompt` renders the preview in it — the running view shows the
+blueprint first, and a grey preview of a part someone ordered in red is a small lie told
+at the most visible moment. It changes the blueprint only: `_strip_appearance` discards
+appearance for every backend and CuraEngine has no use for a material. `material_colour`
+is unvalidated free text from the composer, and it ends up in the string sent to the
+model, which makes it a **second prompt channel** — one that any screen inspecting only
+`prompt` would never see. `blueprint_spec.normalise_colour` therefore drops anything that
+is not plausibly a colour name rather than sanitising it into something else. Note that
+a very dark or saturated colour works against the matte's need for a separable subject
+and the clay shading Phase 2 reads shape from; that trade has not been measured on real
+renders yet.
+
+**This checkpoint takes no negative prompt.** `FLUX.2-klein-4B` is distilled, so
+upstream's classifier-free-guidance branch (gated on `not is_distilled`) never runs and
+the `guidance_scale` recorded in `blueprint_params` for every job is inert. Every
+constraint in the wrapper is therefore phrased as something to *draw* — "a single object
+centred in frame, no hands, no props" is the positive form of forbidding a scale cue.
+
 **A skipped phase installs a real asset, and the output directory says so.** When Phase 1
 or Phase 2 is skipped with nothing real to work from, the pipeline copies in
 `pythonsrc/assets/dev_reference/{blueprint.png,raw_mesh.obj}` — actual outputs of job
@@ -364,7 +442,15 @@ FastAPI application with:
   the live schema — the union of its columns must equal `print_job`'s exactly, in both
   directions, with each column claimed by one stage. **Adding a capture column means adding
   it to `STAGES`**, or the suite fails; that guard is the only reason the map is still true
-  a month after it was written.
+  a month after it was written. It had in fact been failing: `git_sha`,
+  `used_reference_assets`, `dispatched_printer_url`, `repair_report` and
+  `print_duration_s` were all added without stage entries, so the guard was red and
+  every later column would have been blamed on whoever noticed. The map now carries
+  `run_context`, `dispatch` and `print_duration` stages — each naming its own writer,
+  because a stage names exactly one `TelemetryDB` method and `print_duration_s` is
+  written by the collector rather than by the outcome verdict. `traced_db`'s "complete"
+  job writes all of them, so an empty stage in that fixture means a hole in the tool
+  rather than a hole in the fixture.
 - **Blueprint provenance (Phase 1)**: `blueprint_model`, `blueprint_model_version`,
   `blueprint_seed`, `blueprint_prompt_engineered`, `blueprint_params`, `blueprint_sha256`,
   `blueprint_duration_s`. Kept under a `blueprint_` prefix rather than merged into
@@ -387,6 +473,21 @@ FastAPI application with:
   only line of defence: a job renders into `data/inputs/{job_id}/`, so the sidecar has
   the directory to itself (see **The blueprint is per job** below). The pipeline reads it
   back on the skip path; do not "simplify" this into recording only the hash again.
+- **Requested size**: `requested_size_mm`, `size_source`, `requested_scale_axis`,
+  written at insert time by `POST /jobs`. `requested_size_mm` is **NULL when nobody
+  chose** rather than 50.0 — the applied value is already recoverable from
+  `repair_report["target_mm"]`, and a stored default is indistinguishable from a user
+  who typed the default. `size_source` is `default` | `user` | `prompt_hint` and is
+  *always* written, because "the default applied" is itself the fact; the client may
+  claim `user` or `prompt_hint` for a size it sent, but never `default`, which the
+  server derives. `requested_scale_axis` is the **promise made to the requester** — the
+  axis the control was labelled with — while `repair_report["scale_axis"]` is the axis
+  Phase 3 actually applied. Two columns precisely so they can disagree: a control
+  labelled "Height" that produced a longest-edge part is a bug this pairing makes
+  visible, and `repair_report` is an unschematised blob that cannot be queried for it.
+  `scale_axis` is written into `last_report` unconditionally — including as `"none"`
+  when there was no extent to scale — because an absent key in a JSON blob cannot be
+  told apart from a pre-change row.
 - **Run context**: `git_sha` and `used_reference_assets`, written by
   `pipeline._record_run_context()` before any phase runs. The fixture flag used to exist only
   in the output directory's `dev-` prefix — nothing queryable — which made fixture runs the
@@ -835,6 +936,163 @@ first time anyone saw which machine a part was going to was in the past tense.
   against `dispatch_state`), not to whatever the filter returns newest. "Sliced and not sent"
   has no time limit, so one job nobody ever confirmed would otherwise own the landing page
   for good. Everything else is reached from the dashboard.
+
+### IP screening and the blueprint gate
+
+This project **manufactures and hands over a physical object**. If that object
+reproduces a protected character the analysis is direct infringement: the DSA hosting
+shelters cover hosting third-party content, not making goods, and the
+private/non-commercial-use exception (Art. 20(1)(a) Community Design Regulation) covers
+a person printing at home for themselves — expressly not a paid service printing on
+their behalf. Four layers, cheapest and most certain first, each independently
+shippable.
+
+**Tier 0 — the notice** (`web/src/components/PromptNotice.tsx`). One line, shared by all
+three composers so the landing page, the inline "New job" field and the zoomed field
+cannot tell people different things. It states two facts and both must stay true: you
+must hold the rights, and the prompt and image are kept with the job. The retention half
+is checked against reality — `print_job.prompt`, `blueprint_prompt_engineered`,
+`blueprint_sha256`, `data/outputs/{job_id}/blueprint.png` — because a notice claiming
+less than is kept is worse than none. Styled `hint`, never `notice`: the latter is the
+error treatment, and a neutral statement in the failure colour is the same class of
+mistake as captioning a fixture blueprint as drawn. **ToS and the notice-and-action
+procedure are deliberately not code** — see `docs/deferred-legal-tasks.md`.
+
+**Tier 1 — the prompt screen** (`pythonsrc/ip_screen.py`, blocklist in
+`pythonsrc/data/ip_blocklist.json`). Two settings, because one is wrong either way: a
+screen that only warns protects nobody, and one that refuses everything it
+half-recognises refuses paying pilot users for asking about fan art. A curated name is
+**blocked** — refused before `job_id` is minted, which is also **before the artifact
+cleanup loop** that unconditionally deletes the shared `data/inputs/blueprint.png`; a
+refusal after that point destroys the previous job's output to reject a job that never
+existed. A weak signal is **flagged**, recorded as an `ip_screen_flagged` job event and
+shown at the blueprint gate. There is deliberately no `ip_screen_blocked` event: a block
+happens before `insert_job`, foreign keys are enforced, and an event for a nonexistent
+row cannot be written — blocks go to the activity feed. **Normalise, then compare**: a
+raw string comparison was already defeated once in this repo by a `repo@sha` pin, so
+accents, spacing, hyphens and case are folded and a bounded edit distance covers typos.
+**`material_colour` is screened too** — it is free text the blueprint wrapper
+interpolates into the prompt, so a screen reading `prompt` alone leaves the colour box
+as a second, unwatched prompt channel.
+
+**Tier 2 — the image screen** (`pythonsrc/ip_screen_image.py`). Prompt filtering leaks:
+"a chunky yellow lightning-mouse figurine, anime style" names nothing on the blocklist
+and still renders something recognisable. So the render itself is scored, **before Phase
+2 is billed for reconstructing it**.
+
+- **No reference images are stored anywhere in this repo.** The comparison is
+  image-against-*text*: the curated terms are embedded as strings. Caching reference
+  crops would improve recall and would mean shipping the material the screen exists to
+  keep out. `tests/test_ip_screen_image.py` asserts every candidate is a `str` and that
+  the package ships no image assets.
+- **Control labels are not optional.** A comparison over protected terms alone has no
+  way to say "this is just a vase" — every image matches whichever term is least wrong.
+- **`openai/clip-vit-*` is on the deny list, and its repo tag says MIT.** The model
+  card's own out-of-scope section reads *"Any deployed use case of the model — whether
+  commercial or not — is currently out of scope."* This is the RMBG-2.0 lesson one layer
+  deeper: read the licence, not the tag. The default is
+  `google/siglip-base-patch16-224` — Apache-2.0, no out-of-scope clause, native in the
+  pinned `transformers` so **no new dependency and no `trust_remote_code`**. SigLIP 2 is
+  permissive too and was deferred on a correctness report, not a licence one
+  (`huggingface/transformers` #43994).
+- **Sigmoid, not softmax.** SigLIP is trained with a sigmoid loss, so each candidate is
+  an independent probability. A softmax would make the verdict depend on how many terms
+  the blocklist happens to contain.
+- **Advisory by default.** The threshold is uncalibrated against real renders and a
+  false positive that fails Phase 1 has no appeal, so the default is to flag for the
+  human gate; `$P2P_IP_IMAGE_ENFORCEMENT=enforce` refuses instead.
+- **Screened before the image is written** (`ip_screen_image.save_screened`). The path a
+  blueprint goes to is the *shared* `data/inputs/blueprint.png` — Phase 2's input and
+  the fallback the artifact endpoints serve for any job — so a refused render saved "to
+  look at later" becomes some other job's input.
+- **Never imported by `server/app.py`.** `infra/docker/server.Dockerfile` installs no
+  torch, transformers or numpy on a `python:3.10-slim` base; an import there takes the
+  api-server image down at start-up. `tests/test_licensing_guards.py` holds that line.
+  The heavy imports are inside `_load_model` for the same reason, and because
+  `PYTORCH_ENABLE_MPS_FALLBACK=1` must be set before any `import torch`.
+- Cost, in order of magnitude: one ViT-B/16 forward pass (~17 GFLOPs), text embeddings
+  computed once and cached, ~800MB added to the pipeline image, **no per-call fee**. It
+  runs before Phase 2, so every block avoids a EUR 0,32 generation.
+
+**Tier 3 — the blueprint gate.** **Phase 2 does not start until a person has looked at
+the blueprint.** Half the value is legal — an automated screen cannot be the last word
+on resemblance, and this is the only recovery path for a Tier 2 false positive. The other
+half is the product: the pipeline discards appearance and prints in one colour at a
+0.4mm nozzle, so what arrives is a silhouette. Someone picturing something else should
+find out from an image in thirty seconds rather than from a part four minutes and
+EUR 0,32 later.
+
+- **Derived state plus a `job_event`**, exactly like the dispatch gate:
+  `server.blueprint_gate_state` returns `approved` / `rejected` / `awaiting_approval` /
+  `not_ready`. No new outcome value and no migration — the outcome column says what the
+  *software* did, and "a person has not decided yet" is a decision record.
+- **Two subprocess invocations joined by a database row**, which is what makes the wait
+  durable. `_run_pipeline` holds the `JobRequest` in memory only, so a gate that parked
+  by awaiting would lose the job on a server restart. `--stop-after-phase N` creates the
+  seam the docker strategies lacked (they run all five phases in one `docker compose
+  run`); `print_job.request_params` carries the submitted request across, because
+  `pipeline_type` and `mesh_seed` both change the geometry and exist nowhere else until
+  Phase 2 has already run.
+- **Gated exactly when Phase 1 runs in this invocation** (`gated = not skip_viz and not
+  request.print`). That coupling is what terminates the loop: `_continue_pipeline`
+  re-enters with `skip_visualizer=True`, so the continuation is not gated. `--print` opts
+  out — the CLI and automation pass it and there is nobody to ask.
+- **The continuation reads the snapshot, not the shared input.** This was wrong first
+  time and it defeated the whole gate: `_pipeline_args` hardcoded
+  `--blueprint /app/data/inputs/blueprint.png`, so between parking and approving, a
+  second `POST /jobs` could delete that file and write its own render there — and the
+  approved job would reconstruct *the other job's* image while the sidecar beside it
+  stamped that job's seed, prompt and model onto this row. `JobRequest.blueprint_path`
+  had been declared and forwarded nowhere since forever; it is now honoured, and the
+  resumed request names `/app/data/outputs/{job_id}/blueprint.png`.
+- **`awaiting_approval` requires a `blueprint_gate_parked` event and an unsettled
+  outcome.** Deriving it from "a per-job blueprint exists" was wrong for the same class
+  of reason: `pipeline.py` snapshots a blueprint into the per-job directory on *every*
+  run with a `--job-id`, so an ungated run — anything with `SKIP_VISUALIZER` or
+  `print: true` — reported itself as awaiting approval seconds in, the UI drew the gate
+  over a pipeline already in Phase 2, and approving it started a **second** pipeline for
+  the same job: two hosted reconstructions billed, two containers writing one output
+  directory. A settled row is checked too, mirroring `dispatch_state`'s insistence on
+  `outcome == "success"`.
+- **A gated run that cannot park fails rather than continuing.** Falling through would
+  let Phase 2 spend money on an image nobody approved, which is the one outcome the gate
+  exists to prevent.
+- **A rejection settles the row** as `cancelled`. `job_status_from_outcome` maps
+  `unknown` to running, so a declined job left unknown would sit in the running list
+  forever and `NewJob` would re-attach to it on every page load — the landing composer
+  would become unreachable. For the same reason a *parked* job is excluded from
+  `status=running`: it is waiting, not running, and it has its own filter.
+- **`update_job_start_time` is first-write-wins.** A job can be launched more than once
+  against one row — the gate resumes it, the dispatch gate runs the operator — and a
+  later invocation overwriting `started_at` destroys the only record of when the job
+  began, along with every duration computed from it. The continuation appends to the log
+  rather than truncating it, for the same reason.
+- **A directory holding only a blueprint snapshot does not claim the plain namespace.**
+  `_job_outputs_dir` prefers an existing `data/outputs/{job_id}`, and the gate creates
+  exactly that before Phase 2 runs — so a continuation that then substituted a fixture
+  mesh would have written it into the real namespace, which is the one thing the `dev-`
+  prefix exists to prevent.
+- **The blueprint is snapshotted before parking** (`_snapshot_blueprint`). `POST /jobs`
+  deletes the shared `data/inputs/blueprint.png` on every submission, so a parked job
+  would otherwise have the image it is asking about destroyed by the next job — and
+  `resolve_job_artifact`'s fallback is that same path, so the gate would show a
+  *different* job's blueprint. That is also why `resolve_job_artifact` grew
+  `per_job_only`. The provenance sidecar is copied with it, or the continuation's
+  skip-visualizer path records NULL for seed, prompt and model.
+- **The approval is bound to the image's hash.** The client sends the sha256 it
+  displayed; a mismatch is a **409**, because approving an image you are no longer
+  looking at is not approving. Approving twice is also 409 — two clicks must not buy two
+  reconstructions.
+- **A parked job keeps `outcome = "unknown"`.** Writing "success" would make
+  `dispatch_state` report a job with no mesh and no G-code as ready to print.
+  `GET /jobs?status=awaiting_blueprint_approval` is what makes the pending decision
+  survive a page reload; an unknown filter is still a 400.
+- `_append_phase_status` now writes the phase's *name* (`_PHASE_STATUS_NAMES`) rather
+  than the number as a string, so a record appended by the server and one written by
+  `pipeline._write_status` agree about what a phase is called. `operator` is kept for
+  Phase 5, which `tests/test_dispatch_gate.py` pins.
+- Gate banners use the printability form (`--- NAME ---`), never
+  `=== PHASE n ===`, which the server's regex turns into a progress update.
 
 ### Printer Operators (pythonsrc/operators/)
 

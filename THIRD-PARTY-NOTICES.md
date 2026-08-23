@@ -1,13 +1,144 @@
 # Third-Party Notices
 
-Prompt2Print (p2p-mesh) is distributed under the Apache License 2.0 (see
-[`LICENSE`](LICENSE)). It bundles, links, or invokes the third-party components
-listed below, each under its own licence.
+Prompt2Print (p2p-mesh) carries the Apache License 2.0 (see [`LICENSE`](LICENSE)).
+The repository is private and the software is **not currently distributed**, so that
+licence is a statement of intent rather than an active grant to anyone — but the
+obligations below are recorded as though it were, because they attach the moment it is.
+It bundles, links, or invokes the third-party components listed below, each under its
+own licence.
 
 This file exists to satisfy the attribution and source-offer obligations those
 licences impose. It is reviewed whenever a dependency is added or bumped.
 
-Last reviewed: 2026-08-20.
+Last reviewed: 2026-08-22.
+
+
+---
+
+## 0. Commercial-use audit
+
+Every dependency, against three questions:
+
+1. **Does the licence permit commercial use?**
+2. **Does it permit use in a deployed service** — not merely experimentation?
+3. **Does it restrict commercial use of the generated output?**
+
+Question 2 is the one that catches things a licence tag does not: `openai/clip-vit-*`
+is tagged MIT and its model card puts *all* deployed use out of scope. Question 3 is
+the revenue gate — a restriction there would mean the mesh could be generated legally
+and the printed part could not be sold, which is the whole business.
+
+**Question 3 only bites for generative models.** A library has no claim on what a
+program built with it produces, and neither does GPL or AGPL: the standard reading, and
+the FSF's own, is that a program's *output* is not a derivative work of the program.
+The G-code CuraEngine emits is this project's, and the fact that CuraEngine is AGPL does
+not change that. So Q3 is answered "no restriction" for everything except the model
+weights, where it is answered from each model card.
+
+Verification level is marked per row: **[v]** read from the licence text or model card
+during this audit; **[d]** taken from the package's own declared metadata or its SPDX
+identifier.
+
+### Models and weights — where the risk is concentrated
+
+| Component | Licence | Q1 commercial | Q2 deployed | Q3 output | Notes |
+|---|---|---|---|---|---|
+| `black-forest-labs/FLUX.2-klein-4B` | Apache-2.0 **[v]** | Yes | Yes | **No restriction** | Model card: "open weights available for commercial use under the Apache 2.0 license". Carries an acceptable-use policy (no unlawful, deceptive, NCII or minor-exploitative content) framed as policy rather than licence condition |
+| `microsoft/TRELLIS.2-4B` | MIT **[d]** | Yes | Yes | **No restriction** | The mesh is yours. This is what makes Phase 2 saleable |
+| `facebook/dinov3-vitl16-pretrain-lvd1689m` | DINOv3 License **[v]** | Yes, **conditional** | Yes | No restriction | Attribution, acceptable-use policy, trade-control terms; **no redistribution of weights** without propagating the licence. Gated repo — see Task L5 in `docs/deferred-legal-tasks.md` |
+| `ZhengPeng7/BiRefNet` | MIT **[v]** | Yes | Yes | No restriction | Substituted for the checkpoint's encumbered default |
+| `google/siglip-base-patch16-224` | Apache-2.0 **[v]** | Yes | Yes | No restriction | No out-of-scope clause. Pin a revision before launch |
+| ~~`briaai/RMBG-2.0`~~ | CC BY-NC 4.0 **[v]** | **No** | No | — | **Never loaded.** Substituted before pipeline construction. Residual exposure is Pixazo's deployment, not this code |
+| ~~`openai/clip-vit-*`~~ | Tag says MIT **[v]** | Tag says yes | **No** | — | Model card: *"Any deployed use case of the model — whether commercial or not — is currently out of scope."* On the deny list. **Fails Q2 while passing Q1** — the reason Q2 is asked separately |
+
+### Tools held at arm's length
+
+| Component | Licence | Q1 | Q2 | Q3 | Notes |
+|---|---|---|---|---|---|
+| CuraEngine | AGPL-3.0 **[d]** | Yes | Yes | **No restriction on the G-code** | CLI subprocess only. Linking it in-process would trigger § 13 and oblige offering this project's source to every service user — guarded by tests |
+| OctoPrint | AGPL-3.0 **[d]** | Yes | Yes | No restriction | HTTP client only, same reasoning |
+
+### Base images
+
+| Image | Terms | Q1 | Q2 | Q3 | Notes |
+|---|---|---|---|---|---|
+| `python:3.10-slim`, `ubuntu:22.04`, `node:20-alpine` | Debian / Alpine / Ubuntu package licences **[d]** | Yes | Yes | n/a | Ordinary distro composition |
+| `nvidia/cuda:12.4.1-devel-ubuntu22.04` | **NVIDIA CUDA EULA** **[v]** | Yes, to *use* | Yes | n/a | **See finding 1.** Pulling the image accepts the EULA. Redistribution of the CUDA driver libraries is permitted only where the result is "packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only". The Dockerfiles are BSD-3-Clause; the images may contain GPL components |
+
+### Python libraries
+
+**Permissive — Q1 yes, Q2 yes, Q3 no restriction, all [d]:**
+torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore (BSD) · trimesh, aiosqlite, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
+
+**Weak copyleft — permitted, obligations only on distribution:**
+
+| Package | Licence | Effect |
+|---|---|---|
+| `certifi`, `bidict` | MPL-2.0 **[d]** | File-level copyleft. Using them imposes nothing; modifying *their* files and distributing would require publishing those files. Neither is modified |
+| `paho-mqtt` | EPL-2.0 / EDL-1.0 dual **[d]** | Same shape. Used as an MQTT client for Bambu; unmodified |
+
+**Copyleft — needs a decision, see finding 3:**
+
+| Package | Licence | Effect |
+|---|---|---|
+| `gmpy2==2.2.1` | **LGPL-3.0-or-later** **[v]** | Python import is dynamic linking, so *use* is fine and Q1/Q2 are yes. But distributing an image containing it carries LGPL obligations: supply the licence text, and allow a user to replace the library |
+
+### Frontend
+
+All permissive **[v]**, read from the installed packages: `react`, `react-dom`,
+`react-router-dom`, `three`, `@types/three`, `recharts`, `gcode-preview`, `vite`,
+`eslint` (MIT); `lucide-react` (ISC); `typescript` (Apache-2.0). Q1 yes, Q2 yes, Q3 n/a.
+
+### Hosted services
+
+| Service | Basis | Notes |
+|---|---|---|
+| Pixazo `trellis-2-image-to-3d` | Contract, not a licence | Their terms govern, and their matte weights are invisible from here. The three questions have to be answered **in writing by them** — see Task L4 |
+
+---
+
+### Findings and actions
+
+**1. The CUDA worker image cannot be redistributed freely.** Running
+`nvidia/cuda:12.4.1-devel-ubuntu22.04` on your own GPU host is unambiguously fine. But
+NVIDIA's redistribution route for the CUDA driver libraries is narrow: the result must
+be a Docker container distributed *on Docker Hub or NGC*. Pushing the built
+`trellis2-worker` image to a private registry — ECR, GCR, GitHub Container Registry —
+is not obviously covered. **Action:** if the worker image is ever distributed rather
+than built where it runs, get that reviewed. Building it on the GPU host from this
+repo avoids the question entirely.
+
+**2. `opencv-python` shipped Qt 5 under LGPLv3, and nothing here uses OpenCV.
+Resolved.** All `opencv-python` wheels bundle FFmpeg (LGPLv2.1) and the **non-headless**
+Linux wheels additionally bundle Qt 5 (LGPLv3). `requirements-base.txt` pinned *both*
+builds while `import cv2` appears nowhere in this project's own code — it is a
+transitive requirement of the upstream sculptor stack. The non-headless pin is removed,
+with a comment recording why, so that "why is only the headless one here" is not
+answered by adding the other one back.
+
+> Scope correction, recorded because it was overstated when this finding was first
+> written: **the images never carried this.** `base.Dockerfile` only *copies*
+> `requirements.txt` and never runs `pip install -r` against it, so image contents come
+> from explicit pip lines — and `trellis2-worker.Dockerfile` already installed
+> `opencv-python-headless` by name. The LGPLv3 payload reached only a **native**
+> install, which is the macOS development path.
+
+**3. `gmpy2` was LGPL-3.0-or-later. Resolved.** Optional acceleration for `sympy`, which
+is itself transitive via torch. Nothing imports it and `sympy` works without it, so the
+pin is removed rather than the obligations documented.
+
+**4. The runtime requirements contained a publishing toolchain. Resolved.** `twine`,
+`keyring`, `readme_renderer`, `docutils`, `nh3`, `id`, `jaraco.*` and `backports.*` were
+pinned in `requirements-base.txt` — pip-freeze leakage from a publishing environment.
+Licence-clean, pure surface area, removed as a cluster since each existed only to serve
+`twine`.
+
+**5. Nothing in the dependency set restricts commercial use of the output.** Every
+generative model on the live path — FLUX.2-klein, TRELLIS.2, BiRefNet, SigLIP — permits
+commercial use of what it produces, and the AGPL tools make no claim on the G-code. The
+business model is not blocked by any current dependency. The two components that would
+have blocked it, RMBG-2.0 and OpenAI CLIP, are both structurally excluded and guarded
+by tests.
 
 ---
 
@@ -89,6 +220,9 @@ This is the most common place for a licence problem to enter unnoticed.
 | DINOv3 ViT-L/16 (`facebook/dinov3-vitl16-pretrain-lvd1689m`) | [DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/) | Yes, with conditions | © Meta Platforms. TRELLIS.2's `image_cond_model`. Attribution, Acceptable Use Policy and trade-control terms apply — see below |
 | BiRefNet (`ZhengPeng7/BiRefNet`) | MIT | Yes | Background removal. **Substituted by this project** for the checkpoint's configured default — see below |
 | ~~BRIA RMBG-2.0 (`briaai/RMBG-2.0`)~~ | CC BY-NC 4.0 | **No** — paid BRIA agreement required | Upstream TRELLIS.2's configured matte model. **Never loaded.** Overridden before construction — see below |
+| SigLIP base/16-224 (`google/siglip-base-patch16-224`) | Apache-2.0 | Yes | © Google. Zero-shot screen on the generated blueprint (`pythonsrc/ip_screen_image.py`). Natively supported by `transformers`, so no `trust_remote_code`. Compared image↔**text**: **no reference images of protected characters are stored in this repository** |
+| ~~OpenAI CLIP (`openai/clip-vit-*`)~~ | MIT *tag*, but see Notes | **No** | Considered for the blueprint screen and **rejected**. The repository is tagged MIT while its own model card states that *"Any deployed use case of the model — whether commercial or not — is currently out of scope."* Reading the tag is not reading the licence. On the deny list in `ip_screen_image.DENIED_MODEL_REPOS`; construction raises |
+| ~~SigLIP 2 (`google/siglip2-*`)~~ | Apache-2.0 | Yes, but unused | Permissively licensed and a candidate for the same role, deferred on a correctness report rather than a licence one — `huggingface/transformers` issue #43994 reports nonsensical `AutoModel`/pipeline output for `siglip2-base-patch16-224`. Revisit when that closes |
 
 #### Built with DINOv3
 

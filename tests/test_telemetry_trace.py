@@ -40,7 +40,10 @@ def traced_db(tmp_path):
     """A database holding one fully populated job and one that stopped early.
 
     Written through the real `TelemetryDB` writers rather than raw SQL, so the rows
-    are the same shape the pipeline produces.
+    are the same shape the pipeline produces. "Fully populated" means every stage
+    in `STAGES` wrote something — run context and dispatch included, since a job
+    that reached a human verdict necessarily passed through both. A stage left
+    empty here reads as a coverage hole in the tool rather than in the fixture.
 
     Returns:
         A tuple of (db_path, complete_job_id, partial_job_id).
@@ -91,10 +94,10 @@ def traced_db(tmp_path):
             hotend_target_c=210.0, bed_actual_c=60.0, bed_target_c=60.0,
             print_speed_pct=100.0, extrusion_factor_pct=100.0, fan_speed_pct=100.0,
         ))
+    db.update_job_dispatch(complete, printer_url="http://localhost:5001")
     db.try_claim_collector(complete, owner="api-server")
     db.record_job_event(complete, "download", {"artifact": "engineered_mesh.gcode"})
     db.increment_download_count(complete)
-    db.update_job_dispatch(complete, printer_url="http://localhost:5001")
     db.update_job_print_duration(complete, 1793.0)
     db.update_job_outcome_verdict(
         complete, "failure", source="user", completed_at=now + timedelta(minutes=30),

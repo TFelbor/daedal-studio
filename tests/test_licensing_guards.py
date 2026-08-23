@@ -374,3 +374,332 @@ def test_a_pinned_encumbered_revision_is_refused_at_construction(monkeypatch):
     finally:
         monkeypatch.delenv("P2P_BIREFNET_MODEL_ID", raising=False)
         importlib.reload(bg)
+
+
+# ── The blueprint image screen's own weights ─────────────────────────────────
+#
+# The screen added for IP detection is itself a model load, which makes it the newest
+# instance of the rule this file exists for: **weights carry a licence independent of
+# the library that loads them, and independent of the repository's own tag.**
+#
+# `openai/clip-vit-base-patch32` is the sharpest example this project has found. Its
+# Hugging Face repo is tagged MIT. Its model card says: "Any deployed use case of the
+# model - whether commercial or not - is currently out of scope." A dependency audit
+# that reads tags would clear it.
+
+
+def test_the_blueprint_screen_defaults_to_a_permissive_checkpoint():
+    from pythonsrc.ip_screen_image import DEFAULT_MODEL_ID, assert_permissive_vision_model
+
+    assert assert_permissive_vision_model(DEFAULT_MODEL_ID)
+
+
+def test_openai_clip_is_on_the_deny_list_for_its_model_card_not_its_tag():
+    """The tag says MIT; the card forbids deployed use. The card governs."""
+    from pythonsrc.ip_screen_image import DENIED_MODEL_REPOS
+
+    reason = DENIED_MODEL_REPOS["openai/clip-vit-base-patch32"]
+    assert "out of scope" in reason.lower()
+
+
+def test_the_screen_refuses_to_load_a_denied_checkpoint():
+    import pytest as _pytest
+
+    from pythonsrc.ip_screen_image import assert_permissive_vision_model
+
+    with _pytest.raises(ValueError, match="not permissively licensed"):
+        assert_permissive_vision_model("openai/clip-vit-base-patch32")
+
+
+def test_notices_records_the_screen_model_and_the_rejected_one():
+    """An undocumented model choice is not an audit trail, and the *rejection* is the
+    part a future reader needs: without it, someone swaps in CLIP for better recall."""
+    notices = (REPO_ROOT / "THIRD-PARTY-NOTICES.md").read_text()
+
+    assert "google/siglip-base-patch16-224" in notices
+    assert "openai/clip-vit-" in notices
+    assert "out of scope" in notices
+
+
+def test_the_screen_stores_no_reference_images():
+    """Recall could be improved by caching crops of the characters being detected.
+
+    That would mean this repository shipping the material the screen exists to keep
+    out, so the candidates are text and this asserts they stay text.
+    """
+    from pythonsrc.ip_screen_image import candidate_labels
+
+    assert all(isinstance(label, str) for label in candidate_labels())
+
+
+def test_the_image_screen_is_not_imported_by_the_api_server():
+    """`infra/docker/server.Dockerfile` installs no torch, transformers or numpy.
+
+    An import of the image screen at module scope in `server/app.py` would take the
+    api-server image down at start-up — and it is the one image that does not need it,
+    because the screen runs in the pipeline and visualizer processes.
+    """
+    app_source = (REPO_ROOT / "server" / "app.py").read_text()
+
+    assert "ip_screen_image" not in app_source, (
+        "server/app.py imports the image screen. The api-server image has no torch; "
+        "keep the image screen in the pipeline and visualizer processes."
+    )
+
+
+# ── Weights must not be baked into a distributed image ───────────────────────
+#
+# Using gated or conditionally-licensed weights at runtime and *shipping* them are
+# different acts under every licence involved here. DINOv3 permits commercial use with
+# attribution; it does not permit redistribution without propagating its licence, and
+# an image with the weights inside it is a redistribution. The repo is gated, so
+# whoever accepted the terms with this project's HF_TOKEN is the licensee — that
+# licence does not travel to whoever pulls a container.
+#
+# So the rule is: images install *code*, and fetch weights at first run into a mounted
+# cache. These scanners exist because the tempting optimisation — pre-warm the model in
+# the build so the first job is fast — is exactly the thing that converts a use into a
+# distribution, and it would look like a performance commit.
+
+#: Ways a build can end up with weights inside the image. Matched on executable lines
+#: only: a comment naming `from_pretrained` is documentation, and one already exists.
+WEIGHT_BAKING_PATTERNS = (
+    "huggingface-cli download",
+    "hf download",
+    "snapshot_download",
+    "hf_hub_download",
+    "from_pretrained",
+    "huggingface.co/",
+)
+
+#: Weight file extensions that must never be COPYed or ADDed into an image.
+WEIGHT_FILE_SUFFIXES = (
+    ".safetensors", ".ckpt", ".pth", ".onnx", ".gguf", ".msgpack",
+)
+
+
+def _executable_lines(path: Path):
+    """Yield (lineno, text) for lines that actually do something.
+
+    Comments are deliberately excluded. Every guard in this file cares about what a
+    build *runs*, and the explanatory comments naming forbidden things are wanted —
+    they are how the next person learns why a flag is missing.
+    """
+    for lineno, raw in enumerate(path.read_text().splitlines(), start=1):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        yield lineno, stripped
+
+
+def find_baked_weights(text: str) -> list[str]:
+    """Return the executable lines in a manifest that would bake weights in.
+
+    Exposed as a function so the scanner itself can be tested against a synthetic
+    violation. A guard that has only ever seen clean input is a guard nobody knows
+    the sensitivity of.
+
+    Args:
+        text: The contents of a Dockerfile or requirements file.
+
+    Returns:
+        The offending lines, verbatim and stripped.
+    """
+    offending = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        lowered = stripped.lower()
+        if any(pattern in lowered for pattern in WEIGHT_BAKING_PATTERNS):
+            offending.append(stripped)
+            continue
+        if lowered.startswith(("copy ", "add ")) and any(
+            suffix in lowered for suffix in WEIGHT_FILE_SUFFIXES
+        ):
+            offending.append(stripped)
+    return offending
+
+
+@pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)
+def test_no_install_manifest_bakes_model_weights(manifest):
+    """No image may fetch or copy model weights at build time."""
+    path = REPO_ROOT / manifest
+    if not path.exists():
+        pytest.skip(f"{manifest} not present")
+
+    offending = find_baked_weights(path.read_text())
+    assert not offending, (
+        f"{manifest} would put model weights inside the image:\n  "
+        + "\n  ".join(offending)
+        + "\n\nWeights are fetched at runtime into a mounted cache, never baked in. "
+        "DINOv3 permits commercial *use* with attribution but not redistribution, and "
+        "its repo is gated — the licence accepted with this project's HF_TOKEN does "
+        "not travel to whoever pulls the image. See THIRD-PARTY-NOTICES.md."
+    )
+
+
+@pytest.mark.parametrize("violation", [
+    "RUN huggingface-cli download facebook/dinov3-vitl16-pretrain-lvd1689m",
+    "RUN python -c \"from transformers import AutoModel; AutoModel.from_pretrained('x')\"",
+    "RUN snapshot_download('black-forest-labs/FLUX.2-klein-4B')",
+    "COPY weights/model.safetensors /app/models/",
+    "ADD dinov3.pth /opt/weights/",
+    "RUN curl -L https://huggingface.co/foo/bar/resolve/main/model.bin -o /w.bin",
+])
+def test_the_weight_baking_scanner_catches_a_real_violation(violation):
+    """The scanner has to be shown catching something, or it proves nothing."""
+    assert find_baked_weights(violation) == [violation]
+
+
+@pytest.mark.parametrize("benign", [
+    "# DiffusionPipeline.from_pretrained auto-detects the correct pipeline class.",
+    "RUN pip install --no-cache-dir transformers==5.1.0",
+    "COPY pythonsrc/ /app/pythonsrc/",
+    "",
+])
+def test_the_weight_baking_scanner_leaves_ordinary_lines_alone(benign):
+    """A comment explaining the rule must not trip the rule."""
+    assert find_baked_weights(benign) == []
+
+
+# ── AGPL components stay at arm's length ─────────────────────────────────────
+#
+# CuraEngine and OctoPrint are AGPL-3.0. They are invoked as a CLI subprocess and over
+# HTTP respectively, and that distance is the whole licensing design — not a stylistic
+# preference. AGPL-3.0's § 13 reaches users interacting with the software *over a
+# network*, so linking either one in-process would oblige this project to offer its own
+# source to every user of the hosted service. That is the one path by which
+# open-sourcing stops being a choice.
+#
+# All FOSS slicers are AGPL or GPL, so subprocess isolation is the design rather than a
+# workaround. These guards make the boundary a test rather than a memory.
+
+#: Python distributions that would put an AGPL component in-process.
+AGPL_IN_PROCESS_PACKAGES = ("octoprint", "libarcus", "libsavitar", "uranium")
+
+#: An import of the AGPL package itself, on a token boundary.
+#:
+#: Written as a regex rather than a substring test on purpose. The first cut used
+#: `"import octoprint" in line`, which flagged this project's *own* modules —
+#: `from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector` and
+#: `from config import CURA_ENGINE_PATH` both contain those characters. That is the
+#: same substring-versus-boundary mistake the prompt screen made against
+#: "a marionette puppet", found the same way: by running the guard and reading what
+#: it caught.
+_AGPL_IMPORT_RE = re.compile(
+    r"^\s*(?:from|import)\s+(?:octoprint|cura)\b(?!_)", re.IGNORECASE,
+)
+
+#: Loading a Cura or Uranium shared library through ctypes/cffi — linking by another
+#: name. Matched anywhere on the line, since these appear as string arguments.
+_AGPL_DLOPEN_RE = re.compile(r"lib(?:arcus|savitar)|libcura", re.IGNORECASE)
+
+
+def find_agpl_linking(text: str) -> list[str]:
+    """Return executable lines that would link an AGPL component in-process.
+
+    Args:
+        text: Python source.
+
+    Returns:
+        The offending lines, stripped.
+    """
+    offending = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _AGPL_IMPORT_RE.search(stripped) or _AGPL_DLOPEN_RE.search(stripped):
+            offending.append(stripped)
+    return offending
+
+
+def test_no_source_file_links_an_agpl_component():
+    """CuraEngine by subprocess, OctoPrint over HTTP. Nothing in-process, ever."""
+    offending = []
+    for directory in ("pythonsrc", "server", "services"):
+        root = REPO_ROOT / directory
+        if not root.exists():
+            continue
+        for path in root.rglob("*.py"):
+            for line in find_agpl_linking(path.read_text()):
+                offending.append(f"{path.relative_to(REPO_ROOT)}: {line}")
+
+    assert not offending, (
+        "An AGPL-3.0 component would be linked in-process:\n  "
+        + "\n  ".join(offending)
+        + "\n\nCuraEngine and OctoPrint must stay at arm's length — a CLI subprocess "
+        "and an HTTP client. AGPL-3.0 § 13 reaches users interacting over a network, "
+        "so linking either would oblige this project to offer its own source to every "
+        "user of the hosted service. See THIRD-PARTY-NOTICES.md."
+    )
+
+
+@pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)
+def test_no_install_manifest_pulls_an_agpl_python_package(manifest):
+    """The library forms of these are what make in-process linking possible."""
+    path = REPO_ROOT / manifest
+    if not path.exists():
+        pytest.skip(f"{manifest} not present")
+
+    # Only lines that install something. A Dockerfile `LABEL` describing the image as
+    # an "OctoPrint REST client", or an `ENTRYPOINT` naming this project's own
+    # `octoprint_operator.py`, are not installs — and the package token is bounded so
+    # `octoprint_operator` cannot read as `octoprint`.
+    installs = re.compile(r"\b(?:pip\s+install|apt-get\s+install|apk\s+add)\b", re.I)
+    package = re.compile(
+        r"(?<![\w-])(?:" + "|".join(AGPL_IN_PROCESS_PACKAGES) + r")(?![\w-])",
+        re.IGNORECASE,
+    )
+    is_requirements = manifest.endswith(".txt")
+
+    offending = [
+        f"{manifest}:{lineno}: {line}"
+        for lineno, line in _executable_lines(path)
+        if package.search(line) and (is_requirements or installs.search(line))
+    ]
+    assert not offending, (
+        "An AGPL-3.0 Python package is being installed:\n  "
+        + "\n  ".join(offending)
+        + "\n\nThese are the library forms of components this project deliberately "
+        "reaches at arm's length. Installing one makes in-process linking possible, "
+        "which is what AGPL-3.0 § 13 turns into a source-offer obligation for the "
+        "whole service."
+    )
+
+
+@pytest.mark.parametrize("violation", [
+    "import octoprint",
+    "from octoprint.plugin import BlueprintPlugin",
+    "from cura.CuraApplication import CuraApplication",
+    "lib = ctypes.CDLL('libArcus.so')",
+])
+def test_the_agpl_linking_scanner_catches_a_real_violation(violation):
+    assert find_agpl_linking(violation) == [violation]
+
+
+@pytest.mark.parametrize("benign", [
+    "# OctoPrint is reached over HTTP, never imported.",
+    "import httpx",
+    "result = subprocess.run([self.engine_path, 'slice', '-j', definition])",
+    # This project's own modules, which the first version of this guard flagged.
+    "from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector",
+    "from config import CURA_ENGINE_PATH, INPUTS_DIR, OUTPUTS_DIR",
+    "from slicer import CuraSlicer, SlicerError",
+    "from pythonsrc.operators import OctoPrintOperator",
+])
+def test_the_agpl_linking_scanner_leaves_arms_length_code_alone(benign):
+    """The permitted forms — subprocess and HTTP — must not trip the guard."""
+    assert find_agpl_linking(benign) == []
+
+
+def test_the_slicer_still_invokes_curaengine_as_a_subprocess():
+    """The positive half: the boundary exists because this is how it is called."""
+    source = (REPO_ROOT / "pythonsrc" / "slicer.py").read_text()
+
+    assert "subprocess" in source, (
+        "pythonsrc/slicer.py no longer mentions subprocess. CuraEngine is AGPL-3.0 and "
+        "must be invoked as a separate program; if this became a library call, the "
+        "licence would reach this project's own source."
+    )

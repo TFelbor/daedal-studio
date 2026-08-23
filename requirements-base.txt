@@ -3,8 +3,6 @@ annotated-doc==0.0.4
 antlr4-python3-runtime==4.9.3
 anyio==4.12.1
 attrs==25.4.0
-backports.tarfile==1.2.0
-backports.zstd==1.3.0
 Brotli==1.2.0
 certifi==2026.1.4
 charset-normalizer==3.4.4
@@ -13,7 +11,6 @@ coloredlogs==15.0.1
 contourpy==1.3.2
 cycler==0.12.1
 diffusers==0.37.0
-docutils==0.22.4
 einops==0.8.2
 exceptiongroup==1.3.1
 fast-simplification==0.1.13
@@ -21,7 +18,6 @@ filelock==3.24.2
 flatbuffers==25.12.19
 fonttools==4.61.1
 fsspec==2026.2.0
-gmpy2==2.2.1
 h11==0.16.0
 h2==4.3.0
 hf_transfer==0.1.9
@@ -32,17 +28,12 @@ httpx==0.28.1
 huggingface_hub==1.4.1
 humanfriendly==10.0
 hyperframe==6.1.0
-id==1.6.1
 idna==3.11
 ImageIO==2.37.2
 importlib_metadata==8.7.1
-jaraco.classes==3.4.0
-jaraco.context==6.1.0
-jaraco.functools==4.4.0
 Jinja2==3.1.6
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-keyring==25.7.0
 kiwisolver==1.4.9
 lazy_loader==0.4
 llvmlite==0.46.0
@@ -53,11 +44,14 @@ mdurl==0.1.2
 more-itertools==10.8.0
 mpmath==1.3.0
 networkx==3.4.2
-nh3==0.3.3
 numba==0.63.1
 numpy==2.2.6
 omegaconf==2.3.0
-opencv-python==4.13.0.92
+# Headless only, deliberately. All opencv-python wheels bundle FFmpeg (LGPLv2.1) and
+# the non-headless Linux wheels additionally bundle Qt 5 (LGPLv3). Nothing in this
+# project imports cv2 — it is a transitive requirement of the upstream sculptor
+# stack — so the GUI build earns an LGPLv3 payload for no functional gain. The GPU
+# worker image already installs the headless build explicitly.
 opencv-python-headless==4.13.0.92
 packaging==26.0
 piexif==1.1.3
@@ -72,7 +66,6 @@ pyparsing==3.3.2
 PySocks==1.7.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
-readme_renderer==44.0
 referencing==0.37.0
 regex==2026.1.15
 requests==2.32.5
@@ -95,7 +88,6 @@ tqdm==4.67.3
 transformers==5.1.0
 manifold3d==3.5.2
 trimesh==4.11.2
-twine==6.2.0
 typer==0.23.1
 typer-slim==0.23.1
 typing_extensions==4.15.0
