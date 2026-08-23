@@ -1112,28 +1112,61 @@ class TelemetryDB:
 
             if row is not None:
                 current_owner = row["owner"]
+                current_beat = row["heartbeat_at"]
+
                 if current_owner == owner:
+                    # Guarded on the owner we just read: a rival may have taken the
+                    # claim over between the SELECT and here, and an unguarded write
+                    # would silently take it back and give this process a second
+                    # writer's confidence.
                     cursor.execute(
-                        "UPDATE telemetry_collector_claim SET heartbeat_at = ? WHERE job_id = ?",
-                        (_dt_to_str(now), job_id),
+                        "UPDATE telemetry_collector_claim SET heartbeat_at = ? "
+                        "WHERE job_id = ? AND owner = ?",
+                        (_dt_to_str(now), job_id, owner),
                     )
                     self.conn.commit()
-                    return True
+                    if cursor.rowcount == 1:
+                        return True
+                    logger.warning(
+                        "Lost the telemetry claim for job %s while heartbeating", job_id
+                    )
+                    return False
 
-                last_beat = _str_to_dt(row["heartbeat_at"])
+                last_beat = _str_to_dt(current_beat)
                 if last_beat is not None and (now - last_beat).total_seconds() < stale_after_s:
                     return False
 
-                logger.warning(
-                    "Taking over stale telemetry claim for job %s from %s", job_id, current_owner
-                )
+                # Compare-and-swap on (owner, heartbeat_at), which together are the
+                # version of the row this decision was made from. Two collectors that
+                # both read the same stale claim both reach this line; the guard is
+                # what makes exactly one of them win. An unguarded `WHERE job_id = ?`
+                # let both write and both return True, which is precisely the
+                # double-writer this table exists to prevent — and the rarest, worst
+                # case, since it only happens when a collector has already crashed.
                 cursor.execute(
                     "UPDATE telemetry_collector_claim SET owner = ?, claimed_at = ?, heartbeat_at = ? "
-                    "WHERE job_id = ?",
-                    (owner, _dt_to_str(now), _dt_to_str(now), job_id),
+                    "WHERE job_id = ? AND owner = ? AND heartbeat_at = ?",
+                    (
+                        owner,
+                        _dt_to_str(now),
+                        _dt_to_str(now),
+                        job_id,
+                        current_owner,
+                        current_beat,
+                    ),
                 )
                 self.conn.commit()
-                return True
+                if cursor.rowcount == 1:
+                    logger.warning(
+                        "Took over stale telemetry claim for job %s from %s",
+                        job_id,
+                        current_owner,
+                    )
+                    return True
+                logger.info(
+                    "Another collector took the stale claim for job %s first", job_id
+                )
+                return False
 
             try:
                 cursor.execute(

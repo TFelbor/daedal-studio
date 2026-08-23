@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 import platform
@@ -160,9 +161,22 @@ def resolve_job_artifact(job_id: str, filename: str) -> Path | None:
         return legacy
 
     if filename == "blueprint.png":
-        shared_input = Path(__file__).parent.parent / "data" / "inputs" / "blueprint.png"
-        if shared_input.exists():
-            return shared_input
+        inputs = Path(__file__).parent.parent / "data" / "inputs"
+
+        per_job = inputs / job_id / filename
+        if per_job.exists():
+            return per_job
+
+        # The shared path, for rows written before inputs were per-job and for the
+        # skip-Phase-1 configuration, which reuses whatever is sitting there. Offered
+        # only when this job has no input directory of its own: if it does, it rendered
+        # into it, and the shared file demonstrably belongs to some other run. Serving
+        # it would be the same mis-attribution the per-job path exists to prevent,
+        # committed by the endpoint instead of by the pipeline.
+        if not (inputs / job_id).exists():
+            shared_input = inputs / filename
+            if shared_input.exists():
+                return shared_input
 
     return None
 
@@ -815,11 +829,33 @@ async def shutdown_event():
 LOG_FLUSH_INTERVAL_S = 0.12
 LOG_BATCH_MAX = 40
 
+# ── The phase-banner protocol ────────────────────────────────────────────────
+#
+# The pipeline is a subprocess, so its stdout is the only channel it has: the entire
+# UI — the progress rail, the stage, the phase WebSocket messages — is driven by
+# `pipeline._phase_start/_phase_pass/_phase_fail` printing these lines and this regex
+# recognising them. The two halves live in different processes and nothing links them,
+# so a reworded banner breaks every phase update in the product while the pipeline
+# still exits 0 and the log still looks right.
+#
+# Hoisted to module scope (from inside `_stream_output`, where they were locals) so
+# `tests/test_phase_banners.py` can bind to the real parser rather than retyping it —
+# a test carrying its own copy of the regex would agree with itself forever.
+PHASE_BANNER_RE = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
+
+#: Phase number → display name. Must match `pipeline._PHASE_NAMES`; the pipeline names
+#: the phase in its `.status` file and this names it in the WebSocket message, and the
+#: UI shows whichever arrives first.
+PHASE_NAMES = {1: "Visualizer", 2: "Sculptor", 3: "Engineer", 4: "Slicer", 5: "Operator"}
+
+#: Banner verb → the status the UI is told. `.status` records use the same three words,
+#: which is what lets `_read_current_phase` and a phase_update describe one thing.
+PHASE_BANNER_STATUS = {"START": "running", "PASS": "complete", "FAIL": "error"}
+
 
 async def _stream_output(process, log_file_obj, job_id: str, on_phase=None):
-    import re
-    phase_re = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
-    phase_names = {1: "Visualizer", 2: "Sculptor", 3: "Engineer", 4: "Slicer", 5: "Operator"}
+    phase_re = PHASE_BANNER_RE
+    phase_names = PHASE_NAMES
 
     pending: list[str] = []
     # Monotonic across the whole job, so a client can tell a quiet pipeline from a
@@ -868,15 +904,8 @@ async def _stream_output(process, log_file_obj, job_id: str, on_phase=None):
                 action = m.group(2)
                 name = phase_names.get(phase_num, "Unknown")
 
-                if action == "START":
-                    status = "running"
-                    error = None
-                elif action == "PASS":
-                    status = "complete"
-                    error = None
-                else:
-                    status = "error"
-                    error = "Phase failed"
+                status = PHASE_BANNER_STATUS[action]
+                error = "Phase failed" if status == "error" else None
 
                 # A phase banner is the one line that must not wait for the batch
                 # timer: the whole UI keys off it.
@@ -997,8 +1026,28 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     
     skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
     skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+
+    # Phase 1 writes one blueprint per job, not one per machine.
+    # `data/inputs/blueprint.png` is a single filename shared by every run, and Phase 1
+    # overwrites it in place — whether it runs natively on this host or inside the
+    # pipeline container. Two jobs started within a few minutes of each other race for
+    # it, and the loser sculpts, slices and prints the winner's image while recording
+    # its own prompt and seed against it. Nothing downstream can tell: the file exists,
+    # it is a real render, and its hash is whatever landed last.
+    #
+    # `skip_viz` is the deliberate exception. That configuration exists to *reuse* an
+    # image already sitting at the shared path, so nothing generates one there and
+    # nothing races for it; pointing it at an empty per-job directory would make the
+    # pipeline stand a fixture in instead of using the blueprint someone put there.
+    blueprint_rel = (
+        Path("data") / "inputs" / "blueprint.png"
+        if skip_viz
+        else Path("data") / "inputs" / job_id / "blueprint.png"
+    )
+    blueprint_container_path = "/app/" + blueprint_rel.as_posix()
+
     if skip_viz:
-        pipeline_args.extend(["--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png"])
+        pipeline_args.extend(["--skip-visualizer", "--blueprint", blueprint_container_path])
     if skip_sculpt:
         pipeline_args.append("--skip-sculptor")
         
@@ -1117,7 +1166,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.STDOUT,
                         cwd=repo_root,
-                        env=pipeline_env
+                        # The native script defaults to the shared path. This is what
+                        # sends this job's render — and its provenance sidecar — to a
+                        # directory no other job writes.
+                        env={**pipeline_env, "P2P_BLUEPRINT_OUTPUT": blueprint_rel.as_posix()},
                     )
                     active_pipelines[job_id] = process1
                     await _stream_output(process1, f, job_id)
@@ -1127,8 +1179,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                         await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "error", "error": f"Failed with code {process1.returncode}", "ts": datetime.now(timezone.utc).isoformat()}})
                         raise Exception(f"Phase 1 failed with code {process1.returncode}")
                         
-                    if not (repo_root / "data" / "inputs" / "blueprint.png").exists():
-                        raise Exception("Phase 1 completed but blueprint.png not found")
+                    if not (repo_root / blueprint_rel).exists():
+                        raise Exception(
+                            f"Phase 1 completed but {blueprint_rel.as_posix()} not found"
+                        )
                         
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "complete", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
                 
@@ -1151,7 +1205,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 ] + docker_env_args + [
                     "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
-                    "--skip-visualizer", "--blueprint", "/app/data/inputs/blueprint.png",
+                    "--skip-visualizer", "--blueprint", blueprint_container_path,
                     "--job-id", job_id
                 ] + clean_args
             elif strategy == "nvidia_docker":
@@ -1290,9 +1344,16 @@ async def create_job(request: JobRequest):
 
     repo_root = Path(__file__).parent.parent
     
-    # Clean up artifacts from previous jobs to prevent the UI from loading old images
+    # Clean up artifacts from previous jobs to prevent the UI from loading old images.
+    #
+    # `data/inputs/blueprint.png` is deliberately *not* in this list. Deleting it was
+    # the other half of the shared-path race: creating one job removed the blueprint a
+    # concurrent job was still reading, and in the skip-Phase-1 configuration — whose
+    # whole purpose is to reuse the image sitting at that path — it deleted the input
+    # the run was about to use, so the pipeline stood a fixture in instead. Jobs now
+    # render into `data/inputs/{job_id}/`, which nothing else writes, so there is
+    # nothing stale here to clear.
     for artifact in [
-        repo_root / "data" / "inputs" / "blueprint.png",
         repo_root / "data" / "outputs" / "raw_mesh.obj",
         repo_root / "data" / "outputs" / "engineered_mesh.obj",
         repo_root / "data" / "outputs" / "engineered_mesh.stl",
