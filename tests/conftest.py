@@ -59,9 +59,87 @@ def pytest_configure(config):
     _db.close()
     _ConfigStore(os.environ["TELEMETRY_DB_PATH"]).init_schema()
 
+    # Cut the shared SimulatorManager off from the real Docker daemon, for the same
+    # reason the database is redirected: the suite must not reach outside itself.
+    # `server.app`'s shutdown hook calls `stop_octoprint()`, and every test that
+    # enters a `TestClient` context manager fires it — so running `pytest tests/`
+    # stopped the developer's OctoPrint simulator, mid-session, with nothing in the
+    # output saying so. Raising the manager's own typed error is what the code
+    # already treats as "cannot tell": `_client_or_none()` returns None and
+    # `stop_octoprint` becomes a no-op. Tests that need simulator behaviour build
+    # their own `SimulatorManager(client_factory=...)` with a fake, and the two that
+    # need the singleton monkeypatch the method they care about — so nothing here
+    # depends on this ever succeeding.
+    from server.simulator_manager import SimulatorAvailabilityError, simulator_manager as _sim
+
+    def _no_docker_in_tests():
+        raise SimulatorAvailabilityError("Docker is not reachable from the test suite.")
+
+    _sim._client = None
+    _sim._client_factory = _no_docker_in_tests
+
+    _stash_shared_blueprint()
+
+
+#: Where a real `data/inputs/blueprint.png` was moved to for the session, if there was
+#: one. A list so `pytest_unconfigure` can put back exactly what it took and nothing else.
+_STASHED_BLUEPRINT: list = []
+
+
+def _stash_shared_blueprint():
+    """Move a real shared blueprint out of the suite's way, and remember to put it back.
+
+    `data/inputs/blueprint.png` is a live runtime artifact, not scratch space: it is
+    the image a skip-Phase-1 run exists to reuse, which is precisely why `POST /jobs`
+    was changed to stop deleting it in its stale-artifact sweep. Three tests
+    (`test_blueprint_gate.py` twice, `test_ip_screen.py` once) write to that exact path
+    to exercise the real resolution order — `_snapshot_blueprint` and `create_job`
+    derive it from `server/app.py`'s own location, so there is no path to redirect —
+    and then `unlink()` it. A full `pytest tests/` therefore destroyed whatever render
+    was sitting there, silently, the same way it once destroyed real job rows.
+
+    It also fails outright when that file was written by a container: the bind mounts
+    run as root, so the PNG comes back `root:root 0644` and the developer's own
+    interpreter cannot open it for writing. Renaming needs write permission on the
+    *directory*, not the file, so moving it aside works where overwriting does not —
+    and the tests then create their own from scratch.
+
+    Restored by `pytest_unconfigure`. A crash hard enough to skip that leaves the file
+    under `_ISOLATED_DB_DIR`, named as it was, rather than gone.
+    """
+    import pathlib
+
+    inputs = pathlib.Path(__file__).parent.parent / "data" / "inputs"
+    for name in ("blueprint.png", "blueprint.provenance.json"):
+        source = inputs / name
+        if not source.exists():
+            continue
+        stashed = pathlib.Path(_ISOLATED_DB_DIR) / f"stashed-{name}"
+        try:
+            # `shutil.move`, not `os.rename`: the stash is a tempdir, which is
+            # routinely on a different filesystem from the repo, and `os.rename` fails
+            # EXDEV there. Silently — the except below swallowed it, the file was
+            # never stashed, and the tests deleted the real one anyway.
+            shutil.move(str(source), str(stashed))
+        except OSError:
+            # Nothing here is worth failing a test run over; the worst case is the
+            # pre-existing behaviour.
+            continue
+        _STASHED_BLUEPRINT.append((str(stashed), str(source)))
+
 
 def pytest_unconfigure(config):
-    """Remove the throwaway database directory once the session ends."""
+    """Put back the shared blueprint, then remove the throwaway database directory."""
+    for stashed, original in _STASHED_BLUEPRINT:
+        try:
+            # The tests leave their own file behind on some paths; the real one wins.
+            if os.path.exists(original):
+                os.unlink(original)
+            shutil.move(stashed, original)
+        except OSError:
+            pass
+    _STASHED_BLUEPRINT.clear()
+
     if _ISOLATED_DB_DIR:
         shutil.rmtree(_ISOLATED_DB_DIR, ignore_errors=True)
 
