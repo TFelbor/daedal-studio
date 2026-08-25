@@ -904,6 +904,82 @@ check — not as a connection failure. Surfacing OctoPrint's stock Flask 403 bod
 ("You don't have the permission to access the requested resource") sent people looking
 at their network for a wrong API key.
 
+**`localhost` means something different on each side of the container boundary, and
+only the outbound connection may be translated** (`server.container_reachable_url`).
+`http://localhost:5001` is what a person types into Printer Setup, what their browser
+opens, and what `dispatched_printer_url` records — it is the only thing distinguishing
+a simulator print from real hardware, so the config store keeps it verbatim. From
+inside the api-server container it is also the api-server. `pipeline.py` and
+`run_operator.py` have made that translation since they were written, guarded on
+`/.dockerenv`; the server had not, on the assumption it ran natively — but
+`docker compose up api-server` is the documented way to start it, and there every
+probe answered "Connection failed: All connection attempts failed" while the simulator
+sat Operational on 5001, with the badge reading Offline and `POST /jobs` refusing on
+`running`.
+
+**The compose network is tried before `host.docker.internal`, because the host gateway
+is not always a route.** `api-server` was missing the `extra_hosts: host-gateway`
+mapping `pipeline-runner` carries, so the name did not resolve at all — but adding it
+is not sufficient: on Fedora, firewalld drops traffic from a docker bridge to the host
+by default, so the gateway resolves and the connection then times out. The simulator is
+a container this server already manages, and container-to-container over the shared
+compose network needs neither the host nor its firewall.
+`SimulatorManager.internal_url()` returns that address — the compose *service* name and
+the port the simulator listens on **inside** its namespace (80), not the 5001 it is
+published as — and declines with None when the two containers share no network, rather
+than handing back a name that fails five seconds later at connect. The host-gateway
+rewrite remains the fallback for anything that is not the simulator.
+
+**The dispatch gate hands the operator both addresses.** `run_operator.py` runs in the
+api-server container and cannot derive the compose route from a loopback URL, so
+`OCTOPRINT_URL` carries the route and `$P2P_DISPATCH_URL` the configured address that
+route stands in for — `dispatched_printer_url` must name the printer a person chose,
+not the container artifact standing in for it. The gate also passes `OCTOPRINT_URL` at
+all now: `resolve_printer_target` makes the config store authoritative for `base_url`,
+and the operator's own fallback is the *profile's* dev default, so a real printer
+configured in Settings was dispatched to localhost:5001 while the gate displayed the
+right machine.
+
+**`data/octoprint` is mounted read-only into `api-server`** so
+`simulator_manager.octoprint_api_key()` can read the key the simulator boots with.
+Without it that returns None, Settings' "use simulator" button sets the URL and
+silently no key (`applyOctoprintSimulator` skips the write when the key is absent), and
+every call to a perfectly healthy simulator comes back 403.
+
+**Restarting the api-server stops the simulator.** `stop_octoprint()` is wired to the
+server's shutdown hook, so `docker compose up -d --force-recreate api-server` takes the
+simulator down with it and it must be started again afterwards. The simulator's
+`config.yaml` now carries `serial: {autoconnect: true, port: VIRTUAL, baudrate: 115200}`
+so it comes back Operational on its own rather than needing someone to reconnect the
+virtual printer in the OctoPrint UI each time.
+
+That hook is also why `tests/conftest.py` cuts the shared `simulator_manager` off from
+the real Docker daemon in `pytest_configure`, alongside the database redirect and for
+the same reason: every test entering a `TestClient` context manager fires shutdown, so
+`pytest tests/` stopped the developer's running simulator mid-session with nothing in
+the output saying so. It injects a factory raising the manager's own
+`SimulatorAvailabilityError` — which `_client_or_none()` already treats as "cannot
+tell", making `stop_octoprint` a no-op — rather than patching the method, because the
+suite must be unable to reach a daemon at all, not merely decline to use one.
+
+**The same hook stashes `data/inputs/blueprint.png` for the session.** Three tests
+(`test_blueprint_gate.py` twice, `test_ip_screen.py` once) write to that exact path —
+`_snapshot_blueprint` and `create_job` derive it from `server/app.py`'s own location,
+so there is no path to redirect and no honest way to test the real resolution order
+without it — and then `unlink()` it. That is the file a skip-Phase-1 run exists to
+reuse, and the file `POST /jobs` was deliberately changed to *stop* deleting. It is
+moved aside in `pytest_configure` and moved back in `pytest_unconfigure`, with
+`shutil.move` rather than `os.rename`: the stash is a tempdir, routinely on another
+filesystem, where `os.rename` fails EXDEV — silently, since the guard swallows OSError,
+leaving the tests to delete the real file exactly as before.
+
+Moving it aside is also what makes those tests pass on a tree where a container wrote
+that PNG: the bind mounts run as root, so it comes back `root:root 0644` and the
+developer's own interpreter cannot open it for writing. Renaming needs write permission
+on the *directory*, not the file. When container-written artifacts pile up more widely,
+`docker run --rm -v "$PWD/data:/d" -v "$HOME/.p2p-mesh:/h" alpine chown -R 1000:1000 /d /h`
+fixes them without sudo.
+
 ### Dispatch gate — Phase 5 waits on a person
 
 A print is the only step that heats a nozzle for hours, spends filament and cannot be undone,

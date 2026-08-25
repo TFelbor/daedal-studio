@@ -259,6 +259,81 @@ class SimulatorManager:
             logger.warning("Could not read the OctoPrint simulator config: %s", exc)
         return None
 
+    def internal_url(self, host_port: int = OCTOPRINT_PORT) -> Optional[str]:
+        """The simulator's address as seen from another container, or None.
+
+        `http://localhost:5001` is the truth for a person's browser and for a native
+        process, and it is the value the config store and the telemetry row keep. It
+        is not an address any container can use, and the usual translation —
+        `host.docker.internal` mapped to the host gateway — only works if the host
+        lets a bridge network reach a published port. On Fedora it does not:
+        firewalld drops traffic from the docker bridge to the host by default, so the
+        name resolves, the connection times out, and the probe reports the simulator
+        offline while it is answering perfectly on port 5001.
+
+        The simulator is a container this class already manages, though, and a
+        container talking to a container on a shared compose network needs neither
+        the host nor the firewall. This returns that address — the compose service
+        name and the port the simulator actually listens on inside its own network
+        namespace, which is 80, not the 5001 it is published as.
+
+        Args:
+            host_port: The published host port to match against, so a URL naming some
+                other loopback service is not mistaken for the simulator.
+
+        Returns:
+            A URL reachable from this process's network, or None when the simulator
+            is not running, publishes no matching port, or shares no network with us.
+        """
+        client = self._client_or_none()
+        if client is None:
+            return None
+
+        container = self._get_container(client)
+        if container is None or container.status != "running":
+            return None
+
+        settings = (container.attrs or {}).get("NetworkSettings", {})
+
+        private_port = None
+        for spec, bindings in (settings.get("Ports") or {}).items():
+            for binding in bindings or []:
+                if str(binding.get("HostPort")) == str(host_port):
+                    private_port = spec.split("/")[0]
+                    break
+            if private_port:
+                break
+        if private_port is None:
+            return None
+
+        their_networks = set((settings.get("Networks") or {}).keys())
+        if not their_networks & self._own_networks(client):
+            # No shared network, so the service name would not resolve. Say so with
+            # None rather than handing back an address that fails at connect time.
+            return None
+
+        port_suffix = "" if private_port in ("80", 80) else f":{private_port}"
+        return f"http://{self.service_name}{port_suffix}"
+
+    def _own_networks(self, client) -> set:
+        """The docker networks this process's own container is attached to.
+
+        Empty when this process is not containerised, or when its container cannot be
+        identified — in which case `internal_url` declines rather than guessing.
+        """
+        import socket
+
+        try:
+            return set(
+                (client.containers.get(socket.gethostname()).attrs or {})
+                .get("NetworkSettings", {})
+                .get("Networks", {})
+                .keys()
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not identify this container's networks: %s", exc)
+            return set()
+
     def get_status(self) -> Dict[str, Any]:
         """Report simulator state, distinguishing "stopped" from "cannot tell"."""
         available = True

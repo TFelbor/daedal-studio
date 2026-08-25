@@ -413,6 +413,52 @@ def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | 
 
     return firmware, base_url, api_key
 
+def container_reachable_url(url: str | None) -> str | None:
+    """Rewrite a host-local printer URL so it also works from inside a container.
+
+    ``localhost`` is the one address whose meaning depends on which side of the
+    container boundary is reading it. The config store holds what a person typed
+    into Printer Setup and what a native process needs — ``http://localhost:5001``
+    for the dockerised OctoPrint simulator — and that is also the value the
+    telemetry row records, which is what distinguishes a simulator print from real
+    hardware. So it must stay as it is on read; only the moment an outbound
+    connection is opened is it translated.
+
+    `pipeline.py` and `run_operator.py` have done exactly this since they were
+    written, guarded on ``/.dockerenv``. The server did not, on the assumption that
+    it always ran natively — but `docker compose up api-server` is the documented
+    way to start it, and there ``localhost:5001`` is the api-server container
+    itself. Every probe answered "All connection attempts failed" and the printer
+    badge read Offline beside a simulator that was Operational.
+
+    Args:
+        url: A base URL, or None.
+
+    Returns:
+        The URL unchanged when it names no loopback address or when this process is
+        not containerised; otherwise the same URL via ``host.docker.internal``.
+    """
+    if not url or not os.path.exists("/.dockerenv"):
+        return url
+    if "localhost" not in url and "127.0.0.1" not in url:
+        return url
+
+    # The simulator is a container this server manages, so when the loopback URL is
+    # its published port the shared compose network is the better route: it needs
+    # neither the host gateway nor the host firewall to permit a bridge to reach a
+    # published port, which on Fedora firewalld does not.
+    try:
+        port = urlparse(url).port or 80
+        internal = simulator_manager.internal_url(port)
+        if internal:
+            return internal
+    except Exception as exc:  # noqa: BLE001 — never let a lookup break a dispatch
+        logger.debug("Could not resolve a container route to the simulator: %s", exc)
+
+    return url.replace("localhost", "host.docker.internal").replace(
+        "127.0.0.1", "host.docker.internal"
+    )
+
 # How long a stopped pipeline gets to exit on SIGTERM before it is killed outright.
 PIPELINE_TERM_GRACE_S = 10
 
@@ -1134,6 +1180,11 @@ def _attach_job_telemetry(job_id: str, firmware: str, base_url: str, api_key) ->
     if job_id in active_collectors:
         return
 
+    # The collector opens a socket and the detector's operator opens HTTP requests,
+    # both from this process. When the server is the containerised one, its own
+    # localhost is not the host's.
+    base_url = container_reachable_url(base_url) or base_url
+
     collector = None
     if firmware in ("klipper", "moonraker"):
         ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -1401,8 +1452,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         firmware, url, key = resolve_printer_target(profile_path)
         pipeline_env["P2P_FIRMWARE"] = firmware
 
-        # Kept before the Docker rewrite below: the server-side collector connects
-        # from this host, where localhost is still localhost.
+        # Kept before the Docker rewrite below, which is the *pipeline container's*
+        # translation. The server-side collector makes its own — it may or may not be
+        # containerised itself — inside `_attach_job_telemetry`.
         collector_url = url or "http://localhost:5001"
         collector_key = key
 
@@ -2521,6 +2573,20 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         octoprint_key = config_store.get("OCTOPRINT_API_KEY")
         if octoprint_key:
             env["OCTOPRINT_API_KEY"] = octoprint_key
+        # The address the person just confirmed, not the dev default baked into the
+        # profile file. `resolve_printer_target` makes the config store authoritative
+        # for base_url, and the operator falls back to the profile's own when this is
+        # absent — so a real printer configured in Settings was dispatched to
+        # localhost:5001 while the gate displayed the right machine.
+        #
+        # The operator runs in this container, so it is given the route this process
+        # already resolved rather than being left to derive one from a loopback
+        # address it cannot reach. The configured address rides alongside it, because
+        # that — not the container route standing in for it — is what
+        # `dispatched_printer_url` must record.
+        if target.get("base_url"):
+            env["OCTOPRINT_URL"] = container_reachable_url(target["base_url"])
+            env["P2P_DISPATCH_URL"] = target["base_url"]
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
         env.setdefault("P2P_API_URL", "http://127.0.0.1:8000")
@@ -2639,7 +2705,7 @@ async def cancel_job(job_id: str):
             from pythonsrc.operators import PrinterFactory
             op = PrinterFactory.create(
                 firmware=firmware,
-                base_url=base_url or "http://localhost:5001",
+                base_url=container_reachable_url(base_url or "http://localhost:5001"),
                 api_key=api_key,
             )
             # Try to cancel
@@ -2695,7 +2761,7 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
         from pythonsrc.operators import PrinterFactory
         op = PrinterFactory.create(
             firmware=firmware,
-            base_url=base_url or "http://localhost:5001",
+            base_url=container_reachable_url(base_url or "http://localhost:5001"),
             api_key=api_key,
         )
         
@@ -3507,6 +3573,9 @@ async def test_connection(req: TestConnectionRequest):
                 api_key = stored.get("OCTOPRINT_API_KEY")
                 if not url:
                     return {"success": False, "message": "OCTOPRINT_URL not configured", "latency_ms": None}
+                # Opening a connection, so this is the one place the loopback address
+                # has to be read from where this process actually stands.
+                url = container_reachable_url(url)
                 
                 headers = {}
                 if api_key:
@@ -3519,6 +3588,7 @@ async def test_connection(req: TestConnectionRequest):
                 url = stored.get("MOONRAKER_URL")
                 if not url:
                     return {"success": False, "message": "MOONRAKER_URL not configured", "latency_ms": None}
+                url = container_reachable_url(url)
                     
                 resp = await client.get(f"{url.rstrip('/')}/printer/info")
                 resp.raise_for_status()

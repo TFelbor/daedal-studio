@@ -270,6 +270,11 @@ services:
       - ${HOST_PROJECT_ROOT:-..}/server:/app/server
       - ${HOST_PROJECT_ROOT:-..}/tests:/app/tests
       - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only, and only so `simulator_manager.octoprint_api_key()` can read the
+      # key the simulator boots with. Without it that returns None, Settings' "use
+      # simulator" button silently sets the URL and no key, and every call to a
+      # simulator that is running perfectly comes back 403.
+      - ${HOST_PROJECT_ROOT:-..}/data/octoprint:/app/data/octoprint:ro
       # Same single database as every other execution mode. Deliberately a bind
       # mount rather than a named volume: a volume is invisible from the host, and
       # that is how a month of job history was written somewhere nobody could see.
@@ -285,6 +290,14 @@ services:
       - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-p2p-mesh-poc-docker}
     depends_on:
       - pipeline-runner
+    # The server probes the printer itself (GET /system/printer/status), runs the
+    # telemetry collector, and launches run_operator.py in this container — all of
+    # which resolve a config-store URL of http://localhost:5001 through
+    # `container_reachable_url`. Without this mapping that name does not resolve on
+    # Linux, and every probe answers "All connection attempts failed" while the
+    # simulator is Operational. pipeline-runner has carried it since it was written.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn server.app:app --host 0.0.0.0 --port 8000
 
   # ── Web (build only, for dev) ───────────────────────────────────────────────
