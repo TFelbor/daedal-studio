@@ -946,12 +946,66 @@ class Engineer:
         self,
         input_path: str | Path,
         output_path: str | Path,
-        target_mm: float = 50.0,
+        target_mm: float | None = 50.0,
         hollow: bool = False,
         wall_thickness: float = 1.2,
         scale_axis: str = "height",
         vent: bool = True,
     ) -> Path:
+        """Repair, orient, size and export a mesh for the slicer.
+
+        **`target_mm=None` means the mesh already carries its final dimensions**,
+        and scaling is skipped entirely. That case is not hypothetical and it was
+        silently broken: this method scaled *unconditionally*, so a mesh whose
+        every dimension was already fixed in millimetres — one built from a
+        parametric spec rather than reconstructed from an image — was resized so
+        that its **height became 50 mm**, the default. A deck box sized to hold a
+        specific card count came out at whatever height 50 mm implied, and nothing
+        downstream could notice: the mesh is still watertight, it still slices and
+        it still prints. The only visible symptom is that the part does not fit.
+
+        A generated mesh has no dimensions of its own — Phase 2 emits geometry in
+        an arbitrary scale — so `50.0` stays the default and every existing caller
+        is unaffected.
+
+        Args:
+            input_path: Mesh to process.
+            output_path: Where to write the repaired mesh. A `.stl` sibling is
+                written alongside it, because CuraEngine does not read `.obj`
+                reliably.
+            target_mm: Size of the extent named by `scale_axis`, in millimetres, or
+                **None to preserve the input's own dimensions**. `None` also
+                overrides `self.target_dimensions`: an instance-level default must
+                not silently resize a mesh whose caller has stated the dimensions
+                are authoritative.
+            hollow: Voxel-hollow the part. **Refused when `target_mm is None`** —
+                see Raises.
+            wall_thickness: Shell thickness for `hollow`, in millimetres.
+            scale_axis: Which extent `target_mm` describes.
+            vent: Whether to breach hollow cavities to the outside.
+
+        Returns:
+            The path written.
+
+        Raises:
+            ValueError: If `hollow` is combined with `target_mm=None`. Hollowing
+                voxelises at a `wall_thickness` pitch, which moves the surface by
+                up to half a voxel and is why the hollow path below re-scales
+                afterwards. There is therefore no way to hollow a mesh *and* honour
+                its authored dimensions, and the two remedies are both wrong:
+                re-scaling discards the dimensions the caller called authoritative,
+                and skipping the re-scale ships a part of the wrong size with its
+                base under the plate. A part that needs an internal cavity and exact
+                dimensions must model the cavity, not voxel-hollow it.
+        """
+        if hollow and target_mm is None:
+            raise ValueError(
+                "hollow=True cannot be combined with target_mm=None: hollowing "
+                "voxelises at a wall_thickness pitch and needs a re-scale "
+                "afterwards, so the authored dimensions cannot survive it. Model "
+                "the cavity instead of voxel-hollowing it."
+            )
+
         input_path = Path(input_path)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -966,9 +1020,21 @@ class Engineer:
         logger.info("Orienting for print…")
         mesh = self.orient_for_print(mesh)
 
-        scale_target = self.target_dimensions if self.target_dimensions else target_mm
-        logger.info("Scaling to %.1f mm (%s)…", scale_target, scale_axis)
-        mesh = self.scale_to_dimensions(mesh, scale_target, scale_axis=scale_axis)
+        # `None` short-circuits `target_dimensions` rather than falling through it:
+        # the whole point of the flag is that the caller, not the Engineer, knows
+        # what size the part is.
+        scale_target = None if target_mm is None else (self.target_dimensions or target_mm)
+
+        if scale_target is None:
+            extent = mesh.bounds[1] - mesh.bounds[0]
+            logger.info(
+                "Preserving authored dimensions — not scaling. Extent: "
+                "%.2f × %.2f × %.2f mm",
+                *extent,
+            )
+        else:
+            logger.info("Scaling to %.1f mm (%s)…", scale_target, scale_axis)
+            mesh = self.scale_to_dimensions(mesh, scale_target, scale_axis=scale_axis)
 
         if hollow:
             logger.info("Hollowing mesh…")
@@ -998,13 +1064,24 @@ class Engineer:
         self.last_report = {
             **(self._repair_stats or {}),
             "scale_factor": self._last_scale_factor,
-            "target_mm": float(scale_target),
+            "target_mm": None if scale_target is None else float(scale_target),
+            # Whether a scale ran at all. Written unconditionally, and separately
+            # from `scale_axis`, because the three outcomes are three different
+            # facts: a scale was applied, a scale was *asked for* and there was no
+            # extent to apply it to ("none"), or the caller declared the mesh
+            # already final ("preserved"). Folding the last into "none" would make
+            # "we honoured your dimensions" indistinguishable from "your mesh was
+            # degenerate", which is exactly the confusion this flag exists to end.
+            "scale_applied": scale_target is not None,
             # What the scale was measured against, and what came out. Written
             # unconditionally — including "none" — because an absent key in an
             # unschematised blob cannot be told apart from a pre-change row, and
             # the extents are of the *exported* mesh, so hollowing (which rebuilds
             # from a voxel grid and shrinks the part) is visible rather than hidden.
-            "scale_axis": self._last_scale_axis or scale_axis,
+            "scale_axis": (
+                "preserved" if scale_target is None
+                else (self._last_scale_axis or scale_axis)
+            ),
             "achieved_extent_mm": final_analysis.get("extent_mm"),
             "hollowed": bool(hollow),
             "wall_thickness_mm": float(wall_thickness) if hollow else None,
@@ -1027,6 +1104,10 @@ if __name__ == "__main__":
     parser.add_argument("input", nargs="?", default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"), help="Input .obj path")
     parser.add_argument("output", nargs="?", default=os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"), help="Output .obj path")
     parser.add_argument("target_mm", nargs="?", type=float, default=50.0, help="Target size in mm, measured along --scale-axis")
+    # For a mesh whose dimensions are already final — one built from a parametric
+    # spec rather than reconstructed — where resizing is data loss, not a service.
+    parser.add_argument("--no-scale", action="store_true",
+                        help="Preserve the input's own dimensions (ignores target_mm)")
     parser.add_argument("--scale-axis", choices=Engineer.SCALE_AXES, default="height", help="Which extent target_mm describes (default: height)")
     parser.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     parser.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness in mm (default: 1.2)")
@@ -1043,7 +1124,7 @@ if __name__ == "__main__":
     eng.process(
         input_path=args.input,
         output_path=args.output,
-        target_mm=args.target_mm,
+        target_mm=None if args.no_scale else args.target_mm,
         hollow=args.hollow,
         wall_thickness=args.wall,
         scale_axis=args.scale_axis,

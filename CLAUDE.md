@@ -99,6 +99,33 @@ now carries it, `_pipeline_args` forwards it, and **omitting it forwards nothing
 the pipeline's own default stays the only default — a copy of 50.0 in the server would
 drift the first time either moved.
 
+**A mesh can arrive with its dimensions already final, and Phase 3 used to resize it
+anyway.** `Engineer.process` repaired, oriented and then scaled **unconditionally**,
+with `target_mm` defaulting to 50.0. That is right for Phase 2 output, which has no
+dimensions of its own — a reconstruction comes out in an arbitrary scale. It is data
+loss for a mesh compiled from a parametric spec, where every dimension *is* the
+deliverable: such a part left Phase 3 with its height set to 50 mm and everything
+else dragged along by the same factor. Reachable today with no new code, via the
+documented `--skip-visualizer --skip-sculptor --mesh box.stl` path — which is
+deliberately *not* a fixture run, so its outputs land in the real namespace. And
+undetectable downstream: the mesh is still watertight, `printability` still scores
+it, CuraEngine still slices it, the printer still prints it, and nothing in the log,
+the report or the telemetry row mentions that a dimension moved. The only symptom is
+a part that does not fit, found by a person hours later. `target_mm=None`
+(`--no-scale`) now means "these dimensions are final" and skips the scale;
+**`None` also overrides `self.target_dimensions`**, because an instance-level
+default must not silently resize a mesh whose caller has said otherwise.
+`--hollow` with `--no-scale` is **refused**, not served: hollowing voxelises at a
+`wall_thickness` pitch and needs the re-scale below, so honouring both is
+impossible and each remedy is wrong in a different direction — re-scaling discards
+the authored dimensions, skipping it ships the wrong size with its base under the
+plate. A part needing both an internal cavity and exact dimensions must model the
+cavity. `last_report` gains **`scale_applied`**, written unconditionally and kept
+separate from `scale_axis`, because three outcomes are three facts: a scale ran, a
+scale was asked for and there was no extent to apply it to (`"none"`), or the caller
+declared the mesh final (`"preserved"`). Folding the last into `"none"` would make
+"we honoured your dimensions" indistinguishable from "your mesh was degenerate".
+
 **`--scale-axis` decides which extent the size describes, and it defaults to
 `height`.** `scale_to_dimensions` sized the **longest bounding-box edge**, which is
 defensible for a machine and wrong for a person: a figurine with its arms out is wider

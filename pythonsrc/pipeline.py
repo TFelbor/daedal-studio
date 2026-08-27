@@ -1117,7 +1117,7 @@ def run(args: argparse.Namespace) -> None:
         eng.process(
             input_path=raw_mesh_path,
             output_path=final_mesh_path,
-            target_mm=args.target_mm,
+            target_mm=None if args.no_scale else args.target_mm,
             hollow=args.hollow,
             wall_thickness=args.wall,
             scale_axis=args.scale_axis,
@@ -1136,8 +1136,10 @@ def run(args: argparse.Namespace) -> None:
                 if extent > limit
             ]
             if over:
+                # Says "the part", not "the scaled part": with --no-scale nothing was
+                # scaled, and the remedy is to change the spec rather than the size.
                 print(
-                    "[P2P] ─── OVERSIZE ─── the scaled part exceeds the build volume: "
+                    "[P2P] ─── OVERSIZE ─── the part exceeds the build volume: "
                     + ", ".join(over)
                     + ". It was not shrunk; choose a smaller size or a bigger printer.",
                     flush=True,
@@ -1559,6 +1561,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # person means by "how big"; "longest" is the old behaviour, kept reachable for
     # anything that depended on it.
     p3.add_argument("--scale-axis", choices=("height", "longest"), default="height", help="Which extent --target-mm describes (default: height)")
+    # A mesh built from a parametric spec already carries its final dimensions, and
+    # Phase 3 used to resize it to --target-mm's 50.0 default regardless — silently,
+    # since the result is still watertight, still slices and still prints.
+    p3.add_argument(
+        "--no-scale",
+        action="store_true",
+        help="Preserve the mesh's own dimensions (ignores --target-mm; refuses --hollow)",
+    )
     p3.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     p3.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness for hollowing in mm")
 
