@@ -1,4 +1,4 @@
-# Prompt2Print: Mesh Engine (p2p-mesh)
+# Prompt2Print: MVP Engine (p2p-mvp)
 
 ![Status](https://img.shields.io/badge/Status-Proof_of_Concept_COMPLETE-brightgreen)
 ![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Fedora|Windows-gray)
