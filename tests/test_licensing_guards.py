@@ -30,6 +30,11 @@ from pathlib import Path
 
 import pytest
 
+from pythonsrc.licence_policy import (
+    AGPL_IN_PROCESS_PACKAGES,
+    FORBIDDEN_RENDERER_PACKAGES,
+    find_copyleft_extras,
+)
 from pythonsrc.sculptors import SculptorError
 from pythonsrc.sculptors.background import (
     DEFAULT_MATTE_MODEL_ID,
@@ -42,9 +47,13 @@ from pythonsrc.sculptors.trellis2 import SHAPE_ONLY_MODELS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-#: Packages under the NVIDIA Source Code License (non-commercial research only).
-#: Upstream's `setup.sh` offers both behind flags this project never passes.
-FORBIDDEN_RENDERER_PACKAGES = ("nvdiffrast", "nvdiffrec")
+# FORBIDDEN_RENDERER_PACKAGES and AGPL_IN_PROCESS_PACKAGES are imported from
+# `pythonsrc.licence_policy` rather than declared here. They used to live in this file,
+# which was fine while these tests were the only thing that read them — but the committed
+# licence data in `licenses/` is scored against the same rules
+# (`infra/scripts/licence_report.py`), and a scanner carrying its own copy of "packages
+# we must never install" is a scanner that disagrees with these guards the first time
+# either is edited.
 
 #: Files that install things. A prohibited package appearing in any of them is a
 #: licence change, not a build tweak. Dockerfiles are discovered rather than
@@ -522,6 +531,36 @@ def find_baked_weights(text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)
+def test_no_install_manifest_uses_an_extra_that_pulls_copyleft(manifest):
+    """`trimesh[all]` reads as "the good version of trimesh". It is not.
+
+    It includes trimesh's own `test-more` extra, so both images that used it installed
+    pymeshlab (GPL-3.0) and triangle (LGPL-3.0) — a GPL library importable in the same
+    interpreter, which is the rule `pymeshfix`'s removal established. Nothing here
+    imported either, and nothing noticed for as long as Phase 3 has existed: the
+    specifier is one character away from a correct one and the licence sits two levels
+    down. Found by the first run of the committed licence audit, which is the argument
+    for committing it.
+    """
+    path = REPO_ROOT / manifest
+    if not path.exists():
+        pytest.skip(f"{manifest} is absent from this checkout")
+
+    offending = find_copyleft_extras(path.read_text())
+    assert not offending, (
+        f"{manifest} installs a package whose extra pulls in copyleft:\n  "
+        + "\n  ".join(offending)
+    )
+
+
+def test_the_copyleft_extra_scanner_catches_a_real_violation():
+    """A guard that has never failed is a guard nobody has tested."""
+    violation = 'RUN pip install --no-cache-dir \\\n        "trimesh[all]>=4.0.0" \\\n'
+    assert find_copyleft_extras(violation)
+    assert not find_copyleft_extras(violation.replace("[all]", "[easy]"))
+
+
+@pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)
 def test_no_install_manifest_bakes_model_weights(manifest):
     """No image may fetch or copy model weights at build time."""
     path = REPO_ROOT / manifest
@@ -575,8 +614,10 @@ def test_the_weight_baking_scanner_leaves_ordinary_lines_alone(benign):
 # All FOSS slicers are AGPL or GPL, so subprocess isolation is the design rather than a
 # workaround. These guards make the boundary a test rather than a memory.
 
-#: Python distributions that would put an AGPL component in-process.
-AGPL_IN_PROCESS_PACKAGES = ("octoprint", "libarcus", "libsavitar", "uranium")
+# AGPL_IN_PROCESS_PACKAGES: imported from `pythonsrc.licence_policy` — see the note at
+# the top of this file. `octoprint` as a Python distribution is a § 13 problem; the same
+# name in an image SBOM is the arm's-length server this project talks HTTP to, and the
+# policy module is where that distinction is written down once.
 
 #: An import of the AGPL package itself, on a token boundary.
 #:
@@ -615,6 +656,13 @@ def find_agpl_linking(text: str) -> list[str]:
     return offending
 
 
+#: The one file allowed to contain these names: it is the deny list. Excluded by path
+#: rather than by teaching `_AGPL_DLOPEN_RE` to recognise a tuple literal — a scanner
+#: that tries to tell "names a forbidden library" from "loads a forbidden library" is a
+#: scanner with a parser in it, and the next false negative would be silent.
+_AGPL_SCAN_EXEMPT = ("pythonsrc/licence_policy.py",)
+
+
 def test_no_source_file_links_an_agpl_component():
     """CuraEngine by subprocess, OctoPrint over HTTP. Nothing in-process, ever."""
     offending = []
@@ -623,6 +671,8 @@ def test_no_source_file_links_an_agpl_component():
         if not root.exists():
             continue
         for path in root.rglob("*.py"):
+            if str(path.relative_to(REPO_ROOT)) in _AGPL_SCAN_EXEMPT:
+                continue
             for line in find_agpl_linking(path.read_text()):
                 offending.append(f"{path.relative_to(REPO_ROOT)}: {line}")
 

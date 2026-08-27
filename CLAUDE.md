@@ -1287,6 +1287,62 @@ been violated once, so treat them as load-bearing rather than aspirational:
   install them. If a future feature needs textured output, the rasterizer must come from a
   permissive backend (PyTorch3D, BSD-3-Clause) — never from nvdiffrast.
 
+- **An extra can carry a licence the specifier does not mention.** `trimesh[all]`
+  includes trimesh's own `test-more` extra, so `pipeline.Dockerfile` and
+  `phase3.Dockerfile` installed **pymeshlab (GPL-3.0)** and **triangle (LGPL-3.0)** into
+  production images from the day Phase 3 was written — a GPL extension module importable
+  in the same interpreter, which is exactly what `pymeshfix`'s removal ruled out, reached
+  by a route no manifest read would catch. Both images now use `trimesh[easy]`, which
+  keeps the runtime extras (rtree, embreex, shapely) and drops the test and viewer sets.
+  **Do not restore `[all]`**; `licence_policy.EXTRAS_THAT_PULL_COPYLEFT` and a guard over
+  every install manifest hold the line. Note that `[easy]` does install `rtree`, so
+  `printability`'s comment about it being absent describes the intent — measure by
+  voxelising, do not depend on `rtree` — rather than the image.
+
+**The dependency tree is committed, because the audit was reading the wrong list.**
+`requirements-base.txt` and `web/package.json` name roughly a hundred packages; the
+resolved tree is several thousand across four ecosystems, and **both components that
+have broken this grant arrived transitively** — `pymeshfix` under something that looked
+like a mesh utility, `briaai/RMBG-2.0` as another model's configured default. Neither
+was in a manifest. `.github/workflows/licence-data.yml` therefore regenerates
+`licenses/` on every merge and commits it: `pip-licenses` run **inside the built
+images** (the requirements files are not what ships — `pipeline.Dockerfile` installs
+`diffusers` from git HEAD and `server.Dockerfile` pins nothing at all),
+`license-checker` over the web app's production tree, and `syft` SBOMs, which are the
+only thing that can see `cura-engine` arriving as an AGPL-3.0 apt package.
+`licenses/report.json` is the scored index — read it first.
+
+- **The rules live in `pythonsrc/licence_policy.py`, not in the scanner.**
+  `tests/test_licensing_guards.py` imports the same `FORBIDDEN_RENDERER_PACKAGES` and
+  `AGPL_IN_PROCESS_PACKAGES`; a report with its own copy is a report that disagrees with
+  the guards the first time either is edited. `classify()` reads a licence *string*
+  (LGPL before GPL, or every LGPL package is a § 13 problem; `"or later"` is a version
+  floor, not an SPDX choice) and `verdict()` adds the question the text turns on —
+  `in_process`. Same name, opposite answers: `octoprint` as a pip distribution is a
+  denial, `octoprint` in an image SBOM is the server we speak HTTP to.
+- **Expected findings are recorded, not rediscovered.** `ARM_LENGTH_COMPONENTS` and
+  `REVIEWED_WEAK_COPYLEFT` carry their reason, and OS-layer copyleft is aggregated into
+  one row per image with a **count** — every Debian base carries dozens of GPL packages,
+  and one row each means the same forty findings every week with the new one hidden among
+  them. The count moving is the signal.
+- **Missing data reads as `incomplete`, never `allow`.** CI cannot build the TRELLIS.2
+  worker image (four CUDA extensions, compiled against a GPU architecture no runner has),
+  so `licenses/python-worker.json` is produced by hand on a CUDA host — the command is in
+  `licenses/README.md`. That is also the one tree where `nvdiffrast` would appear, so
+  refresh it after touching `infra/docker/trellis2-worker.Dockerfile`.
+- **`docs/audits/YYYY-MM-DD-licence.md` is how a recurring audit gets deltas** instead of
+  re-deriving the same list weekly. The block between the `generated:` markers is
+  rewritten from `report.json`; everything outside it is preserved, because judgement is
+  the half no scanner produces. The `digest` fence excludes the timestamp and the commit,
+  so an unchanged run is *visibly* unchanged.
+
+**`ARCHITECTURE.md` is the phase-by-phase map** — model, pinned version, HF repo id,
+hardware path, and the numbers that have actually been measured. It exists because the
+alternative is inferring the stack from a requirements file, and it says `not measured`
+rather than estimating, so an "expected gain" is never computed against an invented
+baseline. `tests/test_licence_data.py` fails if a model declared in the code is missing
+from that map.
+
 When adding or bumping a dependency, check the package licence *and* any weights it downloads
 at runtime, then update `THIRD-PARTY-NOTICES.md`.
 

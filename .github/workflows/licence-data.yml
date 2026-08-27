@@ -1,0 +1,335 @@
+# Regenerate the committed licence data — the hard dependency tree, not a guess.
+#
+# The audit routines that consume this read files over the GitHub API; they cannot run
+# pip-licenses, npm, or syft. So the data is produced here and committed to main, which
+# turns "reads requirements-base.txt and package.json and infers the rest" into "reads
+# the resolved transitive tree for every image this project ships".
+#
+# Three things about *how* it is produced are load-bearing:
+#
+#   * pip-licenses runs INSIDE the built images. `requirements-base.txt` is not what
+#     ships: infra/docker/pipeline.Dockerfile installs diffusers from git HEAD and a
+#     dozen `>=` ranges, and infra/docker/server.Dockerfile pip-installs an unpinned
+#     list that appears in no requirements file at all. Resolving the tree anywhere but
+#     inside the image would document an environment nobody runs.
+#   * syft scans the same built images, so OS packages count too — cura-engine arrives
+#     as an apt package and would be invisible to any Python-level tool.
+#   * The TRELLIS.2 worker image is NOT built here. It compiles four CUDA extensions
+#     against a GPU architecture, which no hosted runner has; `licenses/README.md`
+#     documents the one command that produces `licenses/python-worker.json` on a CUDA
+#     host. A gap that is named is auditable; one that is silently skipped is not.
+#
+# The commit back to main is deliberately conservative: it is skipped when nothing but
+# the report's own timestamp changed, so merges that touch no dependency leave no trace.
+
+name: licence-data
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "requirements*.txt"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - "infra/docker/**"
+      - "infra/scripts/licence_report.py"
+      - "infra/scripts/normalise_licence_data.py"
+      - "pythonsrc/licence_policy.py"
+      - ".github/workflows/licence-data.yml"
+  schedule:
+    # Monday 04:17 UTC. Base images and unpinned ranges move without a commit here, so
+    # the weekly run is what catches a dependency that changed underneath us.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      include_mac:
+        description: "Also resolve requirements-mac.txt on a macOS runner"
+        type: boolean
+        default: false
+      include_base_images:
+        description: "Also SBOM the registry base images (slow: pulls the CUDA image)"
+        type: boolean
+        default: false
+
+# Same rule as ci.yml: a newer push supersedes an in-flight run, except on `main`.
+# Cancelling there would drop the data commit for that merge, and the next merge would
+# report its delta against a tree two merges old.
+concurrency:
+  group: licence-data-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Python trees + SBOMs, from the images that actually ship ────────────────
+  images:
+    name: python + sbom (built images)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim runner disk
+        # The pipeline image is ~6 GB with torch and diffusers in it. The hosted runner
+        # ships with several toolchains this build never uses.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+          syft version
+
+      - run: mkdir -p licenses/sbom
+
+      # ── pipeline-runner: Phases 1, 3-5, plus CuraEngine as an apt package ────
+      - name: Build p2p-base
+        run: docker build --platform linux/amd64 -f infra/docker/base.Dockerfile -t p2p-base:latest .
+
+      - name: Build pipeline-runner
+        run: docker build --platform linux/amd64 -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline:latest .
+
+      - name: Resolve the pipeline image's Python tree
+        run: |
+          docker run --rm --entrypoint /bin/sh p2p-mesh-pipeline:latest -c '
+            pip install --quiet --no-cache-dir pip-licenses >/dev/null 2>&1
+            pip-licenses --format=json --with-urls --with-authors \
+              --with-license-file --no-license-path --ignore-packages pip-licenses prettytable wcwidth
+          ' > licenses/python.json
+          python3 infra/scripts/normalise_licence_data.py licenses/python.json
+
+      - name: SBOM the pipeline image
+        # syft's raw output for this image is 16 MB, almost all of it per-package file
+        # manifests. The normaliser keeps the licence-relevant fields.
+        run: |
+          syft p2p-mesh-pipeline:latest -o syft-json --file licenses/sbom/p2p-mesh-pipeline.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-mesh-pipeline.json
+
+      - name: Drop the pipeline image before building the next one
+        run: |
+          docker image rm p2p-mesh-pipeline:latest p2p-base:latest || true
+          docker builder prune -af
+          df -h /
+
+      # ── api-server: an unpinned pip install that appears in no requirements file ──
+      - name: Build api-server
+        run: docker build --platform linux/amd64 -f infra/docker/server.Dockerfile -t p2p-api-server:latest .
+
+      - name: Resolve the api-server image's Python tree
+        run: |
+          docker run --rm --entrypoint /bin/sh p2p-api-server:latest -c '
+            pip install --quiet --no-cache-dir pip-licenses >/dev/null 2>&1
+            pip-licenses --format=json --with-urls --with-authors \
+              --with-license-file --no-license-path --ignore-packages pip-licenses prettytable wcwidth
+          ' > licenses/python-api-server.json
+          python3 infra/scripts/normalise_licence_data.py licenses/python-api-server.json
+
+      - name: SBOM the api-server image
+        run: |
+          syft p2p-api-server:latest -o syft-json --file licenses/sbom/p2p-api-server.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-api-server.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-data-images
+          path: licenses/
+          retention-days: 14
+
+  # ── The web app's production tree ───────────────────────────────────────────
+  node:
+    name: npm (web, production)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 20, not the 22 ci.yml builds on: `infra/docker/server.Dockerfile` builds the
+          # bundle on `node:20-alpine`, and this job documents the tree that ships.
+          # Resolution is lockfile-driven either way, so the pin is about honesty rather
+          # than outcome.
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci` rather than `npm install`: the committed lockfile is the tree the
+      # api-server image builds from, and resolving it fresh would report a different
+      # one from the one that ships.
+      - run: npm ci
+        working-directory: web
+
+      - run: mkdir -p licenses
+
+      - name: Resolve production licences
+        run: |
+          npx --yes license-checker@25.0.1 --json --production --relativeLicensePath > ../licenses/node.json
+          cd .. && python3 infra/scripts/normalise_licence_data.py licenses/node.json
+        working-directory: web
+
+      # The build toolchain is not linked into the bundle, so it is scored separately
+      # rather than mixed into the shipped tree — but it still runs on our machines and
+      # in CI, so it is not unrecorded either.
+      - name: Resolve build-toolchain licences
+        run: |
+          npx --yes license-checker@25.0.1 --json --relativeLicensePath > ../licenses/node-dev.json
+          cd .. && python3 infra/scripts/normalise_licence_data.py licenses/node-dev.json
+        working-directory: web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-data-node
+          path: licenses/
+          retention-days: 14
+
+  # ── Base images, from the registry: weekly, or on request ───────────────────
+  base-images:
+    name: sbom (registry base images)
+    if: github.event_name == 'schedule' || inputs.include_base_images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim runner disk
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+      - name: Install syft
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - run: mkdir -p licenses/sbom
+      - name: SBOM each base image
+        # Scanned straight from the registry — no build, no local pull into docker.
+        # nvidia/cuda is the TRELLIS.2 worker's base and is the reason this job is not
+        # on the per-merge path: it is a multi-gigabyte devel image.
+        run: |
+          set -euo pipefail
+          scan() {
+            name="$2"
+            echo "── $1"
+            syft "registry:$1" -o syft-json --file "licenses/sbom/base-$name.json"
+            python3 infra/scripts/normalise_licence_data.py "licenses/sbom/base-$name.json"
+          }
+          scan ubuntu:22.04 ubuntu-22.04
+          scan python:3.10-slim python-3.10-slim
+          scan node:20-alpine node-20-alpine
+          scan octoprint/octoprint:latest octoprint
+          scan nvidia/cuda:12.4.1-devel-ubuntu22.04 nvidia-cuda-12.4.1-devel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-data-base-images
+          path: licenses/
+          retention-days: 14
+
+  # ── The macOS-native dev/Phase 1 path ──────────────────────────────────────
+  mac:
+    name: python (requirements-mac.txt)
+    if: github.event_name == 'schedule' || inputs.include_mac
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      # mflux/mlx are Apple-Silicon-only, so this tree cannot be resolved on Linux at
+      # all — the only options are a macOS runner or no data. It runs weekly rather
+      # than per-merge because macOS minutes are billed at ten times the Linux rate.
+      - name: Resolve the macOS tree
+        run: |
+          python -m venv /tmp/macvenv
+          /tmp/macvenv/bin/pip install --quiet --upgrade pip
+          /tmp/macvenv/bin/pip install --quiet -r requirements-mac.txt
+          /tmp/macvenv/bin/pip install --quiet pip-licenses
+          mkdir -p licenses
+          /tmp/macvenv/bin/pip-licenses --format=json --with-urls --with-authors \
+            --with-license-file --no-license-path \
+            --ignore-packages pip-licenses prettytable wcwidth > licenses/python-mac.json
+          python3 infra/scripts/normalise_licence_data.py licenses/python-mac.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-data-mac
+          path: licenses/
+          retention-days: 14
+
+  # ── Score everything, and commit it on main ────────────────────────────────
+  report:
+    name: report + commit
+    needs: [images, node, base-images, mac]
+    # `always()` so a skipped optional job (mac, base-images) or one failed collector
+    # still produces a report from whatever data exists — with the gap recorded in
+    # `missing_sources` rather than silently lowering the package count.
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the audit note diffs against the previous dated note.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: licence-data-*
+          merge-multiple: true
+          path: licenses
+        continue-on-error: true
+
+      - name: Score the tree
+        id: score
+        # --fail-on deny: a non-commercial or in-process copyleft package fails the
+        # build. Flags do not — they need a person, not a red X on every merge.
+        run: |
+          set +e
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            python3 infra/scripts/licence_report.py --audit-out auto --fail-on deny
+          else
+            python3 infra/scripts/licence_report.py --fail-on deny
+          fi
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licence-report
+          path: |
+            licenses/
+            docs/audits/
+          retention-days: 90
+
+      - name: Commit the data to main
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A licenses docs/audits
+
+          # report.json carries a timestamp, so it differs on every run. Committing on
+          # that alone would put an empty licence commit on main after every merge, so
+          # the data files decide whether there is anything to record.
+          if git diff --cached --quiet -- licenses docs/audits; then
+            echo "No licence data changed."
+            exit 0
+          fi
+          if git diff --cached --name-only -- licenses docs/audits \
+              | grep -qvE '^licenses/report\.json$'; then
+            :
+          else
+            echo "Only the report timestamp changed — nothing to commit."
+            git restore --staged licenses/report.json 2>/dev/null || true
+            exit 0
+          fi
+
+          # [skip ci] as well as the GITHUB_TOKEN rule: a token-authored push does not
+          # start another workflow run, and the marker says so to anyone reading the log.
+          git commit -m "Regenerate committed licence data [skip ci]" \
+                     -m "From ${GITHUB_SHA} via ${GITHUB_WORKFLOW}. Generated by CI; see licenses/README.md."
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Fail on a denied licence
+        if: steps.score.outputs.exit_code != '0'
+        run: |
+          echo "::error::licence_report.py returned ${{ steps.score.outputs.exit_code }} — see the DENY lines above and licenses/report.json"
+          exit 1

@@ -20,7 +20,7 @@
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,19 @@ test:
 # Run slow tests (requires real/simulated printers)
 test-slow:
 	python -m pytest tests/ -v -m "slow and real_printer"
+
+# ── Licence data ──────────────────────────────────────────────────────────────
+# The raw trees in licenses/ are produced by CI, inside the built images — see
+# licenses/README.md. These targets only score what is already there, which is what a
+# local audit needs and what CI runs after collecting the artifacts.
+
+# Score licenses/ and rewrite licenses/report.json
+licences:
+	python3 infra/scripts/licence_report.py
+
+# Same, plus a dated note under docs/audits/ with the delta against the previous one
+licence-audit:
+	python3 infra/scripts/licence_report.py --audit-out auto
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 

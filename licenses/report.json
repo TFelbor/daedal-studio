@@ -1,0 +1,51 @@
+{
+  "schema": 2,
+  "generated_at": "2026-08-27T10:20:15Z",
+  "commit": "149dc13a3161bb579ac340166fa02f917d7e9794",
+  "project_licence": "Apache-2.0",
+  "verdict": "incomplete",
+  "totals": {
+    "packages": 61,
+    "sources": 1,
+    "by_classification": {
+      "permissive": 61
+    },
+    "by_severity": {
+      "allow": 61
+    },
+    "findings": 0,
+    "deny": 0,
+    "flag": 0
+  },
+  "licence_histogram": {
+    "MIT": 46,
+    "ISC": 12,
+    "Apache-2.0": 1,
+    "BSD-3-Clause": 1,
+    "MIT AND ISC": 1
+  },
+  "missing_sources": [
+    "python.json",
+    "python-api-server.json"
+  ],
+  "sources": [
+    {
+      "name": "node.json",
+      "label": "npm \u2014 web app, production tree only",
+      "ecosystem": "npm",
+      "tool": "license-checker",
+      "in_process": true,
+      "status": "ok",
+      "packages": 61,
+      "private_packages_skipped": 1,
+      "top_licences": {
+        "MIT": 46,
+        "ISC": 12,
+        "Apache-2.0": 1,
+        "BSD-3-Clause": 1,
+        "MIT AND ISC": 1
+      }
+    }
+  ],
+  "findings": []
+}
