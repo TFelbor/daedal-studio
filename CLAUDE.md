@@ -124,7 +124,7 @@ words ("small", "miniature") are deliberately **left in place**: those are style
 measurement, and editing them out would change what the person asked for.
 
 **`hollow` re-scales, and it must be told the axis.** `hollow_mesh` voxelises at a
-`wall_thickness` pitch, so the shell comes back slightly larger than the target with its
+sub-`wall_thickness` pitch, so the shell comes back slightly larger than the target with its
 base below Z = 0, and `process` re-scales and re-seats afterwards. That second
 `scale_to_dimensions` call takes `scale_axis` explicitly — left to the default it would
 size a `longest` request by *height*, so the part would be scaled by one convention and
@@ -771,9 +771,54 @@ gets a mesh with no consistent inside and printability scores it unprintable.
   unmapped turned a 50mm sphere into a 43mm one with its base 0.5mm under the plate
   and its centre 21mm off in X and Y, on every `--hollow` job, and nothing downstream
   could notice: the shell is watertight, it slices and it prints. `process` then
-  re-scales and re-seats, because voxelising at a `wall_thickness` pitch leaves the
-  isosurface up to a voxel outside the input's surface. The same omission in
-  `_voxel_remesh` is harmless only because repair runs before scale and orientation.
+  re-scales and re-seats, because voxelising at a pitch this fine leaves the
+  isosurface up to a voxel outside the input's surface — and only the *scaled* axis
+  comes out exact. The other two carry up to one pitch of dilation: a voxel grid
+  does not respect its object's symmetry unless the object happens to align with
+  it, and the isotropic result the old 1.2mm pitch gave for a sphere was
+  coincidence, not a property. The same omission in `_voxel_remesh` is harmless
+  only because repair runs before scale and orientation.
+- **The shell is measured, not eroded, and it is never one voxel thick**
+  (`HOLLOW_VOXELS_PER_WALL = 2`). Eroding the filled grid one layer with the default
+  6-connected structure makes the shell exactly one voxel thick, and a one-voxel
+  layer following a curved surface is a diagonal staircase whose voxels touch only
+  at edges and corners. `marching_cubes` meshes *face* adjacency, so it returned one
+  closed surface per face-connected run: a 50mm sphere hollowed at the default wall
+  came back as **378 disconnected chips**, 314 of them floating clear of the plate —
+  watertight, sliceable confetti, and the reason `floating_components` (critical)
+  failed rather than the escape-hole check anyone would have predicted. The interior
+  is now a Euclidean distance transform thresholded at the wall, which makes the
+  wall a length in millimetres instead of "one voxel, whatever that is", and the
+  grid is deliberately finer than the wall. `HOLLOW_MAX_VOXELS` (2M, matching
+  `printability.MAX_THICKNESS_VOXELS` — the two measure the same walls) coarsens the
+  pitch on a large part, and a coarsened pitch **thickens** the wall rather than
+  thinning it, because a sub-two-voxel shell is the fragmenting one. That is
+  reported, not silent: `last_report` carries `wall_thickness_achieved_mm` beside
+  the requested figure.
+- **Hollowing vents what it seals.** Meshing a closed shell yields two surfaces, an
+  outer and an inner, and the inner one is a sealed cavity that
+  `printability.escape_hole` rates **fatal** — precisely because the Engineer
+  created it — so every `--hollow` job was unprintable by construction. Each cavity
+  is now breached to the outside along the shortest path out of it, starting from
+  its **lowest** voxel: lowest because a drain belongs under the part, shortest
+  (via the distance transform's feature indices, which name the nearest exterior
+  voxel) because a channel bounded by the wall thickness cannot bore through the
+  body on its way out. Aiming down from a cavity's *centroid* instead is wrong on
+  anything non-convex — the mean of a torus's lowest ring is the middle of the hole,
+  where there is no wall to breach and nothing gets vented. Three things follow, and
+  each is recorded in `last_report` rather than logged and lost:
+  **cavities too small to hold their own vent are filled**, not vented (below that
+  size hollowing removes less material than the vent does, so the pocket is all
+  defect and no saving — a real reconstruction had 37 cavities, 36 of them that
+  small); **a vent that would sever the shell is abandoned**, one cavity at a time,
+  because a 2.4mm channel out of a pocket inside a thin appendage takes the
+  appendage with it and the gate would then report floating components on a part
+  nobody asked for; and **the result is verified, not assumed** — the empty space is
+  labelled and each cavity checked against the outside, because "should have
+  breached" is how a sealed cavity reaches a printer. `vent=False` /
+  `--no-escape-hole` reproduces the sealed shell, and the gate correctly fails it;
+  that exists because a sealed shell is a real shape, not because it is a reasonable
+  default.
 - **Repair is not bit-exact even on a clean mesh**: `_to_manifold` hands vertices
   to the kernel as float32, so coordinates round-trip through single precision.
   Sub-micron on a 50mm part, but not zero.
@@ -804,8 +849,10 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
   absent the check reports `not_checked` and is excluded from the score denominator, so it neither
   rewards nor penalises.
 - Escape-hole detection finds components whose bounding box nests inside another's, which is
-  exactly what `Engineer.hollow_mesh`'s voxel erosion produces: a sealed cavity. It is fatal only
-  when the mesh was actually hollowed.
+  exactly what hollowing produces if it does not vent: a sealed cavity. It is fatal only
+  when the mesh was actually hollowed. `Engineer.hollow_mesh` now drills the hole (see
+  **Hollowing vents what it seals** above), so a failure here is a cavity venting could
+  not reach rather than the by-construction verdict every `--hollow` job used to get.
 - **A crash in the scorer is recorded, not swallowed.** Scoring never fails a job, which used to
   mean a scorer exception left no trace at all: no artifact, no telemetry, and a UI that could not
   tell "nothing measured this mesh" from "the measurement broke". Both rendered as the same empty
