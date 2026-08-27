@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Fedora|Windows-gray)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
-**p2p-mesh** is the generative engine for the Prompt2Print platform — an end-to-end pipeline that converts a natural language prompt into a physical 3D print.
+**p2p-mvp** is the generative engine for the Prompt2Print platform — an end-to-end pipeline that converts a natural language prompt into a physical 3D print.
 
 The system takes a user description and generates a clay-render blueprint image. It then reconstructs the blueprint into a 3D geometry mesh, repairs and scales the mesh for the intended print bed, scores it for printability, and slices it into machine instructions (G-code). Finally, it dispatches the print job to a local 3D printer and continuously monitors telemetry to detect print failures.
 
@@ -34,7 +34,7 @@ The system takes a user description and generates a clay-render blueprint image.
 ## Repository Structure
 
 ```text
-p2p-mesh/
+p2p-mvp/
 ├── docs/           # Architecture decisions, operator guides, and protocol notes
 ├── infra/          # Docker Compose files, Dockerfiles, and deployment scripts
 ├── pythonsrc/      # Core pipeline: phases 1–5, printability, operators, telemetry
