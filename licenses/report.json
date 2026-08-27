@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "generated_at": "2026-08-27T17:26:25Z",
-  "commit": "fcf6fe243cf62bfcd50584015d4cf246b2a37988",
+  "generated_at": "2026-08-27T18:55:09Z",
+  "commit": "b279e7253bb44ff5e0cb0a362454d529db241b43",
   "project_licence": "Apache-2.0",
   "verdict": "flag",
   "totals": {
