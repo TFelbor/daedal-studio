@@ -1,0 +1,771 @@
+[
+ {
+  "Author": "The Hugging Face team",
+  "License": "Apache Software License",
+  "Name": "accelerate",
+  "URL": "https://github.com/huggingface/accelerate",
+  "Version": "1.14.0"
+ },
+ {
+  "Author": "J. Nick Koston",
+  "License": "Python Software Foundation License",
+  "Name": "aiohappyeyeballs",
+  "URL": "https://github.com/aio-libs/aiohappyeyeballs",
+  "Version": "2.7.1"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "Apache-2.0 AND MIT",
+  "Name": "aiohttp",
+  "URL": "https://github.com/aio-libs/aiohttp",
+  "Version": "3.14.3"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "Apache Software License",
+  "Name": "aiosignal",
+  "URL": "https://github.com/aio-libs/aiosignal",
+  "Version": "1.4.0"
+ },
+ {
+  "Author": "=?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com>",
+  "License": "MIT",
+  "Name": "annotated-doc",
+  "URL": "https://github.com/fastapi/annotated-doc",
+  "Version": "0.0.5"
+ },
+ {
+  "Author": "Eric Vergnaud, Terence Parr, Sam Harwell",
+  "License": "BSD",
+  "Name": "antlr4-python3-runtime",
+  "URL": "http://www.antlr.org",
+  "Version": "4.9.3"
+ },
+ {
+  "Author": "Alex Gr\u00f6nholm <alex.gronholm@nextday.fi>",
+  "License": "MIT",
+  "Name": "anyio",
+  "URL": "https://anyio.readthedocs.io/en/stable/versionhistory.html",
+  "Version": "4.14.2"
+ },
+ {
+  "Author": "Andrew Svetlov <andrew.svetlov@gmail.com>",
+  "License": "Apache Software License",
+  "Name": "async-timeout",
+  "URL": "https://github.com/aio-libs/async-timeout",
+  "Version": "5.0.1"
+ },
+ {
+  "Author": "Hynek Schlawack <hs@ox.cx>",
+  "License": "MIT",
+  "Name": "attrs",
+  "URL": "https://www.attrs.org/en/stable/changelog.html",
+  "Version": "26.1.0"
+ },
+ {
+  "Author": "Joshua Bronson <jabronson@gmail.com>",
+  "License": "Mozilla Public License 2.0 (MPL 2.0)",
+  "LicenseText": "Mozilla Public License Version 2.0\n==================================\n\nCopyright 2009-2024 Joshua Bronson. All rights reserved.\n\n\n1. Definitions\n--------------\n\n1.1. \"Contributor\"\n    means each individual or legal entity that creates, contributes to\n    the creation of, or owns Covered Software.\n\n1.2. \"Contributor Version\"\n    means the combination of the Contributions of others (if any) used\n    by a Contributor and that particular Contributor's Contribution.\n\n1.3. \"Contribution\"\n    means Covered Software of a particular Contributor.\n\n1.4. \"Covered Software\"\n    means Source Code Form to which the initial Contributor has attached\n    the notice in Exhibit A, the Executable Form of such Source Code\n    Form, and Modifications of such Source Code Form, in each case\n    including portions thereof.\n\n1.5. \"Incompatible With Secondary Licenses\"\n    means\n\n    (a) that the initial Contributor has attached the notice described\n        in Exhibit B to the Covered Software; or\n\n    (b) that the Covered Software was made available under the terms of\n        version 1.1 or earlier of the License, but not also under the\n        terms of a Secondary License.\n\n1.6. \"Executable Form\"\n    means any form of the work other than Source Code Form.\n\n1.7. \"Larger Work\"\n    means a work that combines Covered Software with other material, in\n    a separate file or files, that is not Covered Software.\n\n1.8. \"License\"\n    means this document.\n\n1.9. \"Licensable\"\n    means having the right to grant, to the maximum extent possible,\n    whether at the time of the initial grant or subsequently, any and\n    all of the rights conveyed by this License.\n\n1.10. \"Modifications\"\n    means any of the following:\n\n    (a) any file in Source Code Form that results from an addition to,\n        deletion from, or modification of the contents of Covered\n        Software; or\n\n    (b) any new file in Source Code Form that contains any Covered\n        Software.\n\n1.11. \"Patent Claims\" of a Contributor\n    means any patent claim(s), including without limitation, method,\n    process, and apparatus claims, in any patent Licensable by such\n    Contributor that would be infringed, but for the grant of the\n    License, by the making, using, selling, offering for sale, having\n    made, import, or transfer of either its Contributions or its\n    Contributor Version.\n\n1.12. \"Secondary License\"\n    means either the GNU General Public License, Version 2.0, the GNU\n    Lesser General Public License, Version 2.1, the GNU Affero General\n    Public License, Version 3.0, or any later versions of those\n    licenses.\n\n1.13. \"Source Code Form\"\n    means the form of the work preferred for making modifications.\n\n1.14. \"You\" (or \"Your\")\n    means an individual or a legal entity exercising rights under this\n    License. For legal entities, \"You\" includes any entity that\n    controls, is controlled by, or is under common control with You. For\n    purposes of this definition, \"control\" means (a) the power, direct\n    or indirect, to cause the direction or management of such entity,\n    whether by contract or otherwise, or (b) ownership of more than\n    fifty percent (50%) of the outstanding shares or beneficial\n    ownership of such entity.\n\n2. License Grants and Conditions\n--------------------------------\n\n2.1. Grants\n\nEach Contributor hereby grants You a world-wide, royalty-free,\nnon-exclusive license:\n\n(a) under intellectual property rights (other than patent or trademark)\n    Licensable by such Contributor to use, reproduce, make available,\n    modify, display, perform, distribute, and otherwise exploit its\n    Contributions, either on an unmodified basis, with Modifications, or\n    as part of a Larger Work; and\n\n(b) under Patent Claims of such Contributor to make, use, sell, offer\n    for sale, have made, import, and otherwise transfer either its\n    Contributions or its Contributor Version.\n\n2.2. Effective Date\n\nThe licenses granted in Section 2.1 with respect to any Contribution\nbecome effective for each Contribution on the date the Contributor first\ndistributes such Contribution.\n\n2.3. Limitations on Grant Scope\n\nThe licenses granted in this Section 2 are the only rights granted under\nthis License. No additional rights or licenses will be implied from the\ndistribution or licensing of Covered Software under this License.\nNotwithstanding Section 2.1(b) above, no patent license is granted by a\nContributor:\n\n(a) for any code that a Contributor has removed from Covered Software;\n    or\n\n(b) for infringements caused by: (i) Your and any other third party's\n    modifications of Covered Software, or (ii) the combination of its\n    Contributions with other software (except as part of its Contributor\n    Version); or\n\n(c) under Patent Claims infringed by Covered Software in the absence of\n    its Contributions.\n\nThis License does not grant any rights in the trademarks, service marks,\nor logos of any Contributor (except as may be necessary to comply with\nthe notice requirements in Section 3.4).\n\n2.4. Subsequent Licenses\n\nNo Contributor makes additional grants as a result of Your choice to\ndistribute the Covered Software under a subsequent version of this\nLicense (see Section 10.2) or under the terms of a Secondary License (if\npermitted under the terms of Section 3.3).\n\n2.5. Representation\n\nEach Contributor represents that the Contributor believes its\nContributions are its original creation(s) or it has sufficient rights\nto grant the rights to its Contributions conveyed by this License.\n\n2.6. Fair Use\n\nThis License is not intended to limit any rights You have under\napplicable copyright doctrines of fair use, fair dealing, or other\nequivalents.\n\n2.7. Conditions\n\nSections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted\nin Section 2.1.\n\n3. Responsibilities\n-------------------\n\n3.1. Distribution of Source Form\n\nAll distribution of Covered Software in Source Code Form, including any\nModifications that You create or to which You contribute, must be under\nt\n\u2026 truncated; read the file named in LicenseFile.",
+  "Name": "bidict",
+  "URL": "https://github.com/jab/bidict",
+  "Version": "0.23.1"
+ },
+ {
+  "Author": "Jason Kirtland",
+  "License": "MIT License",
+  "Name": "blinker",
+  "URL": "http://pythonhosted.org/blinker/",
+  "Version": "1.4"
+ },
+ {
+  "Author": "Kenneth Reitz",
+  "License": "Mozilla Public License 2.0 (MPL 2.0)",
+  "LicenseText": "This package contains a modified version of ca-bundle.crt:\n\nca-bundle.crt -- Bundle of CA Root Certificates\n\nThis is a bundle of X.509 certificates of public Certificate Authorities\n(CA). These were automatically extracted from Mozilla's root certificates\nfile (certdata.txt).  This file can be found in the mozilla source tree:\nhttps://hg.mozilla.org/mozilla-central/file/tip/security/nss/lib/ckfw/builtins/certdata.txt\nIt contains the certificates in PEM format and therefore\ncan be directly used with curl / libcurl / php_curl, or with\nan Apache+mod_ssl webserver for SSL client authentication.\nJust configure this file as the SSLCACertificateFile.#\n\n***** BEGIN LICENSE BLOCK *****\nThis Source Code Form is subject to the terms of the Mozilla Public License,\nv. 2.0. If a copy of the MPL was not distributed with this file, You can obtain\none at http://mozilla.org/MPL/2.0/.\n\n***** END LICENSE BLOCK *****\n@(#) $RCSfile: certdata.txt,v $ $Revision: 1.80 $ $Date: 2011/11/03 15:11:58 $\n",
+  "Name": "certifi",
+  "URL": "https://github.com/certifi/python-certifi",
+  "Version": "2026.7.22"
+ },
+ {
+  "Author": "\"Ahmed R. TAHRI\" <tahri.ahmed@proton.me>",
+  "License": "MIT",
+  "Name": "charset-normalizer",
+  "URL": "https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
+  "Version": "3.5.1"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "BSD-3-Clause",
+  "Name": "click",
+  "URL": "https://github.com/pallets/click/",
+  "Version": "8.5.0"
+ },
+ {
+  "Author": "Sam Clements",
+  "License": "MIT License",
+  "Name": "colorlog",
+  "URL": "https://github.com/borntyping/python-colorlog",
+  "Version": "6.12.0"
+ },
+ {
+  "Author": "Ian Thomas <ianthomas23@gmail.com>",
+  "License": "BSD License",
+  "Name": "contourpy",
+  "URL": "https://github.com/contourpy/contourpy",
+  "Version": "1.3.2"
+ },
+ {
+  "Author": "The Python Cryptographic Authority and individual contributors",
+  "License": "Apache Software License; BSD License",
+  "Name": "cryptography",
+  "URL": "https://github.com/pyca/cryptography",
+  "Version": "3.4.8"
+ },
+ {
+  "Author": "Thomas A Caswell <matplotlib-users@python.org>",
+  "License": "BSD License",
+  "Name": "cycler",
+  "URL": "https://matplotlib.org/cycler/",
+  "Version": "0.12.1"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "MIT License",
+  "Name": "dbus-python",
+  "URL": "http://www.freedesktop.org/wiki/Software/DBusBindings/#python",
+  "Version": "1.2.18"
+ },
+ {
+  "Author": "The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
+  "License": "Apache Software License",
+  "Name": "diffusers",
+  "URL": "https://github.com/huggingface/diffusers",
+  "Version": "0.41.0.dev0"
+ },
+ {
+  "Author": "Nir Cohen",
+  "License": "Apache Software License",
+  "Name": "distro",
+  "URL": "https://github.com/python-distro/distro",
+  "Version": "1.7.0"
+ },
+ {
+  "Author": "Alex Rogozhnikov",
+  "License": "MIT License",
+  "Name": "einops",
+  "URL": "https://github.com/arogozhnikov/einops",
+  "Version": "0.8.2"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "Copyright (c) 2015, Anthony Scopatz\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n",
+  "LicenseText": "Copyright (c) 2015, Anthony Scopatz\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n",
+  "Name": "embreex",
+  "URL": "https://github.com/trimesh/embreex",
+  "Version": "4.4.0"
+ },
+ {
+  "Author": "Alex Gr\u00f6nholm <alex.gronholm@nextday.fi>",
+  "License": "MIT License",
+  "Name": "exceptiongroup",
+  "URL": "https://github.com/agronholm/exceptiongroup/blob/main/CHANGES.rst",
+  "Version": "1.3.1"
+ },
+ {
+  "Author": "Alex Kaszynski <akascap@gmail.com>",
+  "License": "MIT",
+  "Name": "fast_simplification",
+  "URL": "https://github.com/pyvista/fast-simplification",
+  "Version": "0.2.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "MIT",
+  "Name": "filelock",
+  "URL": "https://github.com/tox-dev/py-filelock",
+  "Version": "3.32.3"
+ },
+ {
+  "Author": "Just van Rossum",
+  "License": "MIT",
+  "Name": "fonttools",
+  "URL": "http://github.com/fonttools/fonttools",
+  "Version": "4.63.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "Apache-2.0",
+  "Name": "frozenlist",
+  "URL": "https://github.com/aio-libs/frozenlist",
+  "Version": "1.8.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "BSD-3-Clause",
+  "Name": "fsspec",
+  "URL": "https://github.com/fsspec/filesystem_spec",
+  "Version": "2026.7.0"
+ },
+ {
+  "Author": "Nathaniel J. Smith",
+  "License": "MIT License",
+  "Name": "h11",
+  "URL": "https://github.com/python-hyper/h11",
+  "Version": "0.16.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "Apache-2.0",
+  "Name": "hf-xet",
+  "URL": "https://github.com/huggingface/xet-core",
+  "Version": "1.6.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "UNKNOWN",
+  "LicenseText": "                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, exclu\n\u2026 truncated; read the file named in LicenseFile.",
+  "Name": "hf_transfer",
+  "URL": "https://github.com/huggingface/hf_transfer.git",
+  "Version": "0.1.9"
+ },
+ {
+  "Author": "Tom Christie <tom@tomchristie.com>",
+  "License": "BSD-3-Clause",
+  "Name": "httpcore",
+  "URL": "https://www.encode.io/httpcore/",
+  "Version": "1.0.9"
+ },
+ {
+  "Author": "Joe Gregorio",
+  "License": "MIT License",
+  "Name": "httplib2",
+  "URL": "https://github.com/httplib2/httplib2",
+  "Version": "0.20.2"
+ },
+ {
+  "Author": "Tom Christie <tom@tomchristie.com>",
+  "License": "BSD License",
+  "Name": "httpx",
+  "URL": "https://github.com/encode/httpx",
+  "Version": "0.28.1"
+ },
+ {
+  "Author": "Hugging Face, Inc.",
+  "License": "Apache Software License",
+  "Name": "huggingface_hub",
+  "URL": "https://github.com/huggingface/huggingface_hub",
+  "Version": "1.28.0"
+ },
+ {
+  "Author": "Kim Davies <kim+pypi@gumleaf.org>",
+  "License": "BSD-3-Clause",
+  "Name": "idna",
+  "URL": "https://github.com/kjd/idna",
+  "Version": "3.19"
+ },
+ {
+  "Author": "Jason R. Coombs",
+  "License": "Apache Software License",
+  "Name": "importlib-metadata",
+  "URL": "https://github.com/python/importlib_metadata",
+  "Version": "4.6.4"
+ },
+ {
+  "Author": "Thomas Kluyver",
+  "License": "MIT License",
+  "Name": "jeepney",
+  "URL": "https://gitlab.com/takluyver/jeepney",
+  "Version": "0.7.1"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "BSD License",
+  "Name": "Jinja2",
+  "URL": "https://github.com/pallets/jinja/",
+  "Version": "3.1.6"
+ },
+ {
+  "Author": "Julian Berman <Julian+jsonschema@GrayVines.com>",
+  "License": "MIT",
+  "Name": "jsonschema",
+  "URL": "https://github.com/python-jsonschema/jsonschema",
+  "Version": "4.26.0"
+ },
+ {
+  "Author": "Julian Berman <Julian+jsonschema-specifications@GrayVines.com>",
+  "License": "MIT",
+  "Name": "jsonschema-specifications",
+  "URL": "https://github.com/python-jsonschema/jsonschema-specifications",
+  "Version": "2025.9.1"
+ },
+ {
+  "Author": "Kang Zhang",
+  "License": "MIT License; Python Software Foundation License",
+  "Name": "keyring",
+  "URL": "https://github.com/jaraco/keyring",
+  "Version": "23.5.0"
+ },
+ {
+  "Author": "The Nucleic Development Team <sccolbert@gmail.com>",
+  "License": "BSD License",
+  "Name": "kiwisolver",
+  "URL": "https://github.com/nucleic/kiwi",
+  "Version": "1.5.0"
+ },
+ {
+  "Author": "The Launchpad developers",
+  "License": "GNU Library or Lesser General Public License (LGPL)",
+  "Name": "launchpadlib",
+  "URL": "https://help.launchpad.net/API/launchpadlib",
+  "Version": "1.10.16"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "GNU Library or Lesser General Public License (LGPL)",
+  "Name": "lazr.restfulclient",
+  "URL": "https://launchpad.net/lazr.restfulclient",
+  "Version": "0.14.4"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "GNU Library or Lesser General Public License (LGPL)",
+  "Name": "lazr.uri",
+  "URL": "https://launchpad.net/lazr.uri",
+  "Version": "1.0.6"
+ },
+ {
+  "Author": "lxml dev team",
+  "License": "BSD-3-Clause",
+  "Name": "lxml",
+  "URL": "https://lxml.de/",
+  "Version": "6.1.2"
+ },
+ {
+  "Author": "Emmett Lalish <elalish@gmail.com>",
+  "License": "Apache Software License",
+  "Name": "manifold3d",
+  "URL": "https://github.com/elalish/manifold",
+  "Version": "3.5.2"
+ },
+ {
+  "Author": "Samuel Kogler",
+  "License": "ISC License (ISCL)",
+  "Name": "mapbox_earcut",
+  "URL": "https://github.com/skogler/mapbox_earcut_python",
+  "Version": "2.0.0"
+ },
+ {
+  "Author": "Chris Sewell <chrisj_sewell@hotmail.com>",
+  "License": "MIT License",
+  "Name": "markdown-it-py",
+  "URL": "https://github.com/executablebooks/markdown-it-py",
+  "Version": "4.2.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "BSD-3-Clause",
+  "Name": "MarkupSafe",
+  "URL": "https://github.com/pallets/markupsafe/",
+  "Version": "3.0.3"
+ },
+ {
+  "Author": "John D. Hunter, Michael Droettboom",
+  "License": "Python Software Foundation License",
+  "Name": "matplotlib",
+  "URL": "https://matplotlib.org",
+  "Version": "3.10.9"
+ },
+ {
+  "Author": "Taneli Hukkinen <hukkin@users.noreply.github.com>",
+  "License": "MIT License",
+  "Name": "mdurl",
+  "URL": "https://github.com/executablebooks/mdurl",
+  "Version": "0.1.2"
+ },
+ {
+  "Author": "Erik Rose",
+  "License": "MIT License",
+  "Name": "more-itertools",
+  "URL": "https://github.com/more-itertools/more-itertools",
+  "Version": "8.10.0"
+ },
+ {
+  "Author": "Fredrik Johansson",
+  "License": "BSD License",
+  "Name": "mpmath",
+  "URL": "http://mpmath.org/",
+  "Version": "1.3.0"
+ },
+ {
+  "Author": "Andrew Svetlov",
+  "License": "Apache License 2.0",
+  "Name": "multidict",
+  "URL": "https://github.com/aio-libs/multidict",
+  "Version": "6.7.1"
+ },
+ {
+  "Author": "Aric Hagberg <hagberg@lanl.gov>",
+  "License": "BSD License",
+  "Name": "networkx",
+  "URL": "https://networkx.org/",
+  "Version": "3.4.2"
+ },
+ {
+  "Author": "Travis E. Oliphant et al.",
+  "License": "BSD License",
+  "Name": "numpy",
+  "URL": "https://numpy.org",
+  "Version": "2.2.6"
+ },
+ {
+  "Author": "The OAuthlib Community",
+  "License": "BSD License",
+  "Name": "oauthlib",
+  "URL": "https://github.com/oauthlib/oauthlib",
+  "Version": "3.2.0"
+ },
+ {
+  "Author": "Omry Yadan",
+  "License": "BSD License",
+  "Name": "omegaconf",
+  "URL": "https://github.com/omry/omegaconf",
+  "Version": "2.3.1"
+ },
+ {
+  "Author": "Donald Stufft <donald@stufft.io>",
+  "License": "Apache-2.0 OR BSD-2-Clause",
+  "Name": "packaging",
+  "URL": "https://github.com/pypa/packaging",
+  "Version": "26.3"
+ },
+ {
+  "Author": "Roger Light <roger@atchoo.org>",
+  "License": "EPL-2.0 OR BSD-3-Clause",
+  "Name": "paho-mqtt",
+  "URL": "http://eclipse.org/paho",
+  "Version": "2.1.0"
+ },
+ {
+  "Author": "Jeffrey 'Alex' Clark <aclark@aclark.net>",
+  "License": "MIT-CMU",
+  "Name": "pillow",
+  "URL": "https://python-pillow.github.io",
+  "Version": "12.3.0"
+ },
+ {
+  "Author": "Andrew Svetlov",
+  "License": "Apache Software License",
+  "Name": "propcache",
+  "URL": "https://github.com/aio-libs/propcache",
+  "Version": "0.5.2"
+ },
+ {
+  "Author": "protobuf@googlegroups.com",
+  "License": "3-Clause BSD License",
+  "Name": "protobuf",
+  "URL": "https://developers.google.com/protocol-buffers/",
+  "Version": "7.36.0"
+ },
+ {
+  "Author": "Giampaolo Rodola",
+  "License": "BSD-3-Clause",
+  "Name": "psutil",
+  "URL": "https://github.com/giampaolo/psutil",
+  "Version": "7.2.2"
+ },
+ {
+  "Author": "Jeff Terrace and contributors <jterrace@gmail.com>",
+  "License": "BSD",
+  "Name": "pycollada",
+  "URL": "http://pycollada.readthedocs.org/",
+  "Version": "0.9.3"
+ },
+ {
+  "Author": "Georg Brandl <georg@python.org>",
+  "License": "BSD-2-Clause",
+  "Name": "Pygments",
+  "URL": "https://pygments.org",
+  "Version": "2.21.0"
+ },
+ {
+  "Author": "James Henstridge",
+  "License": "GNU Lesser General Public License v2 or later (LGPLv2+)",
+  "Name": "PyGObject",
+  "URL": "https://pygobject.readthedocs.io",
+  "Version": "3.42.1"
+ },
+ {
+  "Author": "Jose Padilla",
+  "License": "MIT License",
+  "Name": "PyJWT",
+  "URL": "https://github.com/jpadilla/pyjwt",
+  "Version": "2.3.0"
+ },
+ {
+  "Author": "Paul McGuire <ptmcg.gm+pyparsing@gmail.com>",
+  "License": "MIT",
+  "Name": "pyparsing",
+  "URL": "https://github.com/pyparsing/pyparsing/",
+  "Version": "3.3.2"
+ },
+ {
+  "Author": "APT Development Team",
+  "License": "GNU GPL",
+  "Name": "python-apt",
+  "URL": "UNKNOWN",
+  "Version": "2.4.0+ubuntu4.1"
+ },
+ {
+  "Author": "Gustavo Niemeyer",
+  "License": "Apache Software License; BSD License",
+  "Name": "python-dateutil",
+  "URL": "https://github.com/dateutil/dateutil",
+  "Version": "2.9.0.post0"
+ },
+ {
+  "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",
+  "License": "MIT",
+  "Name": "python-engineio",
+  "URL": "https://github.com/miguelgrinberg/python-engineio",
+  "Version": "4.13.5"
+ },
+ {
+  "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",
+  "License": "MIT",
+  "Name": "python-socketio",
+  "URL": "https://github.com/miguelgrinberg/python-socketio",
+  "Version": "5.16.4"
+ },
+ {
+  "Author": "Kirill Simonov",
+  "License": "MIT License",
+  "Name": "PyYAML",
+  "URL": "https://pyyaml.org/",
+  "Version": "6.0.3"
+ },
+ {
+  "Author": "Julian Berman <Julian+referencing@GrayVines.com>",
+  "License": "MIT",
+  "Name": "referencing",
+  "URL": "https://github.com/python-jsonschema/referencing",
+  "Version": "0.37.0"
+ },
+ {
+  "Author": "Matthew Barnett <regex@mrabarnett.plus.com>",
+  "License": "Apache-2.0 AND CNRI-Python",
+  "Name": "regex",
+  "URL": "https://github.com/mrabarnett/mrab-regex",
+  "Version": "2026.7.19"
+ },
+ {
+  "Author": "Kenneth Reitz <me@kennethreitz.org>",
+  "License": "Apache Software License",
+  "Name": "requests",
+  "URL": "https://github.com/psf/requests",
+  "Version": "2.34.2"
+ },
+ {
+  "Author": "Will McGugan",
+  "License": "MIT License",
+  "Name": "rich",
+  "URL": "https://github.com/Textualize/rich",
+  "Version": "15.0.0"
+ },
+ {
+  "Author": "Julian Berman <Julian+rpds@GrayVines.com>",
+  "License": "MIT",
+  "Name": "rpds-py",
+  "URL": "https://github.com/crate-py/rpds",
+  "Version": "0.30.0"
+ },
+ {
+  "Author": "Sean Gillies <sean.gillies@gmail.com>",
+  "License": "MIT",
+  "Name": "rtree",
+  "URL": "https://github.com/Toblerity/rtree",
+  "Version": "1.4.1"
+ },
+ {
+  "Author": "Nicolas Patry <patry.nicolas@protonmail.com>, Luc Georges <luc@huggingface.co>, Dani\u00ebl De Kok <daniel.dekok@huggingface.co>",
+  "License": "Apache Software License",
+  "Name": "safetensors",
+  "URL": "https://github.com/huggingface/safetensors",
+  "Version": "0.8.0"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "BSD License",
+  "Name": "scipy",
+  "URL": "https://scipy.org/",
+  "Version": "1.15.3"
+ },
+ {
+  "Author": "Dmitry Shachnev",
+  "License": "BSD License",
+  "Name": "SecretStorage",
+  "URL": "https://github.com/mitya57/secretstorage",
+  "Version": "3.3.1"
+ },
+ {
+  "Author": "Taku Kudo <taku@google.com>",
+  "License": "Apache-2.0",
+  "Name": "sentencepiece",
+  "URL": "https://github.com/google/sentencepiece",
+  "Version": "0.2.2"
+ },
+ {
+  "Author": "Sean Gillies",
+  "License": "BSD License",
+  "Name": "shapely",
+  "URL": "https://github.com/shapely/shapely",
+  "Version": "2.1.2"
+ },
+ {
+  "Author": "Tzu-ping Chung",
+  "License": "ISC License (ISCL)",
+  "Name": "shellingham",
+  "URL": "https://github.com/sarugaku/shellingham",
+  "Version": "1.5.4"
+ },
+ {
+  "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",
+  "License": "MIT License",
+  "Name": "simple-websocket",
+  "URL": "https://github.com/miguelgrinberg/simple-websocket",
+  "Version": "1.1.0"
+ },
+ {
+  "Author": "Benjamin Peterson",
+  "License": "MIT License",
+  "Name": "six",
+  "URL": "https://github.com/benjaminp/six",
+  "Version": "1.16.0"
+ },
+ {
+  "Author": "Lennart Regebro <regebro@gmail.com>",
+  "License": "MIT License",
+  "Name": "svg.path",
+  "URL": "https://github.com/regebro/svg.path",
+  "Version": "7.1"
+ },
+ {
+  "Author": "SymPy development team",
+  "License": "BSD License",
+  "Name": "sympy",
+  "URL": "https://sympy.org",
+  "Version": "1.14.0"
+ },
+ {
+  "Author": "Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co>",
+  "License": "Apache Software License",
+  "Name": "tokenizers",
+  "URL": "https://github.com/huggingface/tokenizers",
+  "Version": "0.23.1"
+ },
+ {
+  "Author": "PyTorch Team",
+  "License": "BSD License",
+  "Name": "torch",
+  "URL": "https://pytorch.org/",
+  "Version": "2.7.1+cpu"
+ },
+ {
+  "Author": "Soumith Chintala, David Pollack, Sean Naren, Peter Goldsborough, Moto Hira, Caroline Chen, Jeff Hwang, Zhaoheng Ni, Xiaohui Zhang",
+  "License": "BSD License",
+  "Name": "torchaudio",
+  "URL": "https://github.com/pytorch/audio",
+  "Version": "2.7.1+cpu"
+ },
+ {
+  "Author": "PyTorch Core Team",
+  "License": "BSD",
+  "Name": "torchvision",
+  "URL": "https://github.com/pytorch/vision",
+  "Version": "0.22.1+cpu"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "MPL-2.0 AND MIT",
+  "LicenseText": "`tqdm` is a product of collaborative work.\nUnless otherwise stated, all authors (see commit logs) retain copyright\nfor their respective work, and release the work under the MIT licence\n(text below).\n\nExceptions or notable authors are listed below\nin reverse chronological order:\n\n* files: *\n  MPL-2.0 2015-2026 (c) Casper da Costa-Luis\n  [casperdcl](https://github.com/casperdcl).\n* files: tqdm/_tqdm.py\n  MIT 2016 (c) [PR #96] on behalf of Google Inc.\n* files: tqdm/_tqdm.py README.rst .gitignore\n  MIT 2013 (c) Noam Yorav-Raphael, original author.\n\n[PR #96]: https://github.com/tqdm/tqdm/pull/96\n\n\nMozilla Public Licence (MPL) v. 2.0 - Exhibit A\n-----------------------------------------------\n\nThis Source Code Form is subject to the terms of the\nMozilla Public License, v. 2.0.\nIf a copy of the MPL was not distributed with this project,\nYou can obtain one at https://mozilla.org/MPL/2.0/.\n\n\nMIT License (MIT)\n-----------------\n\nCopyright (c) 2013 noamraph\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+  "Name": "tqdm",
+  "URL": "https://tqdm.github.io",
+  "Version": "4.70.0"
+ },
+ {
+  "Author": "The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors)",
+  "License": "Apache 2.0 License",
+  "Name": "transformers",
+  "URL": "https://github.com/huggingface/transformers",
+  "Version": "5.16.1"
+ },
+ {
+  "Author": "Michael Dawson-Haggerty <mikedh@kerfed.com>",
+  "License": "MIT License",
+  "Name": "trimesh",
+  "URL": "https://github.com/mikedh/trimesh",
+  "Version": "5.0.0"
+ },
+ {
+  "Author": "=?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com>",
+  "License": "MIT",
+  "Name": "typer",
+  "URL": "https://github.com/fastapi/typer",
+  "Version": "0.27.1"
+ },
+ {
+  "Author": "\"Guido van Rossum, Jukka Lehtosalo, \u0141ukasz Langa, Michael Lee\" <levkivskyi@gmail.com>",
+  "License": "PSF-2.0",
+  "Name": "typing_extensions",
+  "URL": "https://github.com/python/typing_extensions",
+  "Version": "4.16.0"
+ },
+ {
+  "Author": "Andrey Petrov <andrey.petrov@shazow.net>",
+  "License": "MIT",
+  "Name": "urllib3",
+  "URL": "https://github.com/urllib3/urllib3/blob/main/CHANGES.rst",
+  "Version": "2.7.0"
+ },
+ {
+  "Author": "Thomas Wolf <thomas@huggingface.co>",
+  "License": "UNKNOWN",
+  "LicenseText": "MIT License\n\nCopyright (c) 2022 Thomas Wolf\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n\nAdditionally, the V-HACD header-only C++ library (src/vhacdx/VHACD.h) is:\n\n\nCopyright (c) 2011 Khaled Mamou (kmamou at gmail dot com)\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. The names of the contributors may not be used to endorse or promote products\n   derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\nANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\nWARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+  "Name": "vhacdx",
+  "URL": "https://github.com/trimesh/vhacdx",
+  "Version": "0.0.10"
+ },
+ {
+  "Author": "UNKNOWN",
+  "License": "GNU Library or Lesser General Public License (LGPL)",
+  "Name": "wadllib",
+  "URL": "https://launchpad.net/wadllib",
+  "Version": "1.3.6"
+ },
+ {
+  "Author": "Benno Rice <benno@jeamland.net>",
+  "License": "MIT",
+  "Name": "wsproto",
+  "URL": "https://github.com/python-hyper/wsproto/",
+  "Version": "1.3.2"
+ },
+ {
+  "Author": "Yue Du",
+  "License": "BSD-2-Clause",
+  "Name": "xxhash",
+  "URL": "https://github.com/ifduyue/python-xxhash",
+  "Version": "4.0.1"
+ },
+ {
+  "Author": "Andrew Svetlov",
+  "License": "Apache-2.0",
+  "Name": "yarl",
+  "URL": "https://github.com/aio-libs/yarl",
+  "Version": "1.24.5"
+ },
+ {
+  "Author": "Jason R. Coombs",
+  "License": "MIT License",
+  "Name": "zipp",
+  "URL": "https://github.com/jaraco/zipp",
+  "Version": "1.0.0"
+ }
+]

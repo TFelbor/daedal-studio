@@ -1,34 +1,34 @@
 {
  "@dimforge/rapier3d-compat@0.12.0": {
-  "licenseFile": "web/node_modules/@dimforge/rapier3d-compat/LICENSE",
+  "licenseFile": "node_modules/@dimforge/rapier3d-compat/LICENSE",
   "licenses": "Apache-2.0",
   "path": "web/node_modules/@dimforge/rapier3d-compat",
   "repository": "https://github.com/dimforge/rapier.js"
  },
  "@reduxjs/toolkit@2.12.0": {
   "email": "mark@isquaredsoftware.com",
-  "licenseFile": "web/node_modules/@reduxjs/toolkit/LICENSE",
+  "licenseFile": "node_modules/@reduxjs/toolkit/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@reduxjs/toolkit",
   "publisher": "Mark Erikson",
   "repository": "https://github.com/reduxjs/redux-toolkit"
  },
  "@standard-schema/spec@1.1.0": {
-  "licenseFile": "web/node_modules/@standard-schema/spec/LICENSE",
+  "licenseFile": "node_modules/@standard-schema/spec/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@standard-schema/spec",
   "publisher": "Colin McDonnell",
   "repository": "https://github.com/standard-schema/standard-schema"
  },
  "@standard-schema/utils@0.3.0": {
-  "licenseFile": "web/node_modules/@standard-schema/utils/LICENSE",
+  "licenseFile": "node_modules/@standard-schema/utils/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@standard-schema/utils",
   "publisher": "Fabian Hiller",
   "repository": "https://github.com/standard-schema/standard-schema"
  },
  "@tweenjs/tween.js@23.1.3": {
-  "licenseFile": "web/node_modules/@tweenjs/tween.js/LICENSE",
+  "licenseFile": "node_modules/@tweenjs/tween.js/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@tweenjs/tween.js",
   "publisher": "tween.js contributors",
@@ -36,92 +36,92 @@
   "url": "https://github.com/tweenjs/tween.js/graphs/contributors"
  },
  "@types/d3-array@3.2.2": {
-  "licenseFile": "web/node_modules/@types/d3-array/LICENSE",
+  "licenseFile": "node_modules/@types/d3-array/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-array",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-color@3.1.3": {
-  "licenseFile": "web/node_modules/@types/d3-color/LICENSE",
+  "licenseFile": "node_modules/@types/d3-color/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-color",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-ease@3.0.2": {
-  "licenseFile": "web/node_modules/@types/d3-ease/LICENSE",
+  "licenseFile": "node_modules/@types/d3-ease/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-ease",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-interpolate@3.0.4": {
-  "licenseFile": "web/node_modules/@types/d3-interpolate/LICENSE",
+  "licenseFile": "node_modules/@types/d3-interpolate/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-interpolate",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-path@3.1.1": {
-  "licenseFile": "web/node_modules/@types/d3-path/LICENSE",
+  "licenseFile": "node_modules/@types/d3-path/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-path",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-scale@4.0.9": {
-  "licenseFile": "web/node_modules/@types/d3-scale/LICENSE",
+  "licenseFile": "node_modules/@types/d3-scale/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-scale",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-shape@3.1.8": {
-  "licenseFile": "web/node_modules/@types/d3-shape/LICENSE",
+  "licenseFile": "node_modules/@types/d3-shape/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-shape",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-time@3.0.4": {
-  "licenseFile": "web/node_modules/@types/d3-time/LICENSE",
+  "licenseFile": "node_modules/@types/d3-time/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-time",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/d3-timer@3.0.2": {
-  "licenseFile": "web/node_modules/@types/d3-timer/LICENSE",
+  "licenseFile": "node_modules/@types/d3-timer/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/d3-timer",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/react@19.2.17": {
-  "licenseFile": "web/node_modules/@types/react/LICENSE",
+  "licenseFile": "node_modules/@types/react/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/react",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/stats.js@0.17.4": {
-  "licenseFile": "web/node_modules/@types/stats.js/LICENSE",
+  "licenseFile": "node_modules/@types/stats.js/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/stats.js",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/three@0.184.1": {
-  "licenseFile": "web/node_modules/@types/three/LICENSE",
+  "licenseFile": "node_modules/@types/three/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/three",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/use-sync-external-store@0.0.6": {
-  "licenseFile": "web/node_modules/@types/use-sync-external-store/LICENSE",
+  "licenseFile": "node_modules/@types/use-sync-external-store/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/use-sync-external-store",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "@types/webxr@0.5.24": {
-  "licenseFile": "web/node_modules/@types/webxr/LICENSE",
+  "licenseFile": "node_modules/@types/webxr/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@types/webxr",
   "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
  },
  "clsx@2.1.1": {
   "email": "luke.edwards05@gmail.com",
-  "licenseFile": "web/node_modules/clsx/license",
+  "licenseFile": "node_modules/clsx/license",
   "licenses": "MIT",
   "path": "web/node_modules/clsx",
   "publisher": "Luke Edwards",
@@ -130,7 +130,7 @@
  },
  "cookie@1.1.1": {
   "email": "shtylman@gmail.com",
-  "licenseFile": "web/node_modules/cookie/LICENSE",
+  "licenseFile": "node_modules/cookie/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/cookie",
   "publisher": "Roman Shtylman",
@@ -138,14 +138,14 @@
  },
  "csstype@3.2.3": {
   "email": "fredrik.nicol@gmail.com",
-  "licenseFile": "web/node_modules/csstype/LICENSE",
+  "licenseFile": "node_modules/csstype/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/csstype",
   "publisher": "Fredrik Nicol",
   "repository": "https://github.com/frenic/csstype"
  },
  "d3-array@3.2.4": {
-  "licenseFile": "web/node_modules/d3-array/LICENSE",
+  "licenseFile": "node_modules/d3-array/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-array",
   "publisher": "Mike Bostock",
@@ -153,7 +153,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-color@3.1.0": {
-  "licenseFile": "web/node_modules/d3-color/LICENSE",
+  "licenseFile": "node_modules/d3-color/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-color",
   "publisher": "Mike Bostock",
@@ -161,7 +161,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-ease@3.0.1": {
-  "licenseFile": "web/node_modules/d3-ease/LICENSE",
+  "licenseFile": "node_modules/d3-ease/LICENSE",
   "licenses": "BSD-3-Clause",
   "path": "web/node_modules/d3-ease",
   "publisher": "Mike Bostock",
@@ -169,7 +169,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-format@3.1.2": {
-  "licenseFile": "web/node_modules/d3-format/LICENSE",
+  "licenseFile": "node_modules/d3-format/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-format",
   "publisher": "Mike Bostock",
@@ -177,7 +177,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-interpolate@3.0.1": {
-  "licenseFile": "web/node_modules/d3-interpolate/LICENSE",
+  "licenseFile": "node_modules/d3-interpolate/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-interpolate",
   "publisher": "Mike Bostock",
@@ -185,7 +185,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-path@3.1.0": {
-  "licenseFile": "web/node_modules/d3-path/LICENSE",
+  "licenseFile": "node_modules/d3-path/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-path",
   "publisher": "Mike Bostock",
@@ -193,7 +193,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-scale@4.0.2": {
-  "licenseFile": "web/node_modules/d3-scale/LICENSE",
+  "licenseFile": "node_modules/d3-scale/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-scale",
   "publisher": "Mike Bostock",
@@ -201,7 +201,7 @@
   "url": "https://bost.ocks.org/mike"
  },
  "d3-shape@3.2.0": {
-  "licenseFile": "web/node_modules/d3-shape/LICENSE",
+  "licenseFile": "node_modules/d3-shape/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-shape",
   "publisher": "Mike Bostock",
@@ -209,7 +209,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-time-format@4.1.0": {
-  "licenseFile": "web/node_modules/d3-time-format/LICENSE",
+  "licenseFile": "node_modules/d3-time-format/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-time-format",
   "publisher": "Mike Bostock",
@@ -217,7 +217,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-time@3.1.0": {
-  "licenseFile": "web/node_modules/d3-time/LICENSE",
+  "licenseFile": "node_modules/d3-time/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-time",
   "publisher": "Mike Bostock",
@@ -225,7 +225,7 @@
   "url": "http://bost.ocks.org/mike"
  },
  "d3-timer@3.0.1": {
-  "licenseFile": "web/node_modules/d3-timer/LICENSE",
+  "licenseFile": "node_modules/d3-timer/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/d3-timer",
   "publisher": "Mike Bostock",
@@ -234,20 +234,20 @@
  },
  "decimal.js-light@2.5.1": {
   "email": "M8ch88l@gmail.com",
-  "licenseFile": "web/node_modules/decimal.js-light/LICENCE.md",
+  "licenseFile": "node_modules/decimal.js-light/LICENCE.md",
   "licenses": "MIT",
   "path": "web/node_modules/decimal.js-light",
   "publisher": "Michael Mclaughlin",
   "repository": "https://github.com/MikeMcl/decimal.js-light"
  },
  "es-toolkit@1.47.0": {
-  "licenseFile": "web/node_modules/es-toolkit/LICENSE",
+  "licenseFile": "node_modules/es-toolkit/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/es-toolkit",
   "repository": "https://github.com/toss/es-toolkit"
  },
  "eventemitter3@5.0.4": {
-  "licenseFile": "web/node_modules/eventemitter3/LICENSE",
+  "licenseFile": "node_modules/eventemitter3/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/eventemitter3",
   "publisher": "Arnout Kazemier",
@@ -255,14 +255,14 @@
  },
  "fflate@0.8.3": {
   "email": "arjunbarrett@gmail.com",
-  "licenseFile": "web/node_modules/fflate/LICENSE",
+  "licenseFile": "node_modules/fflate/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/fflate",
   "publisher": "Arjun Barrett",
   "repository": "https://github.com/101arrowz/fflate"
  },
  "gcode-preview@2.18.0": {
-  "licenseFile": "web/node_modules/gcode-preview/LICENSE",
+  "licenseFile": "node_modules/gcode-preview/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/gcode-preview",
   "publisher": "remcoder@gmail.com",
@@ -270,7 +270,7 @@
  },
  "immer@10.2.0": {
   "email": "info@michel.codes",
-  "licenseFile": "web/node_modules/immer/LICENSE",
+  "licenseFile": "node_modules/immer/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/immer",
   "publisher": "Michel Weststrate",
@@ -278,14 +278,14 @@
  },
  "immer@11.1.8": {
   "email": "info@michel.codes",
-  "licenseFile": "web/node_modules/@reduxjs/toolkit/node_modules/immer/LICENSE",
+  "licenseFile": "node_modules/@reduxjs/toolkit/node_modules/immer/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/@reduxjs/toolkit/node_modules/immer",
   "publisher": "Michel Weststrate",
   "repository": "https://github.com/immerjs/immer"
  },
  "internmap@2.0.3": {
-  "licenseFile": "web/node_modules/internmap/LICENSE",
+  "licenseFile": "node_modules/internmap/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/internmap",
   "publisher": "Mike Bostock",
@@ -293,40 +293,40 @@
   "url": "https://bost.ocks.org/mike"
  },
  "lil-gui@0.19.2": {
-  "licenseFile": "web/node_modules/lil-gui/LICENSE.md",
+  "licenseFile": "node_modules/lil-gui/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/lil-gui",
   "publisher": "George Michael Brower"
  },
  "lucide-react@1.17.0": {
-  "licenseFile": "web/node_modules/lucide-react/LICENSE",
+  "licenseFile": "node_modules/lucide-react/LICENSE",
   "licenses": "ISC",
   "path": "web/node_modules/lucide-react",
   "publisher": "Eric Fennis",
   "repository": "https://github.com/lucide-icons/lucide"
  },
  "meshoptimizer@1.1.1": {
-  "licenseFile": "web/node_modules/meshoptimizer/LICENSE.md",
+  "licenseFile": "node_modules/meshoptimizer/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/meshoptimizer",
   "publisher": "Arseny Kapoulkine",
   "repository": "https://github.com/zeux/meshoptimizer"
  },
  "react-dom@19.2.7": {
-  "licenseFile": "web/node_modules/react-dom/LICENSE",
+  "licenseFile": "node_modules/react-dom/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/react-dom",
   "repository": "https://github.com/facebook/react"
  },
  "react-is@19.2.7": {
-  "licenseFile": "web/node_modules/react-is/LICENSE",
+  "licenseFile": "node_modules/react-is/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/react-is",
   "repository": "https://github.com/facebook/react"
  },
  "react-redux@9.3.0": {
   "email": "dan.abramov@me.com",
-  "licenseFile": "web/node_modules/react-redux/LICENSE.md",
+  "licenseFile": "node_modules/react-redux/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/react-redux",
   "publisher": "Dan Abramov",
@@ -335,7 +335,7 @@
  },
  "react-router-dom@7.17.0": {
   "email": "hello@remix.run",
-  "licenseFile": "web/node_modules/react-router-dom/LICENSE.md",
+  "licenseFile": "node_modules/react-router-dom/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/react-router-dom",
   "publisher": "Remix Software",
@@ -343,20 +343,20 @@
  },
  "react-router@7.17.0": {
   "email": "hello@remix.run",
-  "licenseFile": "web/node_modules/react-router/LICENSE.md",
+  "licenseFile": "node_modules/react-router/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/react-router",
   "publisher": "Remix Software",
   "repository": "https://github.com/remix-run/react-router"
  },
  "react@19.2.7": {
-  "licenseFile": "web/node_modules/react/LICENSE",
+  "licenseFile": "node_modules/react/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/react",
   "repository": "https://github.com/facebook/react"
  },
  "recharts@3.8.1": {
-  "licenseFile": "web/node_modules/recharts/LICENSE",
+  "licenseFile": "node_modules/recharts/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/recharts",
   "publisher": "recharts group",
@@ -364,32 +364,32 @@
  },
  "redux-thunk@3.1.0": {
   "email": "dan.abramov@me.com",
-  "licenseFile": "web/node_modules/redux-thunk/LICENSE.md",
+  "licenseFile": "node_modules/redux-thunk/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/redux-thunk",
   "publisher": "Dan Abramov",
   "repository": "https://github.com/reduxjs/redux-thunk"
  },
  "redux@5.0.1": {
-  "licenseFile": "web/node_modules/redux/LICENSE.md",
+  "licenseFile": "node_modules/redux/LICENSE.md",
   "licenses": "MIT",
   "path": "web/node_modules/redux",
   "repository": "https://github.com/reduxjs/redux"
  },
  "reselect@5.1.1": {
-  "licenseFile": "web/node_modules/reselect/LICENSE",
+  "licenseFile": "node_modules/reselect/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/reselect",
   "repository": "https://github.com/reduxjs/reselect"
  },
  "scheduler@0.27.0": {
-  "licenseFile": "web/node_modules/scheduler/LICENSE",
+  "licenseFile": "node_modules/scheduler/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/scheduler",
   "repository": "https://github.com/facebook/react"
  },
  "set-cookie-parser@2.7.2": {
-  "licenseFile": "web/node_modules/set-cookie-parser/LICENSE",
+  "licenseFile": "node_modules/set-cookie-parser/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/set-cookie-parser",
   "publisher": "Nathan Friedly",
@@ -397,14 +397,14 @@
   "url": "http://nfriedly.com/"
  },
  "three@0.159.0": {
-  "licenseFile": "web/node_modules/gcode-preview/node_modules/three/LICENSE",
+  "licenseFile": "node_modules/gcode-preview/node_modules/three/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/gcode-preview/node_modules/three",
   "publisher": "mrdoob",
   "repository": "https://github.com/mrdoob/three.js"
  },
  "three@0.184.0": {
-  "licenseFile": "web/node_modules/three/LICENSE",
+  "licenseFile": "node_modules/three/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/three",
   "publisher": "mrdoob",
@@ -412,27 +412,27 @@
  },
  "tiny-invariant@1.3.3": {
   "email": "alexreardon@gmail.com",
-  "licenseFile": "web/node_modules/tiny-invariant/LICENSE",
+  "licenseFile": "node_modules/tiny-invariant/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/tiny-invariant",
   "publisher": "Alex Reardon",
   "repository": "https://github.com/alexreardon/tiny-invariant"
  },
  "use-sync-external-store@1.6.0": {
-  "licenseFile": "web/node_modules/use-sync-external-store/LICENSE",
+  "licenseFile": "node_modules/use-sync-external-store/LICENSE",
   "licenses": "MIT",
   "path": "web/node_modules/use-sync-external-store",
   "repository": "https://github.com/facebook/react"
  },
  "victory-vendor@37.3.6": {
-  "licenseFile": "web/node_modules/victory-vendor/README.md",
+  "licenseFile": "node_modules/victory-vendor/README.md",
   "licenses": "MIT AND ISC",
   "path": "web/node_modules/victory-vendor",
   "publisher": "Formidable",
   "repository": "https://github.com/FormidableLabs/victory"
  },
  "web@0.0.0": {
-  "licenseFile": "web/README.md",
+  "licenseFile": "README.md",
   "licenses": "UNLICENSED",
   "path": "web",
   "private": true
