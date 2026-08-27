@@ -97,7 +97,12 @@ jobs:
         # Run first and named separately. A licence violation is not an ordinary test
         # failure — it is the one class of defect that cannot be fixed after a release —
         # so it should be legible from the job list without opening the log.
-        run: pytest tests/test_licensing_guards.py
+        #
+        # `test_licence_data.py` joins it because it holds the same class of check over
+        # the committed tree in `licenses/`: an undocumented data file, a workflow that
+        # stopped writing an expected source, or a model swapped in the code and not in
+        # ARCHITECTURE.md. Those go wrong silently and are what the audit reads.
+        run: pytest tests/test_licensing_guards.py tests/test_licence_data.py
 
       - name: Test suite
         run: pytest tests/

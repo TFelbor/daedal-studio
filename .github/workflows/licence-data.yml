@@ -52,9 +52,12 @@ on:
         type: boolean
         default: false
 
+# Same rule as ci.yml: a newer push supersedes an in-flight run, except on `main`.
+# Cancelling there would drop the data commit for that merge, and the next merge would
+# report its delta against a tree two merges old.
 concurrency:
   group: licence-data-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -139,6 +142,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+          # 20, not the 22 ci.yml builds on: `infra/docker/server.Dockerfile` builds the
+          # bundle on `node:20-alpine`, and this job documents the tree that ships.
+          # Resolution is lockfile-driven either way, so the pin is about honesty rather
+          # than outcome.
           node-version: "20"
           cache: npm
           cache-dependency-path: web/package-lock.json
