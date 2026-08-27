@@ -53,6 +53,7 @@ from pythonsrc.licence_policy import (  # noqa: E402  (path set above)
     DENY,
     FLAG,
     PROJECT_LICENCE,
+    UNKNOWN,
     verdict,
     worst_severity,
 )
@@ -302,7 +303,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
         source_name = str(path.relative_to(licences_dir))
         source_histogram: Counter[str] = Counter()
 
-        os_aggregate: dict[str, dict[str, Any]] = {}
+        aggregate: dict[tuple[str, str], dict[str, Any]] = {}
         self_declared = 0
 
         for row in rows:
@@ -331,14 +332,19 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
             # `allow` rows are counted above and listed only when they are a recorded
             # exception — an arm's-length or reviewed-copyleft component carries a note,
             # and those are exactly the rows an auditor must not re-litigate weekly.
-            # Copyleft in the OS layer is expected and aggregated; a denial never is.
-            if (
-                severity == FLAG
-                and row_type in OS_PACKAGE_TYPES
-                and not row_in_process
-            ):
-                bucket = os_aggregate.setdefault(
-                    classification,
+            # Two kinds of SBOM row are expected in bulk and say nothing individually:
+            # the operating system underneath, and a wheel whose licence syft could not
+            # read but the dedicated tool did. Both are aggregated. A denial never is.
+            layer = ""
+            if descriptor["ecosystem"] == "image":
+                if row_type in OS_PACKAGE_TYPES and not row_in_process:
+                    layer = "os"
+                elif row_type in LINKED_PACKAGE_TYPES and classification == UNKNOWN:
+                    layer = "unreadable"
+
+            if severity == FLAG and layer:
+                bucket = aggregate.setdefault(
+                    (layer, classification),
                     {"count": 0, "packages": [], "licences": Counter()},
                 )
                 bucket["count"] += 1
@@ -360,11 +366,28 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                     }
                 )
 
-        for classification, bucket in sorted(os_aggregate.items()):
+        for (layer, classification), bucket in sorted(aggregate.items()):
             packages = sorted(bucket["packages"])
+            if layer == "os":
+                label = f"({bucket['count']} OS packages)"
+                note = (
+                    "Operating-system layer of the image. Not linked in-process and not "
+                    "distributed today; a change in this count means a base image changed. "
+                    "Distributing the image would put source-offer obligations on the "
+                    "copyleft entries — see THIRD-PARTY-NOTICES.md."
+                )
+            else:
+                label = f"({bucket['count']} packages with no licence metadata)"
+                note = (
+                    "syft could not read a licence from the package metadata. These are "
+                    "the same distributions the pip-licenses / license-checker file for "
+                    "this image covers, and that file is the authoritative reading — a row "
+                    "each here would be 200 findings a week that another file already "
+                    "answers."
+                )
             findings.append(
                 {
-                    "package": f"({bucket['count']} OS packages)",
+                    "package": label,
                     "version": "",
                     "licence": ", ".join(
                         f"{name} x{count}" for name, count in bucket["licences"].most_common(6)
@@ -374,15 +397,11 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                     "source": source_name,
                     "ecosystem": descriptor["ecosystem"],
                     "aggregate": True,
+                    "layer": layer,
                     "count": bucket["count"],
                     "packages": packages[:80],
                     "packages_truncated": max(0, len(packages) - 80),
-                    "note": (
-                        "Operating-system layer of the image. Not linked in-process and "
-                        "not distributed today; a change in this count means a base image "
-                        "changed. Distributing the image would put source-offer "
-                        "obligations on the copyleft entries — see THIRD-PARTY-NOTICES.md."
-                    ),
+                    "note": note,
                 }
             )
 
@@ -469,7 +488,7 @@ def _digest(report: dict[str, Any]) -> dict[str, Any]:
         # would report one every time.
         "findings": sorted(
             (
-                f"{f['severity']}:{f['source']}:os-{f['classification']}:{f['count']}"
+                f"{f['severity']}:{f['source']}:{f.get('layer', 'os')}-{f['classification']}:{f['count']}"
                 if f.get("aggregate")
                 else f"{f['severity']}:{f['source']}:{f['package']}@{f['version']}:{f['licence']}"
             )

@@ -109,7 +109,7 @@ resolution quality: **not measured**.
 | | |
 |---|---|
 | **Code** | `pythonsrc/engineer.py` |
-| **Libraries** | `trimesh` 4.11.2 (MIT) closes the surface; `manifold3d` 3.5.2 (Apache-2.0) guarantees the result and does the boolean union; `fast-simplification` 0.1.13; `scipy` 1.15.3; `numpy` 2.2.6 |
+| **Libraries** | `trimesh` 4.11.2 pinned, 5.0.0 resolved in the image (MIT) closes the surface; `manifold3d` 3.5.2 (Apache-2.0) guarantees the result and does the boolean union; `fast-simplification` 0.1.13; `scipy` 1.15.3; `numpy` 2.2.6 |
 | **Removed** | `pymeshfix` — wraps MeshFix, which requires a negotiated contract for commercial use |
 | **Hardware** | CPU only. Runs anywhere, including in the amd64 images |
 | **Knobs** | `--target-mm` (50.0), `--scale-axis` (`height`), `--faces`, `--hollow`, `VOXEL_REMESH_RESOLUTION=128`, `MAX_CLOSE_ROUNDS=8` |
@@ -129,8 +129,9 @@ resolution quality: **not measured**.
 `pythonsrc/printability.py` — 11 deterministic checks, weighted 0–100 score, verdict
 `ready` / `risky` / `unprintable`. Backed by `manifold3d` for the self-intersection
 test. Wall thickness is measured by voxelising and taking a distance transform, **not**
-by ray casting, because `trimesh.proximity.thickness` needs `rtree` and that would put a
-binary dependency in every image. Advisory: a low score blocks nothing unless
+by ray casting, because `trimesh.proximity.thickness` needs `rtree`. (`trimesh[easy]`
+does install `rtree` in the CPU images — so the measurement is independent of it by
+choice, not by absence.) Advisory: a low score blocks nothing unless
 `--min-printability` is passed. **Runtime: not measured.**
 
 ---
@@ -209,7 +210,7 @@ misses them will draw the wrong conclusion about what is installed.
 | `diffusers` | `==0.37.0` | `git+https://github.com/huggingface/diffusers.git` (unpinned HEAD) |
 | `transformers` | `==5.1.0` | `>=4.45.0` |
 | `accelerate` | `==1.12.0` | `>=0.33.0` |
-| `trimesh` | `==4.11.2` | `trimesh[all]>=4.0.0` |
+| `trimesh` | `==4.11.2` | `trimesh[easy]>=4.0.0` — **resolved to 5.0.0** in the image built 2026-08-27, a major version ahead of the pin |
 | `manifold3d` | `==3.5.2` | `>=3.0.0` |
 | `numpy` | `==2.2.6` | `>=1.24.0` |
 
@@ -218,6 +219,11 @@ Two more shapes worth holding in mind:
 * **`requirements.txt` is `-r requirements-mac.txt`.** A plain
   `pip install -r requirements.txt` on Linux tries to install `mflux`/`mlx`.
   Use `requirements-linux.txt`, or the images.
+* **`trimesh[all]` was `trimesh[easy]` as of 2026-08-27.** `[all]` includes trimesh's own
+  `test-more` extra, which installed `pymeshlab` (GPL-3.0) and `triangle` (LGPL-3.0) into
+  both CPU images. `[easy]` still installs `rtree`, which
+  `pythonsrc/printability.py`'s comment says is absent — the comment describes a
+  deliberate independence from it, not the contents of the image.
 * **`infra/docker/server.Dockerfile` pins nothing.** Its `pip install` list appears in no
   requirements file, which is why the api-server tree is captured from the built image
   (`licenses/python-api-server.json`) rather than read off a manifest.

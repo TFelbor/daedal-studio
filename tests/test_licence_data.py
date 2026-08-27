@@ -152,6 +152,78 @@ def test_strong_copyleft_in_an_image_is_a_flag_not_a_denial():
     assert verdict("bash", "GPL-3.0-or-later", in_process=True)[0] == DENY
 
 
+# The first CI run of the committed audit reported five denials. Three were defects in
+# this scoring code, and each of them is now a test: a package that declares several
+# licences at once, a distro-provided package nobody chose, and a GPL library that really
+# was installed. Getting the first two wrong is how a gate becomes something people
+# switch off.
+
+
+def test_a_mixed_declaration_is_a_reading_task_not_a_denial():
+    """docutils declares "BSD License; GNU General Public License (GPL); Public Domain".
+
+    Read as SPDX `AND` that is a denial; read as `OR` it is permissive. Neither is true —
+    different files in the package carry different licences, so a person has to look.
+    The classification still records that GPL is in there.
+    """
+    declaration = "BSD License; GNU General Public License (GPL); Public Domain"
+    severity, classification, note = verdict("docutils", declaration)
+    assert severity == FLAG
+    assert classification == STRONG_COPYLEFT
+    assert "Several licences declared" in note
+
+
+def test_a_single_strong_copyleft_declaration_still_denies():
+    """The mixed-declaration rule must not become a way through the gate."""
+    assert verdict("pymeshlab", "GPL3")[0] == DENY
+    assert verdict("pymeshlab", "GPL-3.0-only")[0] == DENY
+
+
+def test_a_distro_provided_package_is_flagged_not_denied():
+    """`python-apt` is in every ubuntu:22.04 image's dist-packages.
+
+    Nothing chose it, no requirements file names it, and nothing here imports it — but it
+    is GPL-2 and a distributed image would carry obligations for it, so it is a recorded
+    flag rather than either a denial or a pass.
+    """
+    severity, _, note = verdict("python-apt", "GNU GPL")
+    assert severity == FLAG
+    assert "python3 install" in note
+
+
+def test_the_copyleft_extra_scanner_reads_a_whole_manifest():
+    """`trimesh[all]` pulls pymeshlab (GPL-3.0) through trimesh's own test extra."""
+    from pythonsrc.licence_policy import find_copyleft_extras
+
+    assert find_copyleft_extras('RUN pip install "trimesh[all]>=4.0.0"')
+    assert not find_copyleft_extras('RUN pip install "trimesh[easy]>=4.0.0"')
+
+
+def test_a_full_licence_text_in_the_metadata_field_is_read_as_a_licence():
+    """`cascadio`, `embreex` and `xatlas` ship their whole licence in that field.
+
+    MIT's text contains " and " a dozen times, so expression-splitting turned three
+    permissive packages into `unknown` and asked a person to read what the tool had
+    already been handed. Above 200 characters the string is text, not an expression.
+    """
+    mit_text = (
+        "The MIT License (MIT)\n\nCopyright (c) 2024 Someone\n\nPermission is hereby "
+        "granted, free of charge, to any person obtaining a copy of this software and "
+        "associated documentation files, to deal in the Software without restriction, "
+        "including without limitation the rights to use, copy, modify, merge, publish, "
+        "distribute, sublicense, and/or sell copies of the Software."
+    )
+    assert classify(mit_text) == PERMISSIVE
+
+    gpl_text = (
+        "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007. Copyright (C) 2007 Free "
+        "Software Foundation, Inc. Everyone is permitted to copy and distribute verbatim "
+        "copies of this license document, but changing it is not allowed. This licence is "
+        "a free, copyleft licence for software and other kinds of works."
+    )
+    assert classify(gpl_text) == STRONG_COPYLEFT
+
+
 def test_worst_severity_ranks_deny_above_flag():
     assert worst_severity([ALLOW, FLAG, DENY]) == DENY
     assert worst_severity([ALLOW, FLAG]) == FLAG
@@ -271,6 +343,57 @@ def test_a_wheel_inside_an_image_is_still_scored_in_process(licences_dir: Path):
     )
     report = report_script.build_report(licences_dir)
     finding = next(f for f in report["findings"] if f["package"] == "some-agpl-wheel")
+    assert finding["severity"] == DENY
+
+
+def test_unreadable_sbom_wheels_are_aggregated_not_listed_one_by_one(licences_dir: Path):
+    """syft could not read a licence for 201 wheels in the api-server image.
+
+    The pip-licenses file for that same image reads all of them, so a row each would be
+    two hundred findings a week that another committed file already answers.
+    """
+    (licences_dir / "sbom" / "p2p-api-server.json").write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    {"name": f"wheel{i}", "version": "1.0", "type": "python", "licenses": []}
+                    for i in range(5)
+                ]
+            }
+        )
+    )
+    report = report_script.build_report(licences_dir)
+    rows = [
+        f
+        for f in report["findings"]
+        if f["source"] == "sbom/p2p-api-server.json"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["aggregate"] is True
+    assert rows[0]["layer"] == "unreadable"
+    assert rows[0]["count"] == 5
+    assert "authoritative" in rows[0]["note"]
+
+
+def test_a_readable_copyleft_wheel_in_an_sbom_stays_an_individual_denial(licences_dir: Path):
+    """The aggregation must not swallow the finding it was added alongside."""
+    (licences_dir / "sbom" / "p2p-api-server.json").write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    {"name": "unreadable", "version": "1.0", "type": "python", "licenses": []},
+                    {
+                        "name": "pymeshlab",
+                        "version": "2025.7.post1",
+                        "type": "python",
+                        "licenses": [{"spdxExpression": "GPL-3.0-only"}],
+                    },
+                ]
+            }
+        )
+    )
+    report = report_script.build_report(licences_dir)
+    finding = next(f for f in report["findings"] if f["package"] == "pymeshlab")
     assert finding["severity"] == DENY
 
 
@@ -424,6 +547,57 @@ def test_node_paths_are_made_relative_and_stay_that_way():
     assert payload["react@19.2.6"]["path"] == "web/node_modules/react"
     # Idempotent: a second pass must be a no-op, or the committed file churns every run.
     assert normalise_script.relativise_node_paths(payload) == 0
+
+
+def test_an_sbom_is_slimmed_to_the_licence_relevant_fields():
+    """syft's own output for the pipeline image is 16 MB, and none of the bulk is licence
+    data: 9 MB of per-package file manifests, 6 MB of file records, and the CPE lists.
+    Committed as-is that is 20 MB of churn per merge in a file nothing can diff.
+    """
+    payload = {
+        "artifacts": [
+            {
+                "id": "abc",
+                "name": "bash",
+                "version": "5.1-6",
+                "type": "deb",
+                "foundBy": "dpkg-db-cataloger",
+                "locations": [{"path": "/var/lib/dpkg/status"}],
+                "licenses": [{"spdxExpression": "GPL-3.0-or-later"}],
+                "language": "",
+                "cpes": ["cpe:2.3:a:bash"] * 20,
+                "purl": "pkg:deb/ubuntu/bash@5.1-6",
+                "metadata": {"files": [{"path": f"/x/{i}"} for i in range(500)]},
+            }
+        ],
+        "artifactRelationships": [{"parent": "a", "child": "b"}],
+        "files": [{"id": "f", "location": {"path": "/x"}}],
+        "source": {"type": "image"},
+        "distro": {"id": "ubuntu"},
+        "descriptor": {"name": "syft", "version": "1.0.0"},
+        "schema": {"version": "16.0.0"},
+    }
+    count, dropped = normalise_script.slim_sbom(payload)
+    assert count == 1
+    assert dropped > 0
+    assert set(payload) == {"artifacts", "source", "distro", "descriptor", "schema"}
+    artifact = payload["artifacts"][0]
+    assert set(artifact) == {"name", "version", "type", "language", "licenses", "purl"}
+    # Idempotent: a re-run finds nothing left to drop.
+    assert normalise_script.slim_sbom(payload)[1] == 0
+
+
+def test_slimming_keeps_what_the_report_reads(licences_dir: Path):
+    """A slimmed SBOM must still score identically — the fields dropped are unread."""
+    path = licences_dir / "sbom" / "p2p-mesh-pipeline.json"
+    before = report_script.build_report(licences_dir)["findings"]
+    payload = json.loads(path.read_text())
+    for artifact in payload["artifacts"]:
+        artifact["metadata"] = {"files": ["/a"] * 100}
+        artifact["cpes"] = ["cpe:2.3:a:x"] * 10
+    normalise_script.slim_sbom(payload)
+    path.write_text(json.dumps(payload))
+    assert report_script.build_report(licences_dir)["findings"] == before
 
 
 def test_committed_node_data_holds_no_machine_paths():

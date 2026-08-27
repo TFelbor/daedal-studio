@@ -46,6 +46,18 @@ _PLACEHOLDERS = frozenset({"", "UNKNOWN", "NOASSERTION"})
 #: Path fields license-checker fills with absolute locations.
 _PATH_FIELDS = ("path", "licenseFile")
 
+#: The only artifact fields a licence audit reads. syft's own output for the pipeline
+#: image is **16 MB**: `metadata` alone is 9 MB of per-package file manifests, `files` a
+#: further 6 MB, and `cpes` most of the rest. None of it says anything about a licence,
+#: and committing it on every merge would put 20 MB of churn in git for a file nothing
+#: can diff. `purl` is kept because it is the one field that identifies a package
+#: unambiguously across ecosystems.
+KEEP_ARTIFACT_FIELDS = ("name", "version", "type", "language", "licenses", "purl")
+
+#: Top-level syft keys worth keeping: what was scanned, which distro it was, and which
+#: syft produced it. Without `descriptor` a stale SBOM cannot be told from a fresh one.
+KEEP_SBOM_FIELDS = ("source", "distro", "descriptor", "schema")
+
 
 def trim_pip_licenses(rows: list[dict], max_chars: int = MAX_TEXT_CHARS) -> tuple[int, int]:
     """Drop permissive licence texts, truncate the rest. Returns (kept, dropped)."""
@@ -103,6 +115,35 @@ def relativise_node_paths(payload: dict) -> int:
     return changed
 
 
+def slim_sbom(payload: dict) -> tuple[int, int]:
+    """Reduce a syft-json SBOM to the licence-relevant fields.
+
+    Returns `(artifacts, fields_dropped)`. Idempotent: an already-slimmed SBOM has
+    nothing left to drop.
+    """
+    dropped = 0
+    artifacts = []
+    for artifact in payload.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        dropped += sum(1 for key in artifact if key not in KEEP_ARTIFACT_FIELDS)
+        artifacts.append(
+            {key: artifact[key] for key in KEEP_ARTIFACT_FIELDS if key in artifact}
+        )
+    artifacts.sort(key=lambda a: (str(a.get("name", "")).lower(), str(a.get("version", ""))))
+
+    for key in list(payload):
+        if key not in KEEP_SBOM_FIELDS and key != "artifacts":
+            del payload[key]
+            dropped += 1
+    payload["artifacts"] = artifacts
+    return len(artifacts), dropped
+
+
+def _is_sbom(payload: object) -> bool:
+    return isinstance(payload, dict) and "artifacts" in payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path, help="licence data file to rewrite in place")
@@ -113,7 +154,10 @@ def main(argv: list[str] | None = None) -> int:
     payload = json.loads(args.path.read_text(encoding="utf-8"))
     target = args.out or args.path
 
-    if isinstance(payload, list):
+    if _is_sbom(payload):
+        count, dropped = slim_sbom(payload)
+        summary = f"{count} artifacts, {dropped} licence-irrelevant fields dropped"
+    elif isinstance(payload, list):
         kept, dropped = trim_pip_licenses(payload, args.max_chars)
         payload.sort(key=lambda row: str(row.get("Name", "")).lower())
         summary = (

@@ -1287,6 +1287,18 @@ been violated once, so treat them as load-bearing rather than aspirational:
   install them. If a future feature needs textured output, the rasterizer must come from a
   permissive backend (PyTorch3D, BSD-3-Clause) — never from nvdiffrast.
 
+- **An extra can carry a licence the specifier does not mention.** `trimesh[all]`
+  includes trimesh's own `test-more` extra, so `pipeline.Dockerfile` and
+  `phase3.Dockerfile` installed **pymeshlab (GPL-3.0)** and **triangle (LGPL-3.0)** into
+  production images from the day Phase 3 was written — a GPL extension module importable
+  in the same interpreter, which is exactly what `pymeshfix`'s removal ruled out, reached
+  by a route no manifest read would catch. Both images now use `trimesh[easy]`, which
+  keeps the runtime extras (rtree, embreex, shapely) and drops the test and viewer sets.
+  **Do not restore `[all]`**; `licence_policy.EXTRAS_THAT_PULL_COPYLEFT` and a guard over
+  every install manifest hold the line. Note that `[easy]` does install `rtree`, so
+  `printability`'s comment about it being absent describes the intent — measure by
+  voxelising, do not depend on `rtree` — rather than the image.
+
 **The dependency tree is committed, because the audit was reading the wrong list.**
 `requirements-base.txt` and `web/package.json` name roughly a hundred packages; the
 resolved tree is several thousand across four ecosystems, and **both components that

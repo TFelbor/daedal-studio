@@ -33,6 +33,7 @@ import pytest
 from pythonsrc.licence_policy import (
     AGPL_IN_PROCESS_PACKAGES,
     FORBIDDEN_RENDERER_PACKAGES,
+    find_copyleft_extras,
 )
 from pythonsrc.sculptors import SculptorError
 from pythonsrc.sculptors.background import (
@@ -527,6 +528,36 @@ def find_baked_weights(text: str) -> list[str]:
         ):
             offending.append(stripped)
     return offending
+
+
+@pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)
+def test_no_install_manifest_uses_an_extra_that_pulls_copyleft(manifest):
+    """`trimesh[all]` reads as "the good version of trimesh". It is not.
+
+    It includes trimesh's own `test-more` extra, so both images that used it installed
+    pymeshlab (GPL-3.0) and triangle (LGPL-3.0) — a GPL library importable in the same
+    interpreter, which is the rule `pymeshfix`'s removal established. Nothing here
+    imported either, and nothing noticed for as long as Phase 3 has existed: the
+    specifier is one character away from a correct one and the licence sits two levels
+    down. Found by the first run of the committed licence audit, which is the argument
+    for committing it.
+    """
+    path = REPO_ROOT / manifest
+    if not path.exists():
+        pytest.skip(f"{manifest} is absent from this checkout")
+
+    offending = find_copyleft_extras(path.read_text())
+    assert not offending, (
+        f"{manifest} installs a package whose extra pulls in copyleft:\n  "
+        + "\n  ".join(offending)
+    )
+
+
+def test_the_copyleft_extra_scanner_catches_a_real_violation():
+    """A guard that has never failed is a guard nobody has tested."""
+    violation = 'RUN pip install --no-cache-dir \\\n        "trimesh[all]>=4.0.0" \\\n'
+    assert find_copyleft_extras(violation)
+    assert not find_copyleft_extras(violation.replace("[all]", "[easy]"))
 
 
 @pytest.mark.parametrize("manifest", INSTALL_MANIFESTS)

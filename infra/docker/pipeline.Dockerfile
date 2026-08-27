@@ -79,8 +79,15 @@ RUN pip install --no-cache-dir \
         "omegaconf>=2.3.0"
 
 # 4. Phase 3 deps (manifold3d / trimesh)
+# trimesh's `[easy]` extra, not `[all]`. `[all]` includes trimesh's own `test-more`
+# extra, which installs **pymeshlab (GPL-3.0)** and **triangle (LGPL-3.0)** into a
+# production image — a GPL library importable in the same interpreter, which is the
+# exact rule `pymeshfix`'s removal established. Found by the first run of the committed
+# licence audit (`licenses/report.json`); nothing in this project imports either.
+# `[easy]` keeps the runtime extras (rtree, embreex, shapely, …) and drops trimesh's
+# test and viewer dependencies. Do not restore `[all]`.
 RUN pip install --no-cache-dir \
-        "trimesh[all]>=4.0.0" \
+        "trimesh[easy]>=4.0.0" \
         "manifold3d>=3.0.0" \
         "fast-simplification>=0.1.6" \
         "scipy>=1.11.0"

@@ -61,6 +61,13 @@ package**, so no Python-level tool can see it, and it is AGPL-3.0.
   ever installed, so it is the most important tree to refresh by hand after touching
   `infra/docker/trellis2-worker.Dockerfile`.
 
+* **SBOMs are slimmed before they are committed.** syft's own output for the pipeline
+  image is **16 MB**, of which 9 MB is per-package file manifests, 6 MB is file records
+  and most of the rest is CPE lists — none of it licence data.
+  `infra/scripts/normalise_licence_data.py` keeps `name`, `version`, `type`, `language`,
+  `licenses` and `purl` per artifact plus the `source`/`distro`/`descriptor` headers,
+  which takes both SBOMs from 20 MB to about 1 MB and makes the file diffable.
+
 * **Full licence texts are kept only where they change an answer.**
   `infra/scripts/normalise_licence_data.py` drops the text of anything the policy classifies
   as permissive and keeps the rest, truncated. Retaining all of it added megabytes of MIT
@@ -101,6 +108,26 @@ make licence-audit   # also write docs/audits/<today>-licence.md
 
 Neither regenerates the raw trees — that needs the images. To refresh one by hand, use
 the commands in the workflow; they are plain `docker build` and `docker run`.
+
+## What the first run found
+
+Numbers from the run on 2026-08-27, as a sense of scale: **1,371 packages** across six
+sources, resolving to **43 finding rows** — 35 individual and 8 aggregates covering 649
+OS-layer and unreadable rows. That ratio is the point: an audit that lists every
+copyleft `.deb` in a Debian base is an audit nobody reads twice.
+
+It also found a real one. `trimesh[all]`, in two Dockerfiles, includes trimesh's own
+`test-more` extra, which had been installing **pymeshlab (GPL-3.0)** and **triangle
+(LGPL-3.0)** into production images since Phase 3 was written. Nothing imported either
+and no manifest named either. Both images now use `trimesh[easy]`, and
+`tests/test_licensing_guards.py` fails on any manifest that names `[all]`.
+
+Three of the five denials that run reported were defects in the scoring, not in the
+tree, and each is now a test: a package declaring several licences at once (`docutils`),
+a distro-provided package nobody chose (`python-apt`), and packages that put their whole
+licence text in the metadata field (`cascadio`, `embreex`, `xatlas` — MIT's text contains
+" and " a dozen times, so expression-splitting made three permissive packages
+unreadable).
 
 ## Failure policy
 

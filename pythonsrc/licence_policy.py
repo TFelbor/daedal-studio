@@ -90,6 +90,49 @@ ARM_LENGTH_COMPONENTS = {
     "octoprint": "AGPL-3.0, reached over HTTP/SockJS (pythonsrc/operators/). Never imported.",
 }
 
+#: Requirement specifiers whose *extra* drags in a copyleft package. The specifier looks
+#: innocuous and the licence arrives two levels down, which is why this is a named list
+#: rather than a thing to notice in review: `trimesh[all]` includes trimesh's own
+#: `test-more` extra, so a production image gets trimesh's **test** dependencies —
+#: `pymeshlab` (GPL-3.0) and `triangle` (LGPL-3.0). Caught by the first run of the
+#: committed audit, having been installed in two images since Phase 3 was written.
+EXTRAS_THAT_PULL_COPYLEFT = {
+    "trimesh[all]": (
+        "trimesh's `all` extra includes `test-more`, which installs pymeshlab (GPL-3.0) "
+        "and triangle (LGPL-3.0). Use `trimesh[easy]` for the runtime extras."
+    ),
+}
+
+def find_copyleft_extras(text: str) -> list[str]:
+    """Return `"specifier — reason"` for each copyleft-pulling extra named in `text`.
+
+    Takes the whole manifest rather than a line: a Dockerfile wraps one `pip install`
+    across a dozen continuations, and a line-by-line scan of that is a scan of
+    fragments.
+    """
+    return [
+        f"{specifier} — {reason}"
+        for specifier, reason in EXTRAS_THAT_PULL_COPYLEFT.items()
+        if specifier in text
+    ]
+
+
+#: Python distributions that Ubuntu's own `python3` install puts in `dist-packages`.
+#: They are in the interpreter's path inside every image built on `ubuntu:22.04`, appear
+#: in no requirements file, and are imported by nothing in this project. `python-apt` is
+#: GPL-2 and was the first real finding of the committed audit — reported as a denial,
+#: which was the wrong answer: nothing chose it and nothing links it. It is not an
+#: `ALLOW` either, because a distributed image would carry source-offer obligations for
+#: it, so it stays a recorded flag.
+DISTRO_PROVIDED_PACKAGES = (
+    "python-apt",
+    "unattended-upgrades",
+    "command-not-found",
+    "distro-info",
+    "ubuntu-advantage-tools",
+    "ufw",
+)
+
 #: Weak-copyleft payloads already reviewed and accepted, with the reason. LGPL is
 #: satisfied by dynamic linking and by shipping the library unmodified, but each
 #: instance is a judgement, so the accepted ones are named rather than blanket-passed.
@@ -156,6 +199,7 @@ _PERMISSIVE_PATTERNS = (
     "python software foundation",
     "psf",
     "python-2.0",
+    "cnri",
     "mit-0",
     "x11",
     "zlib",
@@ -243,6 +287,38 @@ def _most(classifications: Iterable[str], *, restrictive: bool) -> str:
     return ranked[-1] if restrictive else ranked[0]
 
 
+#: How a tool joins several declared licences for one package. pip-licenses joins PyPI
+#: classifiers with "; ", which is neither an SPDX `AND` nor an `OR`: `docutils` declares
+#: "BSD License; GNU General Public License (GPL); Public Domain" because different files
+#: in it carry different licences. Read as `AND` that is a denial; read as `OR` it is
+#: permissive; the truth is that a person has to open the package.
+_DECLARATION_SEPARATORS = (";",)
+
+
+def is_mixed_declaration(licence: str | None) -> bool:
+    """True when a package declares several licences that do not agree.
+
+    A mixed declaration is not a licence, it is a reading task — so it earns a flag
+    rather than the verdict of whichever operand happens to be strictest.
+    """
+    text = normalise_licence(licence)
+    for separator in _DECLARATION_SEPARATORS:
+        if separator not in text:
+            continue
+        parts = _split_expression(text, separator)
+        if len(parts) > 1 and len({_classify_atom(p) for p in parts}) > 1:
+            return True
+    return False
+
+
+#: Above this length a declaration is not an expression, it is the licence *text*.
+#: `cascadio`, `embreex` and `xatlas` all put their full licence in the metadata field,
+#: and MIT's own text contains " and " a dozen times ("…to use, copy, modify, merge …
+#: and to permit persons…") — so expression-splitting turned three permissive packages
+#: into `unknown` and asked a person to read what the tool had just been handed.
+_EXPRESSION_MAX_CHARS = 200
+
+
 def classify(licence: str | None) -> str:
     """Classify a licence string as one of the five classifications.
 
@@ -256,7 +332,12 @@ def classify(licence: str | None) -> str:
     if not text:
         return UNKNOWN
 
-    for separator, restrictive in ((" and ", True), (" or ", False), ("|", False)):
+    # Licence text rather than a licence expression: match patterns against the whole
+    # thing. A GPL text still says "gnu general public"; an MIT text still says "mit".
+    if len(text) > _EXPRESSION_MAX_CHARS:
+        return _classify_atom(text)
+
+    for separator, restrictive in ((";", True), (" and ", True), (" or ", False), ("|", False)):
         if separator in text:
             parts = _split_expression(text, separator)
             if len(parts) > 1:
@@ -305,6 +386,23 @@ def verdict(
 
     if name in ARM_LENGTH_COMPONENTS:
         return ALLOW, classification, ARM_LENGTH_COMPONENTS[name]
+
+    if name in DISTRO_PROVIDED_PACKAGES:
+        return (
+            FLAG,
+            classification,
+            "Provided by Ubuntu's own python3 install, not by any requirements file, and "
+            "imported by nothing here. Would carry source-offer obligations if the image "
+            "were ever distributed.",
+        )
+
+    if is_mixed_declaration(licence):
+        return (
+            FLAG,
+            classification,
+            f"Several licences declared at once ({licence}). Which one governs depends on "
+            "the file, so this needs a person rather than a verdict.",
+        )
 
     if classification == NON_COMMERCIAL:
         return DENY, classification, "Commercial use is restricted or requires a negotiated agreement."

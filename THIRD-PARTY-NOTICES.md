@@ -422,6 +422,25 @@ previewer against a three.js eleven minors newer than the one it was tested on.
 
 ## 3. Removed components
 
+**pymeshlab** — removed 2026-08-27 by changing `trimesh[all]` to `trimesh[easy]`.
+
+Never named by any manifest and never imported. `trimesh[all]` includes trimesh's own
+`test-more` extra, so `infra/docker/pipeline.Dockerfile` and
+`infra/docker/phase3.Dockerfile` had both been installing trimesh's **test**
+dependencies into production images since Phase 3 was written: `pymeshlab` (GPL-3.0)
+and `triangle` (LGPL-3.0). A GPL-3.0 extension module importable in the same
+interpreter is the precise condition pymeshfix's removal ruled out, arriving by a
+different route — a one-word requirement specifier with the licence two levels below it.
+
+No obligation was triggered: the images were never distributed and nothing imported
+either package. `trimesh[easy]` keeps the runtime extras and drops the test and viewer
+sets.
+
+**Found by the first run of the committed licence audit** — `licenses/report.json`
+scored it `deny` on the day the workflow landed, which is the argument for committing
+the resolved tree rather than auditing the manifests. `tests/test_licensing_guards.py`
+now fails on any manifest naming `trimesh[all]`.
+
 **pymeshfix** — removed 2026-08-20, replaced by `manifold3d` (Apache-2.0).
 
 pymeshfix wraps MeshFix (M. Attene, IMATI-GE/CNR, 2010) and is published under

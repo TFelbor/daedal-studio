@@ -103,7 +103,11 @@ jobs:
           python3 infra/scripts/normalise_licence_data.py licenses/python.json
 
       - name: SBOM the pipeline image
-        run: syft p2p-mesh-pipeline:latest -o syft-json --file licenses/sbom/p2p-mesh-pipeline.json
+        # syft's raw output for this image is 16 MB, almost all of it per-package file
+        # manifests. The normaliser keeps the licence-relevant fields.
+        run: |
+          syft p2p-mesh-pipeline:latest -o syft-json --file licenses/sbom/p2p-mesh-pipeline.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-mesh-pipeline.json
 
       - name: Drop the pipeline image before building the next one
         run: |
@@ -125,7 +129,9 @@ jobs:
           python3 infra/scripts/normalise_licence_data.py licenses/python-api-server.json
 
       - name: SBOM the api-server image
-        run: syft p2p-api-server:latest -o syft-json --file licenses/sbom/p2p-api-server.json
+        run: |
+          syft p2p-api-server:latest -o syft-json --file licenses/sbom/p2p-api-server.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-api-server.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -202,6 +208,7 @@ jobs:
             name="$2"
             echo "── $1"
             syft "registry:$1" -o syft-json --file "licenses/sbom/base-$name.json"
+            python3 infra/scripts/normalise_licence_data.py "licenses/sbom/base-$name.json"
           }
           scan ubuntu:22.04 ubuntu-22.04
           scan python:3.10-slim python-3.10-slim
