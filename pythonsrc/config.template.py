@@ -90,6 +90,6 @@ TRELLIS2_REPO_PATH: str = os.environ.get("TRELLIS2_REPO_PATH", "")
 # Always relative to repo root (/app in Docker)
 # Override via environment variables for custom deployments
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INPUTS_DIR  = os.environ.get("P2P_INPUTS_DIR",  os.path.join(BASE_DIR, "data", "inputs"))
-OUTPUTS_DIR = os.environ.get("P2P_OUTPUTS_DIR", os.path.join(BASE_DIR, "data", "outputs"))
+INPUTS_DIR  = os.environ.get("DS_INPUTS_DIR",  os.path.join(BASE_DIR, "data", "inputs"))
+OUTPUTS_DIR = os.environ.get("DS_OUTPUTS_DIR", os.path.join(BASE_DIR, "data", "outputs"))
 

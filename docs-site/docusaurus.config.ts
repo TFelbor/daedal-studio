@@ -3,15 +3,15 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Prompt2Print',
+  title: 'Daedal Studio',
   tagline: 'From text prompt to physical 3D print — fully local, no cloud.',
   favicon: 'img/favicon.ico',
 
   url: 'https://your-org.github.io',
-  baseUrl: '/p2p-mesh/',
+  baseUrl: '/ds-mvp/',
 
   organizationName: 'your-org',
-  projectName: 'p2p-mesh',
+  projectName: 'ds-mvp',
 
   onBrokenLinks: 'throw',
 
@@ -40,7 +40,7 @@ const config: Config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'Prompt2Print',
+      title: 'Daedal Studio',
       items: [
         {
           type: 'docSidebar',
@@ -54,7 +54,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/your-org/p2p-mesh',
+          href: 'https://github.com/your-org/ds-mvp',
           label: 'GitHub',
           position: 'right',
         },
@@ -63,7 +63,7 @@ const config: Config = {
     footer: {
       style: 'dark',
       links: [],
-      copyright: `Copyright © ${new Date().getFullYear()} Prompt2Print. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Daedal Studio. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

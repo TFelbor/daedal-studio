@@ -30,7 +30,7 @@ transformers issue #43994 reports nonsensical `AutoModel`/pipeline output for
 **Advisory by default.** The threshold has not been calibrated against real renders, and
 a false positive that fails Phase 1 has no appeal — the person has already waited for
 the blueprint. So the default is to *flag* for the human blueprint gate, and enforcing
-is an explicit `$P2P_IP_IMAGE_ENFORCEMENT=enforce`.
+is an explicit `$DS_IP_IMAGE_ENFORCEMENT=enforce`.
 
 **Import placement matters.** This module is imported by the pipeline and the
 visualizer, never at module scope in `server/app.py`: `infra/docker/server.Dockerfile`
@@ -52,7 +52,7 @@ from typing import Any, List, Optional
 
 from pythonsrc.ip_screen import load_blocklist
 
-logger = logging.getLogger("p2p.ip_screen_image")
+logger = logging.getLogger("ds.ip_screen_image")
 
 #: Apache-2.0, commercial use permitted, no out-of-scope deployment clause, and
 #: supported by the pinned transformers without `trust_remote_code`.
@@ -93,7 +93,7 @@ _CANDIDATE_TEMPLATE = "a 3d clay render of {term}"
 
 #: Score above which a protected candidate is acted on. Uncalibrated; see the module
 #: docstring. Overridable so it can be tuned from pilot data without a redeploy.
-SCORE_THRESHOLD = float(os.environ.get("P2P_IP_IMAGE_THRESHOLD", "0.45"))
+SCORE_THRESHOLD = float(os.environ.get("DS_IP_IMAGE_THRESHOLD", "0.45"))
 
 #: "advisory" flags; "enforce" refuses. Advisory until the threshold is calibrated.
 DEFAULT_ENFORCEMENT = "advisory"
@@ -165,7 +165,7 @@ def assert_permissive_vision_model(model_id: str) -> bool:
 
 
 def resolve_model_id() -> str:
-    """The checkpoint to use, from `$P2P_IP_MODEL_ID` or the permissive default.
+    """The checkpoint to use, from `$DS_IP_MODEL_ID` or the permissive default.
 
     The override exists so a deployment can pin a revision; it is not a way to opt out
     of the licence check, so the configured value is checked rather than trusted.
@@ -176,7 +176,7 @@ def resolve_model_id() -> str:
     Raises:
         ValueError: If the configured repo is on the deny list.
     """
-    model_id = os.environ.get("P2P_IP_MODEL_ID") or DEFAULT_MODEL_ID
+    model_id = os.environ.get("DS_IP_MODEL_ID") or DEFAULT_MODEL_ID
     assert_permissive_vision_model(model_id)
     return model_id
 
@@ -268,8 +268,8 @@ def _scorer():
 
 
 def enforcement() -> str:
-    """"advisory" or "enforce", from `$P2P_IP_IMAGE_ENFORCEMENT`."""
-    value = (os.environ.get("P2P_IP_IMAGE_ENFORCEMENT") or DEFAULT_ENFORCEMENT).strip().lower()
+    """"advisory" or "enforce", from `$DS_IP_IMAGE_ENFORCEMENT`."""
+    value = (os.environ.get("DS_IP_IMAGE_ENFORCEMENT") or DEFAULT_ENFORCEMENT).strip().lower()
     return "enforce" if value == "enforce" else "advisory"
 
 

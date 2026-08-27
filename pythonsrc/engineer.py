@@ -31,7 +31,7 @@ MAX_CLOSE_ROUNDS = 8
 # Voxel grid resolution for the last-resort remesh, as a divisor of the mesh's
 # longest extent. Scale-invariant on purpose — repair runs before Phase 3 scales
 # the part, so an absolute pitch would mean a different fidelity for every model.
-VOXEL_REMESH_RESOLUTION = int(os.environ.get("P2P_REPAIR_VOXEL_RESOLUTION", "128"))
+VOXEL_REMESH_RESOLUTION = int(os.environ.get("DS_REPAIR_VOXEL_RESOLUTION", "128"))
 
 # ── Hollowing tuning ─────────────────────────────────────────────────────────
 # Voxels across the wall. **Two, never one.** The shell used to be built by
@@ -65,7 +65,7 @@ HOLLOW_MAX_VOXELS = 2_000_000
 ESCAPE_HOLE_WALLS = 2.0
 
 # ── Logging ──────────────────────────────────────────────────────────────────
-logger = logging.getLogger("p2p.engineer")
+logger = logging.getLogger("ds.engineer")
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -1100,7 +1100,7 @@ class Engineer:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="p2p-mesh Phase 3 — Engineer")
+    parser = argparse.ArgumentParser(description="ds-mvp Phase 3 — Engineer")
     parser.add_argument("input", nargs="?", default=os.path.join(OUTPUTS_DIR, "test_mesh.obj"), help="Input .obj path")
     parser.add_argument("output", nargs="?", default=os.path.join(OUTPUTS_DIR, "engineered_mesh.obj"), help="Output .obj path")
     parser.add_argument("target_mm", nargs="?", type=float, default=50.0, help="Target size in mm, measured along --scale-axis")

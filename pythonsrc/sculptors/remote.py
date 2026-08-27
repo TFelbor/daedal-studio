@@ -24,7 +24,7 @@ import trimesh
 
 from .base import SculptorBackend, SculptorError
 
-logger = logging.getLogger("p2p.sculptor.remote")
+logger = logging.getLogger("ds.sculptor.remote")
 
 #: Generous by HTTP standards, but a 1536³ reconstruction on a cold worker is
 #: minutes of real work, and a timeout here throws all of it away.
@@ -40,9 +40,9 @@ class RemoteSculptorBackend(SculptorBackend):
 
     Args:
         base_url: Worker root URL, e.g. `http://gpu-host:8100`. Defaults to
-            `$P2P_SCULPTOR_REMOTE_URL`.
+            `$DS_SCULPTOR_REMOTE_URL`.
         api_key: Optional bearer token, sent as `Authorization: Bearer …`.
-            Defaults to `$P2P_SCULPTOR_REMOTE_KEY`.
+            Defaults to `$DS_SCULPTOR_REMOTE_KEY`.
         timeout: Per-request timeout in seconds.
         connect_retries: How many times to retry a worker that is not yet
             accepting connections (serverless cold start).
@@ -74,14 +74,14 @@ class RemoteSculptorBackend(SculptorBackend):
         connect_retries: int = DEFAULT_CONNECT_RETRIES,
         params: dict | None = None,
     ) -> None:
-        base_url = base_url or os.environ.get("P2P_SCULPTOR_REMOTE_URL")
+        base_url = base_url or os.environ.get("DS_SCULPTOR_REMOTE_URL")
         if not base_url:
             raise SculptorError(
                 "The 'remote' sculptor backend needs a worker URL — set "
-                "P2P_SCULPTOR_REMOTE_URL or pass base_url."
+                "DS_SCULPTOR_REMOTE_URL or pass base_url."
             )
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key or os.environ.get("P2P_SCULPTOR_REMOTE_KEY")
+        self.api_key = api_key or os.environ.get("DS_SCULPTOR_REMOTE_KEY")
         self.timeout = float(timeout)
         self.connect_retries = int(connect_retries)
         self.params = dict(params or {})
@@ -180,21 +180,21 @@ class RemoteSculptorBackend(SculptorBackend):
                 f"Worker returned HTTP {response.status_code}: {response.text[:500]}"
             )
 
-        mesh_format = response.headers.get("X-P2P-Mesh-Format", "obj")
-        up_axis = response.headers.get("X-P2P-Up-Axis")
+        mesh_format = response.headers.get("X-DS-Mesh-Format", "obj")
+        up_axis = response.headers.get("X-DS-Up-Axis")
         if up_axis:
             self.up_axis = up_axis
         else:
             logger.warning(
-                "Worker did not report X-P2P-Up-Axis — assuming '%s'. If the model "
+                "Worker did not report X-DS-Up-Axis — assuming '%s'. If the model "
                 "comes out lying on its side, the worker is out of date.",
                 self.up_axis,
             )
 
-        model = response.headers.get("X-P2P-Model")
+        model = response.headers.get("X-DS-Model")
         if model:
             self.MODEL_NAME = model
-        version = response.headers.get("X-P2P-Model-Version")
+        version = response.headers.get("X-DS-Model-Version")
         if version:
             self.MODEL_VERSION = f"{self.base_url} ({version})"
 

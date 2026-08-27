@@ -3,12 +3,12 @@ app.py — GPU sculptor worker.
 
 Exposes the TRELLIS.2 backend over HTTP so the rest of the pipeline can run on a
 machine without an NVIDIA GPU. Deploy this container on a GPU host (24 GB or
-better) and point `P2P_SCULPTOR_REMOTE_URL` at it.
+better) and point `DS_SCULPTOR_REMOTE_URL` at it.
 
 The worker returns *raw* geometry. Print post-processing — orientation, component
 pruning, smoothing, decimation — stays on the client so there is exactly one
 implementation of it, and so GPU seconds are not spent on CPU work. The coordinate
-frame the mesh is in comes back in the `X-P2P-Up-Axis` header, which is what makes
+frame the mesh is in comes back in the `X-DS-Up-Axis` header, which is what makes
 that split safe.
 
 Endpoints:
@@ -45,12 +45,12 @@ logging.basicConfig(
     format="[%(levelname)s] %(name)s — %(message)s",
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
 )
-logger = logging.getLogger("p2p.worker")
+logger = logging.getLogger("ds.worker")
 
-WORKER_API_KEY = os.environ.get("P2P_WORKER_API_KEY", "").strip()
-WORKER_BACKEND = os.environ.get("P2P_WORKER_BACKEND", "trellis2").strip().lower()
-MESH_FORMAT = os.environ.get("P2P_WORKER_MESH_FORMAT", "obj").strip().lower()
-PRELOAD = os.environ.get("P2P_WORKER_PRELOAD", "true").strip().lower() != "false"
+WORKER_API_KEY = os.environ.get("DS_WORKER_API_KEY", "").strip()
+WORKER_BACKEND = os.environ.get("DS_WORKER_BACKEND", "trellis2").strip().lower()
+MESH_FORMAT = os.environ.get("DS_WORKER_MESH_FORMAT", "obj").strip().lower()
+PRELOAD = os.environ.get("DS_WORKER_PRELOAD", "true").strip().lower() != "false"
 
 _backend = None
 _backend_error: str | None = None
@@ -93,11 +93,11 @@ async def lifespan(_app: FastAPI):
         except Exception as exc:
             logger.error("Backend preload failed — worker will report unhealthy: %s", exc)
     else:
-        logger.info("P2P_WORKER_PRELOAD=false — deferring model load to first request")
+        logger.info("DS_WORKER_PRELOAD=false — deferring model load to first request")
     yield
 
 
-app = FastAPI(title="P2P Sculptor Worker", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Daedal Studio Sculptor Worker", version="1.0.0", lifespan=lifespan)
 
 
 def _check_auth(request: Request) -> None:
@@ -199,8 +199,8 @@ async def sculpt(
         seed: Sampling seed; negative or absent keeps the backend default.
 
     Returns:
-        The raw mesh bytes, with `X-P2P-Up-Axis`, `X-P2P-Model`,
-        `X-P2P-Model-Version` and `X-P2P-Mesh-Format` describing what was produced.
+        The raw mesh bytes, with `X-DS-Up-Axis`, `X-DS-Model`,
+        `X-DS-Model-Version` and `X-DS-Mesh-Format` describing what was produced.
     """
     _check_auth(request)
 
@@ -236,7 +236,7 @@ async def sculpt(
         f" overrides={overrides}" if overrides else "",
     )
 
-    with TemporaryDirectory(prefix="p2p-worker-") as tmpdir:
+    with TemporaryDirectory(prefix="ds-worker-") as tmpdir:
         source = Path(tmpdir) / (image.filename or "blueprint.png")
         source.write_bytes(payload)
         target = Path(tmpdir) / f"raw.{MESH_FORMAT}"
@@ -272,12 +272,12 @@ async def sculpt(
         content=body,
         media_type="application/octet-stream",
         headers={
-            "X-P2P-Mesh-Format": MESH_FORMAT,
+            "X-DS-Mesh-Format": MESH_FORMAT,
             # The client rotates to Z-up using this, so it is not optional
             # metadata — omit it and meshes arrive lying on their side.
-            "X-P2P-Up-Axis": loaded.up_axis,
-            "X-P2P-Backend": WORKER_BACKEND,
-            "X-P2P-Model": loaded.MODEL_NAME,
-            "X-P2P-Model-Version": str(loaded.MODEL_VERSION or ""),
+            "X-DS-Up-Axis": loaded.up_axis,
+            "X-DS-Backend": WORKER_BACKEND,
+            "X-DS-Model": loaded.MODEL_NAME,
+            "X-DS-Model-Version": str(loaded.MODEL_VERSION or ""),
         },
     )

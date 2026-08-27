@@ -8,7 +8,7 @@ import { WaitingStatesGallery } from './pages/WaitingStatesGallery';
 import { OutcomeFeedback } from './components/OutcomeFeedback';
 import { GridTrail } from './components/GridTrail';
 import { engineLabel, engineStatusClass, useEngineStatus } from './hooks/useEngineStatus';
-import logo from './assets/p2p-logo.png';
+import logo from './assets/ds-logo.png';
 import styles from './App.module.css';
 
 const NAV_ITEMS = [
@@ -25,7 +25,7 @@ function Navigation() {
   return (
     <nav className={styles.nav}>
       <div className={styles.navLeft}>
-        <Link to="/" className={styles.brand} aria-label="Prompt2Print">
+        <Link to="/" className={styles.brand} aria-label="Daedal Studio">
           <img src={logo} alt="" width={26} height={26} />
         </Link>
         <div className={styles.navLinks}>
@@ -68,7 +68,7 @@ function Attribution() {
             be found rather than only in a document nobody opens. */}
         <span>Original designs only · prompts kept with the job</span>
       </div>
-      <span className={styles.plate}>PROMPT2PRINT</span>
+      <span className={styles.plate}>DAEDAL_STUDIO</span>
     </footer>
   );
 }

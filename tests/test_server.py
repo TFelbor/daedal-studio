@@ -10,7 +10,7 @@ from pathlib import Path
 @pytest.mark.real_printer
 def test_pipeline_status():
     env = os.environ.copy()
-    env["P2P_LOGS_DIR"] = str(Path("data/logs").absolute())
+    env["DS_LOGS_DIR"] = str(Path("data/logs").absolute())
 
     # Start the server
     server_process = subprocess.Popen(

@@ -19,7 +19,7 @@ persisted even when Phase 2 fails.
 **The API takes a URL, not a file.** `image_url` must be something Pixazo's gateway
 can fetch, and the blueprint is on local disk. `_resolve_image_url` inlines it as a
 `data:` URI by default, which needs no infrastructure; set
-`$P2P_PIXAZO_IMAGE_BASE_URL` to serve blueprints from somewhere public instead.
+`$DS_PIXAZO_IMAGE_BASE_URL` to serve blueprints from somewhere public instead.
 
 **The output is GLB, so the frame is glTF's, not TRELLIS.2's.** Upstream's
 `to_glb()` swaps Y/Z on the way out precisely because glTF is Y-up while the model's
@@ -41,7 +41,7 @@ import trimesh
 
 from .base import SculptorBackend, SculptorError
 
-logger = logging.getLogger("p2p.sculptor.pixazo")
+logger = logging.getLogger("ds.sculptor.pixazo")
 
 DEFAULT_GATEWAY = "https://gateway.pixazo.ai"
 MODEL_SLUG = "trellis-2-image-to-3d"
@@ -104,7 +104,7 @@ class PixazoBackend(SculptorBackend):
 
     Args:
         api_key: Pixazo subscription key. Defaults to `$PIXAZO_API_KEY`.
-        gateway: API root. Defaults to `$P2P_PIXAZO_GATEWAY`, else the public
+        gateway: API root. Defaults to `$DS_PIXAZO_GATEWAY`, else the public
             gateway.
         pipeline_type: One of `_RESOLUTION_FOR_PIPELINE_TYPE`, mapped to the API's
             `resolution`. Defaults to `$TRELLIS2_PIPELINE_TYPE`, else
@@ -126,7 +126,7 @@ class PixazoBackend(SculptorBackend):
     # trimesh does not apply that convention for us, so the rotation in
     # `postprocess` is load-bearing here in a way it is not for `trellis2`.
     #
-    # Overridable per instance from $P2P_PIXAZO_UP_AXIS (see __init__) because
+    # Overridable per instance from $DS_PIXAZO_UP_AXIS (see __init__) because
     # getting it wrong is silent — the part simply prints lying on its side — and
     # flipping a variable is faster than editing and redeploying when the first real
     # mesh settles the question.
@@ -146,7 +146,7 @@ class PixazoBackend(SculptorBackend):
     #: a container), so a monkeypatch in the parent process would not reach the code
     #: that actually places the call. `server.app` forwards this variable across both
     #: boundaries.
-    KILL_SWITCH_ENV = "P2P_DISABLE_PAID_BACKENDS"
+    KILL_SWITCH_ENV = "DS_DISABLE_PAID_BACKENDS"
 
     def __init__(
         self,
@@ -180,7 +180,7 @@ class PixazoBackend(SculptorBackend):
             )
 
         self.gateway = (
-            gateway or os.environ.get("P2P_PIXAZO_GATEWAY") or DEFAULT_GATEWAY
+            gateway or os.environ.get("DS_PIXAZO_GATEWAY") or DEFAULT_GATEWAY
         ).rstrip("/")
 
         pipeline_type = pipeline_type or os.environ.get(
@@ -205,13 +205,13 @@ class PixazoBackend(SculptorBackend):
         # Read here rather than at class-definition time so the override works
         # whatever order imports happen in, and so a test can set it per instance.
         self.up_axis = (
-            os.environ.get("P2P_PIXAZO_UP_AXIS") or type(self).up_axis
+            os.environ.get("DS_PIXAZO_UP_AXIS") or type(self).up_axis
         ).strip().lower()
         if self.up_axis not in ("y", "z"):
             # Validated here, before any submit: postprocess would catch it too,
             # but only after a paid generation had already been billed.
             raise SculptorError(
-                f"Invalid P2P_PIXAZO_UP_AXIS '{self.up_axis}' — expected 'y' or 'z'."
+                f"Invalid DS_PIXAZO_UP_AXIS '{self.up_axis}' — expected 'y' or 'z'."
             )
 
         #: Set after each successful generation, read off the instance by
@@ -282,14 +282,14 @@ class PixazoBackend(SculptorBackend):
         Two strategies, because the right one depends on infrastructure this
         backend should not assume:
 
-        * `$P2P_PIXAZO_IMAGE_BASE_URL` — the blueprint is already reachable at a
+        * `$DS_PIXAZO_IMAGE_BASE_URL` — the blueprint is already reachable at a
           public URL (an R2 bucket, a tunnel to the API server). The file's name is
           appended to the base.
         * otherwise a `data:` URI — no infrastructure at all, at the cost of sending
           the image inline. This is the default because a working Phase 2 with no
           setup beats a faster one that needs a bucket first.
         """
-        base = os.environ.get("P2P_PIXAZO_IMAGE_BASE_URL", "").strip()
+        base = os.environ.get("DS_PIXAZO_IMAGE_BASE_URL", "").strip()
         if base:
             url = f"{base.rstrip('/')}/{image_path.name}"
             logger.info("Submitting blueprint by URL: %s", url)
@@ -299,7 +299,7 @@ class PixazoBackend(SculptorBackend):
         encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
         logger.info(
             "Submitting blueprint inline as a data URI (%.1f KB encoded). Set "
-            "P2P_PIXAZO_IMAGE_BASE_URL to send a URL instead.",
+            "DS_PIXAZO_IMAGE_BASE_URL to send a URL instead.",
             len(encoded) / 1024,
         )
         return f"data:{mime};base64,{encoded}"
@@ -327,7 +327,7 @@ class PixazoBackend(SculptorBackend):
                 detail += (
                     "\n\nThe blueprint was sent inline as a data URI. If the gateway "
                     "rejects that, host the image somewhere it can fetch and set "
-                    "P2P_PIXAZO_IMAGE_BASE_URL."
+                    "DS_PIXAZO_IMAGE_BASE_URL."
                 )
             raise SculptorError(
                 f"Pixazo submit failed with HTTP {response.status_code}: {detail}"

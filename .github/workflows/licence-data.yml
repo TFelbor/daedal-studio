@@ -87,15 +87,15 @@ jobs:
       - run: mkdir -p licenses/sbom
 
       # ── pipeline-runner: Phases 1, 3-5, plus CuraEngine as an apt package ────
-      - name: Build p2p-base
-        run: docker build --platform linux/amd64 -f infra/docker/base.Dockerfile -t p2p-base:latest .
+      - name: Build ds-base
+        run: docker build --platform linux/amd64 -f infra/docker/base.Dockerfile -t ds-base:latest .
 
       - name: Build pipeline-runner
-        run: docker build --platform linux/amd64 -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline:latest .
+        run: docker build --platform linux/amd64 -f infra/docker/pipeline.Dockerfile -t ds-mvp-pipeline:latest .
 
       - name: Resolve the pipeline image's Python tree
         run: |
-          docker run --rm --entrypoint /bin/sh p2p-mesh-pipeline:latest -c '
+          docker run --rm --entrypoint /bin/sh ds-mvp-pipeline:latest -c '
             pip install --quiet --no-cache-dir pip-licenses >/dev/null 2>&1
             pip-licenses --format=json --with-urls --with-authors \
               --with-license-file --no-license-path --ignore-packages pip-licenses prettytable wcwidth
@@ -106,22 +106,22 @@ jobs:
         # syft's raw output for this image is 16 MB, almost all of it per-package file
         # manifests. The normaliser keeps the licence-relevant fields.
         run: |
-          syft p2p-mesh-pipeline:latest -o syft-json --file licenses/sbom/p2p-mesh-pipeline.json
-          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-mesh-pipeline.json
+          syft ds-mvp-pipeline:latest -o syft-json --file licenses/sbom/ds-mvp-pipeline.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/ds-mvp-pipeline.json
 
       - name: Drop the pipeline image before building the next one
         run: |
-          docker image rm p2p-mesh-pipeline:latest p2p-base:latest || true
+          docker image rm ds-mvp-pipeline:latest ds-base:latest || true
           docker builder prune -af
           df -h /
 
       # ── api-server: an unpinned pip install that appears in no requirements file ──
       - name: Build api-server
-        run: docker build --platform linux/amd64 -f infra/docker/server.Dockerfile -t p2p-api-server:latest .
+        run: docker build --platform linux/amd64 -f infra/docker/server.Dockerfile -t ds-api-server:latest .
 
       - name: Resolve the api-server image's Python tree
         run: |
-          docker run --rm --entrypoint /bin/sh p2p-api-server:latest -c '
+          docker run --rm --entrypoint /bin/sh ds-api-server:latest -c '
             pip install --quiet --no-cache-dir pip-licenses >/dev/null 2>&1
             pip-licenses --format=json --with-urls --with-authors \
               --with-license-file --no-license-path --ignore-packages pip-licenses prettytable wcwidth
@@ -130,8 +130,8 @@ jobs:
 
       - name: SBOM the api-server image
         run: |
-          syft p2p-api-server:latest -o syft-json --file licenses/sbom/p2p-api-server.json
-          python3 infra/scripts/normalise_licence_data.py licenses/sbom/p2p-api-server.json
+          syft ds-api-server:latest -o syft-json --file licenses/sbom/ds-api-server.json
+          python3 infra/scripts/normalise_licence_data.py licenses/sbom/ds-api-server.json
 
       - uses: actions/upload-artifact@v4
         with:

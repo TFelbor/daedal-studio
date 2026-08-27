@@ -46,25 +46,25 @@ def restore_logging():
 
 
 def test_the_default_level_is_info(monkeypatch):
-    monkeypatch.delenv("P2P_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("DS_LOG_LEVEL", raising=False)
     assert resolve_level() == logging.INFO
     assert DEFAULT_LEVEL == "INFO"
 
 
 def test_the_level_comes_from_the_environment(monkeypatch):
     """A deployment must be able to go verbose without a code change."""
-    monkeypatch.setenv("P2P_LOG_LEVEL", "debug")
+    monkeypatch.setenv("DS_LOG_LEVEL", "debug")
     assert resolve_level() == logging.DEBUG
 
 
 def test_an_unrecognised_level_falls_back_instead_of_raising(monkeypatch):
     """A typo in an env var must not stop the server from booting."""
-    monkeypatch.setenv("P2P_LOG_LEVEL", "chatty")
+    monkeypatch.setenv("DS_LOG_LEVEL", "chatty")
     assert resolve_level() == logging.INFO
 
 
 def test_an_explicit_argument_beats_the_environment(monkeypatch):
-    monkeypatch.setenv("P2P_LOG_LEVEL", "ERROR")
+    monkeypatch.setenv("DS_LOG_LEVEL", "ERROR")
     assert resolve_level("WARNING") == logging.WARNING
 
 
@@ -248,7 +248,7 @@ def test_colour_off_is_the_same_layout_without_the_escapes():
 
 
 def test_colour_follows_the_terminal_by_default(monkeypatch):
-    monkeypatch.delenv("P2P_LOG_COLOR", raising=False)
+    monkeypatch.delenv("DS_LOG_COLOR", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
 
     class Tty:
@@ -268,14 +268,14 @@ def test_no_color_and_the_explicit_switch_win_over_the_terminal(monkeypatch):
         def isatty(self):
             return True
 
-    monkeypatch.delenv("P2P_LOG_COLOR", raising=False)
+    monkeypatch.delenv("DS_LOG_COLOR", raising=False)
     monkeypatch.setenv("NO_COLOR", "1")
     assert should_colour(Tty()) is False
 
-    monkeypatch.setenv("P2P_LOG_COLOR", "always")
+    monkeypatch.setenv("DS_LOG_COLOR", "always")
     assert should_colour(Tty()) is True
 
-    monkeypatch.setenv("P2P_LOG_COLOR", "never")
+    monkeypatch.setenv("DS_LOG_COLOR", "never")
     assert should_colour(Tty()) is False
 
 
@@ -303,14 +303,14 @@ def test_uvicorns_access_log_is_off_so_requests_are_not_logged_twice(monkeypatch
     Every request appeared twice, and demoting the polled endpoints to DEBUG was
     cancelled out by uvicorn logging the same request unconditionally.
     """
-    monkeypatch.delenv("P2P_UVICORN_ACCESS_LOG", raising=False)
+    monkeypatch.delenv("DS_UVICORN_ACCESS_LOG", raising=False)
     configure_logging("INFO", force=True)
     assert logging.getLogger("uvicorn.access").disabled is True
 
 
 def test_uvicorns_access_log_can_be_switched_back_on(monkeypatch):
     """It carries the client address and HTTP version, which ours leaves out."""
-    monkeypatch.setenv("P2P_UVICORN_ACCESS_LOG", "1")
+    monkeypatch.setenv("DS_UVICORN_ACCESS_LOG", "1")
     configure_logging("INFO", force=True)
     assert logging.getLogger("uvicorn.access").disabled is False
 

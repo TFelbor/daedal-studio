@@ -73,7 +73,7 @@ so every block avoids one EUR 0,32 hosted generation.
 ## Phase 2 — Sculptor: image → 3D geometry
 
 The same model behind three deployments. Which one runs is resolved by
-`sculptors.resolve_backend_name`: `remote` if `$P2P_SCULPTOR_REMOTE_URL` is set, else
+`sculptors.resolve_backend_name`: `remote` if `$DS_SCULPTOR_REMOTE_URL` is set, else
 `trellis2` if CUDA is visible, else `pixazo` if `$PIXAZO_API_KEY` is set, else **raise**.
 There is deliberately no CPU path.
 
@@ -89,7 +89,7 @@ There is deliberately no CPU path.
 | Backend | Where it runs | Stack | Cost | Up axis |
 |---|---|---|---|---|
 | `trellis2` | In-process on a CUDA host | torch 2.6.0+cu124, flash-attn 2.7.3, CuMesh, FlexGEMM, o-voxel; base image `nvidia/cuda:12.4.1-devel-ubuntu22.04` | — | `z` |
-| `remote` | `services/trellis2_worker/` over HTTP | Same, held resident on the GPU; returns **raw** geometry | — | from `X-P2P-Up-Axis` |
+| `remote` | `services/trellis2_worker/` over HTTP | Same, held resident on the GPU; returns **raw** geometry | — | from `X-DS-Up-Axis` |
 | `pixazo` | Pixazo's hosted `trellis-2-image-to-3d` | Someone else's deployment | **EUR 0,32 / generation** | `y` (returns GLB, and glTF is Y-up) |
 
 **Hardware floor:** NVIDIA GPU, ~24 GB VRAM, four compiled CUDA extensions with no CPU
@@ -178,7 +178,7 @@ is what the CLI and automation use.
 | | |
 |---|---|
 | **API** | FastAPI + uvicorn (`server/app.py`), WebSocket phase/telemetry fan-out |
-| **Database** | SQLite at `~/.p2p-mesh/telemetry.db` — **one file in every execution mode**, reached from containers through a bind mount. WAL is deliberately off |
+| **Database** | SQLite at `~/.ds-mvp/telemetry.db` — **one file in every execution mode**, reached from containers through a bind mount. WAL is deliberately off |
 | **Config** | Fernet-encrypted key-value store in the same database; key at `.config_key` |
 | **Frontend** | React 19.2.6, Vite 8, TypeScript ~6.0.2, `three` 0.184, `recharts` 3.8.1, `react-router-dom` 7.17, `gcode-preview` 2.18 |
 | **Served** | `web/dist/` is built into the api-server image and served by a catch-all route |
@@ -189,10 +189,10 @@ is what the CLI and automation use.
 
 | Image | Base | Contains | Built in CI |
 |---|---|---|---|
-| `p2p-base` | `ubuntu:22.04` | Python 3.10, mesh/OpenGL system libs | yes |
-| `p2p-mesh-pipeline` | `p2p-base` | All phases: torch 2.7.1 CPU, diffusers HEAD, trimesh, manifold3d, `cura-engine` | yes |
-| `p2p-api-server` | `python:3.10-slim` + `node:20-alpine` builder | FastAPI stack (**unpinned** `pip install` list), Docker CLI, `web/dist` | yes |
-| `p2p-trellis2-worker` | `nvidia/cuda:12.4.1-devel-ubuntu22.04` | torch 2.6.0+cu124, flash-attn, CuMesh, FlexGEMM, o-voxel, TRELLIS.2 | **no** — needs a GPU arch to compile against |
+| `ds-base` | `ubuntu:22.04` | Python 3.10, mesh/OpenGL system libs | yes |
+| `ds-mvp-pipeline` | `ds-base` | All phases: torch 2.7.1 CPU, diffusers HEAD, trimesh, manifold3d, `cura-engine` | yes |
+| `ds-api-server` | `python:3.10-slim` + `node:20-alpine` builder | FastAPI stack (**unpinned** `pip install` list), Docker CLI, `web/dist` | yes |
+| `ds-trellis2-worker` | `nvidia/cuda:12.4.1-devel-ubuntu22.04` | torch 2.6.0+cu124, flash-attn, CuMesh, FlexGEMM, o-voxel, TRELLIS.2 | **no** — needs a GPU arch to compile against |
 | `octoprint/octoprint` | upstream | Virtual-printer simulator on port 5001 | n/a |
 
 Everything except the worker is pinned `linux/amd64`, because `cura-engine` is an amd64

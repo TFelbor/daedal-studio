@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Prompt2Print (p2p-mesh) is a pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
+Daedal Studio (ds-mvp) is a pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
 
 **Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs in-process on a CUDA host, in a GPU worker the rest of the pipeline reaches over HTTP, or on Pixazo's hosted endpoint (€0,32 per generation — the only option on a Mac). See **Sculptor** below.
 
@@ -65,7 +65,7 @@ cp pythonsrc/config.template.py pythonsrc/config.py  # if running natively (not 
 
 ### Pipeline (pythonsrc/pipeline.py)
 
-The core pipeline runs 5 phases sequentially. Phase banners (`[P2P] ═══ PHASE N START/PASS/FAIL ...`) are parsed by the server to emit WebSocket progress updates. The pipeline writes a `.status` file per job to `data/logs/{job_id}.status`.
+The core pipeline runs 5 phases sequentially. Phase banners (`[DS] ═══ PHASE N START/PASS/FAIL ...`) are parsed by the server to emit WebSocket progress updates. The pipeline writes a `.status` file per job to `data/logs/{job_id}.status`.
 
 **The banners are a contract between two processes that share no code**, and it is the
 most fragile one in the project. `_phase_start`/`_phase_pass`/`_phase_fail` print them;
@@ -225,7 +225,7 @@ it is money spent reconstructing the wrong picture. The per-job snapshot into
 manual CLI use. The sidecar shares the directory, which is the other half — `read_sidecar`
 rejects a sidecar whose hash does not match the image beside it, so a race used to cost
 the *winner* its provenance too. The server sends the native Phase 1 there via
-`$P2P_BLUEPRINT_OUTPUT` (`run_phase1_native.sh`) and hands the container the same path.
+`$DS_BLUEPRINT_OUTPUT` (`run_phase1_native.sh`) and hands the container the same path.
 Two deliberate exceptions: the **skip-Phase-1 configuration keeps the shared path**,
 because it exists to reuse an image already sitting there and generates nothing to race
 for; and `POST /jobs` **no longer deletes** `data/inputs/blueprint.png` in its
@@ -267,7 +267,7 @@ use: there is nobody to ask there.
 Between Phase 3 and Phase 4 the pipeline runs the **printability gate** (`pythonsrc/printability.py`).
 It is deliberately *not* a numbered phase: the `.status` protocol, the WebSocket phase updates and
 the UI progress bar all key off phases 1–5, so renumbering would change what every historical
-`.status` file means. It emits `[P2P] ─── PRINTABILITY ... ───` banners instead, writes
+`.status` file means. It emits `[DS] ─── PRINTABILITY ... ───` banners instead, writes
 `data/outputs/{job_id}/printability.json`, and persists score/verdict/features/report onto the
 job's telemetry row. Scoring is **advisory** — a low score never blocks a print unless
 `--min-printability SCORE` is passed, and a crash in the scorer is logged and skipped rather than
@@ -290,7 +290,7 @@ output — except for the coordinate frame, which is why each declares its own `
   works on an Apple Silicon Mac, and the only one that costs money.
 
 `create_sculptor()` / `resolve_backend_name()` resolve `auto` as: `remote` if
-`$P2P_SCULPTOR_REMOTE_URL` is set (an explicit configuration outranks a local GPU that may be
+`$DS_SCULPTOR_REMOTE_URL` is set (an explicit configuration outranks a local GPU that may be
 busy with Phase 1), else `trellis2` if CUDA is visible, else `pixazo` if `$PIXAZO_API_KEY` is
 set, else **raise**. The paid endpoint is last on purpose — hardware already paid for must never
 be passed over for one that bills — and selecting it logs the price, so a run that starts
@@ -338,7 +338,7 @@ back *to*.
   Z-up rotation, largest-component pruning, optional smoothing, decimation, export. The worker
   returns *raw* geometry so there is exactly one implementation regardless of where inference
   ran, and so GPU seconds are not billed for CPU work. The frame comes back in the
-  `X-P2P-Up-Axis` header, which is what makes that split safe rather than an assumption.
+  `X-DS-Up-Axis` header, which is what makes that split safe rather than an assumption.
 - **`generation_params()` is the backend's own business.** Each backend reports its knobs so the
   pipeline never has to know which ones a given backend has. `remote` renames the wire field
   `seed` to `mesh_seed` on the way out: it shares a telemetry column with local runs, and one
@@ -377,11 +377,11 @@ Auth is `Ocp-Apim-Subscription-Key`, not a bearer token.
   Y-up — upstream's `to_glb()` swaps Y/Z on the way out precisely because the model's own frame
   is Z-up. trimesh does not undo that, so `postprocess`'s rotation is load-bearing here in a way
   it is not for `trellis2`. Getting it wrong is silent: the part prints lying on its side.
-  Overridable per instance via `$P2P_PIXAZO_UP_AXIS` so settling the question empirically does
+  Overridable per instance via `$DS_PIXAZO_UP_AXIS` so settling the question empirically does
   not need a redeploy.
 - **`image_url` takes a URL, not an upload.** There is no documented upload endpoint, so
   `_resolve_image_url` inlines the blueprint as a `data:` URI by default — zero infrastructure —
-  and uses `$P2P_PIXAZO_IMAGE_BASE_URL` when a public bucket or tunnel is available instead.
+  and uses `$DS_PIXAZO_IMAGE_BASE_URL` when a public bucket or tunnel is available instead.
 - **`pipeline_type` → `resolution` is lossy.** The hosted API has no cascade sampler, so
   `1024_cascade` and `1024` both send `resolution=1024`. `generation_params()` records *both* the
   requested pipeline type and the resolution sent, because a collapsed cascade is not the same
@@ -400,7 +400,7 @@ Auth is `Ocp-Apim-Subscription-Key`, not a bearer token.
 FastAPI service holding one backend resident on a GPU. `GET /health` (no auth — a readiness
 probe requiring a secret is one nobody runs) reports the loaded model and free VRAM;
 `POST /sculpt` takes a multipart image plus optional `backend`/`pipeline_type`/`seed` and returns
-mesh bytes with `X-P2P-Up-Axis`, `X-P2P-Model`, `X-P2P-Model-Version`, `X-P2P-Mesh-Format`.
+mesh bytes with `X-DS-Up-Axis`, `X-DS-Model`, `X-DS-Model-Version`, `X-DS-Mesh-Format`.
 
 - Requests are **serialised** under one lock: the GPU cannot serve two 4B-parameter
   reconstructions, and `pipeline_type`/`seed` overrides are applied to the *shared instance* and
@@ -430,16 +430,16 @@ FastAPI application with:
   G-code, and without the flag `download_count` was a component-mount counter, not the
   "a person chose to keep this" signal it is documented as.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
-- **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[P2P]` banners from stdout for phase tracking
+- **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[DS]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
   level or format, so under uvicorn it inherited a root logger uvicorn never configures
   and every `logger.info` was discarded. One stdout handler, severity in colour when the
-  output is a terminal (`$P2P_LOG_COLOR`, `$NO_COLOR`), level from `$P2P_LOG_LEVEL`.
+  output is a terminal (`$DS_LOG_COLOR`, `$NO_COLOR`), level from `$DS_LOG_LEVEL`.
   A `log_requests` middleware logs one line per request with its duration, severity
   following the status code, and demotes polled endpoints (`/health`, `/config`,
   `/feedback/pending`, `/system/printer/status`, `GET /jobs/{id}`) to DEBUG.
   **Uvicorn's access log is switched off** because it logged every request a second
-  time, at INFO, cancelling that demotion out; `$P2P_UVICORN_ACCESS_LOG=1` restores it.
+  time, at INFO, cancelling that demotion out; `$DS_UVICORN_ACCESS_LOG=1` restores it.
 - **SPA serving**: catch-all route serves `web/dist/` — the React app must be pre-built before server start
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in SQLite (`app_config` table); encryption key at `.config_key` in repo root
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
@@ -447,7 +447,7 @@ FastAPI application with:
 ### Data Flow
 
 1. User submits job via UI → POST `/jobs` → `PrintJob` inserted in SQLite telemetry DB
-2. Pipeline subprocess launched → stdout parsed for `[P2P]` phase banners → WebSocket broadcasts
+2. Pipeline subprocess launched → stdout parsed for `[DS]` phase banners → WebSocket broadcasts
 3. If `--print` flag set: Phase 4 slices mesh to G-code, Phase 5 uploads to printer via `PrinterFactory`
 4. After Phase 5 starts printing: a telemetry collector (Moonraker WebSocket or OctoPrint SockJS) plus an `AnomalyDetector` stream samples into SQLite; whichever process claims the job first is the sole writer
 5. Frontend receives live phase updates, telemetry, and job outcomes via WebSocket
@@ -524,7 +524,7 @@ FastAPI application with:
   in the output directory's `dev-` prefix — nothing queryable — which made fixture runs the
   largest training-set contamination risk. False is written as 0, not skipped: "verified real"
   must stay distinguishable from "predates the column". `git_sha` resolves via
-  `pythonsrc/telemetry/run_context.py` ($P2P_GIT_SHA beats `git rev-parse`; the server stamps
+  `pythonsrc/telemetry/run_context.py` ($DS_GIT_SHA beats `git rev-parse`; the server stamps
   it into the container env, which carries no .git).
 - **Dispatch provenance**: `dispatched_printer_url`, written at the moment of dispatch by the
   gate endpoint, the pipeline's Phase 5 and `run_operator.py` — deliberately the *pre*-Docker-
@@ -578,8 +578,8 @@ FastAPI application with:
   its cost and latency recorded per job.
 - **DB** (`db.py`): SQLite wrapper with thread-safe locking; `check_same_thread=False` for use across asyncio tasks.
 - **One database, and where it lives.** The telemetry database is
-  **`~/.p2p-mesh/telemetry.db` on the host** — always, in every execution mode. Containers
-  reach that same file through the `~/.p2p-mesh:/root/.p2p-mesh` bind mount: `HOME` is
+  **`~/.ds-mvp/telemetry.db` on the host** — always, in every execution mode. Containers
+  reach that same file through the `~/.ds-mvp:/root/.ds-mvp` bind mount: `HOME` is
   `/root` in the image, so `get_default_db_path()` resolves to the mounted host file
   rather than to anything container-local. The Fernet key for the encrypted config store
   (`.config_key`) sits in that same directory, so one database means one key.
@@ -592,7 +592,7 @@ FastAPI application with:
 
   This is written down because it went wrong. `.env` used to set
   `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` and compose mounted a **named volume**
-  `p2p-telemetry` there. A named volume is invisible from the host, so container runs
+  `ds-telemetry` there. A named volume is invisible from the host, so container runs
   wrote job rows into a database nobody could see while their artifacts landed in the
   bind-mounted `data/outputs/` — 27 job directories with no matching rows anywhere a
   developer would look. Native runs meanwhile used the default path, so the two modes
@@ -605,7 +605,7 @@ FastAPI application with:
   referenced twice — and nothing noticed until a query answered `database disk image
   is malformed`, by which point 346 rows were unreadable and their pages reused, so
   `.recover` salvaged none of them. `synchronous` was already FULL and there was no
-  hot journal, so it was not a crash mid-write: `~/.p2p-mesh` is bind-mounted into
+  hot journal, so it was not a crash mid-write: `~/.ds-mvp` is bind-mounted into
   the containers, and on macOS those run in a Linux VM, so the host process and the
   pipeline container are two machines sharing a file over VirtioFS — which SQLite
   does not support for concurrent writers. **WAL would make that worse, not better**:
@@ -614,20 +614,20 @@ FastAPI application with:
   the database at all. The real fix is one writer, which the existing
   `internal_telemetry.send_internal_telemetry` relay already makes possible; until
   then, `db.integrity_check()` runs in the server's startup event, again every
-  `$P2P_DB_BACKUP_INTERVAL_MIN` minutes (default 360, 0 disables), and on
+  `$DS_DB_BACKUP_INTERVAL_MIN` minutes (default 360, 0 disables), and on
   `POST /system/database/backup`; `GET /health` reports `database.healthy`, and
-  `db.backup_to()` takes a rotating snapshot (`$P2P_DB_BACKUP_COPIES`, default 5)
+  `db.backup_to()` takes a rotating snapshot (`$DS_DB_BACKUP_COPIES`, default 5)
   using SQLite's online backup API — **only when the check passes**, so a corrupt
   file cannot launder itself through every slot. It refuses rather than hangs if
   the caller holds an open transaction.
 
   **Off-disk mirror**: every verified snapshot is additionally copied to
-  `$P2P_DB_BACKUP_MIRROR_DIR` when that is set (it is deliberately unset until the
+  `$DS_DB_BACKUP_MIRROR_DIR` when that is set (it is deliberately unset until the
   data is worth keeping; the intended target is the Drive-synced data-collection
   folder). The copy runs on a **daemon thread**, staged as `.part` then renamed —
   the Drive File Provider mount was measured blocking a directory listing for 10+
   seconds, so nothing Drive-facing may ever run on the event loop or the startup
-  path. `$P2P_DB_BACKUP_MIRROR_COPIES` (default 10) prunes the mirror.
+  path. `$DS_DB_BACKUP_MIRROR_COPIES` (default 10) prunes the mirror.
   `tests/test_db_backup_policy.py` holds all of this.
 
   `tests/test_single_database.py` is the regression guard: it fails if compose or
@@ -639,7 +639,7 @@ FastAPI application with:
   `feedback_funnel()` and `count_job_events()` keep their `print_job` joins and
   `count_orphaned_job_events()` stays, because databases written before the pragma
   still carry orphans. Tests that need a legacy orphan suspend the pragma explicitly.
-- **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`P2P_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`DS_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
@@ -968,7 +968,7 @@ a "ready" badge ends up beside a dead machine.
 `SimulatorManager._get_container` had the same class of bug independently: compose
 derives its project name from the directory it is invoked in, so the same service
 accumulates container records under several project names
-(`p2p-mesh-poc-docker-octoprint-simulator-1`, `infra-octoprint-simulator-1`, …).
+(`ds-mvp-octoprint-simulator-1`, `infra-octoprint-simulator-1`, …).
 Listing them and taking `[0]` reported "stopped" while a working simulator answered on
 port 5001. A **running** container now wins over a stopped one regardless of which
 project created it, and "stopped" stays distinguishable from "absent".
@@ -1006,7 +1006,7 @@ rewrite remains the fallback for anything that is not the simulator.
 
 **The dispatch gate hands the operator both addresses.** `run_operator.py` runs in the
 api-server container and cannot derive the compose route from a loopback URL, so
-`OCTOPRINT_URL` carries the route and `$P2P_DISPATCH_URL` the configured address that
+`OCTOPRINT_URL` carries the route and `$DS_DISPATCH_URL` the configured address that
 route stands in for — `dispatched_printer_url` must name the printer a person chose,
 not the container artifact standing in for it. The gate also passes `OCTOPRINT_URL` at
 all now: `resolve_printer_target` makes the config store authoritative for `base_url`,
@@ -1051,7 +1051,7 @@ Moving it aside is also what makes those tests pass on a tree where a container 
 that PNG: the bind mounts run as root, so it comes back `root:root 0644` and the
 developer's own interpreter cannot open it for writing. Renaming needs write permission
 on the *directory*, not the file. When container-written artifacts pile up more widely,
-`docker run --rm -v "$PWD/data:/d" -v "$HOME/.p2p-mesh:/h" alpine chown -R 1000:1000 /d /h`
+`docker run --rm -v "$PWD/data:/d" -v "$HOME/.ds-mvp:/h" alpine chown -R 1000:1000 /d /h`
 fixes them without sudo.
 
 ### Dispatch gate — Phase 5 waits on a person
@@ -1086,7 +1086,7 @@ first time anyone saw which machine a part was going to was in the past tense.
   job is finished as far as the pipeline is concerned, so it is absent from the running list, and
   the pending decision used to vanish on refresh. The dashboard marks the row `To send`
   (`awaiting_dispatch` per row) rather than `Success`, and `NewJob` re-attaches on mount — but
-  **only to the job that tab was watching** (`sessionStorage['p2p.watchedJob']`, re-checked
+  **only to the job that tab was watching** (`sessionStorage['ds.watchedJob']`, re-checked
   against `dispatch_state`), not to whatever the filter returns newest. "Sliced and not sent"
   has no time limit, so one job nobody ever confirmed would otherwise own the landing page
   for good. Everything else is reached from the dashboard.
@@ -1154,7 +1154,7 @@ and still renders something recognisable. So the render itself is scored, **befo
   the blocklist happens to contain.
 - **Advisory by default.** The threshold is uncalibrated against real renders and a
   false positive that fails Phase 1 has no appeal, so the default is to flag for the
-  human gate; `$P2P_IP_IMAGE_ENFORCEMENT=enforce` refuses instead.
+  human gate; `$DS_IP_IMAGE_ENFORCEMENT=enforce` refuses instead.
 - **Screened before the image is written** (`ip_screen_image.save_screened`). The path a
   blueprint goes to is the *shared* `data/inputs/blueprint.png` — Phase 2's input and
   the fallback the artifact endpoints serve for any job — so a refused render saved "to
@@ -1254,7 +1254,7 @@ Abstract base class `BasePrinterOperator` defines: `connect()`, `upload_file()`,
 
 ### Docker Infrastructure
 
-All images are pinned to `linux/amd64` (CuraEngine is only available as amd64 apt package). Phase Dockerfiles are layered on `base.Dockerfile`. The `pipeline-runner` image bundles all phases and mounts `pythonsrc/` as a volume for live development. Named volumes (`p2p-models-flux`, etc.) persist model weights across rebuilds.
+All images are pinned to `linux/amd64` (CuraEngine is only available as amd64 apt package). Phase Dockerfiles are layered on `base.Dockerfile`. The `pipeline-runner` image bundles all phases and mounts `pythonsrc/` as a volume for live development. Named volumes (`ds-models-flux`, etc.) persist model weights across rebuilds.
 
 ### Frontend (web/)
 
@@ -1340,7 +1340,7 @@ been violated once, so treat them as load-bearing rather than aspirational:
   `rembg`**, and **do not remove the matte substitution** on the theory that upstream names its
   model explicitly. The remaining live instance of `trust_remote_code=True` is our own MIT
   BiRefNet load — MIT, but still remote code execution; pin a revision with
-  `$P2P_BIREFNET_MODEL_ID` (`repo@sha`) before any untrusted deployment.
+  `$DS_BIREFNET_MODEL_ID` (`repo@sha`) before any untrusted deployment.
 - **DINOv3 is unavoidable and that is fine — but it carries obligations.**
   `image_cond_model` is `facebook/dinov3-vitl16-pretrain-lvd1689m`, feeding `get_cond`, so it is
   on the shape path and cannot be structurally avoided the way the rasterizer and the matte
@@ -1428,4 +1428,4 @@ at runtime, then update `THIRD-PARTY-NOTICES.md`.
 - `data/` directories including logs, inputs, outputs are all runtime-only and gitignored
 - Phase 1 (FLUX) on Docker/CPU takes ~84 minutes; native macOS MPS is ~30 seconds — the MPS-native path is the primary dev workflow on Mac
 - Docker images are `linux/amd64` only; on Apple Silicon, Docker Desktop emulates via Rosetta 2. The one exception is `trellis2-worker.Dockerfile`, which is built against a CUDA devel image and only runs on an NVIDIA host
-- Phase 2 has **no CPU path at all**. On a machine without an NVIDIA GPU and without `$P2P_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5
+- Phase 2 has **no CPU path at all**. On a machine without an NVIDIA GPU and without `$DS_SCULPTOR_REMOTE_URL`, `create_sculptor()` raises rather than falling back — there is nothing to fall back to, and a mesh from an unnamed model is worse than an error. Set up the worker (`services/trellis2_worker/README.md`) or use `--skip-sculptor --mesh <path>` to work on Phases 3–5

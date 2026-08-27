@@ -27,8 +27,8 @@ COPY infra/ ./infra/
 COPY --from=web-builder /app/dist ./web/dist
 
 # If pipeline.py relies on config.py we'll bootstrap it just in case, but let's stick to the minimal.
-COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
-RUN chmod +x /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/ds-entrypoint
+RUN chmod +x /usr/local/bin/ds-entrypoint
 
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint"]
 CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

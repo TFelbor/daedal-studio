@@ -13,7 +13,7 @@ from server.simulator_manager import SimulatorAvailabilityError, SimulatorManage
 
 
 class FakeContainer:
-    def __init__(self, name="p2p-mesh-poc-docker-octoprint-simulator-1", status="exited", labels=None):
+    def __init__(self, name="ds-mvp-octoprint-simulator-1", status="exited", labels=None):
         self.name = name
         self.status = status
         self.labels = labels or {}
@@ -141,7 +141,7 @@ async def test_compose_up_pins_the_project_the_lookup_searches_for(monkeypatch):
 
     `docker compose -f infra/docker-compose.yml up` therefore creates
     `infra-octoprint-simulator-1`, while the manager searched for project
-    `p2p-mesh-poc-docker` — so the container it created was not the container it
+    `ds-mvp` — so the container it created was not the container it
     later looked for, and a second one could accumulate on the same host port.
     """
     recorded = {}
@@ -165,7 +165,7 @@ async def test_an_existing_container_is_started_not_recreated(monkeypatch):
     container = FakeContainer(
         status="exited",
         labels={
-            "com.docker.compose.project": "p2p-mesh-poc-docker",
+            "com.docker.compose.project": "ds-mvp",
             "com.docker.compose.service": "octoprint-simulator",
         },
     )

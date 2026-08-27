@@ -1,7 +1,7 @@
 """There is one telemetry database, and these tests keep it that way.
 
-`~/.p2p-mesh/telemetry.db` on the host is the only database. Containers reach that
-same file through the `~/.p2p-mesh:/root/.p2p-mesh` bind mount, because `HOME` is
+`~/.ds-mvp/telemetry.db` on the host is the only database. Containers reach that
+same file through the `~/.ds-mvp:/root/.ds-mvp` bind mount, because `HOME` is
 `/root` in the image and `get_default_db_path()` reads it.
 
 This is guarded rather than merely documented because it has already failed once, in
@@ -26,7 +26,7 @@ COMPOSE = REPO_ROOT / "infra" / "docker-compose.yml"
 ENV_TEMPLATE = REPO_ROOT / ".env.template"
 
 #: The one path. Anything else in a config file is a second database.
-CANONICAL_DIR = ".p2p-mesh"
+CANONICAL_DIR = ".ds-mvp"
 
 
 def _uncommented_lines(path: Path) -> list[str]:
@@ -63,7 +63,7 @@ def test_compose_does_not_pin_the_database_path():
     assert not offenders, (
         "docker-compose.yml sets TELEMETRY_DB_PATH: "
         f"{offenders}. Leave it unset so containers resolve the same default as the "
-        "host through the ~/.p2p-mesh bind mount — see 'One database' in CLAUDE.md."
+        "host through the ~/.ds-mvp bind mount — see 'One database' in CLAUDE.md."
     )
 
 
@@ -87,10 +87,10 @@ def test_there_is_no_telemetry_volume():
     ]
     assert not volume_mounts, (
         f"a telemetry volume mount is back: {volume_mounts}. The database must be "
-        "bind-mounted from ~/.p2p-mesh so it is visible on the host."
+        "bind-mounted from ~/.ds-mvp so it is visible on the host."
     )
-    assert not re.search(r"^\s+p2p-telemetry:", text, re.M), (
-        "the p2p-telemetry named volume has been re-declared"
+    assert not re.search(r"^\s+ds-telemetry:", text, re.M), (
+        "the ds-telemetry named volume has been re-declared"
     )
 
 
@@ -100,8 +100,8 @@ def test_every_service_that_writes_telemetry_mounts_the_host_directory(service: 
     text = COMPOSE.read_text()
     block = re.search(rf"\n  {service}:\n(.*?)(?=\n  \S|\nvolumes:|\Z)", text, re.S)
     assert block, f"{service} not found in docker-compose.yml"
-    assert "~/.p2p-mesh:/root/.p2p-mesh" in block.group(1), (
-        f"{service} does not mount ~/.p2p-mesh, so its default database path would "
+    assert "~/.ds-mvp:/root/.ds-mvp" in block.group(1), (
+        f"{service} does not mount ~/.ds-mvp, so its default database path would "
         "resolve to a file inside the container that nobody can see."
     )
 

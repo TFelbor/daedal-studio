@@ -1,6 +1,6 @@
 """licence_policy.py — what this project may link, and what a licence string means.
 
-Prompt2Print ships under Apache-2.0 (`LICENSE`), and `THIRD-PARTY-NOTICES.md` records
+Daedal Studio ships under Apache-2.0 (`LICENSE`), and `THIRD-PARTY-NOTICES.md` records
 the reasoning for every component. This module is the *machine-readable* half of that:
 the classification a licence string maps to, and the verdict a package earns from it.
 

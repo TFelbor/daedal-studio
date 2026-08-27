@@ -128,7 +128,7 @@ def test_get_default_db_path(monkeypatch):
     
     monkeypatch.delenv("TELEMETRY_DB_PATH", raising=False)
     assert Path(get_default_db_path()).name == "telemetry.db"
-    assert ".p2p-mesh" in get_default_db_path()
+    assert ".ds-mvp" in get_default_db_path()
 
 import asyncio
 

@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────────────────────────────────
-# docker-compose.yml — Primary development interface for p2p-mesh pipeline.
+# docker-compose.yml — Primary development interface for ds-mvp pipeline.
 #
 # Usage (from project root):
 #   cp .env.template .env                      # fill in OCTOPRINT_API_KEY
@@ -22,12 +22,12 @@
 services:
 
   # ── Base image (shared foundation for all phase images) ──────────────────
-  p2p-base:
+  ds-base:
     platform: linux/amd64
     build:
       context: ..
       dockerfile: infra/docker/base.Dockerfile
-    image: p2p-base:latest
+    image: ds-base:latest
 
   # ── Phase 1: Visualizer (FLUX text-to-image) ─────────────────────────────
   phase1-visualizer:
@@ -37,7 +37,7 @@ services:
       dockerfile: infra/docker/phase1.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-phase1-visualizer:latest
+    image: ds-phase1-visualizer:latest
     env_file:
       - path: ../.env
         required: false
@@ -50,8 +50,8 @@ services:
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
-      - p2p-models-flux:/models/flux
-      - p2p-models-cache:/models/hf_cache
+      - ds-models-flux:/models/flux
+      - ds-models-cache:/models/hf_cache
     profiles:
       - phase1
       - all
@@ -59,7 +59,7 @@ services:
   # ── Phase 2: Sculptor client (TRELLIS.2 2D→3D) ───────────────────────────
   # The model itself is not in this image — TRELLIS.2 is CUDA-only. This service
   # posts the blueprint to the trellis2-worker below (or to any worker reachable
-  # at P2P_SCULPTOR_REMOTE_URL) and post-processes the mesh that comes back.
+  # at DS_SCULPTOR_REMOTE_URL) and post-processes the mesh that comes back.
   phase2-sculptor:
     platform: linux/amd64
     build:
@@ -67,14 +67,14 @@ services:
       dockerfile: infra/docker/phase2.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-phase2-sculptor:latest
+    image: ds-phase2-sculptor:latest
     env_file:
       - path: ../.env
         required: false
     environment:
-      P2P_SCULPTOR_BACKEND: ${P2P_SCULPTOR_BACKEND:-auto}
-      P2P_SCULPTOR_REMOTE_URL: ${P2P_SCULPTOR_REMOTE_URL:-}
-      P2P_SCULPTOR_REMOTE_KEY: ${P2P_SCULPTOR_REMOTE_KEY:-}
+      DS_SCULPTOR_BACKEND: ${DS_SCULPTOR_BACKEND:-auto}
+      DS_SCULPTOR_REMOTE_URL: ${DS_SCULPTOR_REMOTE_URL:-}
+      DS_SCULPTOR_REMOTE_KEY: ${DS_SCULPTOR_REMOTE_KEY:-}
       TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
       TRELLIS2_MODEL_PATH: /models/trellis2
       HF_HOME: /models/hf_cache
@@ -83,8 +83,8 @@ services:
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
-      - p2p-models-trellis2:/models/trellis2
-      - p2p-models-cache:/models/hf_cache
+      - ds-models-trellis2:/models/trellis2
+      - ds-models-cache:/models/hf_cache
     profiles:
       - phase2
       - all
@@ -93,7 +93,7 @@ services:
   # Behind its own profile because it is the one service that cannot start
   # without an NVIDIA GPU and the Container Toolkit. Run it on the GPU host:
   #   docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
-  # Then point the pipeline at it via P2P_SCULPTOR_REMOTE_URL.
+  # Then point the pipeline at it via DS_SCULPTOR_REMOTE_URL.
   #
   # Set TORCH_CUDA_ARCH_LIST to the deployment GPU or the compiled kernels will
   # not load: 8.0=A100 8.6=A10G 8.9=L4 9.0=H100.
@@ -107,7 +107,7 @@ services:
         TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST:-8.0;8.6;8.9;9.0}
         TRELLIS2_REPO: ${TRELLIS2_REPO:-https://github.com/microsoft/TRELLIS.2.git}
         TRELLIS2_REF: ${TRELLIS2_REF:-main}
-    image: p2p-trellis2-worker:latest
+    image: ds-trellis2-worker:latest
     runtime: nvidia
     ports:
       - "8100:8100"
@@ -116,17 +116,17 @@ services:
         required: false
     environment:
       NVIDIA_VISIBLE_DEVICES: all
-      P2P_WORKER_API_KEY: ${P2P_WORKER_API_KEY:-}
-      P2P_WORKER_BACKEND: trellis2
-      P2P_WORKER_PRELOAD: ${P2P_WORKER_PRELOAD:-true}
+      DS_WORKER_API_KEY: ${DS_WORKER_API_KEY:-}
+      DS_WORKER_BACKEND: trellis2
+      DS_WORKER_PRELOAD: ${DS_WORKER_PRELOAD:-true}
       TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
       TRELLIS2_MODEL_PATH: /models/trellis2
       HF_HOME: /models/hf_cache
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
     volumes:
-      - p2p-models-trellis2:/models/trellis2
-      - p2p-models-cache:/models/hf_cache
+      - ds-models-trellis2:/models/trellis2
+      - ds-models-cache:/models/hf_cache
     profiles:
       - gpu-worker
 
@@ -138,7 +138,7 @@ services:
       dockerfile: infra/docker/phase3.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-phase3-engineer:latest
+    image: ds-phase3-engineer:latest
     env_file:
       - path: ../.env
         required: false
@@ -157,7 +157,7 @@ services:
       dockerfile: infra/docker/phase4.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-phase4-slicer:latest
+    image: ds-phase4-slicer:latest
     env_file:
       - path: ../.env
         required: false
@@ -178,7 +178,7 @@ services:
       dockerfile: infra/docker/phase5.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-phase5-operator:latest
+    image: ds-phase5-operator:latest
     env_file:
       - path: ../.env
         required: false
@@ -214,25 +214,25 @@ services:
       dockerfile: infra/docker/pipeline.Dockerfile
       args:
         BUILDKIT_INLINE_CACHE: "1"
-    image: p2p-mesh-pipeline:latest
+    image: ds-mvp-pipeline:latest
     depends_on:
-      - p2p-base
+      - ds-base
     env_file:
       - path: ../.env
         required: false
     environment:
       FLUX_MODEL_PATH: /models/flux
       TRELLIS2_MODEL_PATH: /models/trellis2
-      P2P_SCULPTOR_BACKEND: ${P2P_SCULPTOR_BACKEND:-auto}
-      P2P_SCULPTOR_REMOTE_URL: ${P2P_SCULPTOR_REMOTE_URL:-}
-      P2P_SCULPTOR_REMOTE_KEY: ${P2P_SCULPTOR_REMOTE_KEY:-}
+      DS_SCULPTOR_BACKEND: ${DS_SCULPTOR_BACKEND:-auto}
+      DS_SCULPTOR_REMOTE_URL: ${DS_SCULPTOR_REMOTE_URL:-}
+      DS_SCULPTOR_REMOTE_KEY: ${DS_SCULPTOR_REMOTE_KEY:-}
       TRELLIS2_PIPELINE_TYPE: ${TRELLIS2_PIPELINE_TYPE:-1024_cascade}
       HF_HOME: /models/hf_cache
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGINGFACE_HUB_TOKEN: ${HF_TOKEN:-}
       PYTORCH_ENABLE_MPS_FALLBACK: "1"
       CURA_ENGINE_PATH: CuraEngine
-      P2P_LOGS_DIR: /app/data/logs
+      DS_LOGS_DIR: /app/data/logs
       # On macOS/Windows, OctoPrint on the host is reached via host.docker.internal.
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
@@ -244,10 +244,10 @@ services:
       # The one telemetry database. HOME is /root in the container, so the
       # library's default path resolves through this mount to the same file the
       # host uses — see "One database" in CLAUDE.md.
-      - ~/.p2p-mesh:/root/.p2p-mesh
-      - p2p-models-flux:/models/flux
-      - p2p-models-trellis2:/models/trellis2
-      - p2p-models-cache:/models/hf_cache
+      - ~/.ds-mvp:/root/.ds-mvp
+      - ds-models-flux:/models/flux
+      - ds-models-trellis2:/models/trellis2
+      - ds-models-cache:/models/hf_cache
     # Add extra_hosts so the container can reach OctoPrint on the host machine.
     # This is needed on Linux; on macOS/Windows it works automatically.
     extra_hosts:
@@ -259,7 +259,7 @@ services:
     build:
       context: ..
       dockerfile: infra/docker/server.Dockerfile
-    image: p2p-api-server:latest
+    image: ds-api-server:latest
     ports:
       - "8000:8000"
     volumes:
@@ -278,16 +278,16 @@ services:
       # Same single database as every other execution mode. Deliberately a bind
       # mount rather than a named volume: a volume is invisible from the host, and
       # that is how a month of job history was written somewhere nobody could see.
-      - ~/.p2p-mesh:/root/.p2p-mesh
+      - ~/.ds-mvp:/root/.ds-mvp
     environment:
       # TELEMETRY_DB_PATH is deliberately NOT set. Leaving it unset makes every
       # process — native, container, pipeline subprocess — resolve the same default,
-      # ~/.p2p-mesh/telemetry.db. Setting it here to a container path is what split
+      # ~/.ds-mvp/telemetry.db. Setting it here to a container path is what split
       # the data across two databases. See "One database" in CLAUDE.md.
-      - P2P_LOGS_DIR=/app/data/logs
+      - DS_LOGS_DIR=/app/data/logs
       - DOCKER_HOST=unix:///var/run/docker.sock
       - HOST_PROJECT_ROOT=${PWD}
-      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-p2p-mesh-poc-docker}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-ds-mvp}
     depends_on:
       - pipeline-runner
     # The server probes the printer itself (GET /system/printer/status), runs the
@@ -311,15 +311,15 @@ services:
 # ── Named volumes ─────────────────────────────────────────────────────────────
 # Volumes persist across container restarts and docker compose down (unless --volumes).
 # Delete a model volume to force a fresh download:
-#   docker volume rm p2p-models-flux
+#   docker volume rm ds-models-flux
 volumes:
   # AI model weights — survive image rebuilds (see .gitignore: *.ckpt, *.safetensors)
-  p2p-models-flux:
-    name: p2p-models-flux
-  p2p-models-trellis2:
-    name: p2p-models-trellis2
+  ds-models-flux:
+    name: ds-models-flux
+  ds-models-trellis2:
+    name: ds-models-trellis2
   # Shared HuggingFace cache — avoids re-downloading tokenisers / configs
-  p2p-models-cache:
-    name: p2p-models-hf-cache
+  ds-models-cache:
+    name: ds-models-hf-cache
   # There is deliberately no telemetry volume. The database is bind-mounted from
-  # ~/.p2p-mesh so it is visible, backup-able, and the same file in every mode.
+  # ~/.ds-mvp so it is visible, backup-able, and the same file in every mode.

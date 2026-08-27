@@ -23,8 +23,8 @@ Four things are configured here:
 - **Noisy third-party loggers pinned to WARNING.** `docker`, `httpx` and
   `websockets` each log per-request at DEBUG/INFO; at DEBUG they bury the signal.
 
-Levels come from `$P2P_LOG_LEVEL`, colour from `$P2P_LOG_COLOR` / `$NO_COLOR`, and
-uvicorn's access log can be restored with `$P2P_UVICORN_ACCESS_LOG=1` — so a running
+Levels come from `$DS_LOG_LEVEL`, colour from `$DS_LOG_COLOR` / `$NO_COLOR`, and
+uvicorn's access log can be restored with `$DS_UVICORN_ACCESS_LOG=1` — so a running
 deployment can be made verbose, or plain, without a code change.
 """
 
@@ -98,7 +98,7 @@ class ConsoleFormatter(logging.Formatter):
 def should_colour(stream=None) -> bool:
     """Decide whether to emit ANSI colour.
 
-    `$NO_COLOR` (any value) and `$P2P_LOG_COLOR` are honoured before the terminal
+    `$NO_COLOR` (any value) and `$DS_LOG_COLOR` are honoured before the terminal
     check, because the common case for wanting it off is a file or a CI log, where
     escapes are noise rather than information.
 
@@ -108,7 +108,7 @@ def should_colour(stream=None) -> bool:
     Returns:
         Whether to colour output.
     """
-    preference = os.environ.get("P2P_LOG_COLOR", "auto").strip().lower()
+    preference = os.environ.get("DS_LOG_COLOR", "auto").strip().lower()
     if preference in ("never", "0", "off", "false", "no"):
         return False
     if preference in ("always", "1", "on", "true", "yes"):
@@ -150,7 +150,7 @@ def resolve_level(level: str | int | None = None) -> int:
     """Return the numeric log level to use.
 
     Args:
-        level: An explicit level name or number. When None, `$P2P_LOG_LEVEL` is
+        level: An explicit level name or number. When None, `$DS_LOG_LEVEL` is
             consulted, then `DEFAULT_LEVEL`.
 
     Returns:
@@ -159,7 +159,7 @@ def resolve_level(level: str | int | None = None) -> int:
         server from booting.
     """
     if level is None:
-        level = os.environ.get("P2P_LOG_LEVEL", DEFAULT_LEVEL)
+        level = os.environ.get("DS_LOG_LEVEL", DEFAULT_LEVEL)
     if isinstance(level, int):
         return level
     return getattr(logging, str(level).strip().upper(), logging.INFO)
@@ -186,7 +186,7 @@ def configure_logging(level: str | int | None = None, *, force: bool = False) ->
     """Install the server's log handler and format. Safe to call more than once.
 
     Args:
-        level: Explicit level; defaults to `$P2P_LOG_LEVEL`, then INFO.
+        level: Explicit level; defaults to `$DS_LOG_LEVEL`, then INFO.
         force: Reconfigure even if this ran already. Used by tests.
 
     Returns:
@@ -228,10 +228,10 @@ def configure_logging(level: str | int | None = None, *, force: bool = False) ->
     #   [INFO] server.app:     GET /system/printer/status → 200 (28 ms)
     #   [INFO] uvicorn.access: 127.0.0.1:55050 - "GET /system/printer/status ..." 200
     #
-    # Set $P2P_UVICORN_ACCESS_LOG=1 to get uvicorn's version back — it carries the
+    # Set $DS_UVICORN_ACCESS_LOG=1 to get uvicorn's version back — it carries the
     # client address and HTTP version, which ours deliberately leaves out.
     access = logging.getLogger("uvicorn.access")
-    access.disabled = not _env_flag("P2P_UVICORN_ACCESS_LOG")
+    access.disabled = not _env_flag("DS_UVICORN_ACCESS_LOG")
 
     for name in NOISY_LOGGERS:
         logging.getLogger(name).setLevel(max(resolved, logging.WARNING))

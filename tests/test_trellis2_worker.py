@@ -43,7 +43,7 @@ class FakeGPUBackend(SculptorBackend):
 @pytest.fixture
 def worker(monkeypatch):
     """A worker module with a backend already 'loaded' and auth switched on."""
-    monkeypatch.setenv("P2P_WORKER_PRELOAD", "false")
+    monkeypatch.setenv("DS_WORKER_PRELOAD", "false")
     import importlib
 
     from services.trellis2_worker import app as module
@@ -95,11 +95,11 @@ def test_no_token_configured_means_open(worker, monkeypatch):
 def test_successful_sculpt_returns_geometry_and_headers(client):
     response = client.post("/sculpt", files=IMAGE, headers=AUTH)
     assert response.status_code == 200
-    assert response.headers["X-P2P-Up-Axis"] == "y"
-    assert response.headers["X-P2P-Mesh-Format"] == "obj"
-    assert response.headers["X-P2P-Backend"] == "trellis2"
-    assert response.headers["X-P2P-Model"] == "TRELLIS.2"
-    assert response.headers["X-P2P-Model-Version"] == "microsoft/TRELLIS.2-4B"
+    assert response.headers["X-DS-Up-Axis"] == "y"
+    assert response.headers["X-DS-Mesh-Format"] == "obj"
+    assert response.headers["X-DS-Backend"] == "trellis2"
+    assert response.headers["X-DS-Model"] == "TRELLIS.2"
+    assert response.headers["X-DS-Model-Version"] == "microsoft/TRELLIS.2-4B"
 
     mesh = trimesh.load(io.BytesIO(response.content), file_type="obj")
     # Raw geometry: still Y-up, undecimated. Post-processing is the client's job.

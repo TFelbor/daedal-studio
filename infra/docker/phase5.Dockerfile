@@ -7,12 +7,12 @@
 # This is the lightest phase image — no ML libs, no mesh tools.
 #
 # Build (standalone):
-#   docker build -f infra/docker/phase5.Dockerfile -t p2p-phase5-operator .
+#   docker build -f infra/docker/phase5.Dockerfile -t ds-phase5-operator .
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM p2p-base:latest AS phase5-operator
+FROM ds-base:latest AS phase5-operator
 
-LABEL description="p2p-mesh Phase 5 — Operator (OctoPrint REST client)"
+LABEL description="ds-mvp Phase 5 — Operator (OctoPrint REST client)"
 
 # ── Python dependencies ───────────────────────────────────────────────────────
 # operators/octoprint_operator.py only requires `requests` beyond stdlib.
@@ -23,5 +23,5 @@ RUN pip install --no-cache-dir \
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 # Requires OCTOPRINT_URL and OCTOPRINT_API_KEY env vars.
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint", "python", "pythonsrc/operators/octoprint_operator.py"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint", "python", "pythonsrc/operators/octoprint_operator.py"]
 CMD ["--help"]

@@ -226,7 +226,7 @@ def _load(path: Path) -> Any | None:
 
 
 def _git_sha() -> str:
-    for env_key in ("GITHUB_SHA", "P2P_GIT_SHA"):
+    for env_key in ("GITHUB_SHA", "DS_GIT_SHA"):
         import os
 
         value = os.environ.get(env_key)
@@ -311,7 +311,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
             if not package:
                 continue
             # The workspace root is this project, declared `UNLICENSED` because it is
-            # private. Scoring it would report Prompt2Print as an unlicensed dependency
+            # private. Scoring it would report Daedal Studio as an unlicensed dependency
             # of itself, once per run, forever.
             if row.get("private"):
                 self_declared += 1

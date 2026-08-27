@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Prompt2Print (p2p-mesh) carries the Apache License 2.0 (see [`LICENSE`](LICENSE)).
+Daedal Studio (ds-mvp) carries the Apache License 2.0 (see [`LICENSE`](LICENSE)).
 The repository is private and the software is **not currently distributed**, so that
 licence is a statement of intent rather than an active grant to anyone — but the
 obligations below are recorded as though it were, because they attach the moment it is.
@@ -155,14 +155,14 @@ by tests.
 ## 1. Copyleft components — invoked as separate programs
 
 Both components below are licensed under the **GNU Affero General Public
-License v3 (AGPL-3.0)**. Neither is linked into the Prompt2Print codebase.
+License v3 (AGPL-3.0)**. Neither is linked into the Daedal Studio codebase.
 Each runs as a **separate program** communicating over a process or network
-boundary, so Prompt2Print is not a derivative work of either.
+boundary, so Daedal Studio is not a derivative work of either.
 
 This separation is architectural and load-bearing. It must be preserved:
 
 > **Do not link, embed, import, or statically compile CuraEngine or OctoPrint
-> into Prompt2Print code.** Communicate only via CLI subprocess or HTTP/socket.
+> into Daedal Studio code.** Communicate only via CLI subprocess or HTTP/socket.
 > Linking either one in-process would place the entire pipeline under AGPL-3.0.
 
 ### CuraEngine
@@ -194,7 +194,7 @@ source is available from the upstream repositories linked above, at the exact
 versions our images install.
 
 For a copy of the corresponding source of either component as distributed in a
-Prompt2Print image, contact **legal@prompt2print.xyz**. We will supply it for no
+Daedal Studio image, contact **legal@prompt2print.xyz**. We will supply it for no
 more than the cost of distribution, as AGPL-3.0 §6 permits.
 
 ### Weak copyleft — file-level
@@ -304,7 +304,7 @@ Phase 2 therefore substitutes MIT BiRefNet weights
 > **Our MIT BiRefNet is still loaded with `trust_remote_code=True`**, matching
 > upstream's own call. That executes modelling code fetched from the Hugging Face
 > Hub at load time. MIT, so no licence hazard — but it is remote code execution on
-> the GPU worker. Pin a revision via `$P2P_BIREFNET_MODEL_ID` (`repo@sha`) before
+> the GPU worker. Pin a revision via `$DS_BIREFNET_MODEL_ID` (`repo@sha`) before
 > any untrusted deployment.
 
 > **Do not reintroduce `rembg`** without restoring both of its old controls (a
@@ -334,7 +334,7 @@ client (`pythonsrc/sculptors/remote.py`).
 > Upstream TRELLIS.2's documented install line includes `--nvdiffrast
 > --nvdiffrec`. **Do not use it as-is.** Both packages are published under the
 > **NVIDIA Source Code License**, which permits non-commercial research use only.
-> Installing either into a Prompt2Print image would put a non-commercial
+> Installing either into a Daedal Studio image would put a non-commercial
 > restriction on a distributed artifact and make this project's Apache-2.0 grant
 > incoherent — the same class of mistake as `pymeshfix` (§3).
 
@@ -448,7 +448,7 @@ GPL-3.0 / AGPL-3.0 with an explicit additional condition: commercial use
 requires a separately negotiated licensing contract with the authors and
 IMATI-GE/CNR. It was previously imported in-process by `pythonsrc/engineer.py`,
 which would have made the pipeline a derivative work of AGPL code and left
-Prompt2Print's own Apache-2.0 grant incoherent.
+Daedal Studio's own Apache-2.0 grant incoherent.
 
 **Do not reintroduce pymeshfix.** The replacement in `Engineer.repair_mesh`
 composes trimesh (surface closing, MIT) with manifold3d (manifoldness guarantee

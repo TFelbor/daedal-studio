@@ -1,6 +1,6 @@
-# Prompt2Print — Docker Usage Guide
+# Daedal Studio — Docker Usage Guide
 
-This guide explains how to build, run, and troubleshoot the **p2p-mesh pipeline** using Docker. This document is written for system operators, DevOps engineers, and developers running the system locally.
+This guide explains how to build, run, and troubleshoot the **ds-mvp pipeline** using Docker. This document is written for system operators, DevOps engineers, and developers running the system locally.
 
 ---
 
@@ -40,12 +40,12 @@ Persistent storage ensures weights don't re-download and outputs aren't lost acr
 
 | Volume Name          | Mount Point          | Contents                                    |
 |----------------------|----------------------|---------------------------------------------|
-| p2p-models-flux      | `/models/flux`       | FLUX.2-klein-4B weights (~16 GB)            |
-| p2p-models-trellis2  | `/models/trellis2`   | TRELLIS.2-4B weights (GPU worker only)      |
-| p2p-models-hf-cache  | `/models/hf_cache`   | HuggingFace hub cache                       |
-| p2p-inputs           | `/app/inputs`        | Blueprint images (pipeline input)           |
-| p2p-outputs          | `/app/outputs`       | Meshes, G-code (pipeline output)            |
-| p2p-telemetry        | `/app/telemetry`     | SQLite telemetry DB (job history, samples)  |
+| ds-models-flux      | `/models/flux`       | FLUX.2-klein-4B weights (~16 GB)            |
+| ds-models-trellis2  | `/models/trellis2`   | TRELLIS.2-4B weights (GPU worker only)      |
+| ds-models-hf-cache  | `/models/hf_cache`   | HuggingFace hub cache                       |
+| ds-inputs           | `/app/inputs`        | Blueprint images (pipeline input)           |
+| ds-outputs          | `/app/outputs`       | Meshes, G-code (pipeline output)            |
+| ds-telemetry        | `/app/telemetry`     | SQLite telemetry DB (job history, samples)  |
 
 ---
 
@@ -61,9 +61,9 @@ These variables configure the `.env` file at the repository root.
 | `CURA_ENGINE_PATH` | `CuraEngine` | No | Path to binary inside the container |
 | `FLUX_MODEL_PATH` | `/models/flux` | No | Path to cached FLUX weights |
 | `TRELLIS2_MODEL_PATH` | `/models/trellis2` | No | Path to cached TRELLIS.2 weights |
-| `P2P_SCULPTOR_BACKEND` | `auto` | No | `auto` \| `trellis2` \| `remote` |
-| `P2P_SCULPTOR_REMOTE_URL` | — | For `remote` | GPU worker root URL, e.g. `http://gpu-host:8100` |
-| `P2P_SCULPTOR_REMOTE_KEY` | — | No | Bearer token, if the worker sets `P2P_WORKER_API_KEY` |
+| `DS_SCULPTOR_BACKEND` | `auto` | No | `auto` \| `trellis2` \| `remote` |
+| `DS_SCULPTOR_REMOTE_URL` | — | For `remote` | GPU worker root URL, e.g. `http://gpu-host:8100` |
+| `DS_SCULPTOR_REMOTE_KEY` | — | No | Bearer token, if the worker sets `DS_WORKER_API_KEY` |
 | `TRELLIS2_PIPELINE_TYPE` | `1024_cascade` | No | `512` \| `1024` \| `1024_cascade` \| `1536_cascade` |
 | `PYTORCH_ENABLE_MPS_FALLBACK` | `1` | No | CPU fallback for macOS MPS operations |
 | `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
@@ -94,11 +94,11 @@ Each phase is individually addressable for testing and isolated runs.
 ### Phase 1 — Visualizer
 ```bash
 docker run --rm \
-    -v p2p-models-flux:/models/flux \
-    -v p2p-models-hf-cache:/models/hf_cache \
-    -v p2p-inputs:/app/inputs \
+    -v ds-models-flux:/models/flux \
+    -v ds-models-hf-cache:/models/hf_cache \
+    -v ds-inputs:/app/inputs \
     -e HF_TOKEN=your_token \
-    p2p-phase1-visualizer:latest \
+    ds-phase1-visualizer:latest \
     --prompt "a ceramic vase" --output /app/inputs/blueprint.png --steps 4
 ```
 
@@ -120,11 +120,11 @@ curl -s http://localhost:8100/health | python -m json.tool
 **On the pipeline host** — point the client at it:
 ```bash
 docker run --rm \
-    -v p2p-inputs:/app/inputs \
-    -v p2p-outputs:/app/outputs \
-    -e P2P_SCULPTOR_BACKEND=remote \
-    -e P2P_SCULPTOR_REMOTE_URL=http://gpu-host:8100 \
-    p2p-phase2-sculptor:latest \
+    -v ds-inputs:/app/inputs \
+    -v ds-outputs:/app/outputs \
+    -e DS_SCULPTOR_BACKEND=remote \
+    -e DS_SCULPTOR_REMOTE_URL=http://gpu-host:8100 \
+    ds-phase2-sculptor:latest \
     --blueprint /app/inputs/blueprint.png --output /app/outputs/raw_mesh.obj
 ```
 
@@ -138,26 +138,26 @@ non-commercially-licensed renderer packages out of them entirely (see
 ### Phase 3 — Engineer
 ```bash
 docker run --rm \
-    -v p2p-outputs:/app/outputs \
-    p2p-phase3-engineer:latest \
+    -v ds-outputs:/app/outputs \
+    ds-phase3-engineer:latest \
     /app/outputs/raw_mesh.obj /app/outputs/engineered_mesh.obj 50.0
 ```
 
 ### Phase 4 — Slicer
 ```bash
 docker run --rm \
-    -v p2p-outputs:/app/outputs \
-    p2p-phase4-slicer:latest \
+    -v ds-outputs:/app/outputs \
+    ds-phase4-slicer:latest \
     --input /app/outputs/engineered_mesh.obj --output /app/outputs/engineered_mesh.gcode
 ```
 
 ### Phase 5 — Operator
 ```bash
 docker run --rm \
-    -v p2p-outputs:/app/outputs \
+    -v ds-outputs:/app/outputs \
     -e OCTOPRINT_URL=http://host.docker.internal:5001 \
     -e OCTOPRINT_API_KEY=your_key \
-    p2p-phase5-operator:latest \
+    ds-phase5-operator:latest \
     --file /app/outputs/engineered_mesh.gcode --start --watch
 ```
 
@@ -174,7 +174,7 @@ docker compose -f infra/docker-compose.yml up -d api-server
 # Verify health
 curl http://localhost:8000/health
 ```
-Once healthy, navigate to `http://localhost:8000` to access the Prompt2Print UI.
+Once healthy, navigate to `http://localhost:8000` to access the Daedal Studio UI.
 
 ---
 
@@ -223,21 +223,21 @@ Manage your named volumes using the Docker CLI:
 
 ```bash
 # List all volumes
-docker volume ls | grep p2p
+docker volume ls | grep ds-
 
 # Inspect volume location on host
-docker volume inspect p2p-telemetry
+docker volume inspect ds-telemetry
 
 # WARNING: Destructive operations
 # Force models to re-download by deleting the volume
-docker volume rm p2p-models-flux
+docker volume rm ds-models-flux
 ```
 
 ---
 
 ## 12. Telemetry Database
 
-The system records all print telemetry, failure events, and job status in a SQLite database at `/app/telemetry/telemetry.db` (mapped to the `p2p-telemetry` volume).
+The system records all print telemetry, failure events, and job status in a SQLite database at `/app/telemetry/telemetry.db` (mapped to the `ds-telemetry` volume).
 
 Query it directly from the host:
 ```bash

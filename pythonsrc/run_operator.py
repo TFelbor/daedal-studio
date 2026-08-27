@@ -34,9 +34,9 @@ def main():
         # container artifact, not the address anyone configured. When the caller has
         # already resolved a container route of its own — the dispatch gate hands us
         # the compose service name, which no rewrite here could have derived —
-        # $P2P_DISPATCH_URL carries the configured address that route stands in for,
+        # $DS_DISPATCH_URL carries the configured address that route stands in for,
         # so the telemetry row still names the printer a person chose.
-        dispatch_url = os.environ.get("P2P_DISPATCH_URL") or base_url
+        dispatch_url = os.environ.get("DS_DISPATCH_URL") or base_url
 
         # Rewrite localhost if running inside docker so it can reach the host
         if "localhost" in base_url or "127.0.0.1" in base_url:

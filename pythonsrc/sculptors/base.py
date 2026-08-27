@@ -25,7 +25,7 @@ import numpy as np
 import trimesh
 from trimesh.graph import connected_components
 
-logger = logging.getLogger("p2p.sculptor")
+logger = logging.getLogger("ds.sculptor")
 
 #: Face budget after decimation, when the caller does not name one.
 #:

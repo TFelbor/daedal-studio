@@ -18,7 +18,7 @@ smoothing and decimation all happen on the client, in
   remote runs, so a remote job and a local job produce the same mesh;
 - GPU seconds are not billed for work a CPU does fine.
 
-The coordinate frame comes back in the `X-P2P-Up-Axis` response header, which is
+The coordinate frame comes back in the `X-DS-Up-Axis` response header, which is
 what makes that split safe — the client rotates to Z-up using it rather than
 assuming.
 
@@ -30,8 +30,8 @@ assuming.
 | `POST` | `/sculpt` | Multipart blueprint image → raw mesh bytes          |
 
 `POST /sculpt` form fields: `image` (required), `backend`, `pipeline_type`, `seed`.
-Response headers: `X-P2P-Mesh-Format`, `X-P2P-Up-Axis`, `X-P2P-Backend`,
-`X-P2P-Model`, `X-P2P-Model-Version`.
+Response headers: `X-DS-Mesh-Format`, `X-DS-Up-Axis`, `X-DS-Backend`,
+`X-DS-Model`, `X-DS-Model-Version`.
 
 Requests are serialised: one 4B-parameter reconstruction at a time, because the
 GPU cannot serve two, and because `pipeline_type`/`seed` overrides are applied to
@@ -41,10 +41,10 @@ the shared backend instance under the same lock and restored afterwards.
 
 | Variable                  | Default    | Meaning                                          |
 | ------------------------- | ---------- | ------------------------------------------------ |
-| `P2P_WORKER_API_KEY`      | *(unset)*  | If set, `Authorization: Bearer …` is required     |
-| `P2P_WORKER_BACKEND`      | `trellis2` | Backend to serve                                 |
-| `P2P_WORKER_MESH_FORMAT`  | `obj`      | Wire format for the returned mesh                |
-| `P2P_WORKER_PRELOAD`      | `true`     | Load weights at boot rather than on first request |
+| `DS_WORKER_API_KEY`      | *(unset)*  | If set, `Authorization: Bearer …` is required     |
+| `DS_WORKER_BACKEND`      | `trellis2` | Backend to serve                                 |
+| `DS_WORKER_MESH_FORMAT`  | `obj`      | Wire format for the returned mesh                |
+| `DS_WORKER_PRELOAD`      | `true`     | Load weights at boot rather than on first request |
 | `TRELLIS2_MODEL_PATH`     | `/models/trellis2` | Local weights; falls back to the HF repo  |
 | `TRELLIS2_REPO_PATH`      | `/opt/TRELLIS.2`   | The TRELLIS.2 source checkout             |
 | `TRELLIS2_PIPELINE_TYPE`  | `1024_cascade`     | Default voxel resolution                  |
@@ -56,14 +56,14 @@ the shared backend instance under the same lock and restored afterwards.
 # Set the arch list to your deployment GPU: 8.0=A100 8.6=A10G 8.9=L4 9.0=H100
 docker build -f infra/docker/trellis2-worker.Dockerfile \
     --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
-    -t p2p-trellis2-worker .
+    -t ds-trellis2-worker .
 
 # Run on the GPU host
 docker run --rm --gpus all -p 8100:8100 \
-    -v p2p-models-trellis2:/models/trellis2 \
+    -v ds-models-trellis2:/models/trellis2 \
     -e HF_TOKEN=$HF_TOKEN \
-    -e P2P_WORKER_API_KEY=some-shared-secret \
-    p2p-trellis2-worker
+    -e DS_WORKER_API_KEY=some-shared-secret \
+    ds-trellis2-worker
 
 # Or via compose, on the GPU host
 docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-worker
@@ -72,9 +72,9 @@ docker compose -f infra/docker-compose.yml --profile gpu-worker up trellis2-work
 Then, on the machine running the pipeline:
 
 ```sh
-export P2P_SCULPTOR_BACKEND=remote
-export P2P_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
-export P2P_SCULPTOR_REMOTE_KEY=some-shared-secret
+export DS_SCULPTOR_BACKEND=remote
+export DS_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
+export DS_SCULPTOR_REMOTE_KEY=some-shared-secret
 python pythonsrc/pipeline.py "a ceramic vase"
 ```
 
@@ -95,7 +95,7 @@ compatible with this project's Apache-2.0 grant — override the build args:
 docker build -f infra/docker/trellis2-worker.Dockerfile \
     --build-arg TRELLIS2_REPO=https://github.com/<you>/TRELLIS.2.git \
     --build-arg TRELLIS2_REF=<branch> \
-    -t p2p-trellis2-worker .
+    -t ds-trellis2-worker .
 ```
 
 The shape-only path this worker uses never imports a rasterizer, so the renderer

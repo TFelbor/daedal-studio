@@ -1,4 +1,4 @@
-/* Prompt2Print — the app in the language of the marketing site.
+/* Daedal Studio — the app in the language of the marketing site.
    Near-black ground, one orange for actions, condensed display type over Barlow,
    hairline rules and registration marks. Every colour, face and rule width below is
    a token: pages must not hard-code a hex.
@@ -502,10 +502,10 @@ p {
 .status-off { color: var(--ink-35); }
 
 .status-run::before {
-  animation: p2p-pulse 1.6s infinite;
+  animation: ds-pulse 1.6s infinite;
 }
 
-@keyframes p2p-pulse {
+@keyframes ds-pulse {
   0% { opacity: 0.35; }
   50% { opacity: 1; }
   100% { opacity: 0.35; }
@@ -513,12 +513,12 @@ p {
 
 /* The boot mark: the identity drawing itself, used wherever the app is reading its
    own state. See BootMark.tsx — this is the one place the logo animates. */
-@keyframes p2p-boot-fill {
+@keyframes ds-boot-fill {
   0% { opacity: 0; }
   20%, 100% { opacity: 1; }
 }
 
-@keyframes p2p-boot-draw {
+@keyframes ds-boot-draw {
   0%, 14% { stroke-dashoffset: 1; }
   68%, 100% { stroke-dashoffset: 0; }
 }
@@ -533,7 +533,7 @@ p {
   width: 4px;
   height: 4px;
   background: var(--run);
-  animation: p2p-pulse 1.2s infinite;
+  animation: ds-pulse 1.2s infinite;
 }
 
 .running-dots > i:nth-child(2) { animation-delay: 0.2s; }
@@ -780,10 +780,10 @@ p {
 }
 
 .spin {
-  animation: p2p-spin 1s linear infinite;
+  animation: ds-spin 1s linear infinite;
 }
 
-@keyframes p2p-spin {
+@keyframes ds-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
@@ -793,23 +793,23 @@ p {
 }
 
 /* ── Handoff motion ──────────────────────────────────────────────────────────
-   The three entrances of the one-directional flow. `p2p-arrive` is how a phase
+   The three entrances of the one-directional flow. `ds-arrive` is how a phase
    output takes the stage — a short drift continuing the line's left-to-right
-   travel, never a slide from off-screen. `p2p-rise` is for the blocks a new
+   travel, never a slide from off-screen. `ds-rise` is for the blocks a new
    output brings with it (the quality card, the slice figures, the dispatch
-   gate). `p2p-sweep` draws the handoff itself: one accent pass along a rule,
+   gate). `ds-sweep` draws the handoff itself: one accent pass along a rule,
    left to right, like a carriage crossing a plotter. */
-@keyframes p2p-arrive {
+@keyframes ds-arrive {
   from { opacity: 0; transform: translateX(-16px); }
   to { opacity: 1; transform: none; }
 }
 
-@keyframes p2p-rise {
+@keyframes ds-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
 
-@keyframes p2p-sweep {
+@keyframes ds-sweep {
   0% { transform: scaleX(0); opacity: 1; }
   70% { transform: scaleX(1); opacity: 1; }
   100% { transform: scaleX(1); opacity: 0; }

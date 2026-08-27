@@ -257,7 +257,7 @@ def licences_dir(tmp_path: Path) -> Path:
             }
         )
     )
-    (directory / "sbom" / "p2p-mesh-pipeline.json").write_text(
+    (directory / "sbom" / "ds-mvp-pipeline.json").write_text(
         json.dumps(
             {
                 "artifacts": [
@@ -299,7 +299,7 @@ def test_report_reads_every_ecosystem(licences_dir: Path):
         "python.json",
         "python-api-server.json",
         "node.json",
-        "sbom/p2p-mesh-pipeline.json",
+        "sbom/ds-mvp-pipeline.json",
     }
     assert report["missing_sources"] == []
     assert report["totals"]["packages"] > 0
@@ -327,7 +327,7 @@ def test_os_layer_copyleft_is_aggregated_into_one_finding(licences_dir: Path):
 
 def test_a_wheel_inside_an_image_is_still_scored_in_process(licences_dir: Path):
     """An SBOM's Python rows are linked into what runs; its .debs are the platform."""
-    (licences_dir / "sbom" / "p2p-mesh-pipeline.json").write_text(
+    (licences_dir / "sbom" / "ds-mvp-pipeline.json").write_text(
         json.dumps(
             {
                 "artifacts": [
@@ -352,7 +352,7 @@ def test_unreadable_sbom_wheels_are_aggregated_not_listed_one_by_one(licences_di
     The pip-licenses file for that same image reads all of them, so a row each would be
     two hundred findings a week that another committed file already answers.
     """
-    (licences_dir / "sbom" / "p2p-api-server.json").write_text(
+    (licences_dir / "sbom" / "ds-api-server.json").write_text(
         json.dumps(
             {
                 "artifacts": [
@@ -366,7 +366,7 @@ def test_unreadable_sbom_wheels_are_aggregated_not_listed_one_by_one(licences_di
     rows = [
         f
         for f in report["findings"]
-        if f["source"] == "sbom/p2p-api-server.json"
+        if f["source"] == "sbom/ds-api-server.json"
     ]
     assert len(rows) == 1
     assert rows[0]["aggregate"] is True
@@ -377,7 +377,7 @@ def test_unreadable_sbom_wheels_are_aggregated_not_listed_one_by_one(licences_di
 
 def test_a_readable_copyleft_wheel_in_an_sbom_stays_an_individual_denial(licences_dir: Path):
     """The aggregation must not swallow the finding it was added alongside."""
-    (licences_dir / "sbom" / "p2p-api-server.json").write_text(
+    (licences_dir / "sbom" / "ds-api-server.json").write_text(
         json.dumps(
             {
                 "artifacts": [
@@ -508,7 +508,7 @@ def test_the_digest_ignores_the_timestamp_so_an_unchanged_run_is_visibly_unchang
 def test_the_digest_keys_os_aggregates_by_count_not_by_membership(licences_dir: Path):
     """A base-image bump that swaps which GPL packages are present is not a finding."""
     before = report_script._digest(report_script.build_report(licences_dir))
-    sbom = licences_dir / "sbom" / "p2p-mesh-pipeline.json"
+    sbom = licences_dir / "sbom" / "ds-mvp-pipeline.json"
     payload = json.loads(sbom.read_text())
     for artifact in payload["artifacts"]:
         if artifact["name"] == "coreutils":
@@ -539,8 +539,8 @@ def test_node_paths_are_made_relative_and_stay_that_way():
     payload = {
         "react@19.2.6": {
             "licenses": "MIT",
-            "path": "/home/runner/work/p2p/p2p/web/node_modules/react",
-            "licenseFile": "/home/runner/work/p2p/p2p/web/node_modules/react/LICENSE",
+            "path": "/home/runner/work/ds-mvp/ds-mvp/web/node_modules/react",
+            "licenseFile": "/home/runner/work/ds-mvp/ds-mvp/web/node_modules/react/LICENSE",
         }
     }
     assert normalise_script.relativise_node_paths(payload) == 2
@@ -589,7 +589,7 @@ def test_an_sbom_is_slimmed_to_the_licence_relevant_fields():
 
 def test_slimming_keeps_what_the_report_reads(licences_dir: Path):
     """A slimmed SBOM must still score identically — the fields dropped are unread."""
-    path = licences_dir / "sbom" / "p2p-mesh-pipeline.json"
+    path = licences_dir / "sbom" / "ds-mvp-pipeline.json"
     before = report_script.build_report(licences_dir)["findings"]
     payload = json.loads(path.read_text())
     for artifact in payload["artifacts"]:
@@ -650,7 +650,7 @@ DECLARED_MODELS = {
     "pythonsrc/visualizer.py": r'MODEL_ID\s*=\s*"([^"]+)"',
     "pythonsrc/sculptors/trellis2.py": r'DEFAULT_MODEL_ID\s*=\s*"([^"]+)"',
     "pythonsrc/ip_screen_image.py": r'DEFAULT_MODEL_ID\s*=\s*"([^"]+)"',
-    "pythonsrc/sculptors/background.py": r'"P2P_BIREFNET_MODEL_ID",\s*"([^"]+)"',
+    "pythonsrc/sculptors/background.py": r'"DS_BIREFNET_MODEL_ID",\s*"([^"]+)"',
     "pythonsrc/sculptors/pixazo.py": r'MODEL_SLUG\s*=\s*"([^"]+)"',
 }
 

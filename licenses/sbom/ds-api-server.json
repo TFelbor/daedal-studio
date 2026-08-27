@@ -16485,11 +16485,11 @@
    "os": "linux",
    "repoDigests": [],
    "tags": [
-    "p2p-api-server:latest"
+    "ds-api-server:latest"
    ],
-   "userInput": "p2p-api-server:latest"
+   "userInput": "ds-api-server:latest"
   },
-  "name": "p2p-api-server",
+  "name": "ds-api-server",
   "type": "image",
   "version": "sha256:a0d95b0e71e822f59ebffb19dc6c1a368c824fd0c110ad5cb62260a21ee35191"
  }

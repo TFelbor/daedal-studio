@@ -25,22 +25,22 @@ from pythonsrc.sculptors import (
 )
 
 SCULPTOR_ENV_VARS = (
-    "P2P_SCULPTOR_BACKEND",
-    "P2P_SCULPTOR_REMOTE_URL",
-    "P2P_SCULPTOR_REMOTE_KEY",
+    "DS_SCULPTOR_BACKEND",
+    "DS_SCULPTOR_REMOTE_URL",
+    "DS_SCULPTOR_REMOTE_KEY",
     "TRELLIS2_PIPELINE_TYPE",
     # A developer with a real subscription key exported would otherwise see `auto`
     # resolve to `pixazo` and the "nothing is runnable" test fail for the wrong
     # reason. The key is the whole input to that branch, so it belongs here.
     "PIXAZO_API_KEY",
-    "P2P_PIXAZO_GATEWAY",
-    "P2P_PIXAZO_IMAGE_BASE_URL",
-    "P2P_PIXAZO_UP_AXIS",
+    "DS_PIXAZO_GATEWAY",
+    "DS_PIXAZO_IMAGE_BASE_URL",
+    "DS_PIXAZO_UP_AXIS",
     # conftest sets this suite-wide so no test can spend money. These tests only
     # *construct* the backend and stub its HTTP, so they opt out — deliberately and
     # locally. `test_kill_switch_refuses_to_construct_the_paid_backend` below is the
     # one that asserts the switch itself works.
-    "P2P_DISABLE_PAID_BACKENDS",
+    "DS_DISABLE_PAID_BACKENDS",
 )
 
 
@@ -82,7 +82,7 @@ class RecordingBackend(SculptorBackend):
 
 
 def test_auto_prefers_remote_when_worker_configured(clean_env):
-    clean_env.setenv("P2P_SCULPTOR_REMOTE_URL", "http://gpu-host:8100")
+    clean_env.setenv("DS_SCULPTOR_REMOTE_URL", "http://gpu-host:8100")
     assert resolve_backend_name("auto") == "remote"
 
 
@@ -104,12 +104,12 @@ def test_auto_uses_local_when_cuda_present_and_no_worker(clean_env):
 
 
 def test_backend_name_comes_from_environment(clean_env):
-    clean_env.setenv("P2P_SCULPTOR_BACKEND", "remote")
+    clean_env.setenv("DS_SCULPTOR_BACKEND", "remote")
     assert resolve_backend_name(None) == "remote"
 
 
 def test_explicit_argument_beats_environment(clean_env):
-    clean_env.setenv("P2P_SCULPTOR_BACKEND", "remote")
+    clean_env.setenv("DS_SCULPTOR_BACKEND", "remote")
     assert resolve_backend_name("trellis2") == "trellis2"
 
 
@@ -296,7 +296,7 @@ def test_up_axis_header_is_honoured(remote, monkeypatch, blueprint, tmp_path):
         "_post_with_retries",
         lambda path: FakeResponse(
             content=_obj_bytes(tall),
-            headers={"X-P2P-Mesh-Format": "obj", "X-P2P-Up-Axis": "y"},
+            headers={"X-DS-Mesh-Format": "obj", "X-DS-Up-Axis": "y"},
         ),
     )
     out = tmp_path / "mesh.obj"
@@ -316,7 +316,7 @@ def test_missing_up_axis_header_warns_and_assumes_z(remote, monkeypatch, bluepri
     out = tmp_path / "mesh.obj"
     with caplog.at_level("WARNING"):
         remote.generate_mesh(blueprint, out, target_faces=0)
-    assert "X-P2P-Up-Axis" in caplog.text
+    assert "X-DS-Up-Axis" in caplog.text
     assert np.allclose(trimesh.load(out).extents, [1, 1, 10])
 
 
@@ -329,9 +329,9 @@ def test_model_headers_land_on_provenance(remote, monkeypatch, blueprint, tmp_pa
         lambda path: FakeResponse(
             content=_obj_bytes(mesh),
             headers={
-                "X-P2P-Up-Axis": "z",
-                "X-P2P-Model": "TRELLIS.2",
-                "X-P2P-Model-Version": "microsoft/TRELLIS.2-4B",
+                "X-DS-Up-Axis": "z",
+                "X-DS-Model": "TRELLIS.2",
+                "X-DS-Model-Version": "microsoft/TRELLIS.2-4B",
             },
         ),
     )
@@ -358,7 +358,7 @@ def test_empty_worker_response_is_rejected(remote, monkeypatch, blueprint, tmp_p
     monkeypatch.setattr(
         remote,
         "_post_with_retries",
-        lambda path: FakeResponse(content=b"", headers={"X-P2P-Up-Axis": "z"}),
+        lambda path: FakeResponse(content=b"", headers={"X-DS-Up-Axis": "z"}),
     )
     with pytest.raises(SculptorError, match="no usable geometry"):
         remote.generate_mesh(blueprint, tmp_path / "m.obj")
@@ -400,7 +400,7 @@ def test_connection_errors_retry_but_http_errors_do_not(remote, monkeypatch, blu
             raise requests.exceptions.ConnectionError("refused")
         return FakeResponse(
             content=_obj_bytes(trimesh.creation.box()),
-            headers={"X-P2P-Up-Axis": "z"},
+            headers={"X-DS-Up-Axis": "z"},
         )
 
     monkeypatch.setattr("requests.post", flaky)
@@ -561,7 +561,7 @@ def test_auto_prefers_a_local_gpu_over_the_paid_endpoint(clean_env):
 
 def test_auto_prefers_a_self_hosted_worker_over_the_paid_endpoint(clean_env):
     clean_env.setattr("pythonsrc.sculptors._cuda_available", lambda: False)
-    clean_env.setenv("P2P_SCULPTOR_REMOTE_URL", "http://gpu-host:8100")
+    clean_env.setenv("DS_SCULPTOR_REMOTE_URL", "http://gpu-host:8100")
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
     assert resolve_backend_name("auto") == "remote"
 
@@ -592,7 +592,7 @@ def test_pixazo_up_axis_is_overridable_without_a_code_change(clean_env):
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.setenv("P2P_PIXAZO_UP_AXIS", "Z")
+    clean_env.setenv("DS_PIXAZO_UP_AXIS", "Z")
     assert PixazoBackend().up_axis == "z"
 
 
@@ -670,7 +670,7 @@ def test_a_public_base_url_is_used_when_configured(clean_env, blueprint):
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.setenv("P2P_PIXAZO_IMAGE_BASE_URL", "https://cdn.test/bp/")
+    clean_env.setenv("DS_PIXAZO_IMAGE_BASE_URL", "https://cdn.test/bp/")
     url = PixazoBackend()._resolve_image_url(blueprint)
     assert url == f"https://cdn.test/bp/{blueprint.name}"
 
@@ -779,18 +779,18 @@ def test_kill_switch_refuses_to_construct_the_paid_backend(clean_env):
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", "1")
-    with pytest.raises(SculptorError, match="disabled by P2P_DISABLE_PAID_BACKENDS"):
+    clean_env.setenv("DS_DISABLE_PAID_BACKENDS", "1")
+    with pytest.raises(SculptorError, match="disabled by DS_DISABLE_PAID_BACKENDS"):
         PixazoBackend()
 
 
 @pytest.mark.parametrize("value", ["0", "false", "no", ""])
 def test_kill_switch_falsey_values_do_not_disable(clean_env, value):
-    """`P2P_DISABLE_PAID_BACKENDS=0` must mean enabled, not "the string is truthy"."""
+    """`DS_DISABLE_PAID_BACKENDS=0` must mean enabled, not "the string is truthy"."""
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", value)
+    clean_env.setenv("DS_DISABLE_PAID_BACKENDS", value)
     assert PixazoBackend().name == "pixazo"
 
 
@@ -803,8 +803,8 @@ def test_kill_switch_is_checked_before_the_api_key(clean_env):
     """
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
-    clean_env.setenv("P2P_DISABLE_PAID_BACKENDS", "1")
-    with pytest.raises(SculptorError, match="disabled by P2P_DISABLE_PAID_BACKENDS"):
+    clean_env.setenv("DS_DISABLE_PAID_BACKENDS", "1")
+    with pytest.raises(SculptorError, match="disabled by DS_DISABLE_PAID_BACKENDS"):
         PixazoBackend()
 
 
@@ -813,7 +813,7 @@ def test_decimation_target_is_capped_by_default(clean_env):
     from pythonsrc.sculptors.pixazo import PixazoBackend, DEFAULT_DECIMATION_TARGET
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    clean_env.delenv("DS_DISABLE_PAID_BACKENDS", raising=False)
     backend = PixazoBackend()
     assert backend.decimation_target == DEFAULT_DECIMATION_TARGET == 200_000
     assert backend._payload("https://x/y.png")["decimation_target"] == 200_000
@@ -824,7 +824,7 @@ def test_purchased_glb_is_cached_before_post_processing(clean_env, blueprint, tm
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    clean_env.delenv("DS_DISABLE_PAID_BACKENDS", raising=False)
     backend = PixazoBackend()
 
     mesh = trimesh.creation.box(extents=(1, 10, 1))
@@ -854,7 +854,7 @@ def test_caching_failure_never_loses_the_bought_mesh(clean_env):
     from pythonsrc.sculptors.pixazo import PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
-    clean_env.delenv("P2P_DISABLE_PAID_BACKENDS", raising=False)
+    clean_env.delenv("DS_DISABLE_PAID_BACKENDS", raising=False)
     backend = PixazoBackend()
     backend.artifact_dir = "/proc/nonexistent/definitely-not-writable"
     backend._cache_glb(b"bytes")  # must not raise

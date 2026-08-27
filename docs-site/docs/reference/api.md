@@ -1,6 +1,6 @@
 # API Reference
 
-The Prompt2Print `api-server` exposes a fully async REST API built with FastAPI. It handles job orchestration, telemetry streaming, and UI interactions.
+The Daedal Studio `api-server` exposes a fully async REST API built with FastAPI. It handles job orchestration, telemetry streaming, and UI interactions.
 
 ## Interactive Docs
 When the `api-server` Docker container is running, you can access the interactive Swagger documentation by navigating to:

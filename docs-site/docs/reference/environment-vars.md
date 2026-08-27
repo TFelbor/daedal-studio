@@ -1,6 +1,6 @@
 # Environment Variables
 
-You configure Prompt2Print by modifying the `.env` file located in the root of the project directory.
+You configure Daedal Studio by modifying the `.env` file located in the root of the project directory.
 
 | Variable | Required? | Description | Example |
 |----------|-----------|-------------|---------|

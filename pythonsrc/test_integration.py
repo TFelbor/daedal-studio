@@ -33,10 +33,10 @@ from pathlib import Path
 
 from config import OCTOPRINT_DEFAULT_URL
 
-logger = logging.getLogger("p2p.integration_test")
+logger = logging.getLogger("ds.integration_test")
 
 OCTOPRINT_URL = OCTOPRINT_DEFAULT_URL
-SLICE_OUTPUT = Path("/tmp/p2p_integration_test.gcode")
+SLICE_OUTPUT = Path("/tmp/ds_integration_test.gcode")
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -49,7 +49,7 @@ def _setup_logging(verbose: bool = False) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="p2p-mesh integration test — Phase 3.5 → Phase 4 against local OctoPrint",
+        description="ds-mvp integration test — Phase 3.5 → Phase 4 against local OctoPrint",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 

@@ -722,14 +722,14 @@ export function PrinterSetup() {
                   id="default-profile"
                   className="input"
                   type="text"
-                  list="p2p-profile-list"
+                  list="ds-profile-list"
                   value={profileInput}
                   placeholder={DEFAULT_PROFILES[0]}
                   spellCheck={false}
                   onChange={(e) => setProfileInput(e.target.value)}
                   onBlur={(e) => commitValue('DEFAULT_PROFILE', e.target.value)}
                 />
-                <datalist id="p2p-profile-list">
+                <datalist id="ds-profile-list">
                   {DEFAULT_PROFILES.map((profile) => (
                     <option key={profile} value={profile} />
                   ))}

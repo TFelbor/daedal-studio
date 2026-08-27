@@ -11,7 +11,7 @@ Two properties are load-bearing:
   a Google Drive File Provider mount, and listing that directory was measured
   blocking for 10+ seconds. Everything Drive-facing happens on a daemon thread
   against an already-closed snapshot file.
-* **Off by default.** `P2P_DB_BACKUP_MIRROR_DIR` unset means nothing is copied
+* **Off by default.** `DS_DB_BACKUP_MIRROR_DIR` unset means nothing is copied
   anywhere — the mirror is enabled deliberately, once the data is worth keeping.
 """
 
@@ -46,7 +46,7 @@ def _wait_for_mirror():
 # ── Mirroring ────────────────────────────────────────────────────────────────
 
 def test_no_mirror_directory_means_nothing_is_copied(live_db, tmp_path, monkeypatch):
-    monkeypatch.delenv("P2P_DB_BACKUP_MIRROR_DIR", raising=False)
+    monkeypatch.delenv("DS_DB_BACKUP_MIRROR_DIR", raising=False)
     problems = app_module.check_database_health(live_db)
     assert problems == []
     _wait_for_mirror()
@@ -57,7 +57,7 @@ def test_no_mirror_directory_means_nothing_is_copied(live_db, tmp_path, monkeypa
 
 def test_a_verified_snapshot_is_mirrored(live_db, tmp_path, monkeypatch):
     mirror = tmp_path / "drive" / "01_Data_Collection"
-    monkeypatch.setenv("P2P_DB_BACKUP_MIRROR_DIR", str(mirror))
+    monkeypatch.setenv("DS_DB_BACKUP_MIRROR_DIR", str(mirror))
 
     problems = app_module.check_database_health(live_db)
     assert problems == []
@@ -79,7 +79,7 @@ def test_a_corrupt_database_is_never_mirrored(tmp_path, monkeypatch):
     db_path = tmp_path / "telemetry.db"
     monkeypatch.setenv("TELEMETRY_DB_PATH", str(db_path))
     mirror = tmp_path / "mirror"
-    monkeypatch.setenv("P2P_DB_BACKUP_MIRROR_DIR", str(mirror))
+    monkeypatch.setenv("DS_DB_BACKUP_MIRROR_DIR", str(mirror))
 
     db = TelemetryDB(str(db_path))
     db.init_schema()
@@ -114,8 +114,8 @@ def test_a_corrupt_database_is_never_mirrored(tmp_path, monkeypatch):
 
 def test_the_mirror_is_pruned_to_its_own_copy_count(live_db, tmp_path, monkeypatch):
     mirror = tmp_path / "mirror"
-    monkeypatch.setenv("P2P_DB_BACKUP_MIRROR_DIR", str(mirror))
-    monkeypatch.setenv("P2P_DB_BACKUP_MIRROR_COPIES", "2")
+    monkeypatch.setenv("DS_DB_BACKUP_MIRROR_DIR", str(mirror))
+    monkeypatch.setenv("DS_DB_BACKUP_MIRROR_COPIES", "2")
 
     for _ in range(3):
         app_module.check_database_health(live_db)
@@ -128,7 +128,7 @@ def test_the_mirror_is_pruned_to_its_own_copy_count(live_db, tmp_path, monkeypat
 # ── Rotation and cadence configuration ──────────────────────────────────────
 
 def test_local_copy_count_is_configurable(live_db, tmp_path, monkeypatch):
-    monkeypatch.setenv("P2P_DB_BACKUP_COPIES", "2")
+    monkeypatch.setenv("DS_DB_BACKUP_COPIES", "2")
     for _ in range(3):
         app_module.check_database_health(live_db)
         time.sleep(1.1)
@@ -136,9 +136,9 @@ def test_local_copy_count_is_configurable(live_db, tmp_path, monkeypatch):
 
 
 def test_backup_interval_parses_and_disables():
-    assert app_module.backup_interval_s({"P2P_DB_BACKUP_INTERVAL_MIN": "360"}) == 360 * 60
-    assert app_module.backup_interval_s({"P2P_DB_BACKUP_INTERVAL_MIN": "0"}) is None
-    assert app_module.backup_interval_s({"P2P_DB_BACKUP_INTERVAL_MIN": "junk"}) == 360 * 60
+    assert app_module.backup_interval_s({"DS_DB_BACKUP_INTERVAL_MIN": "360"}) == 360 * 60
+    assert app_module.backup_interval_s({"DS_DB_BACKUP_INTERVAL_MIN": "0"}) is None
+    assert app_module.backup_interval_s({"DS_DB_BACKUP_INTERVAL_MIN": "junk"}) == 360 * 60
     assert app_module.backup_interval_s({}) == 360 * 60
 
 
@@ -147,7 +147,7 @@ def test_backup_interval_parses_and_disables():
 def test_manual_backup_endpoint_takes_a_snapshot(live_db, tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    monkeypatch.delenv("P2P_DB_BACKUP_MIRROR_DIR", raising=False)
+    monkeypatch.delenv("DS_DB_BACKUP_MIRROR_DIR", raising=False)
     live_db.close()
 
     client = TestClient(app_module.app)

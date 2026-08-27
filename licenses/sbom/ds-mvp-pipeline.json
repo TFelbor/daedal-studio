@@ -22386,8 +22386,8 @@
    "imageID": "sha256:5f658cb3bb4e0f634ecc7f4cee503b1423a4bee2707f809d4b602d6ae248e07f",
    "imageSize": 2060398267,
    "labels": {
-    "description": "p2p-mesh Pipeline Runner \u2014 all phases (1\u20135) in one container",
-    "maintainer": "Prompt2Print",
+    "description": "ds-mvp Pipeline Runner \u2014 all phases (1\u20135) in one container",
+    "maintainer": "Daedal Studio",
     "org.opencontainers.image.version": "22.04"
    },
    "layers": [
@@ -22483,11 +22483,11 @@
    "os": "linux",
    "repoDigests": [],
    "tags": [
-    "p2p-mesh-pipeline:latest"
+    "ds-mvp-pipeline:latest"
    ],
-   "userInput": "p2p-mesh-pipeline:latest"
+   "userInput": "ds-mvp-pipeline:latest"
   },
-  "name": "p2p-mesh-pipeline",
+  "name": "ds-mvp-pipeline",
   "type": "image",
   "version": "sha256:e4773cfbcd6b9581fa8508cf0df8b009ff3be8b0b2287afd267f8b94921d2c57"
  }

@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────────────────────────────────
-# Makefile — Convenience targets for the p2p-mesh project.
+# Makefile — Convenience targets for the ds-mvp project.
 #
 # All Docker operations use infra/docker-compose.yml (project root is the
 # build context). Run make targets from the project root.
@@ -26,7 +26,7 @@ COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
 # Build all Docker images (base image must be built first)
 build:
-	docker compose -f $(COMPOSE_FILE) build p2p-base
+	docker compose -f $(COMPOSE_FILE) build ds-base
 	docker compose -f $(COMPOSE_FILE) build
 
 # Start the API server (foreground)
@@ -43,7 +43,7 @@ start-native:
 	@echo "Starting API server natively on host to enable MPS acceleration..."
 	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"
 	. infra/scripts/load_native_env.sh; \
-	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=p2p-mesh-poc-docker python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=ds-mvp python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
 
 # Stop all services
 down:
@@ -77,7 +77,7 @@ worker-logs:
 # Check the worker before submitting jobs: a failed preload shows up here rather
 # than as a failed Phase 2 several minutes into a run.
 worker-health:
-	curl -s $${P2P_SCULPTOR_REMOTE_URL:-http://localhost:8100}/health | python3 -m json.tool
+	curl -s $${DS_SCULPTOR_REMOTE_URL:-http://localhost:8100}/health | python3 -m json.tool
 
 # ── Pipeline runs ─────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ pipeline-mac:
 
 # Full pipeline with NVIDIA GPU (Linux / Windows with NVIDIA Container Toolkit).
 # Phase 2 still goes through the worker — the pipeline-runner image carries no CUDA
-# extensions — so start it first (make worker-up) and set P2P_SCULPTOR_REMOTE_URL.
+# extensions — so start it first (make worker-up) and set DS_SCULPTOR_REMOTE_URL.
 pipeline-gpu:
 	@if [ -z "$(PROMPT)" ]; then echo "Usage: make pipeline-gpu PROMPT='a ceramic vase'"; exit 1; fi
 	docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_GPU) \
