@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - depends on how the caller set sys.path
 import numpy as np
 import manifold3d  # Apache-2.0 — guaranteed-manifold kernel; version 3.5.x
 import trimesh
+from scipy import ndimage
 import trimesh.repair
 import trimesh.util
 
@@ -31,6 +32,37 @@ MAX_CLOSE_ROUNDS = 8
 # longest extent. Scale-invariant on purpose — repair runs before Phase 3 scales
 # the part, so an absolute pitch would mean a different fidelity for every model.
 VOXEL_REMESH_RESOLUTION = int(os.environ.get("P2P_REPAIR_VOXEL_RESOLUTION", "128"))
+
+# ── Hollowing tuning ─────────────────────────────────────────────────────────
+# Voxels across the wall. **Two, never one.** The shell used to be built by
+# eroding the filled grid one layer with the default 6-connected structure, which
+# makes it exactly one voxel thick — and a one-voxel-thick layer following a
+# curved surface is a diagonal staircase whose voxels touch only at edges and
+# corners. `marching_cubes` meshes face-adjacency, so it returned a separate
+# closed surface per face-connected run: a 50 mm sphere hollowed at the default
+# wall came back as **378 disconnected chips**, 314 of them floating clear of the
+# plate. Watertight, sliceable, and confetti. Two voxels across the wall is the
+# minimum that keeps the shell face-connected through a diagonal step.
+HOLLOW_VOXELS_PER_WALL = 2
+
+# Upper bound on the hollowing grid, matching `printability.MAX_THICKNESS_VOXELS`
+# — the two measure the same walls and there is no sense resolving one finer than
+# the other can verify. Beyond it the pitch is coarsened, which thickens the wall
+# (never thins it — see `hollow_mesh`) rather than spending gigabytes: the distance
+# transform below holds a float64 and three int32 arrays over the whole grid, so
+# 2M voxels is ~41 MB and ~0.25s where 16M would be 343 MB and 3s. It also bounds
+# the output: marching cubes over a shell this size lands around 250k faces, and
+# the pitch it floors a small part's wall at (2 voxels of 50mm/126) is 0.8mm —
+# which is the FDM profile's minimum printable wall, so nothing resolvable is lost.
+HOLLOW_MAX_VOXELS = 2_000_000
+
+# Escape-hole diameter, in wall thicknesses. A sealed cavity is a defect the
+# Engineer introduces and `printability.escape_hole` rates fatal, so hollowing
+# vents what it seals. Expressed relative to the wall because that is the only
+# length hollowing knows: the vent has to be wide enough to breach a wall of that
+# thickness, and a fixed millimetre figure would be a hole through a 3 mm wall and
+# a slot through a 0.5 mm one.
+ESCAPE_HOLE_WALLS = 2.0
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logger = logging.getLogger("p2p.engineer")
@@ -65,6 +97,11 @@ class Engineer:
         # conventions now exist, and a bare `target_mm` in a historical row cannot
         # say which one produced it.
         self._last_scale_axis: str | None = None
+        # What hollowing did, when it ran: the pitch and wall it settled on, how
+        # many cavities it found, filled and vented, and how many it could not.
+        # Merged into `last_report`, so "did --hollow produce a printable part"
+        # is answerable from the dataset rather than only from the log.
+        self._hollow_stats: dict = {}
 
     # ── Repair ────────────────────────────────────────────────────────────────
     @staticmethod
@@ -603,55 +640,274 @@ class Engineer:
         oriented.apply_translation([-centre[0], -centre[1], -oriented.bounds[0][2]])
         return oriented
 
-    # ── Hollow (voxel-based shell, Strategy A) ────────────────────────────────
-    def hollow_mesh(self, mesh: trimesh.Trimesh, wall_thickness: float = 1.2) -> trimesh.Trimesh:
+    # ── Hollow (voxel-based shell) ────────────────────────────────────────────
+    @staticmethod
+    def _clear_capsule(shell, start, end, radius: float) -> None:
+        """Clear every shell voxel within `radius` of the segment start→end.
+
+        Sub-box indexing rather than a whole-grid distance field: the vent is a
+        couple of voxels long against a grid of up to eight million, and building
+        a mask over all of it per cavity is what makes a cheap operation slow.
+
+        Args:
+            shell: Occupancy array, modified in place.
+            start: Segment start, in voxel-index coordinates.
+            end: Segment end, in voxel-index coordinates. May sit outside the grid
+                — the exterior voxel the wall is breached toward often does.
+            radius: Vent radius in voxels.
         """
-        Create a hollow shell using voxelisation.
+        start = np.asarray(start, dtype=float)
+        end = np.asarray(end, dtype=float)
+        # Balls spaced no further apart than the radius, so the swept volume is
+        # continuous: a gap between them would leave the wall unbreached.
+        steps = int(np.ceil(np.linalg.norm(end - start) / max(radius, 0.5))) + 1
+        for t in np.linspace(0.0, 1.0, max(steps, 2)):
+            centre = start + t * (end - start)
+            lo = np.maximum(np.floor(centre - radius).astype(int), 0)
+            hi = np.minimum(np.ceil(centre + radius).astype(int) + 1, shell.shape)
+            if (lo >= hi).any():
+                continue
+            gx, gy, gz = np.ogrid[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]]
+            inside = ((gx - centre[0]) ** 2 + (gy - centre[1]) ** 2
+                      + (gz - centre[2]) ** 2) <= radius ** 2
+            shell[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]][inside] = False
 
-        Strategy A:
-        - Voxelise the mesh at a pitch equal to *wall_thickness*.
-        - Erode the voxel grid by one voxel layer inward to get the interior volume.
-        - Subtract the interior from the original voxel grid to get the shell.
-        - Convert back to a mesh, **in the original mesh's coordinate frame**.
+    @staticmethod
+    def _count_sealed(shell, sites) -> int:
+        """How many of the cavities at `sites` still have no path to the outside.
 
-        This approach requires no external boolean engine (no Blender dependency).
+        Checked rather than assumed. Each vent is aimed at the nearest exterior
+        voxel, so it should always breach — but "should" is how a sealed cavity
+        reaches a printer, and the check costs one labelling of the empty space.
+        The padding is load-bearing twice: it guarantees an exterior region exists
+        even when the part fills its own bounding box (a solid cube does), and it
+        guarantees the corner sampled below belongs to it.
 
-        That last step is not a formality. ``VoxelGrid.marching_cubes`` is
-        ``ops.matrix_to_marching_cubes(matrix=self.matrix)`` — it meshes the
-        occupancy array at a spacing of one and **ignores the grid's own
-        transform**, so the surface comes back in *voxel-index* space: one unit
-        per voxel, origin at the grid corner. Hollowing runs after scaling and
-        orienting (see `process`), so shipping that unmapped meant a 50 mm sphere
-        left Phase 3 as a 43 mm one, its base 0.5 mm below the plate and its
-        centre 21 mm off in X and Y — a part of the wrong size in the wrong place,
-        for every ``--hollow`` job. Mapping index space back through
-        ``vox_filled.transform`` is what makes the shell the same object as the
-        input rather than a scale model of it.
+        Args:
+            shell: Occupancy array after venting.
+            sites: One voxel per cavity, in voxel-index coordinates.
+
+        Returns:
+            The number of cavities with no path to the exterior.
+        """
+        free, _ = ndimage.label(~np.pad(shell, 1))
+        outside = free[0, 0, 0]
+        sealed = 0
+        for site in sites:
+            i, j, k = int(site[0]) + 1, int(site[1]) + 1, int(site[2]) + 1
+            if free[i, j, k] != outside:
+                sealed += 1
+        return sealed
+
+    def hollow_mesh(
+        self,
+        mesh: trimesh.Trimesh,
+        wall_thickness: float = 1.2,
+        vent: bool = True,
+    ) -> trimesh.Trimesh:
+        """
+        Create a hollow shell using voxelisation, vented so it can be printed.
+
+        The shell is built by measuring, not by eroding: a Euclidean distance
+        transform gives every filled voxel its distance to the outside, the
+        interior is everything deeper than `wall_thickness`, and the shell is what
+        is left. That is what makes the wall a length in millimetres rather than
+        "one voxel, whatever that happens to be", and it is why the grid is
+        deliberately finer than the wall (`HOLLOW_VOXELS_PER_WALL`) — see that
+        constant for the 378-chip shell one-voxel erosion produced.
+
+        Three properties the result has to have, none of which it used to:
+
+        - **In the input's coordinate frame.** ``VoxelGrid.marching_cubes`` is
+          ``ops.matrix_to_marching_cubes(matrix=self.matrix)``: it meshes the
+          occupancy array at a spacing of one and **ignores the grid's own
+          transform**, so the surface comes back in *voxel-index* space, one unit
+          per voxel with its origin at the grid corner. Hollowing runs after
+          scaling and orienting (see `process`), so shipping that unmapped meant a
+          50 mm sphere left Phase 3 as a 43 mm one, base 0.5 mm below the plate and
+          centre 21 mm out in X and Y, on every ``--hollow`` job.
+        - **One connected body.** See `HOLLOW_VOXELS_PER_WALL`.
+        - **Vented.** Meshing a closed shell yields two surfaces, an outer and an
+          inner, and the inner one is a sealed cavity — air that cannot escape, and
+          `printability.escape_hole` rates it *fatal* precisely because the
+          Engineer created it. So every cavity is breached to the outside along the
+          shortest path out of it, from its lowest voxel: lowest because a drain
+          belongs under the part, and shortest because a channel bounded by the
+          wall thickness cannot bore through the body on its way out. Aiming down
+          from a *centroid* instead is wrong on any non-convex cavity — the mean of
+          a torus's lowest ring is the middle of the hole, where there is no wall
+          to breach.
+
+        Cavities too small to hold their own vent are **filled** rather than
+        vented. Below that size hollowing removes less material than the vent does,
+        so the pocket is all defect and no saving; a real reconstruction hollowed at
+        1.2 mm had 37 cavities, 36 of them that small, and venting them all severed
+        the shell.
+
+        Args:
+            mesh: The mesh to hollow, already scaled and seated on Z=0.
+            wall_thickness: Wall thickness in millimetres. Honoured as a lower
+                bound: a grid coarsened to stay under `HOLLOW_MAX_VOXELS` thickens
+                the wall, never thins it.
+            vent: Whether to breach each cavity to the outside. False reproduces a
+                sealed shell, which the printability gate will fail — available
+                because "sealed" is a real (if unprintable) shape, not because it
+                is a reasonable default.
+
+        Returns:
+            The vented shell, or the input mesh unchanged when there is nothing to
+            hollow (no part of it is thicker than two walls) or when hollowing
+            fails.
         """
         logger.info("Hollowing mesh with voxel strategy (wall=%.2f mm)…", wall_thickness)
+        self._hollow_stats = {}
         try:
-            # Pitch determines voxel size = wall thickness
-            pitch = wall_thickness
-            vox = mesh.voxelized(pitch=pitch)
-            vox_filled = vox.fill()  # ensure interior is fully filled
+            extents = np.asarray(mesh.extents, dtype=float)
+            pitch = wall_thickness / HOLLOW_VOXELS_PER_WALL
+            while np.prod(np.ceil(extents / pitch) + 2) > HOLLOW_MAX_VOXELS:
+                pitch *= 1.5
+            # The wall in voxels is floored at HOLLOW_VOXELS_PER_WALL, so a grid
+            # the cap coarsened produces a *thicker* wall than asked for rather
+            # than a shell that fragments. Thicker prints; fragmented does not.
+            wall_voxels = max(float(HOLLOW_VOXELS_PER_WALL), wall_thickness / pitch)
+            achieved_wall = wall_voxels * pitch
+            if achieved_wall > wall_thickness + 1e-9:
+                logger.warning(
+                    "Wall thickened to %.2f mm: a %.2f mm wall needs a %.3f mm pitch, "
+                    "which is %.0fM voxels for a %s mm part (cap %.0fM).",
+                    achieved_wall, wall_thickness, wall_thickness / HOLLOW_VOXELS_PER_WALL,
+                    np.prod(np.ceil(extents / (wall_thickness / HOLLOW_VOXELS_PER_WALL)) + 2) / 1e6,
+                    np.round(extents, 1).tolist(), HOLLOW_MAX_VOXELS / 1e6,
+                )
 
-            # Erode by 1 voxel (= 1 wall layer) to get the inner void
-            matrix = vox_filled.matrix.copy()
-            from scipy.ndimage import binary_erosion
-            inner = binary_erosion(matrix, iterations=1)
+            vox_filled = mesh.voxelized(pitch=pitch).fill()
+            filled = vox_filled.matrix
 
-            # Shell = filled minus inner
-            shell_matrix = matrix & ~inner
+            # Distance to the nearest empty voxel, and which voxel that is. Padded
+            # so a part touching its own bounding box still has an outside; the
+            # feature transform is what aims each vent at the thinnest way out.
+            distance, nearest = ndimage.distance_transform_edt(
+                np.pad(filled, 1), return_indices=True
+            )
+            distance = distance[1:-1, 1:-1, 1:-1]
+            nearest = nearest[:, 1:-1, 1:-1, 1:-1] - 1
 
-            # Reconstruct mesh from shell voxels, then map the index-space surface
-            # back onto the input's frame: `marching_cubes` does not apply the
-            # grid transform, and the caller has already scaled and placed the part.
-            shell_vox = trimesh.voxel.VoxelGrid(shell_matrix, vox_filled.transform)
-            hollow = shell_vox.marching_cubes
+            cavity = filled & (distance > wall_voxels)
+            if not cavity.any():
+                logger.info(
+                    "Nothing to hollow: no part of the mesh is more than %.2f mm from "
+                    "its surface. Returning it solid.", achieved_wall,
+                )
+                self._hollow_stats = {
+                    "hollowed": False, "hollow_reason": "thinner than two walls",
+                    "hollow_pitch_mm": float(pitch),
+                    "wall_thickness_achieved_mm": float(achieved_wall),
+                }
+                return mesh
+
+            labels, count = ndimage.label(cavity)
+            vent_radius = max(1.0, (ESCAPE_HOLE_WALLS * wall_thickness / 2.0) / pitch)
+
+            # A cavity has to be able to hold the vent it needs. `distance` inside a
+            # cavity is measured from the outside, so subtracting the wall leaves the
+            # radius of the largest ball the cavity itself contains.
+            index = list(range(1, count + 1))
+            deepest = np.atleast_1d(ndimage.maximum(distance, labels, index=index))
+            keep = np.zeros(count + 1, dtype=bool)
+            keep[1:] = (deepest - wall_voxels) >= vent_radius
+            filled_small = count - int(keep[1:].sum())
+            if filled_small:
+                logger.info(
+                    "Filling %d cavity(ies) too small to vent (under %.2f mm across); "
+                    "%d left to hollow.", filled_small, 2 * vent_radius * pitch,
+                    int(keep[1:].sum()),
+                )
+                cavity = keep[labels]
+                labels, count = ndimage.label(cavity)
+                index = list(range(1, count + 1))
+
+            shell = filled & ~cavity
+            if count == 0:
+                logger.info("Every cavity was too small to vent — returning the mesh solid.")
+                self._hollow_stats = {
+                    "hollowed": False, "hollow_reason": "all cavities smaller than a vent",
+                    "hollow_pitch_mm": float(pitch),
+                    "wall_thickness_achieved_mm": float(achieved_wall),
+                    "cavities_filled": filled_small,
+                }
+                return mesh
+
+            vents = 0
+            sealed = count
+            if vent:
+                # The lowest voxel of each cavity, which — unlike its centroid — is
+                # always a voxel *of* that cavity. `minimum_position` over the Z
+                # index does it in one pass per cavity.
+                z_index = np.broadcast_to(
+                    np.arange(shell.shape[2]).reshape(1, 1, -1), shell.shape
+                )
+                sites = ndimage.minimum_position(z_index, labels, index=index)
+                sites = [np.asarray(s, dtype=float) for s in np.atleast_2d(sites)]
+
+                # One cavity at a time, each vent kept only if it did not cut the
+                # part in two. A vent that severs is worse than the cavity it
+                # opens — the gate would report floating components instead, and a
+                # severed part is not the shape anyone asked for — and it is a real
+                # case, not a defensive flourish: a 2.4 mm vent aimed out of a small
+                # cavity inside a thin appendage takes the whole appendage off.
+                # Abandoning them one by one rather than all together is what lets a
+                # part with one awkward pocket keep the vents it can have.
+                abandoned = 0
+                for site in sites:
+                    i, j, k = int(site[0]), int(site[1]), int(site[2])
+                    exit_voxel = nearest[:, i, j, k].astype(float)
+                    intact = ndimage.label(shell)[1]
+                    unvented = shell.copy()
+                    self._clear_capsule(shell, site, exit_voxel, vent_radius)
+                    if ndimage.label(shell)[1] > intact:
+                        shell = unvented
+                        abandoned += 1
+                    else:
+                        vents += 1
+
+                if abandoned:
+                    logger.warning(
+                        "Left %d of %d cavity(ies) sealed: venting them would have "
+                        "severed the shell. printability.escape_hole will fail this "
+                        "mesh, which is the truth about it.", abandoned, count,
+                    )
+                sealed = self._count_sealed(shell, sites)
+                if sealed:
+                    logger.warning(
+                        "%d of %d cavity(ies) are still sealed after venting.",
+                        sealed, count,
+                    )
+                if vents:
+                    logger.info(
+                        "Vented %d cavity(ies) with a %.2f mm escape hole each.",
+                        vents, 2 * vent_radius * pitch,
+                    )
+            else:
+                logger.warning(
+                    "Hollowing without an escape hole (vent=False): %d sealed "
+                    "cavity(ies). printability.escape_hole rates this fatal.", count,
+                )
+
+            hollow = trimesh.voxel.VoxelGrid(shell, vox_filled.transform).marching_cubes
             if len(hollow.faces) == 0:
                 logger.warning("Hollowing produced an empty surface — returning solid mesh.")
                 return mesh
             hollow.apply_transform(vox_filled.transform)
+            self._hollow_stats = {
+                "hollowed": True,
+                "hollow_pitch_mm": float(pitch),
+                "wall_thickness_achieved_mm": float(achieved_wall),
+                "cavities": int(count),
+                "cavities_filled": int(filled_small),
+                "escape_holes": int(vents),
+                "escape_hole_mm": float(2 * vent_radius * pitch),
+                "sealed_cavities": int(sealed),
+            }
             logger.info(
                 "Hollow mesh — faces: %d, watertight: %s, extents: %s",
                 len(hollow.faces),
@@ -661,6 +917,7 @@ class Engineer:
             return hollow
         except Exception as exc:
             logger.warning("Hollowing failed (%s) — returning solid mesh.", exc)
+            self._hollow_stats = {"hollowed": False, "hollow_reason": f"{type(exc).__name__}: {exc}"}
             return mesh
 
     # ── Analysis ──────────────────────────────────────────────────────────────
@@ -693,6 +950,7 @@ class Engineer:
         hollow: bool = False,
         wall_thickness: float = 1.2,
         scale_axis: str = "height",
+        vent: bool = True,
     ) -> Path:
         input_path = Path(input_path)
         output_path = Path(output_path)
@@ -714,7 +972,7 @@ class Engineer:
 
         if hollow:
             logger.info("Hollowing mesh…")
-            mesh = self.hollow_mesh(mesh, wall_thickness)
+            mesh = self.hollow_mesh(mesh, wall_thickness, vent=vent)
             # Voxelising at a `wall_thickness` pitch puts the shell's surface half
             # a voxel outside the original one, so a hollowed part comes back
             # slightly larger than the target with its base below Z=0 — geometry
@@ -750,6 +1008,13 @@ class Engineer:
             "achieved_extent_mm": final_analysis.get("extent_mm"),
             "hollowed": bool(hollow),
             "wall_thickness_mm": float(wall_thickness) if hollow else None,
+            # What hollowing actually did, which is not always what was asked:
+            # the wall can be thickened by the voxel budget, small cavities are
+            # filled rather than vented, and a vent that would sever the shell is
+            # abandoned. `hollowed` above says it was requested; these say what
+            # came out. Spread last so a run that hollowed overwrites the
+            # requested-only view with the achieved one.
+            **({k: v for k, v in self._hollow_stats.items() if k != "hollowed"} if hollow else {}),
         }
         return output_path
 
@@ -765,6 +1030,10 @@ if __name__ == "__main__":
     parser.add_argument("--scale-axis", choices=Engineer.SCALE_AXES, default="height", help="Which extent target_mm describes (default: height)")
     parser.add_argument("--hollow", action="store_true", help="Apply voxel-based hollowing")
     parser.add_argument("--wall", type=float, default=1.2, metavar="MM", help="Wall thickness in mm (default: 1.2)")
+    # Sealed is a real shape, not a reasonable default: printability rates an
+    # unvented hollow cavity fatal, so this exists to reproduce one deliberately.
+    parser.add_argument("--no-escape-hole", dest="vent", action="store_false",
+                        help="Hollow without venting the cavity (printability will fail it)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -778,4 +1047,5 @@ if __name__ == "__main__":
         hollow=args.hollow,
         wall_thickness=args.wall,
         scale_axis=args.scale_axis,
+        vent=args.vent,
     )
