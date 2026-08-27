@@ -13,7 +13,7 @@ Backends:
     remote    Posts the blueprint to a GPU worker (services/trellis2_worker).
     pixazo    Calls Pixazo's hosted TRELLIS.2 endpoint. EUR 0,32 per generation,
               and the only backend that runs on an Apple Silicon Mac.
-    auto      remote if $P2P_SCULPTOR_REMOTE_URL is set, else trellis2 if CUDA
+    auto      remote if $DS_SCULPTOR_REMOTE_URL is set, else trellis2 if CUDA
               is visible, else pixazo if $PIXAZO_API_KEY is set.
 """
 
@@ -40,7 +40,7 @@ except ImportError:  # pragma: no cover - depends on how the caller set sys.path
         resolve_backend_name,
     )
 
-logger = logging.getLogger("p2p.sculptor")
+logger = logging.getLogger("ds.sculptor")
 
 __all__ = [
     "BACKENDS",
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         from pythonsrc.config import INPUTS_DIR, OUTPUTS_DIR
 
     parser = argparse.ArgumentParser(
-        description="p2p-mesh Phase 2 — Sculptor (TRELLIS.2 image→3D)"
+        description="ds-mvp Phase 2 — Sculptor (TRELLIS.2 image→3D)"
     )
     parser.add_argument(
         "--blueprint",
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         "--backend",
         default=None,
         choices=[*BACKENDS, "auto"],
-        help="Reconstruction backend (default: $P2P_SCULPTOR_BACKEND, else auto)",
+        help="Reconstruction backend (default: $DS_SCULPTOR_BACKEND, else auto)",
     )
     parser.add_argument(
         "--pipeline-type",

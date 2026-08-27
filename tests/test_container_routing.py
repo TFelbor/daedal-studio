@@ -65,7 +65,7 @@ class FakeClient:
 
 
 SIM_LABELS = {
-    "com.docker.compose.project": "p2p-mesh-poc-docker",
+    "com.docker.compose.project": "ds-mvp",
     "com.docker.compose.service": "octoprint-simulator",
 }
 

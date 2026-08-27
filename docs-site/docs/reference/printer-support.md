@@ -1,6 +1,6 @@
 # Printer Support Matrix
 
-Prompt2Print is designed to integrate with major open-source printer firmware ecosystems.
+Daedal Studio is designed to integrate with major open-source printer firmware ecosystems.
 
 | Firmware    | Print Dispatch | Telemetry | Failure Detection | Status |
 |-------------|---------------|-----------|-------------------|--------|

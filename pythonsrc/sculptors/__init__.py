@@ -20,7 +20,7 @@ or not at all. `auto` resolves accordingly.
 Usage:
     from sculptors import create_sculptor
 
-    sculptor = create_sculptor()                 # honours $P2P_SCULPTOR_BACKEND
+    sculptor = create_sculptor()                 # honours $DS_SCULPTOR_BACKEND
     sculptor = create_sculptor("trellis2")       # explicit
     sculptor.generate_mesh(blueprint, out, target_faces=5000)
 """
@@ -32,7 +32,7 @@ import os
 
 from .base import DEFAULT_TARGET_FACES, SculptorBackend, SculptorError
 
-logger = logging.getLogger("p2p.sculptor")
+logger = logging.getLogger("ds.sculptor")
 
 BACKENDS = ("trellis2", "remote", "pixazo")
 DEFAULT_BACKEND = "auto"
@@ -73,7 +73,7 @@ def resolve_backend_name(requested: str | None = None) -> str:
 
     Args:
         requested: Explicit backend name, `auto`, or None to read
-            `$P2P_SCULPTOR_BACKEND`.
+            `$DS_SCULPTOR_BACKEND`.
 
     Returns:
         A concrete backend name from `BACKENDS`.
@@ -82,7 +82,7 @@ def resolve_backend_name(requested: str | None = None) -> str:
         SculptorError: If the name is unknown, or `auto` finds nothing runnable.
     """
     requested = (
-        requested or os.environ.get("P2P_SCULPTOR_BACKEND") or DEFAULT_BACKEND
+        requested or os.environ.get("DS_SCULPTOR_BACKEND") or DEFAULT_BACKEND
     ).strip().lower()
 
     if requested in BACKENDS:
@@ -94,7 +94,7 @@ def resolve_backend_name(requested: str | None = None) -> str:
             f"{', '.join(BACKENDS)} or 'auto'"
         )
 
-    if os.environ.get("P2P_SCULPTOR_REMOTE_URL"):
+    if os.environ.get("DS_SCULPTOR_REMOTE_URL"):
         logger.info("Auto-selected sculptor backend 'remote' (worker URL configured)")
         return "remote"
 
@@ -115,7 +115,7 @@ def resolve_backend_name(requested: str | None = None) -> str:
     raise SculptorError(
         "No runnable sculptor backend. TRELLIS.2 needs an NVIDIA GPU with ~24 GB of "
         "VRAM, and none is visible. Pick one of: run on a CUDA host; start the GPU "
-        "worker (services/trellis2_worker/) and point P2P_SCULPTOR_REMOTE_URL at it; "
+        "worker (services/trellis2_worker/) and point DS_SCULPTOR_REMOTE_URL at it; "
         "or set PIXAZO_API_KEY to use the hosted endpoint."
     )
 
@@ -136,7 +136,7 @@ def create_sculptor(
     `pipeline.py` pass the same options either way.
 
     Args:
-        backend: Backend name, `auto`, or None to read `$P2P_SCULPTOR_BACKEND`.
+        backend: Backend name, `auto`, or None to read `$DS_SCULPTOR_BACKEND`.
         pipeline_type: TRELLIS.2 voxel resolution, or None for the model default.
         seed: Sampling seed, or None for the model default.
         **kwargs: Forwarded to the backend constructor.

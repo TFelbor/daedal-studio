@@ -1,4 +1,4 @@
-"""FastAPI application for P2P Mesh Pipeline orchestration.
+"""FastAPI application for Daedal Studio pipeline orchestration.
 
 This module defines the REST API for creating, monitoring, and retrieving
 results from the 3D printing pipeline, as well as managing telemetry.
@@ -52,7 +52,7 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="P2P Mesh API", version="1.0.0")
+app = FastAPI(title="Daedal Studio API", version="1.0.0")
 
 
 @app.middleware("http")
@@ -775,11 +775,11 @@ def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float
 
 
 #: How many rotating snapshots of the telemetry database to keep locally.
-#: Overridable with $P2P_DB_BACKUP_COPIES — five restarts in five minutes used to
+#: Overridable with $DS_DB_BACKUP_COPIES — five restarts in five minutes used to
 #: discard every older snapshot, because rotation is by count, not age.
 DB_BACKUP_COPIES = 5
 
-#: How many mirrored snapshots to keep in $P2P_DB_BACKUP_MIRROR_DIR.
+#: How many mirrored snapshots to keep in $DS_DB_BACKUP_MIRROR_DIR.
 DB_BACKUP_MIRROR_COPIES = 10
 
 #: Default minutes between periodic snapshots. The startup snapshot alone let a
@@ -812,7 +812,7 @@ def backup_interval_s(env: dict | None = None) -> Optional[float]:
         The interval in seconds; 0 or negative disables the loop; an unparseable
         value falls back to the default rather than silently disabling backups.
     """
-    raw = (env if env is not None else os.environ).get("P2P_DB_BACKUP_INTERVAL_MIN")
+    raw = (env if env is not None else os.environ).get("DS_DB_BACKUP_INTERVAL_MIN")
     try:
         minutes = float(raw) if raw is not None else DB_BACKUP_INTERVAL_MIN
     except (TypeError, ValueError):
@@ -848,7 +848,7 @@ def _mirror_snapshot_sync(snapshot: Path, mirror_dir: Path) -> None:
 
         prefix = snapshot.name.split(".backup-")[0]
         copies = sorted(mirror_dir.glob(f"{prefix}.backup-*"))
-        keep = _env_int("P2P_DB_BACKUP_MIRROR_COPIES", DB_BACKUP_MIRROR_COPIES)
+        keep = _env_int("DS_DB_BACKUP_MIRROR_COPIES", DB_BACKUP_MIRROR_COPIES)
         for stale in copies[:-keep] if keep > 0 else []:
             stale.unlink(missing_ok=True)
         logger.info("Mirrored database snapshot to %s", mirror_dir / snapshot.name)
@@ -859,12 +859,12 @@ def _mirror_snapshot_sync(snapshot: Path, mirror_dir: Path) -> None:
 def _mirror_snapshot(snapshot: Optional[Path]) -> None:
     """Kick off the background mirror of a verified snapshot, when configured.
 
-    `$P2P_DB_BACKUP_MIRROR_DIR` unset means no mirroring at all — the mirror is
+    `$DS_DB_BACKUP_MIRROR_DIR` unset means no mirroring at all — the mirror is
     switched on deliberately, once the telemetry is worth keeping, not by default.
     """
     global last_mirror_thread
     last_mirror_thread = None
-    mirror_dir = os.environ.get("P2P_DB_BACKUP_MIRROR_DIR")
+    mirror_dir = os.environ.get("DS_DB_BACKUP_MIRROR_DIR")
     if not mirror_dir or snapshot is None:
         return
     thread = threading.Thread(
@@ -921,7 +921,7 @@ def check_database_health(db: TelemetryDB) -> list[str]:
         snapshot = db.backup_to(source.with_name(f"{source.name}.backup-{stamp}"))
 
         # Oldest first, so the newest copies survive.
-        keep = _env_int("P2P_DB_BACKUP_COPIES", DB_BACKUP_COPIES)
+        keep = _env_int("DS_DB_BACKUP_COPIES", DB_BACKUP_COPIES)
         snapshots = sorted(source.parent.glob(f"{source.name}.backup-*"))
         for stale in snapshots[:-keep] if keep > 0 else []:
             if stale != snapshot:
@@ -984,7 +984,7 @@ async def trigger_database_backup() -> Dict[str, Any]:
     return {
         "healthy": not problems,
         "problems": problems,
-        "mirroring": bool(os.environ.get("P2P_DB_BACKUP_MIRROR_DIR")),
+        "mirroring": bool(os.environ.get("DS_DB_BACKUP_MIRROR_DIR")),
     }
 
 
@@ -1018,7 +1018,7 @@ def startup_event():
     for k, v in config_store.get_all().items():
         os.environ[k] = v
 
-    # Snapshots on a cadence, not just at startup. $P2P_DB_BACKUP_INTERVAL_MIN=0
+    # Snapshots on a cadence, not just at startup. $DS_DB_BACKUP_INTERVAL_MIN=0
     # disables the loop.
     global _db_backup_task
     interval = backup_interval_s()
@@ -1064,7 +1064,7 @@ LOG_BATCH_MAX = 40
 # Hoisted to module scope (from inside `_stream_output`, where they were locals) so
 # `tests/test_phase_banners.py` can bind to the real parser rather than retyping it —
 # a test carrying its own copy of the regex would agree with itself forever.
-PHASE_BANNER_RE = re.compile(r"\[P2P\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
+PHASE_BANNER_RE = re.compile(r"\[DS\] ═══ PHASE (\d+) (START|PASS|FAIL)(.*)═══")
 
 #: Phase number → display name. Must match `pipeline._PHASE_NAMES`; the pipeline names
 #: the phase in its `.status` file and this names it in the WebSocket message, and the
@@ -1439,7 +1439,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         db_start.close()
 
         pipeline_env = os.environ.copy()
-        pipeline_env["P2P_LOGS_DIR"] = str(log_dir)
+        pipeline_env["DS_LOGS_DIR"] = str(log_dir)
         # Ensure secrets from config store are available to subprocesses
         hf_token = config_store.get("HF_TOKEN")
         if hf_token:
@@ -1450,7 +1450,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         # and the telemetry collector can never target different printers.
         profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
         firmware, url, key = resolve_printer_target(profile_path)
-        pipeline_env["P2P_FIRMWARE"] = firmware
+        pipeline_env["DS_FIRMWARE"] = firmware
 
         # Kept before the Docker rewrite below, which is the *pipeline container's*
         # translation. The server-side collector makes its own — it may or may not be
@@ -1468,21 +1468,21 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         # Stamp the code version into the container, which carries no .git.
         git_sha = resolve_git_sha()
         if git_sha:
-            pipeline_env["P2P_GIT_SHA"] = git_sha
+            pipeline_env["DS_GIT_SHA"] = git_sha
 
         if url:
             # If pipeline is running in docker and the URL is localhost, rewrite it
             if "localhost" in url or "127.0.0.1" in url:
                 url = url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
-            pipeline_env["P2P_PRINTER_URL"] = url
+            pipeline_env["DS_PRINTER_URL"] = url
             
         if key:
-            pipeline_env["P2P_PRINTER_KEY"] = key
+            pipeline_env["DS_PRINTER_KEY"] = key
             
         if strategy == "mps_native":
-            pipeline_env["P2P_API_URL"] = "http://127.0.0.1:8000"
+            pipeline_env["DS_API_URL"] = "http://127.0.0.1:8000"
         else:
-            pipeline_env["P2P_API_URL"] = "http://host.docker.internal:8000"
+            pipeline_env["DS_API_URL"] = "http://host.docker.internal:8000"
 
         # Appended, not truncated. The blueprint gate resumes a job as a *second*
         # invocation against the same log file, and "w" threw away the Phase 1 record —
@@ -1491,30 +1491,30 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         log_mode = "a" if request.blueprint_path else "w"
         with open(log_file, log_mode) as f:
             if log_mode == "a":
-                f.write("\n[P2P] ─── resumed after blueprint approval ───\n")
+                f.write("\n[DS] ─── resumed after blueprint approval ───\n")
                 f.flush()
-            docker_env_args = ["-e", "P2P_LOGS_DIR=/app/data/logs"]
+            docker_env_args = ["-e", "DS_LOGS_DIR=/app/data/logs"]
             if "TELEMETRY_DB_PATH" in pipeline_env:
                 docker_env_args.extend(["-e", f"TELEMETRY_DB_PATH={pipeline_env['TELEMETRY_DB_PATH']}"])
-            if "P2P_PRINTER_URL" in pipeline_env:
-                docker_env_args.extend(["-e", f"P2P_PRINTER_URL={pipeline_env['P2P_PRINTER_URL']}"])
-            if "P2P_PRINTER_KEY" in pipeline_env:
-                docker_env_args.extend(["-e", f"P2P_PRINTER_KEY={pipeline_env['P2P_PRINTER_KEY']}"])
-            if "P2P_FIRMWARE" in pipeline_env:
-                docker_env_args.extend(["-e", f"P2P_FIRMWARE={pipeline_env['P2P_FIRMWARE']}"])
-            if "P2P_API_URL" in pipeline_env:
-                docker_env_args.extend(["-e", f"P2P_API_URL={pipeline_env['P2P_API_URL']}"])
+            if "DS_PRINTER_URL" in pipeline_env:
+                docker_env_args.extend(["-e", f"DS_PRINTER_URL={pipeline_env['DS_PRINTER_URL']}"])
+            if "DS_PRINTER_KEY" in pipeline_env:
+                docker_env_args.extend(["-e", f"DS_PRINTER_KEY={pipeline_env['DS_PRINTER_KEY']}"])
+            if "DS_FIRMWARE" in pipeline_env:
+                docker_env_args.extend(["-e", f"DS_FIRMWARE={pipeline_env['DS_FIRMWARE']}"])
+            if "DS_API_URL" in pipeline_env:
+                docker_env_args.extend(["-e", f"DS_API_URL={pipeline_env['DS_API_URL']}"])
             # Forward the paid-backend kill switch across the container boundary.
             # Phase 2's hosted backend bills per call and runs *inside* the container,
             # so a guard that only exists in this process cannot stop it. `compose run`
             # passes nothing from the host environment unless it is named here.
-            if "P2P_DISABLE_PAID_BACKENDS" in pipeline_env:
+            if "DS_DISABLE_PAID_BACKENDS" in pipeline_env:
                 docker_env_args.extend([
                     "-e",
-                    f"P2P_DISABLE_PAID_BACKENDS={pipeline_env['P2P_DISABLE_PAID_BACKENDS']}",
+                    f"DS_DISABLE_PAID_BACKENDS={pipeline_env['DS_DISABLE_PAID_BACKENDS']}",
                 ])
-            if "P2P_GIT_SHA" in pipeline_env:
-                docker_env_args.extend(["-e", f"P2P_GIT_SHA={pipeline_env['P2P_GIT_SHA']}"])
+            if "DS_GIT_SHA" in pipeline_env:
+                docker_env_args.extend(["-e", f"DS_GIT_SHA={pipeline_env['DS_GIT_SHA']}"])
                 
             if strategy == "mps_native":
                 if not skip_viz:
@@ -1538,7 +1538,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                         # The native script defaults to the shared path. This is what
                         # sends this job's render — and its provenance sidecar — to a
                         # directory no other job writes.
-                        env={**pipeline_env, "P2P_BLUEPRINT_OUTPUT": blueprint_rel.as_posix()},
+                        env={**pipeline_env, "DS_BLUEPRINT_OUTPUT": blueprint_rel.as_posix()},
                     )
                     active_pipelines[job_id] = process1
                     await _stream_output(process1, f, job_id)
@@ -2586,10 +2586,10 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         # `dispatched_printer_url` must record.
         if target.get("base_url"):
             env["OCTOPRINT_URL"] = container_reachable_url(target["base_url"])
-            env["P2P_DISPATCH_URL"] = target["base_url"]
+            env["DS_DISPATCH_URL"] = target["base_url"]
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
-        env.setdefault("P2P_API_URL", "http://127.0.0.1:8000")
+        env.setdefault("DS_API_URL", "http://127.0.0.1:8000")
 
         process = await asyncio.create_subprocess_exec(
             *cmd,

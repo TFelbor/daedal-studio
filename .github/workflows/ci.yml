@@ -35,7 +35,7 @@ jobs:
       # `pytest_configure`. Phase 2's hosted backend bills EUR 0.32 a generation and
       # selects itself from `$PIXAZO_API_KEY`; a runner that ever gains one must not be
       # able to spend it.
-      P2P_DISABLE_PAID_BACKENDS: "1"
+      DS_DISABLE_PAID_BACKENDS: "1"
       # `TELEMETRY_DB_PATH` is deliberately unset — see CLAUDE.md. conftest redirects it
       # to a temp directory before collection; pinning it here would defeat that.
 

@@ -17,7 +17,7 @@ def pytest_configure(config):
     """Redirect the telemetry database somewhere disposable, before anything reads it.
 
     Nineteen call sites across tests/ construct ``TelemetryDB()`` with no path, which
-    resolves to ``~/.p2p-mesh/telemetry.db`` — the developer's *real* database. Two of
+    resolves to ``~/.ds-mvp/telemetry.db`` — the developer's *real* database. Two of
     them (``test_server.py`` and ``test_server_telemetry.py``) then run
     ``DELETE FROM print_job`` against it. A full ``pytest tests/`` run therefore
     destroyed 312 real job rows and left their ``job_event`` children orphaned.
@@ -33,7 +33,7 @@ def pytest_configure(config):
     HF_TOKEN and OCTOPRINT_API_KEY.
     """
     global _ISOLATED_DB_DIR
-    _ISOLATED_DB_DIR = tempfile.mkdtemp(prefix="p2p-test-db-")
+    _ISOLATED_DB_DIR = tempfile.mkdtemp(prefix="ds-test-db-")
     os.environ["TELEMETRY_DB_PATH"] = os.path.join(_ISOLATED_DB_DIR, "telemetry.db")
 
     # Belt and braces for the paid Phase 2 backend. `PIXAZO_API_KEY` in the
@@ -42,7 +42,7 @@ def pytest_configure(config):
     # spending money. The kill switch is honoured by the backend itself, and the API
     # server forwards it into the pipeline container, so it survives the process
     # boundary that a monkeypatch cannot cross.
-    os.environ["P2P_DISABLE_PAID_BACKENDS"] = "1"
+    os.environ["DS_DISABLE_PAID_BACKENDS"] = "1"
     os.environ.pop("PIXAZO_API_KEY", None)
 
     # Give the throwaway database the shape a deployed one has. `print_job` and

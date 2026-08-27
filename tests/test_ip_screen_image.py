@@ -62,8 +62,8 @@ def test_the_deny_list_is_not_defeated_by_spelling(spelling):
 
 
 def test_a_configured_model_is_checked_not_trusted(monkeypatch):
-    """`$P2P_IP_MODEL_ID` is an override for pinning a revision, not for opting out."""
-    monkeypatch.setenv("P2P_IP_MODEL_ID", "openai/clip-vit-base-patch32")
+    """`$DS_IP_MODEL_ID` is an override for pinning a revision, not for opting out."""
+    monkeypatch.setenv("DS_IP_MODEL_ID", "openai/clip-vit-base-patch32")
     with pytest.raises(ValueError, match="not permissively licensed"):
         ip_screen_image.resolve_model_id()
 
@@ -71,7 +71,7 @@ def test_a_configured_model_is_checked_not_trusted(monkeypatch):
 def test_a_pinned_revision_is_preserved(monkeypatch):
     """Pinning is the reason the override exists, so it must survive the check."""
     pinned = f"{ip_screen_image.DEFAULT_MODEL_ID}@0123456789abcdef"
-    monkeypatch.setenv("P2P_IP_MODEL_ID", pinned)
+    monkeypatch.setenv("DS_IP_MODEL_ID", pinned)
     assert ip_screen_image.resolve_model_id() == pinned
 
 

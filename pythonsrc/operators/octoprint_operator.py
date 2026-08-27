@@ -21,7 +21,7 @@ from typing import Any
 
 import requests
 
-logger = logging.getLogger("p2p.operator")
+logger = logging.getLogger("ds.operator")
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -541,7 +541,7 @@ def _build_parser() -> argparse.ArgumentParser:
         The configured ArgumentParser instance.
     """
     parser = argparse.ArgumentParser(
-        description="p2p-mesh Phase 4 — Operator (OctoPrint)",
+        description="ds-mvp Phase 4 — Operator (OctoPrint)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--file", "-f", required=False, metavar="PATH",

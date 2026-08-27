@@ -10,12 +10,12 @@
 # CURA_ENGINE_PATH env var overrides this at runtime if needed.
 #
 # Build (standalone):
-#   docker build -f infra/docker/phase4.Dockerfile -t p2p-phase4-slicer .
+#   docker build -f infra/docker/phase4.Dockerfile -t ds-phase4-slicer .
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM p2p-base:latest AS phase4-slicer
+FROM ds-base:latest AS phase4-slicer
 
-LABEL description="p2p-mesh Phase 4 — Slicer (CuraEngine)"
+LABEL description="ds-mvp Phase 4 — Slicer (CuraEngine)"
 
 # ── CuraEngine installation ───────────────────────────────────────────────────
 # Universe repository is required for curaengine on Ubuntu 22.04.
@@ -39,5 +39,5 @@ RUN CuraEngine --version || curaengine --version || \
 ENV CURA_ENGINE_PATH=CuraEngine
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint", "python", "pythonsrc/slicer.py"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint", "python", "pythonsrc/slicer.py"]
 CMD ["--help"]

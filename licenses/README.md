@@ -25,13 +25,13 @@ An audit of the names in a requirements file could not have found either.
 | File | What it is | Produced by |
 |---|---|---|
 | `report.json` | **Read this first.** Scored index: totals, licence histogram, and the rows that need a person. | `infra/scripts/licence_report.py` |
-| `python.json` | Every Python distribution inside the built `p2p-mesh-pipeline` image (Phases 1, 3–5). | `pip-licenses`, run in the container |
-| `python-api-server.json` | Every Python distribution inside the built `p2p-api-server` image. | `pip-licenses`, run in the container |
+| `python.json` | Every Python distribution inside the built `ds-mvp-pipeline` image (Phases 1, 3–5). | `pip-licenses`, run in the container |
+| `python-api-server.json` | Every Python distribution inside the built `ds-api-server` image. | `pip-licenses`, run in the container |
 | `python-mac.json` | The macOS-native tree (`requirements-mac.txt`, `mflux`/`mlx`). Weekly. | `pip-licenses` on a macOS runner |
 | `python-worker.json` | The TRELLIS.2 GPU worker's tree. **Not produced by CI** — see below. | `pip-licenses` on a CUDA host |
 | `node.json` | The web app's **production** tree — what reaches the browser bundle. | `license-checker` |
 | `node-dev.json` | The build toolchain (Vite, TypeScript, ESLint). Runs on our machines, not the user's. | `license-checker` |
-| `sbom/p2p-*.json` | SBOMs of the built images: Python packages **and** OS packages. | `syft` (syft-json) |
+| `sbom/ds-*.json` | SBOMs of the built images: Python packages **and** OS packages. | `syft` (syft-json) |
 | `sbom/base-*.json` | SBOMs of the registry base images. Weekly. | `syft` (syft-json) |
 
 `pip-licenses` runs **inside the built images**, not against a requirements file, because
@@ -50,7 +50,7 @@ package**, so no Python-level tool can see it, and it is AGPL-3.0.
 
   ```bash
   docker compose -f infra/docker-compose.yml --profile gpu-worker build trellis2-worker
-  docker run --rm --entrypoint /bin/sh p2p-trellis2-worker:latest -c \
+  docker run --rm --entrypoint /bin/sh ds-trellis2-worker:latest -c \
     'pip install -q pip-licenses && pip-licenses --format=json --with-urls --with-authors \
        --with-license-file --no-license-path' > licenses/python-worker.json
   python3 infra/scripts/normalise_licence_data.py licenses/python-worker.json

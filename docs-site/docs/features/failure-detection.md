@@ -1,6 +1,6 @@
 # Failure Detection
 
-3D printing can sometimes go wrong. Prompt2Print uses real-time telemetry from your printer to catch failures before they cause hardware damage or waste significant material.
+3D printing can sometimes go wrong. Daedal Studio uses real-time telemetry from your printer to catch failures before they cause hardware damage or waste significant material.
 
 ## How it Works
 The system continuously analyzes telemetry data against a set of four predefined heuristics. If a rule is triggered, the system flags an anomaly.

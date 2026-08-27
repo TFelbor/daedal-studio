@@ -1,4 +1,4 @@
-# Prompt2Print — Cloud Cost Estimation
+# Daedal Studio — Cloud Cost Estimation
 ### Pipeline: Prompt → Blueprint → 3D Mesh → G-code → Remote Upload to Printer
 
 > **Document status:** Pre-production estimate for financial planning. All figures are
@@ -15,7 +15,7 @@
 >   sizing and the assumption that FLUX and the sculptor can share one GPU both need
 >   rechecking.
 > - **Inference is much faster.** Upstream reports 512³ ≈ 3s, 1024³ ≈ 17s and
->   1536³ ≈ 60s on an H100 for shape *and* material. Prompt2Print runs the shape-only
+>   1536³ ≈ 60s on an H100 for shape *and* material. Daedal Studio runs the shape-only
 >   path, roughly the first of those two numbers (≈ 2s / 10s / 35s), against
 >   TripoSR's ~110-140s. Per-job GPU seconds should fall sharply.
 > - **Weight loading and cold starts get worse.** 4B parameters is a much larger

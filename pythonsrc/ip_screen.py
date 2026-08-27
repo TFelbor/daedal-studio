@@ -48,7 +48,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("p2p.ip_screen")
+logger = logging.getLogger("ds.ip_screen")
 
 #: Where the curated list lives. In-tree data rather than the encrypted config store:
 #: reviewable in a diff, testable, and `ConfigStore.set` refuses unregistered keys.

@@ -1,7 +1,7 @@
 """The phase-banner protocol: the pipeline's only channel to the UI.
 
 `pipeline.py` runs as a subprocess. It has no import relationship with the server, no
-shared types and no RPC — it prints `[P2P] ═══ PHASE n START|PASS|FAIL … ═══` on stdout
+shared types and no RPC — it prints `[DS] ═══ PHASE n START|PASS|FAIL … ═══` on stdout
 and `server.app._stream_output` recognises those lines with a regular expression. Every
 phase update the browser receives, the progress rail, the stage that advances from
 blueprint to mesh to toolpath, and the Phase 5 hook that attaches the telemetry
@@ -35,9 +35,9 @@ ALL_PHASES = (1, 2, 3, 4, 5)
 
 
 def _banner_lines(capsys) -> list[str]:
-    """Every `[P2P]` line the emitter under test just printed."""
+    """Every `[DS]` line the emitter under test just printed."""
     return [
-        line for line in capsys.readouterr().out.splitlines() if line.startswith("[P2P]")
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("[DS]")
     ]
 
 
@@ -102,7 +102,7 @@ def test_the_fail_banner_still_parses_when_the_exception_carries_banner_text(cap
     """
     with pytest.raises(SystemExit):
         pipeline._phase_fail(
-            2, start_time=0.0, exc=RuntimeError("[P2P] ═══ PHASE 9 PASS  ✓ ═══")
+            2, start_time=0.0, exc=RuntimeError("[DS] ═══ PHASE 9 PASS  ✓ ═══")
         )
 
     parsed = [p for p in (_parse(line) for line in _banner_lines(capsys)) if p]
@@ -115,9 +115,9 @@ def test_the_fail_banner_still_parses_when_the_exception_carries_banner_text(cap
 @pytest.mark.parametrize(
     "line",
     [
-        "[P2P] ─── PRINTABILITY START ───",
-        "[P2P] ─── PRINTABILITY DONE (1.2s) → data/outputs/j/printability.json ───",
-        "[P2P] ─── PRINTABILITY SKIPPED (evaluation error) ───",
+        "[DS] ─── PRINTABILITY START ───",
+        "[DS] ─── PRINTABILITY DONE (1.2s) → data/outputs/j/printability.json ───",
+        "[DS] ─── PRINTABILITY SKIPPED (evaluation error) ───",
     ],
 )
 def test_the_printability_gate_is_not_a_phase(line):
@@ -135,15 +135,15 @@ def test_the_printability_gate_is_not_a_phase(line):
 @pytest.mark.parametrize(
     "line",
     [
-        "[P2P] Phase 3 duration: 6.1s",
-        "[P2P] ERROR: something went wrong in PHASE 4 START",
-        "[P2P] Blueprint seed: 12345",
-        "[P2P] Sculptor backend: pixazo",
-        "[P2P] TRACEBACK:",
+        "[DS] Phase 3 duration: 6.1s",
+        "[DS] ERROR: something went wrong in PHASE 4 START",
+        "[DS] Blueprint seed: 12345",
+        "[DS] Sculptor backend: pixazo",
+        "[DS] TRACEBACK:",
     ],
 )
 def test_ordinary_pipeline_chatter_is_not_a_phase_update(line):
-    """The pipeline prints far more `[P2P]` lines than banners.
+    """The pipeline prints far more `[DS]` lines than banners.
 
     `Phase 3 duration:` follows every PASS and FAIL. If it matched, every completed
     phase would immediately be followed by a second, contradictory update.
@@ -151,7 +151,7 @@ def test_ordinary_pipeline_chatter_is_not_a_phase_update(line):
     assert PHASE_BANNER_RE.search(line) is None
 
 
-def test_every_p2p_line_a_phase_emits_is_either_a_banner_or_inert(capsys):
+def test_every_ds_line_a_phase_emits_is_either_a_banner_or_inert(capsys):
     """No emitter may print a line whose status the server would guess at.
 
     The parser takes the *first* match in a line and applies it. A line that half
@@ -205,7 +205,7 @@ def test_the_status_file_the_pipeline_writes_is_the_one_the_server_reads(tmp_pat
     """
     job_id = "banner-status-job"
     monkeypatch.setattr(pipeline, "CURRENT_JOB_ID", job_id)
-    monkeypatch.setenv("P2P_LOGS_DIR", str(tmp_path))
+    monkeypatch.setenv("DS_LOGS_DIR", str(tmp_path))
 
     pipeline._write_status(2, "complete")
 
@@ -219,7 +219,7 @@ def test_the_status_file_the_pipeline_writes_is_the_one_the_server_reads(tmp_pat
 def test_a_failed_phase_records_its_reason_in_the_status_file(tmp_path, monkeypatch):
     job_id = "banner-status-fail"
     monkeypatch.setattr(pipeline, "CURRENT_JOB_ID", job_id)
-    monkeypatch.setenv("P2P_LOGS_DIR", str(tmp_path))
+    monkeypatch.setenv("DS_LOGS_DIR", str(tmp_path))
 
     pipeline._write_status(4, "error", "CuraEngine exited 1")
 
@@ -236,7 +236,7 @@ def test_the_status_file_is_append_only_and_the_last_line_wins(tmp_path, monkeyp
     """
     job_id = "banner-status-append"
     monkeypatch.setattr(pipeline, "CURRENT_JOB_ID", job_id)
-    monkeypatch.setenv("P2P_LOGS_DIR", str(tmp_path))
+    monkeypatch.setenv("DS_LOGS_DIR", str(tmp_path))
 
     pipeline._write_status(1, "complete")
     pipeline._write_status(2, "complete")
@@ -250,7 +250,7 @@ def test_the_status_file_is_append_only_and_the_last_line_wins(tmp_path, monkeyp
 def test_the_server_reads_the_last_record_the_pipeline_wrote(tmp_path, monkeypatch):
     """End to end across the two implementations, on the real reader.
 
-    `_write_status` writes into `$P2P_LOGS_DIR`; `_read_current_phase` reads
+    `_write_status` writes into `$DS_LOGS_DIR`; `_read_current_phase` reads
     `data/logs/` relative to the repo. Pointing the writer at the reader's directory is
     what makes this a test of the format rather than of two unrelated files.
     """
@@ -258,7 +258,7 @@ def test_the_server_reads_the_last_record_the_pipeline_wrote(tmp_path, monkeypat
     logs = tmp_path / "data" / "logs"
     logs.mkdir(parents=True)
     monkeypatch.setattr(pipeline, "CURRENT_JOB_ID", "banner-roundtrip")
-    monkeypatch.setenv("P2P_LOGS_DIR", str(logs))
+    monkeypatch.setenv("DS_LOGS_DIR", str(logs))
 
     pipeline._write_status(3, "running")
     pipeline._write_status(3, "complete")

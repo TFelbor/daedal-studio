@@ -1,6 +1,6 @@
 """Licence guards — the checks that keep Apache-2.0 coherent.
 
-Prompt2Print ships under Apache-2.0, and Phase 2's upstream (TRELLIS.2) defaults to
+Daedal Studio ships under Apache-2.0, and Phase 2's upstream (TRELLIS.2) defaults to
 two components that would break that grant if they ever loaded:
 
 * **nvdiffrast / nvdiffrec** — NVIDIA Source Code License, non-commercial research
@@ -162,16 +162,16 @@ def test_upstream_default_matte_model_is_denied():
 
 
 def test_configured_matte_model_is_permissively_licensed():
-    """Whatever `$P2P_BIREFNET_MODEL_ID` resolves to must not be encumbered."""
+    """Whatever `$DS_BIREFNET_MODEL_ID` resolves to must not be encumbered."""
     repo = DEFAULT_MATTE_MODEL_ID.partition("@")[0]
     assert repo not in NON_COMMERCIAL_MATTE_MODEL_IDS, (
         f"Background removal is configured to use '{DEFAULT_MATTE_MODEL_ID}', which "
-        "is licensed for non-commercial use only. Unset P2P_BIREFNET_MODEL_ID."
+        "is licensed for non-commercial use only. Unset DS_BIREFNET_MODEL_ID."
     )
 
 
 def test_matte_backend_refuses_an_encumbered_override():
-    """Pointing `$P2P_BIREFNET_MODEL_ID` at BRIA weights must fail loudly."""
+    """Pointing `$DS_BIREFNET_MODEL_ID` at BRIA weights must fail loudly."""
     import pythonsrc.sculptors.background as background
 
     original = background.DEFAULT_MATTE_MODEL_ID
@@ -373,7 +373,7 @@ def test_a_pinned_encumbered_revision_is_refused_at_construction(monkeypatch):
     """The exact bypass: .env.template tells you to pin a revision."""
     import importlib
 
-    monkeypatch.setenv("P2P_BIREFNET_MODEL_ID", "briaai/RMBG-2.0@abc123def")
+    monkeypatch.setenv("DS_BIREFNET_MODEL_ID", "briaai/RMBG-2.0@abc123def")
     import pythonsrc.sculptors.background as bg
 
     bg = importlib.reload(bg)
@@ -381,7 +381,7 @@ def test_a_pinned_encumbered_revision_is_refused_at_construction(monkeypatch):
         with pytest.raises(Exception, match="non-commercial"):
             bg.PermissiveBiRefNet()
     finally:
-        monkeypatch.delenv("P2P_BIREFNET_MODEL_ID", raising=False)
+        monkeypatch.delenv("DS_BIREFNET_MODEL_ID", raising=False)
         importlib.reload(bg)
 
 

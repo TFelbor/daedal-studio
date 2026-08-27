@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover — exercised only on a broken install
     manifold3d = None
     HAVE_MANIFOLD3D = False
 
-logger = logging.getLogger("p2p.printability")
+logger = logging.getLogger("ds.printability")
 
 CheckStatus = Literal["pass", "warn", "fail", "not_checked"]
 Verdict = Literal["ready", "risky", "unprintable"]

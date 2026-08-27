@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
-logger = logging.getLogger("p2p.blueprint_spec")
+logger = logging.getLogger("ds.blueprint_spec")
 
 # Upper bound for a generated seed. torch accepts a much wider range, but 2**32 keeps
 # the value readable, JSON-safe and re-enterable by hand.

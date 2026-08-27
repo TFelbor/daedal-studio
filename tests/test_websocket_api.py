@@ -10,7 +10,7 @@ import tempfile as _tempfile
 
 _os.environ.setdefault(
     "TELEMETRY_DB_PATH",
-    _os.path.join(_tempfile.mkdtemp(prefix="p2p-smoke-"), "telemetry.db"),
+    _os.path.join(_tempfile.mkdtemp(prefix="ds-smoke-"), "telemetry.db"),
 )
 
 import json

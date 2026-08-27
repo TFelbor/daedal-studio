@@ -5,7 +5,7 @@ mixes two populations in the dataset unless rows can be split by code version �
 same failure mode `blueprint_prompt_engineered` exists to prevent, generalised.
 
 Kept in its own torch-free module so both the API server (which passes the value to
-container subprocesses via `$P2P_GIT_SHA`) and the pipeline (which records it) can
+container subprocesses via `$DS_GIT_SHA`) and the pipeline (which records it) can
 import it without pulling in either one's dependency stack.
 """
 
@@ -22,13 +22,13 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 def resolve_git_sha() -> str | None:
     """The commit of the code running this process, or None when unknowable.
 
-    `$P2P_GIT_SHA` wins so a container image — which carries no .git — can be
+    `$DS_GIT_SHA` wins so a container image — which carries no .git — can be
     stamped at build or launch time; otherwise the working tree is asked.
 
     Returns:
         A short commit hash, or None.
     """
-    env = os.environ.get("P2P_GIT_SHA")
+    env = os.environ.get("DS_GIT_SHA")
     if env:
         return env.strip()
     try:

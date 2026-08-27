@@ -489,7 +489,7 @@
   box-sizing: border-box;
   /* The handoff: keyed on the active tab in the TSX, so a stage change remounts
      this element and the new output drifts in from upstream. */
-  animation: p2p-arrive var(--motion-move) var(--motion-ease) both;
+  animation: ds-arrive var(--motion-move) var(--motion-ease) both;
 }
 
 /* The carriage pass. One accent line across the stage's top rule, left to
@@ -503,7 +503,7 @@
   height: 2px;
   background: var(--accent);
   transform-origin: left;
-  animation: p2p-sweep 480ms var(--motion-ease) both;
+  animation: ds-sweep 480ms var(--motion-ease) both;
   z-index: 5;
   pointer-events: none;
 }
@@ -545,7 +545,7 @@
   border-top: 1px solid var(--rule);
   grid-template-columns: repeat(3, minmax(0, 1fr));
   /* Brought in by the slice arriving, so it rises with it. */
-  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
+  animation: ds-rise var(--motion-move) var(--motion-ease) both;
 }
 
 .sliceEmpty {
@@ -565,7 +565,7 @@
   margin-top: 22px;
   border-top: 1px solid var(--rule);
   padding-top: 18px;
-  animation: p2p-rise var(--motion-move) var(--motion-ease) both;
+  animation: ds-rise var(--motion-move) var(--motion-ease) both;
 }
 
 .processLog {
@@ -621,7 +621,7 @@
   color: var(--ink-28);
   /* Keyed on the phase status in the TSX: a mark that changes (— to dots to
      check) rises in rather than snapping. */
-  animation: p2p-rise var(--motion-quick) var(--motion-ease) both;
+  animation: ds-rise var(--motion-quick) var(--motion-ease) both;
 }
 
 /* Status colours, never action colours: a failed phase is red, not orange. */

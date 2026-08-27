@@ -24,7 +24,7 @@ INTERNAL_TELEMETRY_PATH = "/jobs/{job_id}/internal-telemetry"
 
 def get_internal_api_url() -> str | None:
     """Get the configured API server URL for internal telemetry forwarding."""
-    api_url = os.environ.get("P2P_API_URL")
+    api_url = os.environ.get("DS_API_URL")
     if not api_url:
         return None
     return api_url.rstrip("/")

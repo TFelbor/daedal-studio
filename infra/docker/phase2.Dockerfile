@@ -10,26 +10,26 @@
 #   worker code:   services/trellis2_worker/
 #
 # Point it at a worker and it runs anywhere:
-#   P2P_SCULPTOR_BACKEND=remote
-#   P2P_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
+#   DS_SCULPTOR_BACKEND=remote
+#   DS_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
 #
 # On a host that *does* have an NVIDIA GPU and the extensions installed, set
-# P2P_SCULPTOR_BACKEND=trellis2 and TRELLIS2_REPO_PATH to run in-process
+# DS_SCULPTOR_BACKEND=trellis2 and TRELLIS2_REPO_PATH to run in-process
 # instead — or just use the worker image, which already has all of it.
 #
 # Build (standalone):
-#   docker build -f infra/docker/phase2.Dockerfile -t p2p-phase2-sculptor .
+#   docker build -f infra/docker/phase2.Dockerfile -t ds-phase2-sculptor .
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM p2p-base:latest AS phase2-sculptor
+FROM ds-base:latest AS phase2-sculptor
 
-LABEL description="p2p-mesh Phase 2 — Sculptor (TRELLIS.2 client)"
+LABEL description="ds-mvp Phase 2 — Sculptor (TRELLIS.2 client)"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # `auto` resolves to `remote` when a worker URL is set. With neither a worker nor
 # a CUDA GPU the backend fails at startup with an actionable message rather than
 # producing a mesh from something that is not the model you asked for.
-ENV P2P_SCULPTOR_BACKEND=auto \
+ENV DS_SCULPTOR_BACKEND=auto \
     TRELLIS2_MODEL_PATH=/models/trellis2 \
     HF_HOME=/models/hf_cache
 
@@ -55,5 +55,5 @@ RUN pip install --no-cache-dir \
         "fast-simplification>=0.1.6"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint", "python", "pythonsrc/sculptor.py"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint", "python", "pythonsrc/sculptor.py"]
 CMD ["--help"]

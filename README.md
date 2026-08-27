@@ -1,10 +1,10 @@
-# Prompt2Print: MVP Engine (p2p-mvp)
+# Daedal Studio: MVP Engine (ds-mvp)
 
 ![Status](https://img.shields.io/badge/Status-Proof_of_Concept_COMPLETE-brightgreen)
 ![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Fedora|Windows-gray)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
-**p2p-mvp** is the generative engine for the Prompt2Print platform — an end-to-end pipeline that converts a natural language prompt into a physical 3D print.
+**ds-mvp** is the generative engine for the Daedal Studio platform — an end-to-end pipeline that converts a natural language prompt into a physical 3D print.
 
 The system takes a user description and generates a clay-render blueprint image. It then reconstructs the blueprint into a 3D geometry mesh, repairs and scales the mesh for the intended print bed, scores it for printability, and slices it into machine instructions (G-code). Finally, it dispatches the print job to a local 3D printer and continuously monitors telemetry to detect print failures.
 
@@ -34,7 +34,7 @@ The system takes a user description and generates a clay-render blueprint image.
 ## Repository Structure
 
 ```text
-p2p-mvp/
+ds-mvp/
 ├── docs/           # Architecture decisions, operator guides, and protocol notes
 ├── infra/          # Docker Compose files, Dockerfiles, and deployment scripts
 ├── pythonsrc/      # Core pipeline: phases 1–5, printability, operators, telemetry
@@ -82,7 +82,7 @@ Then build Docker images and configure environment variables:
 ```bash
 # Build Docker images (one-time)
 # The base image must be built first before building other services:
-docker compose -f infra/docker-compose.yml build p2p-base
+docker compose -f infra/docker-compose.yml build ds-base
 docker compose -f infra/docker-compose.yml build
 
 # Alternatively, use the automated Makefile convenience target:
@@ -168,7 +168,7 @@ pytest tests/ -m "slow and full_pipeline"    # needs FLUX + a CUDA GPU or sculpt
 ```
 
 The suite refuses to touch the real telemetry database or spend money: `tests/conftest.py`
-redirects `TELEMETRY_DB_PATH` to a temporary directory and sets `P2P_DISABLE_PAID_BACKENDS`
+redirects `TELEMETRY_DB_PATH` to a temporary directory and sets `DS_DISABLE_PAID_BACKENDS`
 before collection, and the Pixazo backend refuses to construct when that flag is set.
 `make test` runs the same suite.
 
@@ -205,7 +205,7 @@ GPU access is reserved for *fine-tuning* (Bet 1), not production serving.
 - [x] **Telemetry capture schema** — blueprint and generation provenance, mesh lineage bracketing repair, slice results (recorded on failure too), engagement events, cost in EUR, single-writer collector arbitration
 - [x] **Capture hardening pass** — run context per job (git sha, whether the dev-reference fixtures were substituted), the dispatched printer URL (what distinguishes simulator rows from hardware), Phase 3's repair report, the printer-reported print duration, pause/resume/terminal events with the firmware's own reason, blueprint provenance carried across the native-Mac process boundary via a hash-bound sidecar, and foreign keys actually enforced. Collectors attach when Phase 5 starts rather than at job creation, printer events are matched to the job's own file, and the detector's rules only fire while printing — a user cancel is no longer written up as a machine-observed adhesion failure
 - [x] **Dispatch gate** — Phase 5 waits on a person: UI jobs stop after slicing, `POST /jobs/{id}/print-dispatch` requires an explicit confirmation of the exact target shown (409 if it drifted), and the pending decision survives a page reload
-- [x] **Database self-defence** — `PRAGMA integrity_check` at startup and every `P2P_DB_BACKUP_INTERVAL_MIN` minutes, rotating snapshots taken only when the check passes, an off-disk mirror of each verified snapshot to `P2P_DB_BACKUP_MIRROR_DIR` (off until set; intended for the Drive-synced data-collection folder, copied on a background thread because that mount blocks), and `POST /system/database/backup` for a manual flash
+- [x] **Database self-defence** — `PRAGMA integrity_check` at startup and every `DS_DB_BACKUP_INTERVAL_MIN` minutes, rotating snapshots taken only when the check passes, an off-disk mirror of each verified snapshot to `DS_DB_BACKUP_MIRROR_DIR` (off until set; intended for the Drive-synced data-collection folder, copied on a background thread because that mount blocks), and `POST /system/database/backup` for a manual flash
 - [x] **Print-outcome feedback loop** *(pulled forward from Phase 2)* — a verdict prompt in the app shell, `/feedback/*` endpoints, and the rule that a machine write never overwrites a human one. `dev` and `declined` have their own dashboard buckets and are excluded from the response rate — a test print is not a failure and "don't ask again" is not an answer
 - [x] **Licence compliance** — GPL `pymeshfix` replaced by manifold3d; non-commercial BRIA matte weights substituted with MIT BiRefNet; `nvdiffrast`/`nvdiffrec` structurally excluded; DINOv3 attributed. Enforced by `tests/test_licensing_guards.py`
 - [x] **Web UI** — React SPA served by FastAPI: submission, live phase progress, blueprint and mesh preview, G-code preview, telemetry charts, printability report, waiting-state canvases with a live process log, and a one-directional motion vocabulary — each phase's output arrives from upstream, so the running view reads as a production line rather than a set of panels

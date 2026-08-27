@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 #: Compose project the simulator container belongs to. Overridable so a deployment
 #: that already sets COMPOSE_PROJECT_NAME keeps one consistent namespace.
-DEFAULT_COMPOSE_PROJECT = "p2p-mesh-poc-docker"
+DEFAULT_COMPOSE_PROJECT = "ds-mvp"
 
 SERVICE_NAME = "octoprint-simulator"
 OCTOPRINT_PORT = 5001
@@ -134,7 +134,7 @@ class SimulatorManager:
         The same service can have several container records at once: compose derives
         its project name from the directory it is invoked in, so running the
         documented command from the repo root and from `infra/` leaves
-        `p2p-mesh-poc-docker-octoprint-simulator-1` and
+        `ds-mvp-octoprint-simulator-1` and
         `infra-octoprint-simulator-1` side by side, plus whatever earlier runs left
         behind. `containers.list(all=True)` returns them in no useful order, so taking
         `[0]` reported "stopped" while a working simulator was up on port 5001 — and

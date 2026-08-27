@@ -160,7 +160,9 @@ const MARK_LABEL: Record<PhaseStatus['status'], string> = {
  * it — a browser that refuses storage loses a convenience, not a job — so both sides
  * swallow their errors.
  */
-const WATCHED_JOB_KEY = 'p2p.watchedJob';
+// Renamed with the project. Any tab open across the rename loses its watched job
+// once, on next load — a one-time reset, not a migration worth writing.
+const WATCHED_JOB_KEY = 'ds.watchedJob';
 
 function rememberWatchedJob(jobId: string | null): void {
   try {

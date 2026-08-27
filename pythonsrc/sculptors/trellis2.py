@@ -45,7 +45,7 @@ from PIL import Image
 from .background import assert_permissive_matte, permissive_rembg
 from .base import SculptorBackend, SculptorError
 
-logger = logging.getLogger("p2p.sculptor.trellis2")
+logger = logging.getLogger("ds.sculptor.trellis2")
 
 DEFAULT_MODEL_ID = "microsoft/TRELLIS.2-4B"
 

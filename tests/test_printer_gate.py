@@ -49,7 +49,7 @@ class _FakeClient:
 
 def test_a_running_container_wins_over_a_stale_stopped_one():
     """The exact shape that broke it: two projects, one alive."""
-    stopped = _container("p2p-mesh-poc-docker-octoprint-simulator-1", "exited")
+    stopped = _container("ds-mvp-octoprint-simulator-1", "exited")
     running = _container("infra-octoprint-simulator-1", "running")
     manager = SimulatorManager(
         client_factory=lambda: _FakeClient([stopped, running], labelled=[stopped])
@@ -68,7 +68,7 @@ def test_order_does_not_decide_it():
 
 def test_a_stopped_container_is_still_reported_when_nothing_runs():
     """"Stopped" and "absent" are different answers and must stay different."""
-    stopped = _container("p2p-mesh-poc-docker-octoprint-simulator-1", "exited")
+    stopped = _container("ds-mvp-octoprint-simulator-1", "exited")
     manager = SimulatorManager(client_factory=lambda: _FakeClient([stopped]))
     picked = manager._get_container()
     assert picked is stopped
@@ -82,7 +82,7 @@ def test_no_container_at_all_is_none():
 
 def test_an_unrelated_container_is_never_matched():
     manager = SimulatorManager(
-        client_factory=lambda: _FakeClient([_container("p2p-chief-of-staff-n8n", "running")], labelled=[])
+        client_factory=lambda: _FakeClient([_container("unrelated-project-db", "running")], labelled=[])
     )
     assert manager._get_container() is None
 

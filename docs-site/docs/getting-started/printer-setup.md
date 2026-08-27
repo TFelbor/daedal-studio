@@ -1,6 +1,6 @@
 # Printer Setup
 
-Connecting your 3D printer to Prompt2Print allows the system to automatically slice files for your specific bed size and dispatch them directly for printing.
+Connecting your 3D printer to Daedal Studio allows the system to automatically slice files for your specific bed size and dispatch them directly for printing.
 
 ## Connecting OctoPrint
 

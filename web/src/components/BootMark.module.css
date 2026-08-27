@@ -29,11 +29,11 @@
 /* The finished face arrives first and stays; the walls are still being drawn under
    it. `pathLength=1` is what makes one dash length work at every mark size. */
 .face {
-  animation: p2p-boot-fill 2.2s ease-out infinite;
+  animation: ds-boot-fill 2.2s ease-out infinite;
 }
 
 .wall {
-  animation: p2p-boot-draw 2.2s ease-in-out infinite;
+  animation: ds-boot-draw 2.2s ease-in-out infinite;
 }
 
 .wallLag {

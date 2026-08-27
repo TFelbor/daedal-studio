@@ -20,7 +20,7 @@ def get_default_db_path() -> str:
     env_path = os.environ.get("TELEMETRY_DB_PATH")
     if env_path:
         return env_path
-    return str(Path.home() / ".p2p-mesh" / "telemetry.db")
+    return str(Path.home() / ".ds-mvp" / "telemetry.db")
 
 def _dt_to_str(dt: datetime | None) -> str | None:
     """Helper to serialize datetime to ISO 8601 string."""
@@ -288,8 +288,8 @@ class TelemetryDB:
         another route, and so the value is visible where the reasoning is.
 
         **WAL is deliberately not enabled**, which is the opposite of the usual
-        advice for a multi-process SQLite database. `~/.p2p-mesh` is bind-mounted
-        into the containers (`~/.p2p-mesh:/root/.p2p-mesh`), and on macOS those
+        advice for a multi-process SQLite database. `~/.ds-mvp` is bind-mounted
+        into the containers (`~/.ds-mvp:/root/.ds-mvp`), and on macOS those
         containers run inside a Linux VM — so the host process and the pipeline
         container are, as far as file locking is concerned, two different machines
         sharing a file over VirtioFS. SQLite's WAL requires shared memory between

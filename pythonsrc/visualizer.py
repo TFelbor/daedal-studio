@@ -46,7 +46,7 @@ try:
 except ImportError:
     from pythonsrc.ip_screen_image import save_screened
 
-logger = logging.getLogger("p2p.visualizer")
+logger = logging.getLogger("ds.visualizer")
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -65,7 +65,7 @@ def get_device():
         device = "mps"
     else:
         device = "cpu"
-    print(f"[P2P] Phase 1 device: {device}")
+    print(f"[DS] Phase 1 device: {device}")
     return device
 
 
@@ -193,7 +193,7 @@ class Visualizer:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="p2p-mesh Phase 1 — Visualizer")
+    parser = argparse.ArgumentParser(description="ds-mvp Phase 1 — Visualizer")
     parser.add_argument("--prompt", "-p", help="Text prompt (interactive if omitted)")
     parser.add_argument(
         "--output",
@@ -236,4 +236,4 @@ if __name__ == "__main__":
         colour=args.colour,
     )
     # Printed so an interactive run can reproduce its own result with --seed.
-    print(f"[P2P] Blueprint seed: {result.seed}")
+    print(f"[DS] Blueprint seed: {result.seed}")

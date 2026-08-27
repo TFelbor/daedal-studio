@@ -1,6 +1,6 @@
 # Pipeline Architecture
 
-The Prompt2Print generative engine works asynchronously across five core phases. Here is how your text prompt becomes a physical object.
+The Daedal Studio generative engine works asynchronously across five core phases. Here is how your text prompt becomes a physical object.
 
 ## Phase 1: Visualizer
 **Input**: Text Prompt  

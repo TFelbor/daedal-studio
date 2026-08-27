@@ -5,7 +5,7 @@ Two problems this solves.
 **The log was not readable.** Every line looked the same, so a wall of INFO gave no
 shape: a one-word event and a twelve-field job submission were rendered identically
 and neither could be found by eye. The pipeline already had a grammar for this — the
-`[P2P] ═══ PHASE 2 START ═══` banners the server parses — and it worked, so it is
+`[DS] ═══ PHASE 2 START ═══` banners the server parses — and it worked, so it is
 extended here rather than replaced.
 
 **The log was not reactive.** The interesting things the server does happen in
@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Sequence
 
-logger = logging.getLogger("p2p.activity")
+logger = logging.getLogger("ds.activity")
 
 #: Total width of a rule or a block's top edge. 62 fits an 80-column terminal with
 #: room for the timestamp and level prefix the formatter puts in front of it.

@@ -1,6 +1,6 @@
 # Telemetry Collection
 
-To ensure your prints succeed safely, Prompt2Print continuously collects telemetry data from your printer while a job is active.
+To ensure your prints succeed safely, Daedal Studio continuously collects telemetry data from your printer while a job is active.
 
 ## What We Collect
 
@@ -14,4 +14,4 @@ Data is streamed via WebSockets or Socket.IO directly from your printer firmware
 
 ## Privacy Guarantee
 
-Because Prompt2Print is fully local, your telemetry data **never leaves your machine**. It is used exclusively to power the Web UI dashboard and run failure detection heuristics.
+Because Daedal Studio is fully local, your telemetry data **never leaves your machine**. It is used exclusively to power the Web UI dashboard and run failure detection heuristics.

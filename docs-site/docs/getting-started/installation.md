@@ -1,6 +1,6 @@
 # Installation
 
-Welcome to Prompt2Print! This guide will help you install and run the p2p-mesh generative engine locally.
+Welcome to Daedal Studio! This guide will help you install and run the ds-mvp generative engine locally.
 
 ## Prerequisites
 

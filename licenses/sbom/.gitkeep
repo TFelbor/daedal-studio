@@ -1,4 +1,4 @@
 # SBOMs land here: syft-json, one file per image.
-#   p2p-mesh-pipeline.json, p2p-api-server.json  — built images, every merge
+#   ds-mvp-pipeline.json, ds-api-server.json  — built images, every merge
 #   base-*.json                                  — registry base images, weekly
 # Written by .github/workflows/licence-data.yml. See ../README.md.

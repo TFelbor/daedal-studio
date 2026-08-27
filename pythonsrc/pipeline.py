@@ -1,5 +1,5 @@
 """
-pipeline.py — Unified Prompt2Print entrypoint.
+pipeline.py — Unified Daedal Studio entrypoint.
 
 Chains Phases 1→2→3→4→5 in a single command:
 
@@ -58,7 +58,7 @@ except ImportError:
 from pythonsrc.sculptors.base import DEFAULT_TARGET_FACES
 
 # ── Logging ───────────────────────────────────────────────────────────────────
-logger = logging.getLogger("p2p.pipeline")
+logger = logging.getLogger("ds.pipeline")
 
 # ── Phase banner helpers ──────────────────────────────────────────────────────
 _PHASE_NAMES = {
@@ -205,8 +205,8 @@ def _blueprint_is_placeholder(path: Path) -> bool:
 def _write_status(phase_num: int, status: str, error: str = None) -> None:
     if not CURRENT_JOB_ID:
         return
-    log_dir_env = os.environ.get("P2P_LOGS_DIR")
-    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".p2p-mesh" / "logs")
+    log_dir_env = os.environ.get("DS_LOGS_DIR")
+    log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".ds-mvp" / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     status_file = log_dir / f"{CURRENT_JOB_ID}.status"
     
@@ -281,7 +281,7 @@ def _adhesion_args(report, profile=None) -> list[str]:
         bed.detail,
     )
     print(
-        f"[P2P] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm / {line_count} lines "
+        f"[DS] Adhesion: brim {BRIM_WIDTH_MM:.0f}mm / {line_count} lines "
         "(small first-layer footprint)",
         flush=True,
     )
@@ -335,7 +335,7 @@ def _resolve_git_sha() -> str | None:
     """The commit of the code running this job, or None when unknowable.
 
     Delegates to the shared torch-free helper so the server (which stamps
-    `$P2P_GIT_SHA` into container subprocesses) and the pipeline resolve the
+    `$DS_GIT_SHA` into container subprocesses) and the pipeline resolve the
     value the same way.
     """
     from pythonsrc.telemetry.run_context import resolve_git_sha
@@ -594,7 +594,7 @@ def _record_slice(args, gcode_path, duration_s, status="success", error=None, ex
 
         if stats:
             print(
-                f"[P2P] Slice stats: {stats.filament_used_mm / 1000:.2f}m filament, "
+                f"[DS] Slice stats: {stats.filament_used_mm / 1000:.2f}m filament, "
                 f"{stats.layer_count} layers, ~{(stats.estimated_print_time_s or 0) / 60:.0f}min",
                 flush=True,
             )
@@ -654,14 +654,14 @@ def _stop_here(phase_num: int, reason: str) -> None:
     (`═══ PHASE n ═══`), which the server parses into progress updates — a gate is a
     note about a phase, not a phase.
     """
-    print(f"[P2P] ─── STOPPED AFTER PHASE {phase_num} ─── {reason}", flush=True)
+    print(f"[DS] ─── STOPPED AFTER PHASE {phase_num} ─── {reason}", flush=True)
     sys.exit(0)
 
 
 def _phase_start(phase_num: int) -> float:
     """Print a phase start banner and return the start timestamp."""
     name = _PHASE_NAMES.get(phase_num, "Unknown")
-    print(f"\n[P2P] ═══ PHASE {phase_num} START: {name} ═══", flush=True)
+    print(f"\n[DS] ═══ PHASE {phase_num} START: {name} ═══", flush=True)
     return time.time()
 
 
@@ -670,8 +670,8 @@ def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> Non
     elapsed = time.time() - start_time
     name = _PHASE_NAMES.get(phase_num, "Unknown")
     out_info = f" (output: {output_path})" if output_path else ""
-    print(f"[P2P] ═══ PHASE {phase_num} PASS  ✓{out_info} ═══", flush=True)
-    print(f"[P2P] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
+    print(f"[DS] ═══ PHASE {phase_num} PASS  ✓{out_info} ═══", flush=True)
+    print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
     _write_status(phase_num, "complete")
 
 
@@ -679,10 +679,10 @@ def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
     """Print a phase fail banner with traceback, then exit."""
     elapsed = time.time() - start_time
     name = _PHASE_NAMES.get(phase_num, "Unknown")
-    print(f"[P2P] ═══ PHASE {phase_num} FAIL  ✗ ═══", flush=True)
-    print(f"[P2P] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
-    print(f"[P2P] ERROR: {exc}", flush=True)
-    print(f"[P2P] TRACEBACK:", flush=True)
+    print(f"[DS] ═══ PHASE {phase_num} FAIL  ✗ ═══", flush=True)
+    print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
+    print(f"[DS] ERROR: {exc}", flush=True)
+    print(f"[DS] TRACEBACK:", flush=True)
     traceback.print_exc()
     _write_status(phase_num, "error", str(exc))
     sys.exit(1)
@@ -853,12 +853,12 @@ def run(args: argparse.Namespace) -> None:
 
         if _is_running_in_docker():
             print(
-                "\n[P2P] ⚠️  WARNING: Phase 1 is running inside Docker on Mac.\n"
-                "[P2P]     MPS (Apple Silicon GPU) is NOT accessible from inside\n"
-                "[P2P]     a Docker container. This will run on CPU and take ~84min.\n"
-                "[P2P]     RECOMMENDED: Run Phase 1 natively on Mac instead:\n"
-                "[P2P]       bash infra/scripts/run_phase1_native.sh \"your prompt\"\n"
-                "[P2P]     Then use --skip-visualizer for the Docker run.\n"
+                "\n[DS] ⚠️  WARNING: Phase 1 is running inside Docker on Mac.\n"
+                "[DS]     MPS (Apple Silicon GPU) is NOT accessible from inside\n"
+                "[DS]     a Docker container. This will run on CPU and take ~84min.\n"
+                "[DS]     RECOMMENDED: Run Phase 1 natively on Mac instead:\n"
+                "[DS]       bash infra/scripts/run_phase1_native.sh \"your prompt\"\n"
+                "[DS]     Then use --skip-visualizer for the Docker run.\n"
             )
 
         t0 = _phase_start(1)
@@ -873,7 +873,7 @@ def run(args: argparse.Namespace) -> None:
                 seed=args.seed,
                 colour=args.colour,
             )
-            print(f"[P2P] Blueprint seed: {blueprint_result.seed}", flush=True)
+            print(f"[DS] Blueprint seed: {blueprint_result.seed}", flush=True)
             _record_blueprint(args, blueprint_path, blueprint_result)
             _phase_pass(1, t0, str(blueprint_path))
         except Exception as exc:
@@ -940,7 +940,7 @@ def run(args: argparse.Namespace) -> None:
         sidecar_result = read_sidecar(blueprint_path)
         if sidecar_result is not None:
             print(
-                f"[P2P] Blueprint provenance restored from sidecar (seed {sidecar_result.seed})",
+                f"[DS] Blueprint provenance restored from sidecar (seed {sidecar_result.seed})",
                 flush=True,
             )
         _record_blueprint(args, blueprint_path, sidecar_result)
@@ -972,7 +972,7 @@ def run(args: argparse.Namespace) -> None:
 
             if blueprint_screen.action == "block":
                 print(
-                    f"[P2P] ─── BLUEPRINT REFUSED ─── {blueprint_screen.reason}",
+                    f"[DS] ─── BLUEPRINT REFUSED ─── {blueprint_screen.reason}",
                     flush=True,
                 )
                 _write_status(1, "error", blueprint_screen.reason or "blueprint refused")
@@ -981,7 +981,7 @@ def run(args: argparse.Namespace) -> None:
                 # Not a phase banner: the server's regex turns `═══ PHASE n ═══` into a
                 # progress update, and this is a note about one, not a phase of its own.
                 print(
-                    f"[P2P] ─── BLUEPRINT FLAGGED ─── {blueprint_screen.reason}",
+                    f"[DS] ─── BLUEPRINT FLAGGED ─── {blueprint_screen.reason}",
                     flush=True,
                 )
         except SystemExit:
@@ -1001,7 +1001,7 @@ def run(args: argparse.Namespace) -> None:
                 pipeline_type=args.pipeline_type,
                 seed=args.mesh_seed,
             )
-            print(f"[P2P] Sculptor backend: {sculptor.describe()}", flush=True)
+            print(f"[DS] Sculptor backend: {sculptor.describe()}", flush=True)
 
             # Never pay to reconstruct a stand-in. A backend that bills per call turns
             # a missing blueprint from a harmless dev convenience into a charge for a
@@ -1139,7 +1139,7 @@ def run(args: argparse.Namespace) -> None:
                 # Says "the part", not "the scaled part": with --no-scale nothing was
                 # scaled, and the remedy is to change the spec rather than the size.
                 print(
-                    "[P2P] ─── OVERSIZE ─── the part exceeds the build volume: "
+                    "[DS] ─── OVERSIZE ─── the part exceeds the build volume: "
                     + ", ".join(over)
                     + ". It was not shrunk; choose a smaller size or a bigger printer.",
                     flush=True,
@@ -1161,7 +1161,7 @@ def run(args: argparse.Namespace) -> None:
     # Held outside the try so Phase 4 can read the nozzle width off it: the brim
     # override is a line *count*, which only means something against a line width.
     process_profile = None
-    print("\n[P2P] ─── PRINTABILITY START ───", flush=True)
+    print("\n[DS] ─── PRINTABILITY START ───", flush=True)
     t0 = time.time()
     try:
         try:
@@ -1189,11 +1189,11 @@ def run(args: argparse.Namespace) -> None:
         with open(report_path, "w") as f:
             json.dump(report.to_dict(), f, indent=2)
 
-        print(f"[P2P] Printability score: {report.score:.1f}/100 → {report.verdict}", flush=True)
+        print(f"[DS] Printability score: {report.score:.1f}/100 → {report.verdict}", flush=True)
         for check in report.failed():
-            print(f"[P2P]   ✗ {check.check}: {check.detail}", flush=True)
+            print(f"[DS]   ✗ {check.check}: {check.detail}", flush=True)
         for check in report.warnings():
-            print(f"[P2P]   ! {check.check}: {check.detail}", flush=True)
+            print(f"[DS]   ! {check.check}: {check.detail}", flush=True)
         # A thin-walled part is reported as unprintable at a size that is already
         # fixed, and the one remedy — print it bigger — was never named. Derived only
         # when the wall check actually complained, because the measurement costs a
@@ -1218,18 +1218,18 @@ def run(args: argparse.Namespace) -> None:
                 )
                 if feasibility["smallest_viable_mm"] is not None and feasibility["fits"]:
                     print(
-                        f"[P2P]   → at about {feasibility['smallest_viable_mm']:.0f}mm "
+                        f"[DS]   → at about {feasibility['smallest_viable_mm']:.0f}mm "
                         f"({args.scale_axis}) this mesh's walls would clear the "
                         f"{process_profile.min_wall_mm:.2f}mm minimum; it was scaled to "
                         f"{args.target_mm:.0f}mm.",
                         flush=True,
                     )
                 elif feasibility["reason"]:
-                    print(f"[P2P]   → {feasibility['reason']}", flush=True)
+                    print(f"[DS]   → {feasibility['reason']}", flush=True)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Could not derive a size suggestion: %s", exc)
 
-        print(f"[P2P] ─── PRINTABILITY DONE ({time.time() - t0:.1f}s) → {report_path} ───\n", flush=True)
+        print(f"[DS] ─── PRINTABILITY DONE ({time.time() - t0:.1f}s) → {report_path} ───\n", flush=True)
 
         if args.job_id:
             try:
@@ -1263,7 +1263,7 @@ def run(args: argparse.Namespace) -> None:
     except Exception as exc:  # noqa: BLE001
         # Scoring is diagnostic; never fail a print because the scorer itself broke.
         logger.warning("Printability evaluation failed (%s) — continuing without a score.", exc)
-        print("[P2P] ─── PRINTABILITY SKIPPED (evaluation error) ───\n", flush=True)
+        print("[DS] ─── PRINTABILITY SKIPPED (evaluation error) ───\n", flush=True)
         # Only when there is no report to protect: a failure *after* a successful score
         # (a failed write, a dead database) must not overwrite the score with its own
         # excuse.
@@ -1313,8 +1313,8 @@ def run(args: argparse.Namespace) -> None:
             with open(profile_path, "r") as f:
                 profile_data = json.load(f)
             
-            firmware = os.environ.get("P2P_FIRMWARE", profile_data.get("firmware", "octoprint"))
-            base_url = os.environ.get("P2P_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
+            firmware = os.environ.get("DS_FIRMWARE", profile_data.get("firmware", "octoprint"))
+            base_url = os.environ.get("DS_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
 
             # Recorded before the Docker rewrite below: host.docker.internal is a
             # container artifact, not the address anyone configured.
@@ -1325,7 +1325,7 @@ def run(args: argparse.Namespace) -> None:
                 if os.path.exists("/.dockerenv"):
                     base_url = base_url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
 
-            api_key = os.environ.get("P2P_PRINTER_KEY", profile_data.get("api_key"))
+            api_key = os.environ.get("DS_PRINTER_KEY", profile_data.get("api_key"))
 
             op = PrinterFactory.create(
                 firmware=firmware,
@@ -1432,10 +1432,10 @@ def run(args: argparse.Namespace) -> None:
     total_elapsed = time.time() - pipeline_start
     total_min = int(total_elapsed // 60)
     total_sec = int(total_elapsed % 60)
-    print("\n[P2P] ══════════════════════════════", flush=True)
-    print("[P2P] PIPELINE COMPLETE ✓", flush=True)
-    print(f"[P2P] Total duration: {total_min}m {total_sec}s", flush=True)
-    print("[P2P] ══════════════════════════════\n", flush=True)
+    print("\n[DS] ══════════════════════════════", flush=True)
+    print("[DS] PIPELINE COMPLETE ✓", flush=True)
+    print(f"[DS] Total duration: {total_min}m {total_sec}s", flush=True)
+    print("[DS] ══════════════════════════════\n", flush=True)
 
     logger.info("Mesh: %s", final_mesh_path)
     if args.print:
@@ -1445,7 +1445,7 @@ def run(args: argparse.Namespace) -> None:
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prompt2Print — unified mesh pipeline",
+        description="Daedal Studio — unified mesh pipeline",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -1514,7 +1514,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Where reconstruction runs: trellis2 in-process (needs a CUDA GPU), "
              "remote via a self-hosted GPU worker, pixazo via the hosted endpoint "
              "(bills EUR 0,32 per generation), or auto "
-             "(default: $P2P_SCULPTOR_BACKEND, else auto)",
+             "(default: $DS_SCULPTOR_BACKEND, else auto)",
     )
     p2.add_argument(
         "--pipeline-type",

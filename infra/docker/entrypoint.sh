@@ -1,6 +1,6 @@
 #!/bin/bash
 # ────────────────────────────────────────────────────────────────────────────
-# docker/entrypoint.sh — Container startup script for p2p-mesh pipeline.
+# docker/entrypoint.sh — Container startup script for ds-mvp pipeline.
 #
 # Responsibilities:
 #   1. Bootstrap config.py from config.template.py if it doesn't exist.

@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────────────────────────────────
-# base.Dockerfile — Shared foundation for all p2p-mesh phase images.
+# base.Dockerfile — Shared foundation for all ds-mvp phase images.
 #
 # Provides:
 #   - Ubuntu 22.04 LTS
@@ -9,13 +9,13 @@
 #   - WORKDIR /app with pythonsrc copied in
 #
 # Usage (standalone build):
-#   docker build -f infra/docker/base.Dockerfile -t p2p-base .
+#   docker build -f infra/docker/base.Dockerfile -t ds-base .
 # ────────────────────────────────────────────────────────────────────────────
 
 FROM --platform=linux/amd64 ubuntu:22.04
 
-LABEL maintainer="Prompt2Print" \
-      description="p2p-mesh base image — Python 3.10 + headless system libs"
+LABEL maintainer="Daedal Studio" \
+      description="ds-mvp base image — Python 3.10 + headless system libs"
 
 # ── Environment ──────────────────────────────────────────────────────────────
 # DEBIAN_FRONTEND: prevent apt from blocking on interactive prompts
@@ -70,8 +70,8 @@ COPY pythonsrc/ ./pythonsrc/
 COPY requirements.txt ./requirements.txt
 
 # ── Entrypoint script ───────────────────────────────────────────────────────────────
-COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
-RUN chmod +x /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/ds-entrypoint
+RUN chmod +x /usr/local/bin/ds-entrypoint
 
 # ── Create I/O directories ────────────────────────────────────────────────────
 RUN mkdir -p /app/inputs /app/outputs /models/flux /models/trellis2

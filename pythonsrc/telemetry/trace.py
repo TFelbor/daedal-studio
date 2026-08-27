@@ -302,7 +302,7 @@ class Palette:
     """ANSI codes, or empty strings when the output is not a terminal.
 
     Follows the same convention as `server/logging_config.py`: `$NO_COLOR`
-    disables, `$P2P_LOG_COLOR` forces on, otherwise colour when stdout is a tty.
+    disables, `$DS_LOG_COLOR` forces on, otherwise colour when stdout is a tty.
     """
 
     def __init__(self, enabled: bool):
@@ -330,7 +330,7 @@ def colour_enabled(stream) -> bool:
     """
     if os.environ.get("NO_COLOR"):
         return False
-    if os.environ.get("P2P_LOG_COLOR") == "1":
+    if os.environ.get("DS_LOG_COLOR") == "1":
         return True
     return bool(getattr(stream, "isatty", lambda: False)())
 

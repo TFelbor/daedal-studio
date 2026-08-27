@@ -27,7 +27,7 @@ try:
 except ImportError:  # pragma: no cover - depends on how the caller set sys.path
     from pythonsrc.config import CURA_ENGINE_PATH  # type: ignore[no-redef]
 
-logger = logging.getLogger("p2p.slicer")
+logger = logging.getLogger("ds.slicer")
 
 #: Profile keys that say how to *reach* a printer, not how to slice for it. Skipped
 #: silently; every other unrecognised key is warned about, because a mistyped
@@ -170,7 +170,7 @@ class CuraSlicer:
 
     @classmethod
     def _is_definition(cls, path: Path | None) -> bool:
-        """True for a CuraEngine printer definition, as opposed to a p2p profile."""
+        """True for a CuraEngine printer definition, as opposed to a Daedal Studio profile."""
         return path is not None and path.name.endswith(".def.json")
 
     @classmethod
@@ -357,7 +357,7 @@ class CuraSlicer:
 # ── Standalone CLI ────────────────────────────────────────────────────────────
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="p2p-mesh Phase 3.5 — CuraEngine slicer",
+        description="ds-mvp Phase 3.5 — CuraEngine slicer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--input", "-i", required=True, metavar="PATH", help=".obj file to slice")

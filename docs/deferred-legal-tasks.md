@@ -5,7 +5,7 @@ work products, not code, and neither is being started now. This file exists so t
 context does not have to be rediscovered when they are picked up — attach it to the
 task.
 
-Everything below assumes the operating posture of the Trento pilot: Prompt2Print
+Everything below assumes the operating posture of the Trento pilot: Daedal Studio
 takes a natural-language prompt from a user, generates a mesh, and **prints and hands
 over a physical object**. That last step is what makes these necessary. A platform
 that only hosts files has intermediary defences available to it; a shop that
@@ -72,7 +72,7 @@ rights, together with a commitment about what happens next: acknowledgement of r
 decision without undue delay, and a statement of what was done.
 
 Under the DSA this mechanism is a **hard obligation for hosting services** (Art. 16), with
-member-state penalties reaching 6% of turnover for non-compliance. Whether Prompt2Print is
+member-state penalties reaching 6% of turnover for non-compliance. Whether Daedal Studio is
 a hosting service depends on product decisions not yet made: the moment there is a public
 gallery of user prints, a shared model library, or user-uploaded files visible to others,
 it very likely is one. Today, printing to order, it probably is not.
@@ -150,13 +150,13 @@ Two facts that resolve most of the apparent contradiction:
 
 ### The repository is private, so nothing has been open-sourced yet
 
-`Prompt-2-Print/p2p-mesh` is private and GitHub detects no licence on it. There is an
+`Daedal-Studio/ds-mvp` is private and GitHub detects no licence on it. There is an
 Apache-2.0 `LICENSE` file in the tree, but a licence is a grant to whoever *receives*
 the software, and nobody outside the organisation has. **Today that file is a statement
 of intent, not an active grant.**
 
 One inaccuracy to correct whenever the file is next touched: `THIRD-PARTY-NOTICES.md`
-opens with "Prompt2Print (p2p-mesh) is distributed under the Apache License 2.0." It is
+opens with "Daedal Studio (ds-mvp) is distributed under the Apache License 2.0." It is
 not distributed at all.
 
 ### The options, and what each costs
@@ -258,7 +258,7 @@ notices row recording the rejection. Deleting them would remove the protection, 
 exposure:
 
 - The runtime refusal in `assert_permissive_vision_model` is what stops
-  `P2P_IP_MODEL_ID=openai/clip-vit-base-patch32` from loading.
+  `DS_IP_MODEL_ID=openai/clip-vit-base-patch32` from loading.
 - `FORBIDDEN_RENDERER_PACKAGES` is what fails the build if `--nvdiffrast` is added to a
   Dockerfile — and upstream TRELLIS.2's own documented install line asks for it, so the
   tempting copy-paste is the encumbered one.

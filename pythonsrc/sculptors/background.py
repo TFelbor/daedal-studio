@@ -43,12 +43,12 @@ from PIL import Image
 
 from .base import SculptorError
 
-logger = logging.getLogger("p2p.sculptor.background")
+logger = logging.getLogger("ds.sculptor.background")
 
 #: MIT-licensed BiRefNet weights — the same architecture upstream's class expects.
 #: Overridable so a self-hosted mirror or a pinned revision needs no code change.
 DEFAULT_MATTE_MODEL_ID = os.environ.get(
-    "P2P_BIREFNET_MODEL_ID", "ZhengPeng7/BiRefNet"
+    "DS_BIREFNET_MODEL_ID", "ZhengPeng7/BiRefNet"
 )
 
 #: Weights that must never be loaded by this project. Each is free for
@@ -121,7 +121,7 @@ class PermissiveBiRefNet:
         Loaded with `trust_remote_code=True`, matching upstream. That executes
         modelling code fetched from the Hugging Face Hub at load time — an MIT
         licence, but still remote code execution. Pin a revision via
-        `$P2P_BIREFNET_MODEL_ID` (`repo@sha`) before any untrusted deployment.
+        `$DS_BIREFNET_MODEL_ID` (`repo@sha`) before any untrusted deployment.
     """
 
     def __init__(self, model_name: str | None = None, device: str | None = None) -> None:
@@ -147,7 +147,7 @@ class PermissiveBiRefNet:
             raise SculptorError(
                 f"Refusing to load '{self.model_id}' for background removal: it is "
                 "licensed for non-commercial use only. Unset or correct "
-                "P2P_BIREFNET_MODEL_ID — see THIRD-PARTY-NOTICES.md."
+                "DS_BIREFNET_MODEL_ID — see THIRD-PARTY-NOTICES.md."
             )
 
         self._requested_device = device

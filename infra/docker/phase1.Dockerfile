@@ -8,12 +8,12 @@
 #     /models/flux and downloaded on first run.
 #
 # Build (standalone):
-#   docker build -f infra/docker/phase1.Dockerfile -t p2p-phase1-visualizer .
+#   docker build -f infra/docker/phase1.Dockerfile -t ds-phase1-visualizer .
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM p2p-base:latest AS phase1-visualizer
+FROM ds-base:latest AS phase1-visualizer
 
-LABEL description="p2p-mesh Phase 1 — Visualizer (FLUX text-to-image)"
+LABEL description="ds-mvp Phase 1 — Visualizer (FLUX text-to-image)"
 
 # ── Model path ────────────────────────────────────────────────────────────────
 ENV FLUX_MODEL_PATH=/models/flux \
@@ -41,5 +41,5 @@ RUN pip install --no-cache-dir \
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 # Expects OCTOPRINT_API_KEY, FLUX_MODEL_PATH, etc. via environment / .env file
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint", "python", "pythonsrc/visualizer.py"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint", "python", "pythonsrc/visualizer.py"]
 CMD ["--help"]

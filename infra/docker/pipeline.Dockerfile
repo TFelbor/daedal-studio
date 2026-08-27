@@ -16,20 +16,20 @@
 # Phase 2 note: TRELLIS.2 is CUDA-only, so the *model* is not in this image. This
 # image carries the sculptor client, which posts the blueprint to a GPU worker
 # (services/trellis2_worker) and post-processes the mesh it returns. Set
-# P2P_SCULPTOR_REMOTE_URL to point at one; see infra/docker/trellis2-worker.Dockerfile.
+# DS_SCULPTOR_REMOTE_URL to point at one; see infra/docker/trellis2-worker.Dockerfile.
 #
 # Build (standalone):
-#   docker build -f infra/docker/pipeline.Dockerfile -t p2p-mesh-pipeline .
+#   docker build -f infra/docker/pipeline.Dockerfile -t ds-mvp-pipeline .
 # ────────────────────────────────────────────────────────────────────────────
 
-FROM p2p-base:latest AS pipeline-runner
+FROM ds-base:latest AS pipeline-runner
 
-LABEL description="p2p-mesh Pipeline Runner — all phases (1–5) in one container"
+LABEL description="ds-mvp Pipeline Runner — all phases (1–5) in one container"
 
 # ── Model paths ───────────────────────────────────────────────────────────────
 ENV FLUX_MODEL_PATH=/models/flux \
     TRELLIS2_MODEL_PATH=/models/trellis2 \
-    P2P_SCULPTOR_BACKEND=auto \
+    DS_SCULPTOR_BACKEND=auto \
     HF_HOME=/models/hf_cache \
     TRANSFORMERS_CACHE=/models/hf_cache \
     CURA_ENGINE_PATH=CuraEngine
@@ -106,8 +106,8 @@ RUN pip install --no-cache-dir \
 # Bootstraps config.py from config.template.py on first run (config.py is
 # gitignored and not present on a clean image build).
 COPY pythonsrc/ ./pythonsrc/
-COPY infra/docker/entrypoint.sh /usr/local/bin/p2p-entrypoint
-RUN chmod +x /usr/local/bin/p2p-entrypoint
+COPY infra/docker/entrypoint.sh /usr/local/bin/ds-entrypoint
+RUN chmod +x /usr/local/bin/ds-entrypoint
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 # The entrypoint script bootstraps config.py, then exec's its arguments.
@@ -116,7 +116,7 @@ RUN chmod +x /usr/local/bin/p2p-entrypoint
 # Examples:
 #   docker compose run --rm pipeline-runner \
 #       python pythonsrc/pipeline.py "a vase" --print --start-print
-#   docker run --rm p2p-mesh-pipeline \
+#   docker run --rm ds-mvp-pipeline \
 #       python pythonsrc/pipeline.py "a vase" --print --start-print
-ENTRYPOINT ["/usr/local/bin/p2p-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/ds-entrypoint"]
 CMD ["python", "pythonsrc/pipeline.py", "--help"]

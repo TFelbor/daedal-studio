@@ -7,15 +7,15 @@
 # on an NVIDIA host with the Container Toolkit installed.
 #
 # Deploy it on a GPU host (24 GB VRAM or better) and point the pipeline at it:
-#   P2P_SCULPTOR_BACKEND=remote
-#   P2P_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
+#   DS_SCULPTOR_BACKEND=remote
+#   DS_SCULPTOR_REMOTE_URL=http://<gpu-host>:8100
 #
 # The TRELLIS.2 source is not on PyPI, so it is cloned at build time. Point
 # TRELLIS2_REPO at a fork to build the adapted checkout instead of upstream.
 #
 # Build (expect 30-60 min — the extensions compile from source):
 #   docker build -f infra/docker/trellis2-worker.Dockerfile \
-#       -t p2p-trellis2-worker --build-arg TORCH_CUDA_ARCH_LIST="8.6" .
+#       -t ds-trellis2-worker --build-arg TORCH_CUDA_ARCH_LIST="8.6" .
 #
 # TORCH_CUDA_ARCH_LIST must match the deployment GPU or the kernels will not
 # load: 8.0 = A100, 8.6 = A10G/RTX 30xx, 8.9 = L4/RTX 40xx, 9.0 = H100.
@@ -23,7 +23,7 @@
 
 FROM --platform=linux/amd64 nvidia/cuda:12.4.1-devel-ubuntu22.04 AS trellis2-worker
 
-LABEL description="p2p-mesh Phase 2 — TRELLIS.2 GPU sculptor worker"
+LABEL description="ds-mvp Phase 2 — TRELLIS.2 GPU sculptor worker"
 
 ARG TRELLIS2_REPO=https://github.com/microsoft/TRELLIS.2.git
 ARG TRELLIS2_REF=main
