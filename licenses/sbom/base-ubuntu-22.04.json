@@ -1,0 +1,6583 @@
+{
+ "artifacts": [
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/adduser/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/adduser/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:3e67668ed552fe3a0684e77282325d07fa8847f2575ea1e1906000de571b5c1e"
+    }
+   ],
+   "name": "adduser",
+   "purl": "pkg:deb/ubuntu/adduser@3.118ubuntu5?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "3.118ubuntu5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/apt/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/apt/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "concluded",
+     "urls": [],
+     "value": "GPL-2.0-or-later"
+    }
+   ],
+   "name": "apt",
+   "purl": "pkg:deb/ubuntu/apt@2.4.14?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "2.4.14"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/base-files/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/base-files/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:cdb5461d8515002d0fe3babb764eec3877458b20f4e4bb16219f62ea953afeea"
+    }
+   ],
+   "name": "base-files",
+   "purl": "pkg:deb/ubuntu/base-files@12ubuntu4.7?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "12ubuntu4.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/base-passwd/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/base-passwd/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/base-passwd/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/base-passwd/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "base-passwd",
+   "purl": "pkg:deb/ubuntu/base-passwd@3.5.52build1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "3.5.52build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bash/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bash/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:da7a8d93abf1eccdeaf326642c8ce9ed760f3a973ca46f3f69b3cf755bb81ade"
+    }
+   ],
+   "name": "bash",
+   "purl": "pkg:deb/ubuntu/bash@5.1-6ubuntu1.1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "5.1-6ubuntu1.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/bsdutils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/bsdutils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "bsdutils",
+   "purl": "pkg:deb/ubuntu/bsdutils@1%3A2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux%402.37.2-4ubuntu3.5",
+   "type": "deb",
+   "version": "1:2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/coreutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/coreutils/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "concluded",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/coreutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/coreutils/copyright"
+      }
+     ],
+     "spdxExpression": "GFDL-1.2-no-invariants-or-later",
+     "type": "concluded",
+     "urls": [],
+     "value": "GFDL-1.2-no-invariants-or-later"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/coreutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/coreutils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "concluded",
+     "urls": [],
+     "value": "GPL-3.0-or-later"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/coreutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/coreutils/copyright"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "concluded",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "coreutils",
+   "purl": "pkg:deb/ubuntu/coreutils@8.32-4.1ubuntu1.3?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "8.32-4.1ubuntu1.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "FSFUL",
+     "type": "declared",
+     "urls": [],
+     "value": "FSFUL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "FSFULLR",
+     "type": "declared",
+     "urls": [],
+     "value": "FSFULLR"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dash/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dash/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "dash",
+   "purl": "pkg:deb/ubuntu/dash@0.5.11%2Bgit20210903%2B057cd650a4ed-3build1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "0.5.11+git20210903+057cd650a4ed-3build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/debconf/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/debconf/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    }
+   ],
+   "name": "debconf",
+   "purl": "pkg:deb/ubuntu/debconf@1.5.79ubuntu1?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.5.79ubuntu1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/debianutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/debianutils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:3c8b5112cb8f74ba959233291908d73f527afa6f1d96f93649aeb912b5884567"
+    }
+   ],
+   "name": "debianutils",
+   "purl": "pkg:deb/ubuntu/debianutils@5.5-1ubuntu2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "5.5-1ubuntu2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/diffutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/diffutils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:217cf1b67ce79cfc930dfb4a8bdaccfa4c263226131e650f13cd2b342d9171d8"
+    }
+   ],
+   "name": "diffutils",
+   "purl": "pkg:deb/ubuntu/diffutils@1%3A3.8-0ubuntu2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1:3.8-0ubuntu2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dpkg/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dpkg/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dpkg/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dpkg/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dpkg/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dpkg/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dpkg/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dpkg/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain-md5"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/dpkg/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/dpkg/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain-s-s-d"
+    }
+   ],
+   "name": "dpkg",
+   "purl": "pkg:deb/ubuntu/dpkg@1.21.1ubuntu2.6?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.21.1ubuntu2.6"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/e2fsprogs/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/e2fsprogs/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:b7b391571e7253d4cf607e33e3b463895768fad264471e7774882974f834faa1"
+    }
+   ],
+   "name": "e2fsprogs",
+   "purl": "pkg:deb/ubuntu/e2fsprogs@1.46.5-2ubuntu1.2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.46.5-2ubuntu1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/findutils/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/findutils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:e4ad5b1bb6aa6e7aa93d7e2b516e1ae8de6e75b20cfb4c18934d111d3e918ae4"
+    }
+   ],
+   "name": "findutils",
+   "purl": "pkg:deb/ubuntu/findutils@4.8.0-1ubuntu3?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "4.8.0-1ubuntu3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gcc-12-base/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gcc-12-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3"
+    }
+   ],
+   "name": "gcc-12-base",
+   "purl": "pkg:deb/ubuntu/gcc-12-base@12.3.0-1ubuntu1~22.04.3?arch=amd64&distro=ubuntu-22.04&upstream=gcc-12",
+   "type": "deb",
+   "version": "12.3.0-1ubuntu1~22.04.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "CC0-1.0",
+     "type": "declared",
+     "urls": [],
+     "value": "CC0-1.0"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "RFC-Reference"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "TinySCHEME"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gpgv/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gpgv/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive"
+    }
+   ],
+   "name": "gpgv",
+   "purl": "pkg:deb/ubuntu/gpgv@2.2.27-3ubuntu2.5?arch=amd64&distro=ubuntu-22.04&upstream=gnupg2",
+   "type": "deb",
+   "version": "2.2.27-3ubuntu2.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/grep/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/grep/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/grep/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/grep/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    }
+   ],
+   "name": "grep",
+   "purl": "pkg:deb/ubuntu/grep@3.7-1build1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "3.7-1build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gzip/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gzip/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "FSF-manpages"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gzip/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gzip/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GFDL-1.3+-no-invariant"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gzip/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gzip/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GFDL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gzip/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gzip/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/gzip/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gzip/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    }
+   ],
+   "name": "gzip",
+   "purl": "pkg:deb/ubuntu/gzip@1.10-4ubuntu4.2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.10-4ubuntu4.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/hostname/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/hostname/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "concluded",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "hostname",
+   "purl": "pkg:deb/ubuntu/hostname@3.23ubuntu2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "3.23ubuntu2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/init-system-helpers/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/init-system-helpers/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/init-system-helpers/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/init-system-helpers/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/init-system-helpers/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/init-system-helpers/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    }
+   ],
+   "name": "init-system-helpers",
+   "purl": "pkg:deb/ubuntu/init-system-helpers@1.62?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.62"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libacl1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libacl1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libacl1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libacl1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libacl1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libacl1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libacl1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libacl1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libacl1",
+   "purl": "pkg:deb/ubuntu/libacl1@2.3.1-1?arch=amd64&distro=ubuntu-22.04&upstream=acl",
+   "type": "deb",
+   "version": "2.3.1-1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libapt-pkg6.0/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libapt-pkg6.0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "concluded",
+     "urls": [],
+     "value": "GPL-2.0-or-later"
+    }
+   ],
+   "name": "libapt-pkg6.0",
+   "purl": "pkg:deb/ubuntu/libapt-pkg6.0@2.4.14?arch=amd64&distro=ubuntu-22.04&upstream=apt",
+   "type": "deb",
+   "version": "2.4.14"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libattr1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libattr1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libattr1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libattr1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libattr1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libattr1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libattr1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libattr1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libattr1",
+   "purl": "pkg:deb/ubuntu/libattr1@1%3A2.5.1-1build1?arch=amd64&distro=ubuntu-22.04&upstream=attr",
+   "type": "deb",
+   "version": "1:2.5.1-1build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit-common/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit-common/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit-common/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libaudit-common",
+   "purl": "pkg:deb/ubuntu/libaudit-common@1%3A3.0.7-1build1?arch=all&distro=ubuntu-22.04&upstream=audit",
+   "type": "deb",
+   "version": "1:3.0.7-1build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libaudit1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libaudit1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libaudit1",
+   "purl": "pkg:deb/ubuntu/libaudit1@1%3A3.0.7-1build1?arch=amd64&distro=ubuntu-22.04&upstream=audit",
+   "type": "deb",
+   "version": "1:3.0.7-1build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libblkid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libblkid1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libblkid1",
+   "purl": "pkg:deb/ubuntu/libblkid1@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libbz2-1.0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libbz2-1.0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-variant"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libbz2-1.0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libbz2-1.0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    }
+   ],
+   "name": "libbz2-1.0",
+   "purl": "pkg:deb/ubuntu/libbz2-1.0@1.0.8-5build1?arch=amd64&distro=ubuntu-22.04&upstream=bzip2",
+   "type": "deb",
+   "version": "1.0.8-5build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libc-bin/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libc-bin/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:d3c95b56fa33e28b57860580f0baf4e4f4de2a268a2b80f1d031a5191bade265"
+    }
+   ],
+   "name": "libc-bin",
+   "purl": "pkg:deb/ubuntu/libc-bin@2.35-0ubuntu3.14?arch=amd64&distro=ubuntu-22.04&upstream=glibc",
+   "type": "deb",
+   "version": "2.35-0ubuntu3.14"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libc6/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libc6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:d3c95b56fa33e28b57860580f0baf4e4f4de2a268a2b80f1d031a5191bade265"
+    }
+   ],
+   "name": "libc6",
+   "purl": "pkg:deb/ubuntu/libc6@2.35-0ubuntu3.14?arch=amd64&distro=ubuntu-22.04&upstream=glibc",
+   "type": "deb",
+   "version": "2.35-0ubuntu3.14"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcap-ng0/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcap-ng0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:8cdc2d0eeeb4ed84963c58be27389b148e830ce5ec42c2598cf194721d0430ec"
+    }
+   ],
+   "name": "libcap-ng0",
+   "purl": "pkg:deb/ubuntu/libcap-ng0@0.7.9-2.2build3?arch=amd64&distro=ubuntu-22.04&upstream=libcap-ng",
+   "type": "deb",
+   "version": "0.7.9-2.2build3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcap2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcap2/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcap2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcap2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcap2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcap2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    }
+   ],
+   "name": "libcap2",
+   "purl": "pkg:deb/ubuntu/libcap2@1%3A2.44-1ubuntu0.22.04.3?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1:2.44-1ubuntu0.22.04.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcom-err2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcom-err2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:9e3a4384b6d8d2358d44103f62bcd948328b3f8a63a1a6baa66abeb43302d581"
+    }
+   ],
+   "name": "libcom-err2",
+   "purl": "pkg:deb/ubuntu/libcom-err2@1.46.5-2ubuntu1.2?arch=amd64&distro=ubuntu-22.04&upstream=e2fsprogs",
+   "type": "deb",
+   "version": "1.46.5-2ubuntu1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libcrypt1/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libcrypt1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:5a5e7ca0e9f3f9679977e3a3e9ede45ad92885a3297ea78e766979f9866c5a16"
+    }
+   ],
+   "name": "libcrypt1",
+   "purl": "pkg:deb/ubuntu/libcrypt1@1%3A4.4.27-1?arch=amd64&distro=ubuntu-22.04&upstream=libxcrypt",
+   "type": "deb",
+   "version": "1:4.4.27-1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libdb5.3/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libdb5.3/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:b3bbc6fbb3f2a0e6a487e953eb8c3cc4bdb6f4150f7f51d20b1e9a3c8ef92d3d"
+    }
+   ],
+   "name": "libdb5.3",
+   "purl": "pkg:deb/ubuntu/libdb5.3@5.3.28%2Bdfsg1-0.8ubuntu3?arch=amd64&distro=ubuntu-22.04&upstream=db5.3",
+   "type": "deb",
+   "version": "5.3.28+dfsg1-0.8ubuntu3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libdebconfclient0/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libdebconfclient0/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "concluded",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "libdebconfclient0",
+   "purl": "pkg:deb/ubuntu/libdebconfclient0@0.261ubuntu1?arch=amd64&distro=ubuntu-22.04&upstream=cdebconf",
+   "type": "deb",
+   "version": "0.261ubuntu1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libext2fs2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libext2fs2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:b7b391571e7253d4cf607e33e3b463895768fad264471e7774882974f834faa1"
+    }
+   ],
+   "name": "libext2fs2",
+   "purl": "pkg:deb/ubuntu/libext2fs2@1.46.5-2ubuntu1.2?arch=amd64&distro=ubuntu-22.04&upstream=e2fsprogs",
+   "type": "deb",
+   "version": "1.46.5-2ubuntu1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libffi8/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libffi8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:7258c8acc378030d8dbe1fcdf394e915769fa31dcbaf3d2991d9a79891f3bcdc"
+    }
+   ],
+   "name": "libffi8",
+   "purl": "pkg:deb/ubuntu/libffi8@3.4.2-4?arch=amd64&distro=ubuntu-22.04&upstream=libffi",
+   "type": "deb",
+   "version": "3.4.2-4"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgcc-s1/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gcc-12-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3"
+    }
+   ],
+   "name": "libgcc-s1",
+   "purl": "pkg:deb/ubuntu/libgcc-s1@12.3.0-1ubuntu1~22.04.3?arch=amd64&distro=ubuntu-22.04&upstream=gcc-12",
+   "type": "deb",
+   "version": "12.3.0-1ubuntu1~22.04.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgcrypt20/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgcrypt20/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:8bf0ea526b7b497bf7b31842e799c37caa69090cc53fd080c76403cc8b79f659"
+    }
+   ],
+   "name": "libgcrypt20",
+   "purl": "pkg:deb/ubuntu/libgcrypt20@1.9.4-3ubuntu3.2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.9.4-3ubuntu3.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgmp10/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgmp10/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:f73f781beb9f85b3f921f9bf540fc89d6eff9e20689ef9323ce510d077a30878"
+    }
+   ],
+   "name": "libgmp10",
+   "purl": "pkg:deb/ubuntu/libgmp10@2%3A6.2.1%2Bdfsg-3ubuntu1?arch=amd64&distro=ubuntu-22.04&upstream=gmp",
+   "type": "deb",
+   "version": "2:6.2.1+dfsg-3ubuntu1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgnutls30/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgnutls30/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:c2a08ee31ea9f0a4fc0f4d590c5481f5b7fc2d325b04ae74c719fa7894dcbdd7"
+    }
+   ],
+   "name": "libgnutls30",
+   "purl": "pkg:deb/ubuntu/libgnutls30@3.7.3-4ubuntu1.9?arch=amd64&distro=ubuntu-22.04&upstream=gnutls28",
+   "type": "deb",
+   "version": "3.7.3-4ubuntu1.9"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgpg-error0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgpg-error0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "g10-permissive"
+    }
+   ],
+   "name": "libgpg-error0",
+   "purl": "pkg:deb/ubuntu/libgpg-error0@1.43-3?arch=amd64&distro=ubuntu-22.04&upstream=libgpg-error",
+   "type": "deb",
+   "version": "1.43-3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libgssapi-krb5-2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libgssapi-krb5-2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:4a2d321ab57260e8de4b67bde8cff76c07d28be69c2d8b22dfc2bfa42f5c41b9"
+    }
+   ],
+   "name": "libgssapi-krb5-2",
+   "purl": "pkg:deb/ubuntu/libgssapi-krb5-2@1.19.2-2ubuntu0.8?arch=amd64&distro=ubuntu-22.04&upstream=krb5",
+   "type": "deb",
+   "version": "1.19.2-2ubuntu0.8"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GAP"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libhogweed6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libhogweed6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libhogweed6",
+   "purl": "pkg:deb/ubuntu/libhogweed6@3.7.3-1build2?arch=amd64&distro=ubuntu-22.04&upstream=nettle",
+   "type": "deb",
+   "version": "3.7.3-1build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libidn2-0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libidn2-0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Unicode"
+    }
+   ],
+   "name": "libidn2-0",
+   "purl": "pkg:deb/ubuntu/libidn2-0@2.3.2-2build1?arch=amd64&distro=ubuntu-22.04&upstream=libidn2",
+   "type": "deb",
+   "version": "2.3.2-2build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libk5crypto3/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libk5crypto3/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:4a2d321ab57260e8de4b67bde8cff76c07d28be69c2d8b22dfc2bfa42f5c41b9"
+    }
+   ],
+   "name": "libk5crypto3",
+   "purl": "pkg:deb/ubuntu/libk5crypto3@1.19.2-2ubuntu0.8?arch=amd64&distro=ubuntu-22.04&upstream=krb5",
+   "type": "deb",
+   "version": "1.19.2-2ubuntu0.8"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkeyutils1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkeyutils1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkeyutils1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkeyutils1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkeyutils1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkeyutils1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkeyutils1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkeyutils1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    }
+   ],
+   "name": "libkeyutils1",
+   "purl": "pkg:deb/ubuntu/libkeyutils1@1.6.1-2ubuntu3?arch=amd64&distro=ubuntu-22.04&upstream=keyutils",
+   "type": "deb",
+   "version": "1.6.1-2ubuntu3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkrb5-3/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkrb5-3/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:4a2d321ab57260e8de4b67bde8cff76c07d28be69c2d8b22dfc2bfa42f5c41b9"
+    }
+   ],
+   "name": "libkrb5-3",
+   "purl": "pkg:deb/ubuntu/libkrb5-3@1.19.2-2ubuntu0.8?arch=amd64&distro=ubuntu-22.04&upstream=krb5",
+   "type": "deb",
+   "version": "1.19.2-2ubuntu0.8"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libkrb5support0/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libkrb5support0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:4a2d321ab57260e8de4b67bde8cff76c07d28be69c2d8b22dfc2bfa42f5c41b9"
+    }
+   ],
+   "name": "libkrb5support0",
+   "purl": "pkg:deb/ubuntu/libkrb5support0@1.19.2-2ubuntu0.8?arch=amd64&distro=ubuntu-22.04&upstream=krb5",
+   "type": "deb",
+   "version": "1.19.2-2ubuntu0.8"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblz4-1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblz4-1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblz4-1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblz4-1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblz4-1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblz4-1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    }
+   ],
+   "name": "liblz4-1",
+   "purl": "pkg:deb/ubuntu/liblz4-1@1.9.3-2build2?arch=amd64&distro=ubuntu-22.04&upstream=lz4",
+   "type": "deb",
+   "version": "1.9.3-2build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Autoconf"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "PD"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "PD-debian"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "config-h"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "noderivs"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-fsf"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-nowarranty"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/liblzma5/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/liblzma5/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "probably-PD"
+    }
+   ],
+   "name": "liblzma5",
+   "purl": "pkg:deb/ubuntu/liblzma5@5.2.5-2ubuntu1.1?arch=amd64&distro=ubuntu-22.04&upstream=xz-utils",
+   "type": "deb",
+   "version": "5.2.5-2ubuntu1.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libmount1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libmount1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libmount1",
+   "purl": "pkg:deb/ubuntu/libmount1@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncurses6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncurses6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT/X11"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncurses6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "X11",
+     "type": "declared",
+     "urls": [],
+     "value": "X11"
+    }
+   ],
+   "name": "libncurses6",
+   "purl": "pkg:deb/ubuntu/libncurses6@6.3-2ubuntu0.2?arch=amd64&distro=ubuntu-22.04&upstream=ncurses",
+   "type": "deb",
+   "version": "6.3-2ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncursesw6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncursesw6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT/X11"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libncursesw6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "X11",
+     "type": "declared",
+     "urls": [],
+     "value": "X11"
+    }
+   ],
+   "name": "libncursesw6",
+   "purl": "pkg:deb/ubuntu/libncursesw6@6.3-2ubuntu0.2?arch=amd64&distro=ubuntu-22.04&upstream=ncurses",
+   "type": "deb",
+   "version": "6.3-2ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GAP"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnettle8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnettle8/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libnettle8",
+   "purl": "pkg:deb/ubuntu/libnettle8@3.7.3-1build2?arch=amd64&distro=ubuntu-22.04&upstream=nettle",
+   "type": "deb",
+   "version": "3.7.3-1build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+-autoconf-exception"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+-libtool-exception"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+-autoconf-exception"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-autoconf-m4"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-autoconf-m4-no-warranty"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-configure"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-fsf"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libnsl2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libnsl2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-makefile-in"
+    }
+   ],
+   "name": "libnsl2",
+   "purl": "pkg:deb/ubuntu/libnsl2@1.3.0-2build2?arch=amd64&distro=ubuntu-22.04&upstream=libnsl",
+   "type": "deb",
+   "version": "1.3.0-2build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC+IBM"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "permissive-like-automake-output"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libp11-kit0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libp11-kit0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "same-as-rest-of-p11kit"
+    }
+   ],
+   "name": "libp11-kit0",
+   "purl": "pkg:deb/ubuntu/libp11-kit0@0.24.0-6build1?arch=amd64&distro=ubuntu-22.04&upstream=p11-kit",
+   "type": "deb",
+   "version": "0.24.0-6build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpam-modules/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpam-modules/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:7c584b7b1f37b612da7fdf3b076eb2b2c1bae72865f0699d745ae2ac7d40d13e"
+    }
+   ],
+   "name": "libpam-modules",
+   "purl": "pkg:deb/ubuntu/libpam-modules@1.4.0-11ubuntu2.7?arch=amd64&distro=ubuntu-22.04&upstream=pam",
+   "type": "deb",
+   "version": "1.4.0-11ubuntu2.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpam-modules-bin/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpam-modules-bin/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:7c584b7b1f37b612da7fdf3b076eb2b2c1bae72865f0699d745ae2ac7d40d13e"
+    }
+   ],
+   "name": "libpam-modules-bin",
+   "purl": "pkg:deb/ubuntu/libpam-modules-bin@1.4.0-11ubuntu2.7?arch=amd64&distro=ubuntu-22.04&upstream=pam",
+   "type": "deb",
+   "version": "1.4.0-11ubuntu2.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpam-runtime/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpam-runtime/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:7c584b7b1f37b612da7fdf3b076eb2b2c1bae72865f0699d745ae2ac7d40d13e"
+    }
+   ],
+   "name": "libpam-runtime",
+   "purl": "pkg:deb/ubuntu/libpam-runtime@1.4.0-11ubuntu2.7?arch=all&distro=ubuntu-22.04&upstream=pam",
+   "type": "deb",
+   "version": "1.4.0-11ubuntu2.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpam0g/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpam0g/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:7c584b7b1f37b612da7fdf3b076eb2b2c1bae72865f0699d745ae2ac7d40d13e"
+    }
+   ],
+   "name": "libpam0g",
+   "purl": "pkg:deb/ubuntu/libpam0g@1.4.0-11ubuntu2.7?arch=amd64&distro=ubuntu-22.04&upstream=pam",
+   "type": "deb",
+   "version": "1.4.0-11ubuntu2.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpcre2-8-0/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpcre2-8-0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:f65dae37239e4d61a1bdeaf2ded76b8569d012a054aa042233b78615e7a83210"
+    }
+   ],
+   "name": "libpcre2-8-0",
+   "purl": "pkg:deb/ubuntu/libpcre2-8-0@10.39-3ubuntu0.1?arch=amd64&distro=ubuntu-22.04&upstream=pcre2",
+   "type": "deb",
+   "version": "10.39-3ubuntu0.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libpcre3/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libpcre3/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:ac9276490d2fa167442ae1aae33926514ad10c8886baa40046c5e367fccc5938"
+    }
+   ],
+   "name": "libpcre3",
+   "purl": "pkg:deb/ubuntu/libpcre3@2%3A8.39-13ubuntu0.22.04.1?arch=amd64&distro=ubuntu-22.04&upstream=pcre3",
+   "type": "deb",
+   "version": "2:8.39-13ubuntu0.22.04.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.0+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libprocps8/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libprocps8/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    }
+   ],
+   "name": "libprocps8",
+   "purl": "pkg:deb/ubuntu/libprocps8@2%3A3.3.17-6ubuntu2.1?arch=amd64&distro=ubuntu-22.04&upstream=procps",
+   "type": "deb",
+   "version": "2:3.3.17-6ubuntu2.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libseccomp2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libseccomp2/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libseccomp2",
+   "purl": "pkg:deb/ubuntu/libseccomp2@2.5.3-2ubuntu3~22.04.1?arch=amd64&distro=ubuntu-22.04&upstream=libseccomp",
+   "type": "deb",
+   "version": "2.5.3-2ubuntu3~22.04.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libselinux1/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libselinux1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:641806738b0c6a3d03168c2649e6b94205198bb66cd557e6bae3a20b71c9bb0b"
+    }
+   ],
+   "name": "libselinux1",
+   "purl": "pkg:deb/ubuntu/libselinux1@3.3-1build2?arch=amd64&distro=ubuntu-22.04&upstream=libselinux",
+   "type": "deb",
+   "version": "3.3-1build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsemanage-common/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsemanage-common/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:e00e6a86c598f9e24ced0180a70a5f2f2e45e133d93adf2b17ce8a06ce4b1b51"
+    }
+   ],
+   "name": "libsemanage-common",
+   "purl": "pkg:deb/ubuntu/libsemanage-common@3.3-1build2?arch=all&distro=ubuntu-22.04&upstream=libsemanage",
+   "type": "deb",
+   "version": "3.3-1build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsemanage2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsemanage2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:e00e6a86c598f9e24ced0180a70a5f2f2e45e133d93adf2b17ce8a06ce4b1b51"
+    }
+   ],
+   "name": "libsemanage2",
+   "purl": "pkg:deb/ubuntu/libsemanage2@3.3-1build2?arch=amd64&distro=ubuntu-22.04&upstream=libsemanage",
+   "type": "deb",
+   "version": "3.3-1build2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsepol2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsepol2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:34414ad829fcea0064729c14f1f900632bfa7d38061b13a9797eec320c372d9e"
+    }
+   ],
+   "name": "libsepol2",
+   "purl": "pkg:deb/ubuntu/libsepol2@3.3-1build1?arch=amd64&distro=ubuntu-22.04&upstream=libsepol",
+   "type": "deb",
+   "version": "3.3-1build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsmartcols1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsmartcols1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libsmartcols1",
+   "purl": "pkg:deb/ubuntu/libsmartcols1@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libss2/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libss2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:6f717a1464301a641ac17e7301f1a1b221da802e8edf8cf4bc963721d487b146"
+    }
+   ],
+   "name": "libss2",
+   "purl": "pkg:deb/ubuntu/libss2@1.46.5-2ubuntu1.2?arch=amd64&distro=ubuntu-22.04&upstream=e2fsprogs",
+   "type": "deb",
+   "version": "1.46.5-2ubuntu1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libssl3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libssl3/copyright"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libssl3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libssl3/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Artistic"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libssl3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libssl3/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libssl3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libssl3/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1+"
+    }
+   ],
+   "name": "libssl3",
+   "purl": "pkg:deb/ubuntu/libssl3@3.0.2-0ubuntu1.26?arch=amd64&distro=ubuntu-22.04&upstream=openssl",
+   "type": "deb",
+   "version": "3.0.2-0ubuntu1.26"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libstdc++6/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/gcc-12-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3"
+    }
+   ],
+   "name": "libstdc++6",
+   "purl": "pkg:deb/ubuntu/libstdc%2B%2B6@12.3.0-1ubuntu1~22.04.3?arch=amd64&distro=ubuntu-22.04&upstream=gcc-12",
+   "type": "deb",
+   "version": "12.3.0-1ubuntu1~22.04.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "CC0-1.0",
+     "type": "declared",
+     "urls": [],
+     "value": "CC0-1.0"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libsystemd0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libsystemd0/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libsystemd0",
+   "purl": "pkg:deb/ubuntu/libsystemd0@249.11-0ubuntu3.22?arch=amd64&distro=ubuntu-22.04&upstream=systemd",
+   "type": "deb",
+   "version": "249.11-0ubuntu3.22"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtasn1-6/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtasn1-6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:88a94e40a34bb28145805747cad4018e7eb976b5fd0bf2329dedf90088ebc6e4"
+    }
+   ],
+   "name": "libtasn1-6",
+   "purl": "pkg:deb/ubuntu/libtasn1-6@4.18.0-4ubuntu0.2?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "4.18.0-4ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtinfo6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtinfo6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT/X11"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtinfo6/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtinfo6/copyright"
+      }
+     ],
+     "spdxExpression": "X11",
+     "type": "declared",
+     "urls": [],
+     "value": "X11"
+    }
+   ],
+   "name": "libtinfo6",
+   "purl": "pkg:deb/ubuntu/libtinfo6@6.3-2ubuntu0.2?arch=amd64&distro=ubuntu-22.04&upstream=ncurses",
+   "type": "deb",
+   "version": "6.3-2ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc-common/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc-common/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc-common/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc-common/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libtirpc-common",
+   "purl": "pkg:deb/ubuntu/libtirpc-common@1.3.2-2ubuntu0.1?arch=all&distro=ubuntu-22.04&upstream=libtirpc",
+   "type": "deb",
+   "version": "1.3.2-2ubuntu0.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc3/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc3/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libtirpc3/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libtirpc3/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    }
+   ],
+   "name": "libtirpc3",
+   "purl": "pkg:deb/ubuntu/libtirpc3@1.3.2-2ubuntu0.1?arch=amd64&distro=ubuntu-22.04&upstream=libtirpc",
+   "type": "deb",
+   "version": "1.3.2-2ubuntu0.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "CC0-1.0",
+     "type": "declared",
+     "urls": [],
+     "value": "CC0-1.0"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libudev1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libudev1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libudev1",
+   "purl": "pkg:deb/ubuntu/libudev1@249.11-0ubuntu3.22?arch=amd64&distro=ubuntu-22.04&upstream=systemd",
+   "type": "deb",
+   "version": "249.11-0ubuntu3.22"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "FreeSoftware"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GFDL-1.2-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GFDL-1.2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GFDL-1.2-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GFDL-1.2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libunistring2/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libunistring2/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "libunistring2",
+   "purl": "pkg:deb/ubuntu/libunistring2@1.0-1?arch=amd64&distro=ubuntu-22.04&upstream=libunistring",
+   "type": "deb",
+   "version": "1.0-1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libuuid1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libuuid1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "libuuid1",
+   "purl": "pkg:deb/ubuntu/libuuid1@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libxxhash0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libxxhash0/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libxxhash0/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libxxhash0/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    }
+   ],
+   "name": "libxxhash0",
+   "purl": "pkg:deb/ubuntu/libxxhash0@0.8.1-1?arch=amd64&distro=ubuntu-22.04&upstream=xxhash",
+   "type": "deb",
+   "version": "0.8.1-1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libzstd1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libzstd1/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libzstd1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libzstd1/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libzstd1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libzstd1/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/libzstd1/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/libzstd1/copyright"
+      }
+     ],
+     "spdxExpression": "Zlib",
+     "type": "declared",
+     "urls": [],
+     "value": "zlib"
+    }
+   ],
+   "name": "libzstd1",
+   "purl": "pkg:deb/ubuntu/libzstd1@1.4.8%2Bdfsg-3build1?arch=amd64&distro=ubuntu-22.04&upstream=libzstd",
+   "type": "deb",
+   "version": "1.4.8+dfsg-3build1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/login/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/login/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:56ca9c00cdef4d69b35d2013465c539eb9e09a80fec538d0f6dc91423dbaa1d3"
+    }
+   ],
+   "name": "login",
+   "purl": "pkg:deb/ubuntu/login@1%3A4.8.1-2ubuntu2.2?arch=amd64&distro=ubuntu-22.04&upstream=shadow",
+   "type": "deb",
+   "version": "1:4.8.1-2ubuntu2.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/logsave/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/logsave/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:b7b391571e7253d4cf607e33e3b463895768fad264471e7774882974f834faa1"
+    }
+   ],
+   "name": "logsave",
+   "purl": "pkg:deb/ubuntu/logsave@1.46.5-2ubuntu1.2?arch=amd64&distro=ubuntu-22.04&upstream=e2fsprogs",
+   "type": "deb",
+   "version": "1.46.5-2ubuntu1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/lsb-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/lsb-base/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/lsb-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/lsb-base/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    }
+   ],
+   "name": "lsb-base",
+   "purl": "pkg:deb/ubuntu/lsb-base@11.1.0ubuntu4?arch=all&distro=ubuntu-22.04&upstream=lsb",
+   "type": "deb",
+   "version": "11.1.0ubuntu4"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mawk/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mawk/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:74a10b02e3422fe1be9a5ae06568ea587592123505284dea9df65ab72d94d183"
+    }
+   ],
+   "name": "mawk",
+   "purl": "pkg:deb/ubuntu/mawk@1.3.4.20200120-3?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.3.4.20200120-3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/mount/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/mount/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "mount",
+   "purl": "pkg:deb/ubuntu/mount@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04&upstream=util-linux",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-base/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT/X11"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-base/copyright"
+      }
+     ],
+     "spdxExpression": "X11",
+     "type": "declared",
+     "urls": [],
+     "value": "X11"
+    }
+   ],
+   "name": "ncurses-base",
+   "purl": "pkg:deb/ubuntu/ncurses-base@6.3-2ubuntu0.2?arch=all&distro=ubuntu-22.04&upstream=ncurses",
+   "type": "deb",
+   "version": "6.3-2ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-bin/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-bin/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-bin/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-bin/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT/X11"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ncurses-bin/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ncurses-bin/copyright"
+      }
+     ],
+     "spdxExpression": "X11",
+     "type": "declared",
+     "urls": [],
+     "value": "X11"
+    }
+   ],
+   "name": "ncurses-bin",
+   "purl": "pkg:deb/ubuntu/ncurses-bin@6.3-2ubuntu0.2?arch=amd64&distro=ubuntu-22.04&upstream=ncurses",
+   "type": "deb",
+   "version": "6.3-2ubuntu0.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/passwd/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/passwd/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:56ca9c00cdef4d69b35d2013465c539eb9e09a80fec538d0f6dc91423dbaa1d3"
+    }
+   ],
+   "name": "passwd",
+   "purl": "pkg:deb/ubuntu/passwd@1%3A4.8.1-2ubuntu2.2?arch=amd64&distro=ubuntu-22.04&upstream=shadow",
+   "type": "deb",
+   "version": "1:4.8.1-2ubuntu2.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Artistic"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "Artistic-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Artistic-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "Artistic-dist",
+     "type": "declared",
+     "urls": [],
+     "value": "Artistic-dist"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause-GENERIC"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause-with-weird-numbering"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause-POWERDOG"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "BZIP"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "DONT-CHANGE-THE-GPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Expat"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-1.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+-WITH-BISON-EXCEPTION"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "HSIEH-BSD"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "HSIEH-DERIVATIVE"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "REGCOMP"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "REGCOMP,"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "RRA-KEEP-THIS-NOTICE"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "SDBM-PUBLIC-DOMAIN"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "TEXT-TABS"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Unicode"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/perl-base/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/perl-base/copyright"
+      }
+     ],
+     "spdxExpression": "Zlib",
+     "type": "declared",
+     "urls": [],
+     "value": "ZLIB"
+    }
+   ],
+   "name": "perl-base",
+   "purl": "pkg:deb/ubuntu/perl-base@5.34.0-3ubuntu1.7?arch=amd64&distro=ubuntu-22.04&upstream=perl",
+   "type": "deb",
+   "version": "5.34.0-3ubuntu1.7"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.0+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/procps/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/procps/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    }
+   ],
+   "name": "procps",
+   "purl": "pkg:deb/ubuntu/procps@2%3A3.3.17-6ubuntu2.1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "2:3.3.17-6ubuntu2.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sed/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sed/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:60886b6264e9531565ccf1e31a63cd9b23f0bf4bbd7053b46aa9e6ae7622d31d"
+    }
+   ],
+   "name": "sed",
+   "purl": "pkg:deb/ubuntu/sed@4.8-1ubuntu2.1?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "4.8-1ubuntu2.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sensible-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sensible-utils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "All-permissive"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sensible-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sensible-utils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sensible-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sensible-utils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sensible-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sensible-utils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "configure"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sensible-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sensible-utils/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "installsh"
+    }
+   ],
+   "name": "sensible-utils",
+   "purl": "pkg:deb/ubuntu/sensible-utils@0.0.17?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "0.0.17"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sysvinit-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sysvinit-utils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/sysvinit-utils/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/sysvinit-utils/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    }
+   ],
+   "name": "sysvinit-utils",
+   "purl": "pkg:deb/ubuntu/sysvinit-utils@3.01-1ubuntu1?arch=amd64&distro=ubuntu-22.04&upstream=sysvinit",
+   "type": "deb",
+   "version": "3.01-1ubuntu1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/tar/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/tar/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:5e07fa97dc98e502dc15d09d4c14647ec77509f949267a30d1341cadf84d629f"
+    }
+   ],
+   "name": "tar",
+   "purl": "pkg:deb/ubuntu/tar@1.34%2Bdfsg-1ubuntu0.1.22.04.6?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "1.34+dfsg-1ubuntu0.1.22.04.6"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/ubuntu-keyring/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/ubuntu-keyring/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:191cdb1291b2fc3b9fdcd8648b16ab7f9e4f15b74dc5b30959a9fdcfb4782b6c"
+    }
+   ],
+   "name": "ubuntu-keyring",
+   "purl": "pkg:deb/ubuntu/ubuntu-keyring@2021.03.26?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "2021.03.26"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/usrmerge/copyright",
+       "annotations": {
+        "evidence": "supporting"
+       },
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/usrmerge/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "concluded",
+     "urls": [],
+     "value": "sha256:8d802155eff627acf34a860d95a9ecc8263c84a94eccb891c5fc5fe62f0b6c92"
+    }
+   ],
+   "name": "usrmerge",
+   "purl": "pkg:deb/ubuntu/usrmerge@25ubuntu2?arch=all&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "25ubuntu2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "BSD-4-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-4-clause"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "GPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-2.1+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "LGPL-3.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "LGPL-3+"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    },
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/util-linux/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/util-linux/copyright"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "public-domain"
+    }
+   ],
+   "name": "util-linux",
+   "purl": "pkg:deb/ubuntu/util-linux@2.37.2-4ubuntu3.5?arch=amd64&distro=ubuntu-22.04",
+   "type": "deb",
+   "version": "2.37.2-4ubuntu3.5"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/share/doc/zlib1g/copyright",
+       "layerID": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+       "path": "/usr/share/doc/zlib1g/copyright"
+      }
+     ],
+     "spdxExpression": "Zlib",
+     "type": "declared",
+     "urls": [],
+     "value": "Zlib"
+    }
+   ],
+   "name": "zlib1g",
+   "purl": "pkg:deb/ubuntu/zlib1g@1%3A1.2.11.dfsg-2ubuntu9.2?arch=amd64&distro=ubuntu-22.04&upstream=zlib",
+   "type": "deb",
+   "version": "1:1.2.11.dfsg-2ubuntu9.2"
+  }
+ ],
+ "descriptor": {
+  "configuration": {
+   "catalogers": {
+    "requested": {
+     "default": [
+      "image",
+      "file"
+     ]
+    },
+    "used": [
+     "alpm-db-cataloger",
+     "apk-db-cataloger",
+     "apple-app-bundle-cataloger",
+     "binary-classifier-cataloger",
+     "bitnami-cataloger",
+     "cargo-auditable-binary-cataloger",
+     "conan-info-cataloger",
+     "dotnet-deps-binary-cataloger",
+     "dotnet-packages-lock-cataloger",
+     "dpkg-db-cataloger",
+     "elf-binary-package-cataloger",
+     "file-content-cataloger",
+     "file-digest-cataloger",
+     "file-executable-cataloger",
+     "file-metadata-cataloger",
+     "gguf-cataloger",
+     "go-module-binary-cataloger",
+     "graalvm-native-image-cataloger",
+     "homebrew-cataloger",
+     "java-archive-cataloger",
+     "java-jvm-cataloger",
+     "javascript-package-cataloger",
+     "linux-kernel-cataloger",
+     "lua-rock-cataloger",
+     "nix-cataloger",
+     "pe-binary-package-cataloger",
+     "php-composer-installed-cataloger",
+     "php-interpreter-cataloger",
+     "php-pear-serialized-cataloger",
+     "portage-cataloger",
+     "python-installed-package-cataloger",
+     "r-package-cataloger",
+     "rpm-db-cataloger",
+     "ruby-installed-gemspec-cataloger",
+     "safetensors-cataloger",
+     "snap-cataloger",
+     "wordpress-plugins-cataloger"
+    ]
+   },
+   "data-generation": {
+    "generate-cpes": true
+   },
+   "files": {
+    "content": {
+     "globs": null,
+     "skip-files-above-size": 0
+    },
+    "hashers": [
+     "sha-1",
+     "sha-256"
+    ],
+    "selection": "owned-by-package"
+   },
+   "licenses": {
+    "coverage": 75,
+    "include-content": "none"
+   },
+   "packages": {
+    "binary": [
+     "python-binary",
+     "python-binary-lib",
+     "pypy-binary-lib",
+     "go-binary",
+     "julia-binary",
+     "julia-binary",
+     "helm",
+     "redis-binary",
+     "valkey-binary",
+     "nodejs-binary",
+     "busybox-binary",
+     "util-linux-binary",
+     "haproxy-binary",
+     "perl-binary",
+     "php-composer-binary",
+     "httpd-binary",
+     "memcached-binary",
+     "traefik-binary",
+     "arangodb-binary",
+     "postgresql-binary",
+     "mysql-binary",
+     "mysql-binary",
+     "mysql-binary",
+     "mysqld-mysql-cluster-legacy-binary",
+     "mysqld-binary",
+     "ndbd-binary",
+     "ndbmtd-binary",
+     "ndb_mgmd-binary",
+     "xtrabackup-binary",
+     "mariadb-binary",
+     "rust-standard-library-linux",
+     "rust-standard-library-macos",
+     "ruby-binary",
+     "erlang-binary",
+     "erlang-alpine-binary",
+     "erlang-library",
+     "swipl-binary",
+     "dart-binary",
+     "deno-binary",
+     "bun-binary",
+     "haskell-ghc-binary",
+     "haskell-cabal-binary",
+     "haskell-stack-binary",
+     "consul-binary",
+     "hashicorp-vault-binary",
+     "nginx-binary",
+     "bash-binary",
+     "openssl-binary",
+     "openldap-search-binary",
+     "qt-qtbase-lib",
+     "gcc-binary",
+     "fluent-bit-binary",
+     "wordpress-cli-binary",
+     "curl-binary",
+     "lighttpd-binary",
+     "proftpd-binary",
+     "zstd-binary",
+     "xz-binary",
+     "gzip-binary",
+     "sqlcipher-binary",
+     "jq-binary",
+     "chrome-binary",
+     "firefox-binary",
+     "ffmpeg-binary",
+     "ffmpeg-library",
+     "ffmpeg-library",
+     "elixir-binary",
+     "elixir-library",
+     "istio-binary",
+     "istio-binary",
+     "grafana-binary",
+     "grafana-binary",
+     "envoy-binary",
+     "mongodb-binary",
+     "ingress-nginx-binary",
+     "filebeat-binary",
+     "metricbeat-binary",
+     "heartbeat-binary",
+     "packetbeat-binary",
+     "auditbeat-binary",
+     "elastic-agent-binary",
+     "krb5-library",
+     "heimdal-krb5-library",
+     "java-binary",
+     "java-jdb-binary"
+    ],
+    "cpp": {
+     "vcpkg-allow-git-clone": false
+    },
+    "dotnet": {
+     "dep-packages-must-claim-dll": true,
+     "dep-packages-must-have-dll": false,
+     "exclude-project-references": true,
+     "propagate-dll-claims-to-parents": true,
+     "relax-dll-claims-when-bundling-detected": true
+    },
+    "golang": {
+     "capture-symbols": "none",
+     "local-mod-cache-dir": "/home/runner/go/pkg/mod",
+     "local-vendor-dir": "",
+     "main-module-version": {
+      "from-build-settings": true,
+      "from-contents": false,
+      "from-ld-flags": true
+     },
+     "proxies": [
+      "https://proxy.golang.org",
+      "direct"
+     ],
+     "search-local-mod-cache-licenses": false,
+     "search-local-vendor-licenses": false,
+     "search-remote-licenses": false,
+     "use-packages-lib": true
+    },
+    "java-archive": {
+     "include-indexed-archives": true,
+     "include-unindexed-archives": false,
+     "maven-base-url": "https://repo1.maven.org/maven2",
+     "maven-localrepository-dir": "/home/runner/.m2/repository",
+     "max-parent-recursive-depth": 0,
+     "resolve-transitive-dependencies": false,
+     "use-maven-localrepository": false,
+     "use-network": false
+    },
+    "javascript": {
+     "include-dev-dependencies": false,
+     "npm-base-url": "https://registry.npmjs.org",
+     "search-remote-licenses": false
+    },
+    "linux-kernel": {
+     "catalog-modules": true
+    },
+    "nix": {
+     "capture-owned-files": false
+    },
+    "python": {
+     "guess-unpinned-requirements": false,
+     "pypi-base-url": "https://pypi.org/pypi",
+     "search-remote-licenses": false
+    }
+   },
+   "relationships": {
+    "exclude-binary-packages-with-file-ownership-overlap": true,
+    "package-file-ownership": true,
+    "package-file-ownership-overlap": true
+   },
+   "search": {
+    "scope": "squashed"
+   }
+  },
+  "name": "syft",
+  "version": "1.51.1"
+ },
+ "distro": {
+  "bugReportURL": "https://bugs.launchpad.net/ubuntu/",
+  "homeURL": "https://www.ubuntu.com/",
+  "id": "ubuntu",
+  "idLike": [
+   "debian"
+  ],
+  "name": "Ubuntu",
+  "prettyName": "Ubuntu 22.04.5 LTS",
+  "privacyPolicyURL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+  "supportURL": "https://help.ubuntu.com/",
+  "version": "22.04.5 LTS (Jammy Jellyfish)",
+  "versionCodename": "jammy",
+  "versionID": "22.04"
+ },
+ "schema": {
+  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.10.json",
+  "version": "16.1.10"
+ },
+ "source": {
+  "id": "79676deb51ebb02885b0b9d33788e78a37cf1045ad79d1bb04c6a222c3556b3d",
+  "metadata": {
+   "architecture": "amd64",
+   "config": "eyJhcmNoaXRlY3R1cmUiOiAiYW1kNjQiLCAiY29uZmlnIjogeyJIb3N0bmFtZSI6ICIiLCAiRG9tYWlubmFtZSI6ICIiLCAiVXNlciI6ICIiLCAiQXR0YWNoU3RkaW4iOiBmYWxzZSwgIkF0dGFjaFN0ZG91dCI6IGZhbHNlLCAiQXR0YWNoU3RkZXJyIjogZmFsc2UsICJUdHkiOiBmYWxzZSwgIk9wZW5TdGRpbiI6IGZhbHNlLCAiU3RkaW5PbmNlIjogZmFsc2UsICJFbnYiOiBbIlBBVEg9L3Vzci9sb2NhbC9zYmluOi91c3IvbG9jYWwvYmluOi91c3Ivc2JpbjovdXNyL2Jpbjovc2JpbjovYmluIl0sICJDbWQiOiBbIi9iaW4vYmFzaCJdLCAiSW1hZ2UiOiAic2hhMjU2OjQ5NzIxMDZlYzE1ZmVkN2NkZWQyNDI3NTYyYzc4NGU1NTIwMTFkOWRmNDY5MWUyZWYyMDdlNTAzNjU4ODMxODYiLCAiVm9sdW1lcyI6IG51bGwsICJXb3JraW5nRGlyIjogIiIsICJFbnRyeXBvaW50IjogbnVsbCwgIk9uQnVpbGQiOiBudWxsLCAiTGFiZWxzIjogeyJvcmcub3BlbmNvbnRhaW5lcnMuaW1hZ2UudmVyc2lvbiI6ICIyMi4wNCJ9fSwgImNvbnRhaW5lciI6ICJmYTcxZDFjMjYzYjE3OWY3MWExMTZhZTZjNzIwODhhNWI2ODFiMzdkNDM4Y2FlZDIwNzRhNzNiM2ZkZTBlNDdjIiwgImNvbnRhaW5lcl9jb25maWciOiB7Ikhvc3RuYW1lIjogImZhNzFkMWMyNjNiMSIsICJEb21haW5uYW1lIjogIiIsICJVc2VyIjogIiIsICJBdHRhY2hTdGRpbiI6IGZhbHNlLCAiQXR0YWNoU3Rkb3V0IjogZmFsc2UsICJBdHRhY2hTdGRlcnIiOiBmYWxzZSwgIlR0eSI6IGZhbHNlLCAiT3BlblN0ZGluIjogZmFsc2UsICJTdGRpbk9uY2UiOiBmYWxzZSwgIkVudiI6IFsiUEFUSD0vdXNyL2xvY2FsL3NiaW46L3Vzci9sb2NhbC9iaW46L3Vzci9zYmluOi91c3IvYmluOi9zYmluOi9iaW4iXSwgIkNtZCI6IFsiL2Jpbi9zaCIsICItYyIsICIjKG5vcCkgIiwgIkNNRCBbXCIvYmluL2Jhc2hcIl0iXSwgIkltYWdlIjogInNoYTI1Njo0OTcyMTA2ZWMxNWZlZDdjZGVkMjQyNzU2MmM3ODRlNTUyMDExZDlkZjQ2OTFlMmVmMjA3ZTUwMzY1ODgzMTg2IiwgIlZvbHVtZXMiOiBudWxsLCAiV29ya2luZ0RpciI6ICIiLCAiRW50cnlwb2ludCI6IG51bGwsICJPbkJ1aWxkIjogbnVsbCwgIkxhYmVscyI6IHsib3JnLm9wZW5jb250YWluZXJzLmltYWdlLnZlcnNpb24iOiAiMjIuMDQifX0sICJjcmVhdGVkIjogIjIwMjYtMDgtMTBUMTc6Mzg6MTIuNDA3NDE5ODlaIiwgImRvY2tlcl92ZXJzaW9uIjogIjI2LjEuMyIsICJoaXN0b3J5IjogW3siY3JlYXRlZCI6ICIyMDI2LTA4LTEwVDE3OjM4OjA5LjgyNDY5MDQ0NloiLCAiY3JlYXRlZF9ieSI6ICIvYmluL3NoIC1jICMobm9wKSAgQVJHIFJFTEVBU0UiLCAiZW1wdHlfbGF5ZXIiOiB0cnVlfSwgeyJjcmVhdGVkIjogIjIwMjYtMDgtMTBUMTc6Mzg6MDkuODY1NjA2NTI3WiIsICJjcmVhdGVkX2J5IjogIi9iaW4vc2ggLWMgIyhub3ApICBBUkcgTEFVTkNIUEFEX0JVSUxEX0FSQ0giLCAiZW1wdHlfbGF5ZXIiOiB0cnVlfSwgeyJjcmVhdGVkIjogIjIwMjYtMDgtMTBUMTc6Mzg6MDkuODg5NjA5MTgxWiIsICJjcmVhdGVkX2J5IjogIi9iaW4vc2ggLWMgIyhub3ApICBMQUJFTCBvcmcub3BlbmNvbnRhaW5lcnMuaW1hZ2UudmVyc2lvbj0yMi4wNCIsICJlbXB0eV9sYXllciI6IHRydWV9LCB7ImNyZWF0ZWQiOiAiMjAyNi0wOC0xMFQxNzozODoxMi4wMjA2OTI4OTVaIiwgImNyZWF0ZWRfYnkiOiAiL2Jpbi9zaCAtYyAjKG5vcCkgQUREIGZpbGU6Nzk5ZjRlMjM4ZDY3NDg1Y2MxMDlkOTM1MTJmNGZlNmY3NWJhZmMyNmEzNDc2NzcyMTkxMTU0MTI1ZTUyMjAxZCBpbiAvICJ9LCB7ImNyZWF0ZWQiOiAiMjAyNi0wOC0xMFQxNzozODoxMi40MDc0MTk4OVoiLCAiY3JlYXRlZF9ieSI6ICIvYmluL3NoIC1jICMobm9wKSAgQ01EIFtcIi9iaW4vYmFzaFwiXSIsICJlbXB0eV9sYXllciI6IHRydWV9XSwgIm9zIjogImxpbnV4IiwgInJvb3RmcyI6IHsidHlwZSI6ICJsYXllcnMiLCAiZGlmZl9pZHMiOiBbInNoYTI1NjpjMDM1OWM1YjZlZGU4NGQ0YTA4M2QwNmQzNWVlNzdmMGIzMzhkZmIxNzQyMzc3MTg1NGQwMDdkODk5NTNmYjNlIl19fQ==",
+   "imageID": "sha256:4d0600e5088ac5da5119401c70292ea3a9d9dc71f76a234ad5390c1f6a8e5669",
+   "imageSize": 78072663,
+   "labels": {
+    "org.opencontainers.image.version": "22.04"
+   },
+   "layers": [
+    {
+     "digest": "sha256:c0359c5b6ede84d4a083d06d35ee77f0b338dfb17423771854d007d89953fb3e",
+     "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+     "size": 78072663
+    }
+   ],
+   "manifest": "eyJzY2hlbWFWZXJzaW9uIjogMiwgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCAiY29uZmlnIjogeyJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5jb25maWcudjEranNvbiIsICJzaXplIjogMjA1MCwgImRpZ2VzdCI6ICJzaGEyNTY6NGQwNjAwZTUwODhhYzVkYTUxMTk0MDFjNzAyOTJlYTNhOWQ5ZGM3MWY3NmEyMzRhZDUzOTBjMWY2YThlNTY2OSJ9LCAibGF5ZXJzIjogW3sibWVkaWFUeXBlIjogImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UubGF5ZXIudjEudGFyK2d6aXAiLCAic2l6ZSI6IDI5NzM2OTQzLCAiZGlnZXN0IjogInNoYTI1NjpkNTQ0Mjk4Y2FiZDUwZTdjODZiZmVmMWU1MmI2N2YwMWRiNmIzYTU3YmZlY2ZlMzdhODUxODczZGVlODNlNTJhIn1dfQ==",
+   "manifestDigest": "sha256:79676deb51ebb02885b0b9d33788e78a37cf1045ad79d1bb04c6a222c3556b3d",
+   "mediaType": "application/vnd.oci.image.manifest.v1+json",
+   "os": "linux",
+   "repoDigests": [
+    "index.docker.io/library/ubuntu@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc"
+   ],
+   "tags": [],
+   "userInput": "ubuntu:22.04"
+  },
+  "name": "ubuntu",
+  "type": "image",
+  "version": "22.04"
+ }
+}

@@ -1,0 +1,5839 @@
+{
+ "artifacts": [
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@isaacs/cliui",
+   "purl": "pkg:npm/%40isaacs/cliui@8.0.2",
+   "type": "npm",
+   "version": "8.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/string-locale-compare/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/string-locale-compare/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@isaacs/string-locale-compare",
+   "purl": "pkg:npm/%40isaacs/string-locale-compare@1.1.0",
+   "type": "npm",
+   "version": "1.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/agent/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/agent/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/agent",
+   "purl": "pkg:npm/%40npmcli/agent@2.2.2",
+   "type": "npm",
+   "version": "2.2.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/arborist",
+   "purl": "pkg:npm/%40npmcli/arborist@7.5.4",
+   "type": "npm",
+   "version": "7.5.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/config/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/config/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/config",
+   "purl": "pkg:npm/%40npmcli/config@8.3.4",
+   "type": "npm",
+   "version": "8.3.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/fs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/fs/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/fs",
+   "purl": "pkg:npm/%40npmcli/fs@3.1.1",
+   "type": "npm",
+   "version": "3.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/git/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/git/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/git",
+   "purl": "pkg:npm/%40npmcli/git@5.0.8",
+   "type": "npm",
+   "version": "5.0.8"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/installed-package-contents/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/installed-package-contents/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/installed-package-contents",
+   "purl": "pkg:npm/%40npmcli/installed-package-contents@2.1.0",
+   "type": "npm",
+   "version": "2.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/map-workspaces/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/map-workspaces/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/map-workspaces",
+   "purl": "pkg:npm/%40npmcli/map-workspaces@3.0.6",
+   "type": "npm",
+   "version": "3.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/metavuln-calculator/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/metavuln-calculator/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/metavuln-calculator",
+   "purl": "pkg:npm/%40npmcli/metavuln-calculator@7.1.1",
+   "type": "npm",
+   "version": "7.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/name-from-folder/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/name-from-folder/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/name-from-folder",
+   "purl": "pkg:npm/%40npmcli/name-from-folder@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/node-gyp/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/node-gyp/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/node-gyp",
+   "purl": "pkg:npm/%40npmcli/node-gyp@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/package-json/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/package-json/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/package-json",
+   "purl": "pkg:npm/%40npmcli/package-json@5.2.0",
+   "type": "npm",
+   "version": "5.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/promise-spawn/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/promise-spawn/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/promise-spawn",
+   "purl": "pkg:npm/%40npmcli/promise-spawn@7.0.2",
+   "type": "npm",
+   "version": "7.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/query/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/query/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/query",
+   "purl": "pkg:npm/%40npmcli/query@3.1.0",
+   "type": "npm",
+   "version": "3.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/redact/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/redact/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/redact",
+   "purl": "pkg:npm/%40npmcli/redact@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/run-script/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/run-script/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "@npmcli/run-script",
+   "purl": "pkg:npm/%40npmcli/run-script@8.1.0",
+   "type": "npm",
+   "version": "8.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@pkgjs/parseargs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@pkgjs/parseargs/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "@pkgjs/parseargs",
+   "purl": "pkg:npm/%40pkgjs/parseargs@0.11.0",
+   "type": "npm",
+   "version": "0.11.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/bundle/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/bundle/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/bundle",
+   "purl": "pkg:npm/%40sigstore/bundle@2.3.2",
+   "type": "npm",
+   "version": "2.3.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/core/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/core/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/core",
+   "purl": "pkg:npm/%40sigstore/core@1.1.0",
+   "type": "npm",
+   "version": "1.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/protobuf-specs",
+   "purl": "pkg:npm/%40sigstore/protobuf-specs@0.3.2",
+   "type": "npm",
+   "version": "0.3.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/sign/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/sign/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/sign",
+   "purl": "pkg:npm/%40sigstore/sign@2.3.2",
+   "type": "npm",
+   "version": "2.3.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/tuf/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/tuf/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/tuf",
+   "purl": "pkg:npm/%40sigstore/tuf@2.3.4",
+   "type": "npm",
+   "version": "2.3.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/verify/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/verify/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "@sigstore/verify",
+   "purl": "pkg:npm/%40sigstore/verify@1.2.1",
+   "type": "npm",
+   "version": "1.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@tufjs/canonical-json/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@tufjs/canonical-json/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "@tufjs/canonical-json",
+   "purl": "pkg:npm/%40tufjs/canonical-json@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@tufjs/models/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@tufjs/models/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "@tufjs/models",
+   "purl": "pkg:npm/%40tufjs/models@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/abbrev/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/abbrev/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "abbrev",
+   "purl": "pkg:npm/abbrev@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/agent-base/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/agent-base/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "agent-base",
+   "purl": "pkg:npm/agent-base@7.1.1",
+   "type": "npm",
+   "version": "7.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/aggregate-error/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/aggregate-error/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "aggregate-error",
+   "purl": "pkg:npm/aggregate-error@3.1.0",
+   "type": "npm",
+   "version": "3.1.0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "alpine-baselayout",
+   "purl": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "3.7.2-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "alpine-baselayout-data",
+   "purl": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64&distro=alpine-3.23.4&upstream=alpine-baselayout",
+   "type": "apk",
+   "version": "3.7.2-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "alpine-keys",
+   "purl": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "2.6-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "alpine-release",
+   "purl": "pkg:apk/alpine/alpine-release@3.23.4-r0?arch=x86_64&distro=alpine-3.23.4&upstream=alpine-base",
+   "type": "apk",
+   "version": "3.23.4-r0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ansi-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ansi-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ansi-regex",
+   "purl": "pkg:npm/ansi-regex@5.0.1",
+   "type": "npm",
+   "version": "5.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/ansi-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/ansi-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ansi-regex",
+   "purl": "pkg:npm/ansi-regex@6.0.1",
+   "type": "npm",
+   "version": "6.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/ansi-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/ansi-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ansi-regex",
+   "purl": "pkg:npm/ansi-regex@6.0.1",
+   "type": "npm",
+   "version": "6.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs/node_modules/ansi-styles/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs/node_modules/ansi-styles/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ansi-styles",
+   "purl": "pkg:npm/ansi-styles@4.3.0",
+   "type": "npm",
+   "version": "4.3.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ansi-styles/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ansi-styles/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ansi-styles",
+   "purl": "pkg:npm/ansi-styles@6.2.1",
+   "type": "npm",
+   "version": "6.2.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "apk-tools",
+   "purl": "pkg:apk/alpine/apk-tools@3.0.6-r0?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "3.0.6-r0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/aproba/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/aproba/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "aproba",
+   "purl": "pkg:npm/aproba@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/archy/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/archy/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "archy",
+   "purl": "pkg:npm/archy@1.0.0",
+   "type": "npm",
+   "version": "1.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/balanced-match/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/balanced-match/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "balanced-match",
+   "purl": "pkg:npm/balanced-match@1.0.2",
+   "type": "npm",
+   "version": "1.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/bin-links/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/bin-links/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "bin-links",
+   "purl": "pkg:npm/bin-links@4.0.4",
+   "type": "npm",
+   "version": "4.0.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/binary-extensions/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/binary-extensions/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "binary-extensions",
+   "purl": "pkg:npm/binary-extensions@2.3.0",
+   "type": "npm",
+   "version": "2.3.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "brace-expansion",
+   "purl": "pkg:npm/brace-expansion@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "busybox",
+   "purl": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "1.37.0-r30"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "busybox-binsh",
+   "purl": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64&distro=alpine-3.23.4&upstream=busybox",
+   "type": "apk",
+   "version": "1.37.0-r30"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "MPL-2.0 AND MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MPL-2.0 AND MIT"
+    }
+   ],
+   "name": "ca-certificates-bundle",
+   "purl": "pkg:apk/alpine/ca-certificates-bundle@20260413-r0?arch=x86_64&distro=alpine-3.23.4&upstream=ca-certificates",
+   "type": "apk",
+   "version": "20260413-r0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cacache/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cacache/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "cacache",
+   "purl": "pkg:npm/cacache@18.0.3",
+   "type": "npm",
+   "version": "18.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/chalk/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/chalk/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "chalk",
+   "purl": "pkg:npm/chalk@5.3.0",
+   "type": "npm",
+   "version": "5.3.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/chownr/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/chownr/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "chownr",
+   "purl": "pkg:npm/chownr@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ci-info/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ci-info/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ci-info",
+   "purl": "pkg:npm/ci-info@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cidr-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cidr-regex/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "cidr-regex",
+   "purl": "pkg:npm/cidr-regex@4.1.1",
+   "type": "npm",
+   "version": "4.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/clean-stack/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/clean-stack/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "clean-stack",
+   "purl": "pkg:npm/clean-stack@2.2.0",
+   "type": "npm",
+   "version": "2.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cli-columns/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cli-columns/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "cli-columns",
+   "purl": "pkg:npm/cli-columns@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cmd-shim/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cmd-shim/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "cmd-shim",
+   "purl": "pkg:npm/cmd-shim@6.0.3",
+   "type": "npm",
+   "version": "6.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/color-convert/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/color-convert/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "color-convert",
+   "purl": "pkg:npm/color-convert@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/color-name/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/color-name/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "color-name",
+   "purl": "pkg:npm/color-name@1.1.4",
+   "type": "npm",
+   "version": "1.1.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/common-ancestor-path/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/common-ancestor-path/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "common-ancestor-path",
+   "purl": "pkg:npm/common-ancestor-path@1.0.1",
+   "type": "npm",
+   "version": "1.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/corepack/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/corepack/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "corepack",
+   "purl": "pkg:npm/corepack@0.34.6",
+   "type": "npm",
+   "version": "0.34.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "cross-spawn",
+   "purl": "pkg:npm/cross-spawn@7.0.3",
+   "type": "npm",
+   "version": "7.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cssesc/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cssesc/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "cssesc",
+   "purl": "pkg:npm/cssesc@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/debug/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/debug/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "debug",
+   "purl": "pkg:npm/debug@4.3.5",
+   "type": "npm",
+   "version": "4.3.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/diff/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/diff/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    }
+   ],
+   "name": "diff",
+   "purl": "pkg:npm/diff@5.2.0",
+   "type": "npm",
+   "version": "5.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/eastasianwidth/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/eastasianwidth/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "eastasianwidth",
+   "purl": "pkg:npm/eastasianwidth@0.2.0",
+   "type": "npm",
+   "version": "0.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/emoji-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/emoji-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "emoji-regex",
+   "purl": "pkg:npm/emoji-regex@8.0.0",
+   "type": "npm",
+   "version": "8.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/emoji-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/emoji-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "emoji-regex",
+   "purl": "pkg:npm/emoji-regex@9.2.2",
+   "type": "npm",
+   "version": "9.2.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/emoji-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/emoji-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "emoji-regex",
+   "purl": "pkg:npm/emoji-regex@9.2.2",
+   "type": "npm",
+   "version": "9.2.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/encoding/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/encoding/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "encoding",
+   "purl": "pkg:npm/encoding@0.1.13",
+   "type": "npm",
+   "version": "0.1.13"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/env-paths/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/env-paths/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "env-paths",
+   "purl": "pkg:npm/env-paths@2.2.1",
+   "type": "npm",
+   "version": "2.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/err-code/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/err-code/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "err-code",
+   "purl": "pkg:npm/err-code@2.0.3",
+   "type": "npm",
+   "version": "2.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/exponential-backoff/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/exponential-backoff/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "exponential-backoff",
+   "purl": "pkg:npm/exponential-backoff@3.1.1",
+   "type": "npm",
+   "version": "3.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/fastest-levenshtein/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/fastest-levenshtein/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "fastest-levenshtein",
+   "purl": "pkg:npm/fastest-levenshtein@1.0.16",
+   "type": "npm",
+   "version": "1.0.16"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/foreground-child/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/foreground-child/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "foreground-child",
+   "purl": "pkg:npm/foreground-child@3.2.1",
+   "type": "npm",
+   "version": "3.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "fs-minipass",
+   "purl": "pkg:npm/fs-minipass@2.1.0",
+   "type": "npm",
+   "version": "2.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/fs-minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/fs-minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "fs-minipass",
+   "purl": "pkg:npm/fs-minipass@3.0.3",
+   "type": "npm",
+   "version": "3.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/glob/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/glob/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "glob",
+   "purl": "pkg:npm/glob@10.4.2",
+   "type": "npm",
+   "version": "10.4.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/graceful-fs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/graceful-fs/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "graceful-fs",
+   "purl": "pkg:npm/graceful-fs@4.2.11",
+   "type": "npm",
+   "version": "4.2.11"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/hosted-git-info/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/hosted-git-info/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "hosted-git-info",
+   "purl": "pkg:npm/hosted-git-info@7.0.2",
+   "type": "npm",
+   "version": "7.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/http-cache-semantics/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/http-cache-semantics/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "http-cache-semantics",
+   "purl": "pkg:npm/http-cache-semantics@4.1.1",
+   "type": "npm",
+   "version": "4.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/http-proxy-agent/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/http-proxy-agent/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "http-proxy-agent",
+   "purl": "pkg:npm/http-proxy-agent@7.0.2",
+   "type": "npm",
+   "version": "7.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/https-proxy-agent/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/https-proxy-agent/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "https-proxy-agent",
+   "purl": "pkg:npm/https-proxy-agent@7.0.5",
+   "type": "npm",
+   "version": "7.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/iconv-lite/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/iconv-lite/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "iconv-lite",
+   "purl": "pkg:npm/iconv-lite@0.6.3",
+   "type": "npm",
+   "version": "0.6.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ignore-walk/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ignore-walk/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "ignore-walk",
+   "purl": "pkg:npm/ignore-walk@6.0.5",
+   "type": "npm",
+   "version": "6.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/imurmurhash/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/imurmurhash/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "imurmurhash",
+   "purl": "pkg:npm/imurmurhash@0.1.4",
+   "type": "npm",
+   "version": "0.1.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/indent-string/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/indent-string/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "indent-string",
+   "purl": "pkg:npm/indent-string@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ini/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ini/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "ini",
+   "purl": "pkg:npm/ini@4.1.3",
+   "type": "npm",
+   "version": "4.1.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/init-package-json/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/init-package-json/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "init-package-json",
+   "purl": "pkg:npm/init-package-json@6.0.3",
+   "type": "npm",
+   "version": "6.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ip-address",
+   "purl": "pkg:npm/ip-address@9.0.5",
+   "type": "npm",
+   "version": "9.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ip-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ip-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ip-regex",
+   "purl": "pkg:npm/ip-regex@5.0.0",
+   "type": "npm",
+   "version": "5.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/is-cidr/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/is-cidr/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "is-cidr",
+   "purl": "pkg:npm/is-cidr@5.1.0",
+   "type": "npm",
+   "version": "5.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/is-fullwidth-code-point/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/is-fullwidth-code-point/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "is-fullwidth-code-point",
+   "purl": "pkg:npm/is-fullwidth-code-point@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/is-lambda/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/is-lambda/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "is-lambda",
+   "purl": "pkg:npm/is-lambda@1.0.1",
+   "type": "npm",
+   "version": "1.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/isexe/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/isexe/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "isexe",
+   "purl": "pkg:npm/isexe@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/which/node_modules/isexe/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/which/node_modules/isexe/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "isexe",
+   "purl": "pkg:npm/isexe@3.1.1",
+   "type": "npm",
+   "version": "3.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/jackspeak/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/jackspeak/package.json"
+      }
+     ],
+     "spdxExpression": "BlueOak-1.0.0",
+     "type": "declared",
+     "urls": [],
+     "value": "BlueOak-1.0.0"
+    }
+   ],
+   "name": "jackspeak",
+   "purl": "pkg:npm/jackspeak@3.4.0",
+   "type": "npm",
+   "version": "3.4.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/jsbn/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/jsbn/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "jsbn",
+   "purl": "pkg:npm/jsbn@1.1.0",
+   "type": "npm",
+   "version": "1.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/json-parse-even-better-errors/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/json-parse-even-better-errors/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "json-parse-even-better-errors",
+   "purl": "pkg:npm/json-parse-even-better-errors@3.0.2",
+   "type": "npm",
+   "version": "3.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/json-stringify-nice/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/json-stringify-nice/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "json-stringify-nice",
+   "purl": "pkg:npm/json-stringify-nice@1.1.4",
+   "type": "npm",
+   "version": "1.1.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/jsonparse/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/jsonparse/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "jsonparse",
+   "purl": "pkg:npm/jsonparse@1.3.1",
+   "type": "npm",
+   "version": "1.3.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/just-diff/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/just-diff/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "just-diff",
+   "purl": "pkg:npm/just-diff@6.0.2",
+   "type": "npm",
+   "version": "6.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/just-diff-apply/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/just-diff-apply/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "just-diff-apply",
+   "purl": "pkg:npm/just-diff-apply@5.5.0",
+   "type": "npm",
+   "version": "5.5.0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "libapk",
+   "purl": "pkg:apk/alpine/libapk@3.0.6-r0?arch=x86_64&distro=alpine-3.23.4&upstream=apk-tools",
+   "type": "apk",
+   "version": "3.0.6-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "libcrypto3",
+   "purl": "pkg:apk/alpine/libcrypto3@3.5.6-r0?arch=x86_64&distro=alpine-3.23.4&upstream=openssl",
+   "type": "apk",
+   "version": "3.5.6-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-or-later AND LGPL-2.1-or-later"
+    }
+   ],
+   "name": "libgcc",
+   "purl": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64&distro=alpine-3.23.4&upstream=gcc",
+   "type": "apk",
+   "version": "15.2.0-r2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmaccess/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmaccess/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmaccess",
+   "purl": "pkg:npm/libnpmaccess@8.0.6",
+   "type": "npm",
+   "version": "8.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmdiff/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmdiff/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmdiff",
+   "purl": "pkg:npm/libnpmdiff@6.1.4",
+   "type": "npm",
+   "version": "6.1.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmexec/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmexec/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmexec",
+   "purl": "pkg:npm/libnpmexec@8.1.3",
+   "type": "npm",
+   "version": "8.1.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmfund/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmfund/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmfund",
+   "purl": "pkg:npm/libnpmfund@5.0.12",
+   "type": "npm",
+   "version": "5.0.12"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmhook/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmhook/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmhook",
+   "purl": "pkg:npm/libnpmhook@10.0.5",
+   "type": "npm",
+   "version": "10.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmorg/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmorg/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmorg",
+   "purl": "pkg:npm/libnpmorg@6.0.6",
+   "type": "npm",
+   "version": "6.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmpack/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmpack/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmpack",
+   "purl": "pkg:npm/libnpmpack@7.0.4",
+   "type": "npm",
+   "version": "7.0.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmpublish/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmpublish/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmpublish",
+   "purl": "pkg:npm/libnpmpublish@9.0.9",
+   "type": "npm",
+   "version": "9.0.9"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmsearch/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmsearch/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmsearch",
+   "purl": "pkg:npm/libnpmsearch@7.0.6",
+   "type": "npm",
+   "version": "7.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmteam/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmteam/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmteam",
+   "purl": "pkg:npm/libnpmteam@6.0.5",
+   "type": "npm",
+   "version": "6.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/libnpmversion/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/libnpmversion/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "libnpmversion",
+   "purl": "pkg:npm/libnpmversion@6.0.3",
+   "type": "npm",
+   "version": "6.0.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "libssl3",
+   "purl": "pkg:apk/alpine/libssl3@3.5.6-r0?arch=x86_64&distro=alpine-3.23.4&upstream=openssl",
+   "type": "apk",
+   "version": "3.5.6-r0"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-or-later AND LGPL-2.1-or-later"
+    }
+   ],
+   "name": "libstdc++",
+   "purl": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r2?arch=x86_64&distro=alpine-3.23.4&upstream=gcc",
+   "type": "apk",
+   "version": "15.2.0-r2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/lru-cache/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/lru-cache/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "lru-cache",
+   "purl": "pkg:npm/lru-cache@10.2.2",
+   "type": "npm",
+   "version": "10.2.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/make-fetch-happen/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/make-fetch-happen/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "make-fetch-happen",
+   "purl": "pkg:npm/make-fetch-happen@13.0.1",
+   "type": "npm",
+   "version": "13.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minimatch/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minimatch/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minimatch",
+   "purl": "pkg:npm/minimatch@9.0.5",
+   "type": "npm",
+   "version": "9.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "type": "npm",
+   "version": "3.3.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "type": "npm",
+   "version": "3.3.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "type": "npm",
+   "version": "3.3.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minizlib/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minizlib/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "type": "npm",
+   "version": "3.3.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "type": "npm",
+   "version": "3.3.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@5.0.0",
+   "type": "npm",
+   "version": "5.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass",
+   "purl": "pkg:npm/minipass@7.1.2",
+   "type": "npm",
+   "version": "7.1.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-collect/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-collect/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass-collect",
+   "purl": "pkg:npm/minipass-collect@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-fetch/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-fetch/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "minipass-fetch",
+   "purl": "pkg:npm/minipass-fetch@3.0.5",
+   "type": "npm",
+   "version": "3.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass-flush",
+   "purl": "pkg:npm/minipass-flush@1.0.5",
+   "type": "npm",
+   "version": "1.0.5"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass-pipeline",
+   "purl": "pkg:npm/minipass-pipeline@1.2.4",
+   "type": "npm",
+   "version": "1.2.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "minipass-sized",
+   "purl": "pkg:npm/minipass-sized@1.0.3",
+   "type": "npm",
+   "version": "1.0.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/minizlib/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/minizlib/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "minizlib",
+   "purl": "pkg:npm/minizlib@2.1.2",
+   "type": "npm",
+   "version": "2.1.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/mkdirp/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/mkdirp/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "mkdirp",
+   "purl": "pkg:npm/mkdirp@1.0.4",
+   "type": "npm",
+   "version": "1.0.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/debug/node_modules/ms/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/debug/node_modules/ms/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ms",
+   "purl": "pkg:npm/ms@2.1.2",
+   "type": "npm",
+   "version": "2.1.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ms/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ms/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "ms",
+   "purl": "pkg:npm/ms@2.1.3",
+   "type": "npm",
+   "version": "2.1.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "musl",
+   "purl": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "1.2.5-r23"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "MIT AND BSD-2-Clause AND GPL-2.0-or-later",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT AND BSD-2-Clause AND GPL-2.0-or-later"
+    }
+   ],
+   "name": "musl-utils",
+   "purl": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64&distro=alpine-3.23.4&upstream=musl",
+   "type": "apk",
+   "version": "1.2.5-r23"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/mute-stream/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/mute-stream/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "mute-stream",
+   "purl": "pkg:npm/mute-stream@1.0.0",
+   "type": "npm",
+   "version": "1.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/negotiator/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/negotiator/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "negotiator",
+   "purl": "pkg:npm/negotiator@0.6.3",
+   "type": "npm",
+   "version": "0.6.3"
+  },
+  {
+   "language": "",
+   "licenses": [],
+   "name": "node",
+   "purl": "pkg:generic/node@20.20.2",
+   "type": "binary",
+   "version": "20.20.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "node-gyp",
+   "purl": "pkg:npm/node-gyp@10.1.0",
+   "type": "npm",
+   "version": "10.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/nopt/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/nopt/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "nopt",
+   "purl": "pkg:npm/nopt@7.2.1",
+   "type": "npm",
+   "version": "7.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/normalize-package-data/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/normalize-package-data/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "normalize-package-data",
+   "purl": "pkg:npm/normalize-package-data@6.0.2",
+   "type": "npm",
+   "version": "6.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/package.json"
+      }
+     ],
+     "spdxExpression": "Artistic-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Artistic-2.0"
+    }
+   ],
+   "name": "npm",
+   "purl": "pkg:npm/npm@10.8.2",
+   "type": "npm",
+   "version": "10.8.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-audit-report/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-audit-report/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-audit-report",
+   "purl": "pkg:npm/npm-audit-report@5.0.0",
+   "type": "npm",
+   "version": "5.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-bundled/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-bundled/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-bundled",
+   "purl": "pkg:npm/npm-bundled@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-install-checks/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-install-checks/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "npm-install-checks",
+   "purl": "pkg:npm/npm-install-checks@6.3.0",
+   "type": "npm",
+   "version": "6.3.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-normalize-package-bin/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-normalize-package-bin/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-normalize-package-bin",
+   "purl": "pkg:npm/npm-normalize-package-bin@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-package-arg/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-package-arg/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-package-arg",
+   "purl": "pkg:npm/npm-package-arg@11.0.2",
+   "type": "npm",
+   "version": "11.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-packlist/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-packlist/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-packlist",
+   "purl": "pkg:npm/npm-packlist@8.0.2",
+   "type": "npm",
+   "version": "8.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-pick-manifest/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-pick-manifest/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-pick-manifest",
+   "purl": "pkg:npm/npm-pick-manifest@9.1.0",
+   "type": "npm",
+   "version": "9.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-profile/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-profile/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-profile",
+   "purl": "pkg:npm/npm-profile@10.0.0",
+   "type": "npm",
+   "version": "10.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-registry-fetch/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-registry-fetch/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "npm-registry-fetch",
+   "purl": "pkg:npm/npm-registry-fetch@17.1.0",
+   "type": "npm",
+   "version": "17.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/npm-user-validate/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/npm-user-validate/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "npm-user-validate",
+   "purl": "pkg:npm/npm-user-validate@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/p-map/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/p-map/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "p-map",
+   "purl": "pkg:npm/p-map@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/package-json-from-dist/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/package-json-from-dist/package.json"
+      }
+     ],
+     "spdxExpression": "BlueOak-1.0.0",
+     "type": "declared",
+     "urls": [],
+     "value": "BlueOak-1.0.0"
+    }
+   ],
+   "name": "package-json-from-dist",
+   "purl": "pkg:npm/package-json-from-dist@1.0.0",
+   "type": "npm",
+   "version": "1.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/pacote/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/pacote/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "pacote",
+   "purl": "pkg:npm/pacote@18.0.6",
+   "type": "npm",
+   "version": "18.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/parse-conflict-json/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/parse-conflict-json/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "parse-conflict-json",
+   "purl": "pkg:npm/parse-conflict-json@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/path-key/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/path-key/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "path-key",
+   "purl": "pkg:npm/path-key@3.1.1",
+   "type": "npm",
+   "version": "3.1.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/path-scurry/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/path-scurry/package.json"
+      }
+     ],
+     "spdxExpression": "BlueOak-1.0.0",
+     "type": "declared",
+     "urls": [],
+     "value": "BlueOak-1.0.0"
+    }
+   ],
+   "name": "path-scurry",
+   "purl": "pkg:npm/path-scurry@1.11.1",
+   "type": "npm",
+   "version": "1.11.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/postcss-selector-parser/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/postcss-selector-parser/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "postcss-selector-parser",
+   "purl": "pkg:npm/postcss-selector-parser@6.1.0",
+   "type": "npm",
+   "version": "6.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/proc-log/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/proc-log/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "proc-log",
+   "purl": "pkg:npm/proc-log@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/proc-log/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/proc-log/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "proc-log",
+   "purl": "pkg:npm/proc-log@4.2.0",
+   "type": "npm",
+   "version": "4.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/proggy/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/proggy/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "proggy",
+   "purl": "pkg:npm/proggy@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/promise-all-reject-late/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/promise-all-reject-late/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "promise-all-reject-late",
+   "purl": "pkg:npm/promise-all-reject-late@1.0.1",
+   "type": "npm",
+   "version": "1.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/promise-call-limit/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/promise-call-limit/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "promise-call-limit",
+   "purl": "pkg:npm/promise-call-limit@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/promise-inflight/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/promise-inflight/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "promise-inflight",
+   "purl": "pkg:npm/promise-inflight@1.0.1",
+   "type": "npm",
+   "version": "1.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/promise-retry/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/promise-retry/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "promise-retry",
+   "purl": "pkg:npm/promise-retry@2.0.1",
+   "type": "npm",
+   "version": "2.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/promzard/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/promzard/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "promzard",
+   "purl": "pkg:npm/promzard@1.0.2",
+   "type": "npm",
+   "version": "1.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/qrcode-terminal/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/qrcode-terminal/package.json"
+      }
+     ],
+     "spdxExpression": "",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache 2.0"
+    }
+   ],
+   "name": "qrcode-terminal",
+   "purl": "pkg:npm/qrcode-terminal@0.12.0",
+   "type": "npm",
+   "version": "0.12.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/read/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/read/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "read",
+   "purl": "pkg:npm/read@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/read-cmd-shim/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/read-cmd-shim/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "read-cmd-shim",
+   "purl": "pkg:npm/read-cmd-shim@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/read-package-json-fast/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/read-package-json-fast/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "read-package-json-fast",
+   "purl": "pkg:npm/read-package-json-fast@3.0.2",
+   "type": "npm",
+   "version": "3.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/retry/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/retry/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "retry",
+   "purl": "pkg:npm/retry@0.12.0",
+   "type": "npm",
+   "version": "0.12.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/safer-buffer/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/safer-buffer/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "safer-buffer",
+   "purl": "pkg:npm/safer-buffer@2.1.2",
+   "type": "npm",
+   "version": "2.1.2"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "scanelf",
+   "purl": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64&distro=alpine-3.23.4&upstream=pax-utils",
+   "type": "apk",
+   "version": "1.3.8-r2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/semver/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/semver/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "semver",
+   "purl": "pkg:npm/semver@7.6.2",
+   "type": "npm",
+   "version": "7.6.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/shebang-command/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/shebang-command/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "shebang-command",
+   "purl": "pkg:npm/shebang-command@2.0.0",
+   "type": "npm",
+   "version": "2.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/shebang-regex/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/shebang-regex/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "shebang-regex",
+   "purl": "pkg:npm/shebang-regex@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/signal-exit/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/signal-exit/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "signal-exit",
+   "purl": "pkg:npm/signal-exit@4.1.0",
+   "type": "npm",
+   "version": "4.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/sigstore/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/sigstore/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "sigstore",
+   "purl": "pkg:npm/sigstore@2.3.1",
+   "type": "npm",
+   "version": "2.3.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/smart-buffer/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/smart-buffer/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "smart-buffer",
+   "purl": "pkg:npm/smart-buffer@4.2.0",
+   "type": "npm",
+   "version": "4.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/socks/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/socks/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "socks",
+   "purl": "pkg:npm/socks@2.8.3",
+   "type": "npm",
+   "version": "2.8.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/socks-proxy-agent/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/socks-proxy-agent/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "socks-proxy-agent",
+   "purl": "pkg:npm/socks-proxy-agent@8.0.4",
+   "type": "npm",
+   "version": "8.0.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "spdx-correct",
+   "purl": "pkg:npm/spdx-correct@3.2.0",
+   "type": "npm",
+   "version": "3.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/spdx-exceptions/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/spdx-exceptions/package.json"
+      }
+     ],
+     "spdxExpression": "CC-BY-3.0",
+     "type": "declared",
+     "urls": [],
+     "value": "CC-BY-3.0"
+    }
+   ],
+   "name": "spdx-exceptions",
+   "purl": "pkg:npm/spdx-exceptions@2.5.0",
+   "type": "npm",
+   "version": "2.5.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct/node_modules/spdx-expression-parse/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct/node_modules/spdx-expression-parse/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "spdx-expression-parse",
+   "purl": "pkg:npm/spdx-expression-parse@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license/node_modules/spdx-expression-parse/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license/node_modules/spdx-expression-parse/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "spdx-expression-parse",
+   "purl": "pkg:npm/spdx-expression-parse@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/spdx-expression-parse/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/spdx-expression-parse/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "spdx-expression-parse",
+   "purl": "pkg:npm/spdx-expression-parse@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/spdx-license-ids/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/spdx-license-ids/package.json"
+      }
+     ],
+     "spdxExpression": "CC0-1.0",
+     "type": "declared",
+     "urls": [],
+     "value": "CC0-1.0"
+    }
+   ],
+   "name": "spdx-license-ids",
+   "purl": "pkg:npm/spdx-license-ids@3.0.18",
+   "type": "npm",
+   "version": "3.0.18"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/sprintf-js/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/sprintf-js/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-3-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-3-Clause"
+    }
+   ],
+   "name": "sprintf-js",
+   "purl": "pkg:npm/sprintf-js@1.1.3",
+   "type": "npm",
+   "version": "1.1.3"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "GPL-2.0-only",
+     "type": "declared",
+     "urls": [],
+     "value": "GPL-2.0-only"
+    }
+   ],
+   "name": "ssl_client",
+   "purl": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64&distro=alpine-3.23.4&upstream=busybox",
+   "type": "apk",
+   "version": "1.37.0-r30"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/ssri/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/ssri/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "ssri",
+   "purl": "pkg:npm/ssri@10.0.6",
+   "type": "npm",
+   "version": "10.0.6"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/string-width-cjs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/string-width-cjs/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "string-width",
+   "purl": "pkg:npm/string-width@4.2.3",
+   "type": "npm",
+   "version": "4.2.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/string-width/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/string-width/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "string-width",
+   "purl": "pkg:npm/string-width@4.2.3",
+   "type": "npm",
+   "version": "4.2.3"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/string-width/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/string-width/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "string-width",
+   "purl": "pkg:npm/string-width@5.1.2",
+   "type": "npm",
+   "version": "5.1.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/string-width/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/string-width/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "string-width",
+   "purl": "pkg:npm/string-width@5.1.2",
+   "type": "npm",
+   "version": "5.1.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi-cjs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi-cjs/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "strip-ansi",
+   "purl": "pkg:npm/strip-ansi@6.0.1",
+   "type": "npm",
+   "version": "6.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "strip-ansi",
+   "purl": "pkg:npm/strip-ansi@6.0.1",
+   "type": "npm",
+   "version": "6.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/strip-ansi/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/strip-ansi/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "strip-ansi",
+   "purl": "pkg:npm/strip-ansi@7.1.0",
+   "type": "npm",
+   "version": "7.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/strip-ansi/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/strip-ansi/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "strip-ansi",
+   "purl": "pkg:npm/strip-ansi@7.1.0",
+   "type": "npm",
+   "version": "7.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/supports-color/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/supports-color/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "supports-color",
+   "purl": "pkg:npm/supports-color@9.4.0",
+   "type": "npm",
+   "version": "9.4.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tar/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tar/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "tar",
+   "purl": "pkg:npm/tar@6.2.1",
+   "type": "npm",
+   "version": "6.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/text-table/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/text-table/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "text-table",
+   "purl": "pkg:npm/text-table@0.2.0",
+   "type": "npm",
+   "version": "0.2.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tiny-relative-date/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tiny-relative-date/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "tiny-relative-date",
+   "purl": "pkg:npm/tiny-relative-date@1.3.0",
+   "type": "npm",
+   "version": "1.3.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/treeverse/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/treeverse/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "treeverse",
+   "purl": "pkg:npm/treeverse@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/tuf-js/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/tuf-js/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "tuf-js",
+   "purl": "pkg:npm/tuf-js@2.2.1",
+   "type": "npm",
+   "version": "2.2.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/unique-filename/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/unique-filename/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "unique-filename",
+   "purl": "pkg:npm/unique-filename@3.0.0",
+   "type": "npm",
+   "version": "3.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/unique-slug/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/unique-slug/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "unique-slug",
+   "purl": "pkg:npm/unique-slug@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/util-deprecate/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/util-deprecate/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "util-deprecate",
+   "purl": "pkg:npm/util-deprecate@1.0.2",
+   "type": "npm",
+   "version": "1.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license/package.json"
+      }
+     ],
+     "spdxExpression": "Apache-2.0",
+     "type": "declared",
+     "urls": [],
+     "value": "Apache-2.0"
+    }
+   ],
+   "name": "validate-npm-package-license",
+   "purl": "pkg:npm/validate-npm-package-license@3.0.4",
+   "type": "npm",
+   "version": "3.0.4"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-name/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-name/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "validate-npm-package-name",
+   "purl": "pkg:npm/validate-npm-package-name@5.0.1",
+   "type": "npm",
+   "version": "5.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/walk-up-path/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/walk-up-path/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "walk-up-path",
+   "purl": "pkg:npm/walk-up-path@3.0.1",
+   "type": "npm",
+   "version": "3.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn/node_modules/which/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn/node_modules/which/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "which",
+   "purl": "pkg:npm/which@2.0.2",
+   "type": "npm",
+   "version": "2.0.2"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/which/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/which/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "which",
+   "purl": "pkg:npm/which@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "wrap-ansi",
+   "purl": "pkg:npm/wrap-ansi@7.0.0",
+   "type": "npm",
+   "version": "7.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/package.json"
+      }
+     ],
+     "spdxExpression": "MIT",
+     "type": "declared",
+     "urls": [],
+     "value": "MIT"
+    }
+   ],
+   "name": "wrap-ansi",
+   "purl": "pkg:npm/wrap-ansi@8.1.0",
+   "type": "npm",
+   "version": "8.1.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/write-file-atomic/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/write-file-atomic/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "write-file-atomic",
+   "purl": "pkg:npm/write-file-atomic@5.0.1",
+   "type": "npm",
+   "version": "5.0.1"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/usr/local/lib/node_modules/npm/node_modules/yallist/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+       "path": "/usr/local/lib/node_modules/npm/node_modules/yallist/package.json"
+      }
+     ],
+     "spdxExpression": "ISC",
+     "type": "declared",
+     "urls": [],
+     "value": "ISC"
+    }
+   ],
+   "name": "yallist",
+   "purl": "pkg:npm/yallist@4.0.0",
+   "type": "npm",
+   "version": "4.0.0"
+  },
+  {
+   "language": "javascript",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/opt/yarn-v1.22.22/package.json",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/opt/yarn-v1.22.22/package.json"
+      }
+     ],
+     "spdxExpression": "BSD-2-Clause",
+     "type": "declared",
+     "urls": [],
+     "value": "BSD-2-Clause"
+    }
+   ],
+   "name": "yarn",
+   "purl": "pkg:npm/yarn@1.22.22",
+   "type": "npm",
+   "version": "1.22.22"
+  },
+  {
+   "language": "",
+   "licenses": [
+    {
+     "locations": [
+      {
+       "accessPath": "/lib/apk/db/installed",
+       "annotations": {
+        "evidence": "primary"
+       },
+       "layerID": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+       "path": "/lib/apk/db/installed"
+      }
+     ],
+     "spdxExpression": "Zlib",
+     "type": "declared",
+     "urls": [],
+     "value": "Zlib"
+    }
+   ],
+   "name": "zlib",
+   "purl": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64&distro=alpine-3.23.4",
+   "type": "apk",
+   "version": "1.3.2-r0"
+  }
+ ],
+ "descriptor": {
+  "configuration": {
+   "catalogers": {
+    "requested": {
+     "default": [
+      "image",
+      "file"
+     ]
+    },
+    "used": [
+     "alpm-db-cataloger",
+     "apk-db-cataloger",
+     "apple-app-bundle-cataloger",
+     "binary-classifier-cataloger",
+     "bitnami-cataloger",
+     "cargo-auditable-binary-cataloger",
+     "conan-info-cataloger",
+     "dotnet-deps-binary-cataloger",
+     "dotnet-packages-lock-cataloger",
+     "dpkg-db-cataloger",
+     "elf-binary-package-cataloger",
+     "file-content-cataloger",
+     "file-digest-cataloger",
+     "file-executable-cataloger",
+     "file-metadata-cataloger",
+     "gguf-cataloger",
+     "go-module-binary-cataloger",
+     "graalvm-native-image-cataloger",
+     "homebrew-cataloger",
+     "java-archive-cataloger",
+     "java-jvm-cataloger",
+     "javascript-package-cataloger",
+     "linux-kernel-cataloger",
+     "lua-rock-cataloger",
+     "nix-cataloger",
+     "pe-binary-package-cataloger",
+     "php-composer-installed-cataloger",
+     "php-interpreter-cataloger",
+     "php-pear-serialized-cataloger",
+     "portage-cataloger",
+     "python-installed-package-cataloger",
+     "r-package-cataloger",
+     "rpm-db-cataloger",
+     "ruby-installed-gemspec-cataloger",
+     "safetensors-cataloger",
+     "snap-cataloger",
+     "wordpress-plugins-cataloger"
+    ]
+   },
+   "data-generation": {
+    "generate-cpes": true
+   },
+   "files": {
+    "content": {
+     "globs": null,
+     "skip-files-above-size": 0
+    },
+    "hashers": [
+     "sha-1",
+     "sha-256"
+    ],
+    "selection": "owned-by-package"
+   },
+   "licenses": {
+    "coverage": 75,
+    "include-content": "none"
+   },
+   "packages": {
+    "binary": [
+     "python-binary",
+     "python-binary-lib",
+     "pypy-binary-lib",
+     "go-binary",
+     "julia-binary",
+     "julia-binary",
+     "helm",
+     "redis-binary",
+     "valkey-binary",
+     "nodejs-binary",
+     "busybox-binary",
+     "util-linux-binary",
+     "haproxy-binary",
+     "perl-binary",
+     "php-composer-binary",
+     "httpd-binary",
+     "memcached-binary",
+     "traefik-binary",
+     "arangodb-binary",
+     "postgresql-binary",
+     "mysql-binary",
+     "mysql-binary",
+     "mysql-binary",
+     "mysqld-mysql-cluster-legacy-binary",
+     "mysqld-binary",
+     "ndbd-binary",
+     "ndbmtd-binary",
+     "ndb_mgmd-binary",
+     "xtrabackup-binary",
+     "mariadb-binary",
+     "rust-standard-library-linux",
+     "rust-standard-library-macos",
+     "ruby-binary",
+     "erlang-binary",
+     "erlang-alpine-binary",
+     "erlang-library",
+     "swipl-binary",
+     "dart-binary",
+     "deno-binary",
+     "bun-binary",
+     "haskell-ghc-binary",
+     "haskell-cabal-binary",
+     "haskell-stack-binary",
+     "consul-binary",
+     "hashicorp-vault-binary",
+     "nginx-binary",
+     "bash-binary",
+     "openssl-binary",
+     "openldap-search-binary",
+     "qt-qtbase-lib",
+     "gcc-binary",
+     "fluent-bit-binary",
+     "wordpress-cli-binary",
+     "curl-binary",
+     "lighttpd-binary",
+     "proftpd-binary",
+     "zstd-binary",
+     "xz-binary",
+     "gzip-binary",
+     "sqlcipher-binary",
+     "jq-binary",
+     "chrome-binary",
+     "firefox-binary",
+     "ffmpeg-binary",
+     "ffmpeg-library",
+     "ffmpeg-library",
+     "elixir-binary",
+     "elixir-library",
+     "istio-binary",
+     "istio-binary",
+     "grafana-binary",
+     "grafana-binary",
+     "envoy-binary",
+     "mongodb-binary",
+     "ingress-nginx-binary",
+     "filebeat-binary",
+     "metricbeat-binary",
+     "heartbeat-binary",
+     "packetbeat-binary",
+     "auditbeat-binary",
+     "elastic-agent-binary",
+     "krb5-library",
+     "heimdal-krb5-library",
+     "java-binary",
+     "java-jdb-binary"
+    ],
+    "cpp": {
+     "vcpkg-allow-git-clone": false
+    },
+    "dotnet": {
+     "dep-packages-must-claim-dll": true,
+     "dep-packages-must-have-dll": false,
+     "exclude-project-references": true,
+     "propagate-dll-claims-to-parents": true,
+     "relax-dll-claims-when-bundling-detected": true
+    },
+    "golang": {
+     "capture-symbols": "none",
+     "local-mod-cache-dir": "/home/runner/go/pkg/mod",
+     "local-vendor-dir": "",
+     "main-module-version": {
+      "from-build-settings": true,
+      "from-contents": false,
+      "from-ld-flags": true
+     },
+     "proxies": [
+      "https://proxy.golang.org",
+      "direct"
+     ],
+     "search-local-mod-cache-licenses": false,
+     "search-local-vendor-licenses": false,
+     "search-remote-licenses": false,
+     "use-packages-lib": true
+    },
+    "java-archive": {
+     "include-indexed-archives": true,
+     "include-unindexed-archives": false,
+     "maven-base-url": "https://repo1.maven.org/maven2",
+     "maven-localrepository-dir": "/home/runner/.m2/repository",
+     "max-parent-recursive-depth": 0,
+     "resolve-transitive-dependencies": false,
+     "use-maven-localrepository": false,
+     "use-network": false
+    },
+    "javascript": {
+     "include-dev-dependencies": false,
+     "npm-base-url": "https://registry.npmjs.org",
+     "search-remote-licenses": false
+    },
+    "linux-kernel": {
+     "catalog-modules": true
+    },
+    "nix": {
+     "capture-owned-files": false
+    },
+    "python": {
+     "guess-unpinned-requirements": false,
+     "pypi-base-url": "https://pypi.org/pypi",
+     "search-remote-licenses": false
+    }
+   },
+   "relationships": {
+    "exclude-binary-packages-with-file-ownership-overlap": true,
+    "package-file-ownership": true,
+    "package-file-ownership-overlap": true
+   },
+   "search": {
+    "scope": "squashed"
+   }
+  },
+  "name": "syft",
+  "version": "1.51.1"
+ },
+ "distro": {
+  "bugReportURL": "https://gitlab.alpinelinux.org/alpine/aports/-/issues",
+  "homeURL": "https://alpinelinux.org/",
+  "id": "alpine",
+  "name": "Alpine Linux",
+  "prettyName": "Alpine Linux v3.23",
+  "versionID": "3.23.4"
+ },
+ "schema": {
+  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.10.json",
+  "version": "16.1.10"
+ },
+ "source": {
+  "id": "afdf98210b07b586eb71fa22ba2e432e058e4cd1304d31ed60888755b8c865fb",
+  "metadata": {
+   "architecture": "amd64",
+   "config": "eyJhcmNoaXRlY3R1cmUiOiJhbWQ2NCIsImNvbmZpZyI6eyJFbnYiOlsiUEFUSD0vdXNyL2xvY2FsL3NiaW46L3Vzci9sb2NhbC9iaW46L3Vzci9zYmluOi91c3IvYmluOi9zYmluOi9iaW4iLCJOT0RFX1ZFUlNJT049MjAuMjAuMiIsIllBUk5fVkVSU0lPTj0xLjIyLjIyIl0sIkVudHJ5cG9pbnQiOlsiZG9ja2VyLWVudHJ5cG9pbnQuc2giXSwiQ21kIjpbIm5vZGUiXSwiV29ya2luZ0RpciI6Ii8ifSwiY3JlYXRlZCI6IjIwMjYtMDQtMTVUMjA6NDY6NTAuNjk3MTYwODQ5WiIsImhpc3RvcnkiOlt7ImNyZWF0ZWQiOiIyMDI2LTA0LTE1VDIwOjAxOjQwLjEzOTY3Njc1N1oiLCJjcmVhdGVkX2J5IjoiQUREIGFscGluZS1taW5pcm9vdGZzLTMuMjMuNC14ODZfNjQudGFyLmd6IC8gIyBidWlsZGtpdCIsImNvbW1lbnQiOiJidWlsZGtpdC5kb2NrZXJmaWxlLnYwIn0seyJjcmVhdGVkIjoiMjAyNi0wNC0xNVQyMDowMTo0MC4xMzk2NzY3NTdaIiwiY3JlYXRlZF9ieSI6IkNNRCBbXCIvYmluL3NoXCJdIiwiY29tbWVudCI6ImJ1aWxka2l0LmRvY2tlcmZpbGUudjAiLCJlbXB0eV9sYXllciI6dHJ1ZX0seyJjcmVhdGVkIjoiMjAyNi0wNC0xNVQyMDo0Njo0Ny4xNTUwODM3NFoiLCJjcmVhdGVkX2J5IjoiRU5WIE5PREVfVkVSU0lPTj0yMC4yMC4yIiwiY29tbWVudCI6ImJ1aWxka2l0LmRvY2tlcmZpbGUudjAiLCJlbXB0eV9sYXllciI6dHJ1ZX0seyJjcmVhdGVkIjoiMjAyNi0wNC0xNVQyMDo0Njo0Ny4xNTUwODM3NFoiLCJjcmVhdGVkX2J5IjoiUlVOIC9iaW4vc2ggLWMgYWRkZ3JvdXAgLWcgMTAwMCBub2RlICAgICBcdTAwMjZcdTAwMjYgYWRkdXNlciAtdSAxMDAwIC1HIG5vZGUgLXMgL2Jpbi9zaCAtRCBub2RlICAgICBcdTAwMjZcdTAwMjYgYXBrIGFkZCAtLW5vLWNhY2hlICAgICAgICAgbGlic3RkYysrICAgICBcdTAwMjZcdTAwMjYgYXBrIGFkZCAtLW5vLWNhY2hlIC0tdmlydHVhbCAuYnVpbGQtZGVwcyAgICAgICAgIGN1cmwgICAgIFx1MDAyNlx1MDAyNiBBUkNIPSBPUEVOU1NMX0FSQ0g9J2xpbnV4KicgXHUwMDI2XHUwMDI2IGFscGluZUFyY2g9XCIkKGFwayAtLXByaW50LWFyY2gpXCIgICAgICAgXHUwMDI2XHUwMDI2IGNhc2UgXCIke2FscGluZUFyY2gjIyotfVwiIGluICAgICAgICAgeDg2XzY0KSBBUkNIPSd4NjQnIENIRUNLU1VNPVwiMmI1MWE1Mzg4ZjZhYWY4ZTJhZjY1ZmUzYmFkNjExNGRiMGViZDgxYTFhZTEyNTBiMWRlMGNiZjAzNGIxMGM1ZFwiIE9QRU5TU0xfQVJDSD1saW51eC14ODZfNjQ7OyAgICAgICAgIHg4NikgT1BFTlNTTF9BUkNIPWxpbnV4LWVsZjs7ICAgICAgICAgYWFyY2g2NCkgT1BFTlNTTF9BUkNIPWxpbnV4LWFhcmNoNjQ7OyAgICAgICAgIGFybSopIE9QRU5TU0xfQVJDSD1saW51eC1hcm12NDs7ICAgICAgICAgcHBjNjRsZSkgT1BFTlNTTF9BUkNIPWxpbnV4LXBwYzY0bGU7OyAgICAgICAgIHMzOTB4KSBPUEVOU1NMX0FSQ0g9bGludXgtczM5MHg7OyAgICAgICAgICopIDs7ICAgICAgIGVzYWMgICBcdTAwMjZcdTAwMjYgaWYgWyAtbiBcIiR7Q0hFQ0tTVU19XCIgXTsgdGhlbiAgICAgc2V0IC1ldTsgICAgIGN1cmwgLWZzU0xPIC0tY29tcHJlc3NlZCBcImh0dHBzOi8vdW5vZmZpY2lhbC1idWlsZHMubm9kZWpzLm9yZy9kb3dubG9hZC9yZWxlYXNlL3YkTk9ERV9WRVJTSU9OL25vZGUtdiROT0RFX1ZFUlNJT04tbGludXgtJEFSQ0gtbXVzbC50YXIueHpcIjsgICAgIGVjaG8gXCIkQ0hFQ0tTVU0gIG5vZGUtdiROT0RFX1ZFUlNJT04tbGludXgtJEFSQ0gtbXVzbC50YXIueHpcIiB8IHNoYTI1NnN1bSAtYyAtICAgICAgIFx1MDAyNlx1MDAyNiB0YXIgLXhKZiBcIm5vZGUtdiROT0RFX1ZFUlNJT04tbGludXgtJEFSQ0gtbXVzbC50YXIueHpcIiAtQyAvdXNyL2xvY2FsIC0tc3RyaXAtY29tcG9uZW50cz0xIC0tbm8tc2FtZS1vd25lciAgICAgICBcdTAwMjZcdTAwMjYgbG4gLXMgL3Vzci9sb2NhbC9iaW4vbm9kZSAvdXNyL2xvY2FsL2Jpbi9ub2RlanM7ICAgZWxzZSAgICAgZWNobyBcIkJ1aWxkaW5nIGZyb20gc291cmNlXCIgICAgIFx1MDAyNlx1MDAyNiBhcGsgYWRkIC0tbm8tY2FjaGUgLS12aXJ0dWFsIC5idWlsZC1kZXBzLWZ1bGwgICAgICAgICBiaW51dGlscy1nb2xkICAgICAgICAgZysrICAgICAgICAgZ2NjICAgICAgICAgZ251cGcgICAgICAgICBsaWJnY2MgICAgICAgICBsaW51eC1oZWFkZXJzICAgICAgICAgbWFrZSAgICAgICAgIHB5dGhvbjMgICAgICAgICBweS1zZXR1cHRvb2xzICAgICBcdTAwMjZcdTAwMjYgZXhwb3J0IEdOVVBHSE9NRT1cIiQobWt0ZW1wIC1kKVwiICAgICBcdTAwMjZcdTAwMjYgZm9yIGtleSBpbiAgICAgICA1QkU4QTNGNkM4QTVDMDFEMTA2QzBBRDgyMEIxQTM5MEIxNjhEMzU2ICAgICAgIERENzkyRjU5NzNDNkRFNTJDNDMyQ0JEQUM3N0FCRkEwMEREQkYyQjcgICAgICAgQ0M2OEY1QTMxMDZGRjQ0ODMyMkU0OEVEMjdGNUUzOEQ1QjBBMjE1RiAgICAgICA4RkNDQTEzRkVGMUQwQzJFOTEwMDhFMDk3NzBGN0E5QTVBRTE1NjAwICAgICAgIDg5MEMwOERCODU3OTE2MkZFRTBERjlEQjhCRUFCNERGQ0Y1NTVFRjQgICAgICAgQzgyRkEzQUUxQ0JFREM2QkU0NkI5MzYwQzQzQ0VDNDVDMTdBQjkzQyAgICAgICAxMDhGNTJCNDhEQjU3QkIwQ0M0MzlCMjk5N0IwMTQxOUJEOTJGODBBICAgICAgIEEzNjNBNDk5MjkxQ0JCQzk0MERENjJFNDFGMTAwMjdBRjAwMkY4QjAgICAgIDsgZG8gICAgICAgeyBncGcgLS1iYXRjaCAtLWtleXNlcnZlciBoa3BzOi8va2V5cy5vcGVucGdwLm9yZyAtLXJlY3Yta2V5cyBcIiRrZXlcIiBcdTAwMjZcdTAwMjYgZ3BnIC0tYmF0Y2ggLS1maW5nZXJwcmludCBcIiRrZXlcIjsgfSB8fCAgICAgICB7IGdwZyAtLWJhdGNoIC0ta2V5c2VydmVyIGtleXNlcnZlci51YnVudHUuY29tIC0tcmVjdi1rZXlzIFwiJGtleVwiIFx1MDAyNlx1MDAyNiBncGcgLS1iYXRjaCAtLWZpbmdlcnByaW50IFwiJGtleVwiOyB9IDsgICAgIGRvbmUgICAgIFx1MDAyNlx1MDAyNiBjdXJsIC1mc1NMTyAtLWNvbXByZXNzZWQgXCJodHRwczovL25vZGVqcy5vcmcvZGlzdC92JE5PREVfVkVSU0lPTi9ub2RlLXYkTk9ERV9WRVJTSU9OLnRhci54elwiICAgICBcdTAwMjZcdTAwMjYgY3VybCAtZnNTTE8gLS1jb21wcmVzc2VkIFwiaHR0cHM6Ly9ub2RlanMub3JnL2Rpc3QvdiROT0RFX1ZFUlNJT04vU0hBU1VNUzI1Ni50eHQuYXNjXCIgICAgIFx1MDAyNlx1MDAyNiBncGcgLS1iYXRjaCAtLWRlY3J5cHQgLS1vdXRwdXQgU0hBU1VNUzI1Ni50eHQgU0hBU1VNUzI1Ni50eHQuYXNjICAgICBcdTAwMjZcdTAwMjYgZ3BnY29uZiAtLWtpbGwgYWxsICAgICBcdTAwMjZcdTAwMjYgcm0gLXJmIFwiJEdOVVBHSE9NRVwiICAgICBcdTAwMjZcdTAwMjYgZ3JlcCBcIiBub2RlLXYkTk9ERV9WRVJTSU9OLnRhci54elxcJFwiIFNIQVNVTVMyNTYudHh0IHwgc2hhMjU2c3VtIC1jIC0gICAgIFx1MDAyNlx1MDAyNiB0YXIgLXhmIFwibm9kZS12JE5PREVfVkVSU0lPTi50YXIueHpcIiAgICAgXHUwMDI2XHUwMDI2IGNkIFwibm9kZS12JE5PREVfVkVSU0lPTlwiICAgICBcdTAwMjZcdTAwMjYgLi9jb25maWd1cmUgICAgIFx1MDAyNlx1MDAyNiBtYWtlIC1qJChnZXRjb25mIF9OUFJPQ0VTU09SU19PTkxOKSBWPSAgICAgXHUwMDI2XHUwMDI2IG1ha2UgaW5zdGFsbCAgICAgXHUwMDI2XHUwMDI2IGFwayBkZWwgLmJ1aWxkLWRlcHMtZnVsbCAgICAgXHUwMDI2XHUwMDI2IGNkIC4uICAgICBcdTAwMjZcdTAwMjYgcm0gLVJmIFwibm9kZS12JE5PREVfVkVSU0lPTlwiICAgICBcdTAwMjZcdTAwMjYgcm0gXCJub2RlLXYkTk9ERV9WRVJTSU9OLnRhci54elwiIFNIQVNVTVMyNTYudHh0LmFzYyBTSEFTVU1TMjU2LnR4dDsgICBmaSAgIFx1MDAyNlx1MDAyNiBybSAtZiBcIm5vZGUtdiROT0RFX1ZFUlNJT04tbGludXgtJEFSQ0gtbXVzbC50YXIueHpcIiAgIFx1MDAyNlx1MDAyNiBmaW5kIC91c3IvbG9jYWwvaW5jbHVkZS9ub2RlL29wZW5zc2wvYXJjaHMgLW1pbmRlcHRoIDEgLW1heGRlcHRoIDEgISAtbmFtZSBcIiRPUEVOU1NMX0FSQ0hcIiAtZXhlYyBybSAtcmYge30gXFw7ICAgXHUwMDI2XHUwMDI2IGFwayBkZWwgLmJ1aWxkLWRlcHMgICBcdTAwMjZcdTAwMjYgbm9kZSAtLXZlcnNpb24gICBcdTAwMjZcdTAwMjYgbnBtIC0tdmVyc2lvbiAgIFx1MDAyNlx1MDAyNiBybSAtcmYgL3RtcC8qICMgYnVpbGRraXQiLCJjb21tZW50IjoiYnVpbGRraXQuZG9ja2VyZmlsZS52MCJ9LHsiY3JlYXRlZCI6IjIwMjYtMDQtMTVUMjA6NDY6NDcuMTU1MDgzNzRaIiwiY3JlYXRlZF9ieSI6IkVOViBZQVJOX1ZFUlNJT049MS4yMi4yMiIsImNvbW1lbnQiOiJidWlsZGtpdC5kb2NrZXJmaWxlLnYwIiwiZW1wdHlfbGF5ZXIiOnRydWV9LHsiY3JlYXRlZCI6IjIwMjYtMDQtMTVUMjA6NDY6NTAuNjcwMTE5MzU0WiIsImNyZWF0ZWRfYnkiOiJSVU4gL2Jpbi9zaCAtYyBhcGsgYWRkIC0tbm8tY2FjaGUgLS12aXJ0dWFsIC5idWlsZC1kZXBzLXlhcm4gY3VybCBnbnVwZyB0YXIgICBcdTAwMjZcdTAwMjYgZXhwb3J0IEdOVVBHSE9NRT1cIiQobWt0ZW1wIC1kKVwiICAgXHUwMDI2XHUwMDI2IGZvciBrZXkgaW4gICAgIDZBMDEwQzUxNjYwMDY1OTlBQTE3RjA4MTQ2QzIxMzBERkQyNDk3RjUgICA7IGRvICAgICB7IGdwZyAtLWJhdGNoIC0ta2V5c2VydmVyIGhrcHM6Ly9rZXlzLm9wZW5wZ3Aub3JnIC0tcmVjdi1rZXlzIFwiJGtleVwiIFx1MDAyNlx1MDAyNiBncGcgLS1iYXRjaCAtLWZpbmdlcnByaW50IFwiJGtleVwiOyB9IHx8ICAgICB7IGdwZyAtLWJhdGNoIC0ta2V5c2VydmVyIGtleXNlcnZlci51YnVudHUuY29tIC0tcmVjdi1rZXlzIFwiJGtleVwiIFx1MDAyNlx1MDAyNiBncGcgLS1iYXRjaCAtLWZpbmdlcnByaW50IFwiJGtleVwiOyB9IDsgICBkb25lICAgXHUwMDI2XHUwMDI2IGN1cmwgLWZzU0xPIC0tY29tcHJlc3NlZCBcImh0dHBzOi8veWFybnBrZy5jb20vZG93bmxvYWRzLyRZQVJOX1ZFUlNJT04veWFybi12JFlBUk5fVkVSU0lPTi50YXIuZ3pcIiAgIFx1MDAyNlx1MDAyNiBjdXJsIC1mc1NMTyAtLWNvbXByZXNzZWQgXCJodHRwczovL3lhcm5wa2cuY29tL2Rvd25sb2Fkcy8kWUFSTl9WRVJTSU9OL3lhcm4tdiRZQVJOX1ZFUlNJT04udGFyLmd6LmFzY1wiICAgXHUwMDI2XHUwMDI2IGdwZyAtLWJhdGNoIC0tdmVyaWZ5IHlhcm4tdiRZQVJOX1ZFUlNJT04udGFyLmd6LmFzYyB5YXJuLXYkWUFSTl9WRVJTSU9OLnRhci5neiAgIFx1MDAyNlx1MDAyNiBncGdjb25mIC0ta2lsbCBhbGwgICBcdTAwMjZcdTAwMjYgcm0gLXJmIFwiJEdOVVBHSE9NRVwiICAgXHUwMDI2XHUwMDI2IG1rZGlyIC1wIC9vcHQgICBcdTAwMjZcdTAwMjYgdGFyIC14emYgeWFybi12JFlBUk5fVkVSU0lPTi50YXIuZ3ogLUMgL29wdC8gICBcdTAwMjZcdTAwMjYgbG4gLXMgL29wdC95YXJuLXYkWUFSTl9WRVJTSU9OL2Jpbi95YXJuIC91c3IvbG9jYWwvYmluL3lhcm4gICBcdTAwMjZcdTAwMjYgbG4gLXMgL29wdC95YXJuLXYkWUFSTl9WRVJTSU9OL2Jpbi95YXJucGtnIC91c3IvbG9jYWwvYmluL3lhcm5wa2cgICBcdTAwMjZcdTAwMjYgcm0geWFybi12JFlBUk5fVkVSU0lPTi50YXIuZ3ouYXNjIHlhcm4tdiRZQVJOX1ZFUlNJT04udGFyLmd6ICAgXHUwMDI2XHUwMDI2IGFwayBkZWwgLmJ1aWxkLWRlcHMteWFybiAgIFx1MDAyNlx1MDAyNiB5YXJuIC0tdmVyc2lvbiAgIFx1MDAyNlx1MDAyNiBybSAtcmYgL3RtcC8qICMgYnVpbGRraXQiLCJjb21tZW50IjoiYnVpbGRraXQuZG9ja2VyZmlsZS52MCJ9LHsiY3JlYXRlZCI6IjIwMjYtMDQtMTVUMjA6NDY6NTAuNjk3MTYwODQ5WiIsImNyZWF0ZWRfYnkiOiJDT1BZIGRvY2tlci1lbnRyeXBvaW50LnNoIC91c3IvbG9jYWwvYmluLyAjIGJ1aWxka2l0IiwiY29tbWVudCI6ImJ1aWxka2l0LmRvY2tlcmZpbGUudjAifSx7ImNyZWF0ZWQiOiIyMDI2LTA0LTE1VDIwOjQ2OjUwLjY5NzE2MDg0OVoiLCJjcmVhdGVkX2J5IjoiRU5UUllQT0lOVCBbXCJkb2NrZXItZW50cnlwb2ludC5zaFwiXSIsImNvbW1lbnQiOiJidWlsZGtpdC5kb2NrZXJmaWxlLnYwIiwiZW1wdHlfbGF5ZXIiOnRydWV9LHsiY3JlYXRlZCI6IjIwMjYtMDQtMTVUMjA6NDY6NTAuNjk3MTYwODQ5WiIsImNyZWF0ZWRfYnkiOiJDTUQgW1wibm9kZVwiXSIsImNvbW1lbnQiOiJidWlsZGtpdC5kb2NrZXJmaWxlLnYwIiwiZW1wdHlfbGF5ZXIiOnRydWV9XSwib3MiOiJsaW51eCIsInJvb3RmcyI6eyJ0eXBlIjoibGF5ZXJzIiwiZGlmZl9pZHMiOlsic2hhMjU2OjI5ZGY0OTNiYWExM2RlNDM4ZDZkMmVjZTNhODMzMzAzMmUwYjdiOWI5ZDhjY2U0ZWU4MjE5NGRhMjU1ZjYxZTEiLCJzaGEyNTY6NDk4M2I5M2VlNzk2NzU2NGYwMmNiZjYxNjJiNzUwMTBjZTU1NzQwNGE1MzlmYmEwNWVlMTlhMGVhZTAxYWNiYyIsInNoYTI1NjplMTAzNTg3MTVlYWQ5YjQ3MDA5ZGQwNGJjZDc3YWMxYzhlMjQ3ZjcyNDlhYjA2NTE3ZmY5MTNjNDczYThlMzhlIiwic2hhMjU2OmFmYTU0M2Y4NWI0Njg1YTg0MzM4ZGYzZTJjNDI5ZWRjYTQ5YmIzNzJiMGY0OWUwYzVjYzk3MjRjODIwYWQwOTQiXX19",
+   "imageID": "sha256:11cedc39e663e7c5d5cb9cc77a461a0d2adc25537b94e6831a6108f09cb2001b",
+   "imageSize": 135675483,
+   "layers": [
+    {
+     "digest": "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
+     "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+     "size": 8445005
+    },
+    {
+     "digest": "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+     "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+     "size": 121865731
+    },
+    {
+     "digest": "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+     "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+     "size": 5364359
+    },
+    {
+     "digest": "sha256:afa543f85b4685a84338df3e2c429edca49bb372b0f49e0c5cc9724c820ad094",
+     "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+     "size": 388
+    }
+   ],
+   "manifest": "ewogICJzY2hlbWFWZXJzaW9uIjogMiwKICAibWVkaWFUeXBlIjogImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UubWFuaWZlc3QudjEranNvbiIsCiAgImNvbmZpZyI6IHsKICAgICJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5jb25maWcudjEranNvbiIsCiAgICAiZGlnZXN0IjogInNoYTI1NjoxMWNlZGMzOWU2NjNlN2M1ZDVjYjljYzc3YTQ2MWEwZDJhZGMyNTUzN2I5NGU2ODMxYTYxMDhmMDljYjIwMDFiIiwKICAgICJzaXplIjogNjUxOQogIH0sCiAgImxheWVycyI6IFsKICAgIHsKICAgICAgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLmxheWVyLnYxLnRhcitnemlwIiwKICAgICAgImRpZ2VzdCI6ICJzaGEyNTY6NmEwYWMxNjE3ODYxYTY3N2IwNDViN2ZmODg1NDUyMTNlYzMxYzBmZjA4NzYzMTk1YTcwYTRhNWFkZGE1NzdiYiIsCiAgICAgICJzaXplIjogMzg2NDE4OQogICAgfSwKICAgIHsKICAgICAgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLmxheWVyLnYxLnRhcitnemlwIiwKICAgICAgImRpZ2VzdCI6ICJzaGEyNTY6NGZlZWEwNGMxNTQzMDFkYjZmNGE0OTZlZmEzOTdiM2RiOTY2MDNiMWMwMDljNzk3Y2ZkZGU3N2JlYThiMzI4NyIsCiAgICAgICJzaXplIjogNDMyMjkzOTcKICAgIH0sCiAgICB7CiAgICAgICJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5sYXllci52MS50YXIrZ3ppcCIsCiAgICAgICJkaWdlc3QiOiAic2hhMjU2OmIyY2JiZmU5MDNiMDgyMTAwNTc4MDk3MWRkYzU4OTJlZGNjNGNlNzRjNWE0OGQ4MmUxZDJiMzgyZWRhYzMxMjIiLAogICAgICAic2l6ZSI6IDEyNjIxMjYKICAgIH0sCiAgICB7CiAgICAgICJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5sYXllci52MS50YXIrZ3ppcCIsCiAgICAgICJkaWdlc3QiOiAic2hhMjU2OmZmZjRlMmMxYjE4OWJmODdkNjNhZDhiZDA3ZjdmNGViMjg4ZDZmMmI2YTA3YThiYjQ0YzYwZThjMDc1ZDIwOTYiLAogICAgICAic2l6ZSI6IDQ0NQogICAgfQogIF0sCiAgImFubm90YXRpb25zIjogewogICAgImNvbS5kb2NrZXIub2ZmaWNpYWwtaW1hZ2VzLmJhc2hicmV3LmFyY2giOiAiYW1kNjQiLAogICAgIm9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5iYXNlLmRpZ2VzdCI6ICJzaGEyNTY6NGQ4ODljMTRlN2Q1YTczOTI5YWIwMGJlMmVmOGZmMjI0MzdlN2NiYzU0NTkzMWU1MjU1NGE3YjAwZTEyM2Q4YiIsCiAgICAib3JnLm9wZW5jb250YWluZXJzLmltYWdlLmJhc2UubmFtZSI6ICJhbHBpbmU6My4yMyIsCiAgICAib3JnLm9wZW5jb250YWluZXJzLmltYWdlLmNyZWF0ZWQiOiAiMjAyNi0wNC0xNVQyMDo0NjozOFoiLAogICAgIm9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5yZXZpc2lvbiI6ICIwMDAxNjY5Y2ZlZWU4MWRkZDQxYTBhMTZiZTkzMjFlOGExYmYyMzU0IiwKICAgICJvcmcub3BlbmNvbnRhaW5lcnMuaW1hZ2Uuc291cmNlIjogImh0dHBzOi8vZ2l0aHViLmNvbS9ub2RlanMvZG9ja2VyLW5vZGUuZ2l0IzAwMDE2NjljZmVlZTgxZGRkNDFhMGExNmJlOTMyMWU4YTFiZjIzNTQ6MjAvYWxwaW5lMy4yMyIsCiAgICAib3JnLm9wZW5jb250YWluZXJzLmltYWdlLnVybCI6ICJodHRwczovL2h1Yi5kb2NrZXIuY29tL18vbm9kZSIsCiAgICAib3JnLm9wZW5jb250YWluZXJzLmltYWdlLnZlcnNpb24iOiAiMjAtYWxwaW5lIgogIH0KfQ==",
+   "manifestDigest": "sha256:afdf98210b07b586eb71fa22ba2e432e058e4cd1304d31ed60888755b8c865fb",
+   "mediaType": "application/vnd.oci.image.manifest.v1+json",
+   "os": "linux",
+   "repoDigests": [
+    "index.docker.io/library/node@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+   ],
+   "tags": [],
+   "userInput": "node:20-alpine"
+  },
+  "name": "node",
+  "type": "image",
+  "version": "20-alpine"
+ }
+}
