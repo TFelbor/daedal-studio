@@ -243,7 +243,7 @@ Progress at a glance — mirrored verbatim from the canonical list in
 [`docs/ds-mvp-roadmap.md`](docs/ds-mvp-roadmap.md) §0.3 (tick there first, mirror here,
 same commit):
 
-### ✅ Phase 0 — Foundation (built)
+### ✅ Phase 0 — Foundation (18–31 August 2026)
 
 - [x] Five-phase pipeline, prompt → physical print (FLUX → TRELLIS.2 → repair → CuraEngine → dispatch) — now the benched generative branch
 - [x] Printability gate — 11 deterministic checks, weighted score, verdict, per-job report
@@ -259,7 +259,7 @@ same commit):
 - [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento)
 - [ ] University GPU access requests filed (post-beta fine-tuning only)
 
-### 🔨 Phase 1 — Capability spike (PRD M0)
+### 🔨 Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
 
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
 - [ ] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
@@ -267,7 +267,7 @@ same commit):
 - [ ] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
 - [ ] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
 
-### 📋 Phase 2 — Internal alpha (PRD M1)
+### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
 - [ ] Token tray + card divider archetypes
 - [ ] Fit tolerances as `ProcessProfile` fields (friction / slide / magnet-pocket, per printer)
@@ -276,7 +276,7 @@ same commit):
 - [ ] Bambu operator for real — KTH machine, port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus)
 - [ ] Moonraker test target — headless Klipper + virtual MCU (Alberto)
 
-### 📱 Phase 3 — Closed preview (PRD M2)
+### 📱 Phase 3 — Closed preview (PRD M2 · 11 October – 10 November 2026)
 
 - [ ] LLM spec extraction — structured outputs, one API call, no agent loop
 - [ ] Held-out prompt set + field-accuracy harness (≥90 % gates the extractor)
@@ -287,7 +287,7 @@ same commit):
 - [ ] Spec-diff iteration ("make the lid deeper") on existing lineage columns
 - [ ] `preview_reached` job event (activation metric)
 
-### 🚀 Phase 4 — Beta launch gate (PRD M3)
+### 🚀 Phase 4 — Beta launch gate (PRD M3 · 11 November – 20 December 2026)
 
 - [ ] Test-fit coupon — 10-minute tolerance validator through the dispatch gate
 - [ ] Coupon → tolerance calibration loop — verdicts update per-printer/material fit offsets
@@ -300,7 +300,7 @@ same commit):
 - [ ] Patent decision on the calibration loop — prior-art search + counsel **before** public beta
 - [ ] (Could) F13 lid embossing — only after the embossing-field IP screen exists
 
-### 🔭 Phase 5 — Post-beta: moat & scale
+### 🔭 Phase 5 — Post-beta: moat & scale (Q1–Q2 2027 →)
 
 - [ ] Fit-outcome dataset → does the printability/fit score predict reality (Bet 2 groundwork, no GPU needed)
 - [ ] Generative personalization premium tier — image relief, sculptural lids (F14) on parametric bases
