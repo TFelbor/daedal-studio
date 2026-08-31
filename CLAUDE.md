@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Daedal Studio (ds-mvp) is a pipeline that converts a natural language prompt into a physical 3D print. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
+**Direction (committed 2026-08-31): Daedal Studio builds custom-fit tabletop/TCG organizers
+from a prompt — parametric geometry compiled from a structured spec, not generative mesh
+reconstruction.** The product PRD is `docs/PRD_daedal_tcg_organizers.md`; the plan in force is
+`docs/ds-mvp-roadmap.md` §§0.1–7A; the reasoning is `docs/pivot-brief-tcg-organizers.md`. The
+governing rule: *the LLM interprets words; it never produces geometry.* Phases 1–2 below
+(FLUX → TRELLIS.2) are **benched, not deleted** — they leave the critical path and become the
+branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,
+printability gate, slicing, dispatch gate, telemetry) is unchanged and is what the parametric
+path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric
+engine (`pythonsrc/organizer/` — spec schema, archetypes, dimension KB) does not exist yet; do
+not treat generative-path tuning as roadmap work.
+
+The rest of this file documents the system as built. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
 
 **Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs in-process on a CUDA host, in a GPU worker the rest of the pipeline reaches over HTTP, or on Pixazo's hosted endpoint (€0,32 per generation — the only option on a Mac). See **Sculptor** below.
 

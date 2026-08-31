@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Daedal Studio',
-  tagline: 'From text prompt to physical 3D print — fully local, no cloud.',
+  tagline: 'Custom-fit tabletop & TCG organizers from a prompt — dimensionally exact by construction.',
   favicon: 'img/favicon.ico',
 
   url: 'https://your-org.github.io',

@@ -1,23 +1,42 @@
 # Your First Print
 
-Let's walk through generating and printing your first 3D object from a text prompt.
+Let's walk through producing and printing your first part.
 
-## 1. Entering a Prompt
-Start by defining what you want to make. You can run the pipeline by passing a natural language prompt directly:
+:::info Direction
+Daedal Studio is pivoting to **custom-fit tabletop & TCG organizers**: an LLM reads the
+numbers out of your prompt, and a parametric engine builds exact geometry from them.
+The prompt-to-organizer flow is under construction; what runs end-to-end today is the
+pipeline below, entered either from a text prompt (generative branch) or from a mesh
+you supply.
+:::
+
+## 1. Run the pipeline on a mesh you already have
+
+This is the route the parametric engine will use, and it works today. Give Phase 3 a
+mesh whose dimensions are final, and tell it not to rescale:
+
+```bash
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "deck box" --skip-visualizer --skip-sculptor --mesh /app/data/inputs/box.stl --no-scale --print --start-print
+```
+
+The mesh is validated (never rescaled — `--no-scale` means "these dimensions are
+final"), scored for printability, sliced with your printer profile's real settings, and
+dispatched.
+
+## 2. Or run the generative branch from a prompt
 
 ```bash
 docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "a cute low-poly frog" --print --start-print
 ```
 
-## 2. Watching the Pipeline
-The system will run through five automated phases:
-1. **Visualizer**: Your text becomes a 2D blueprint image.
-2. **Sculptor**: The blueprint is transformed into a 3D mesh.
-3. **Engineer**: The mesh is repaired, scaled, and prepared for printing.
-4. **Slicer**: The mesh is sliced into G-code instructions.
-5. **Operator**: The G-code is uploaded to your 3D printer.
+This runs the benched text→image→3D path: **Visualizer** (prompt → blueprint image),
+**Sculptor** (image → mesh; needs an NVIDIA GPU, a GPU worker, or a paid hosted
+endpoint), then the same Engineer → Slicer → Operator chain.
 
-## 3. Printing!
-Because we included the `--start-print` flag, the job is dispatched to your connected printer automatically. You can monitor the telemetry data in real-time or check your printer's dashboard.
+## 3. Watching and printing
 
-Congratulations! You've just gone from text to a physical object without the cloud.
+Jobs submitted from the web UI stop twice for a human: once at the blueprint (on the
+generative branch) and once before dispatch — you confirm the exact printer shown
+before anything heats up. The `--start-print` flag above is the unattended CLI path
+that skips those gates. Telemetry streams live either way, with automatic failure
+detection.
