@@ -229,8 +229,8 @@ before collection, and the Pixazo backend refuses to construct when that flag is
 ## Roadmap
 
 **The plan of record is [`docs/ds-mvp-roadmap.md`](docs/ds-mvp-roadmap.md)** (§0.1
-onward), mapped onto the PRD's milestones M0–M3 rather than calendar phases. **Beta
-launch = M3**: the pipeline is not "ready" until direct-to-printer handoff works —
+onward): progress stages Phase 0–5, labelled with the PRD's milestones M0–M3. **Beta
+launch = Phase 4 (M3)**: the pipeline is not "ready" until direct-to-printer handoff works —
 Bambu (KTH) and OctoPrint/Moonraker (Trento) — alongside spec extraction, the archetype
 library, the dimension KB, the annotated mobile preview, and the test-fit coupon.
 
@@ -239,37 +239,74 @@ archetype library with its manifold and dimensional CI**, **printability scoring
 first-class pre-print step**, and the **telemetry capture schema** with the fit-verdict
 feedback loop. Everything else sequences around them.
 
-### Built (the half that survives the pivot unchanged)
+Progress at a glance — mirrored verbatim from the canonical list in
+[`docs/ds-mvp-roadmap.md`](docs/ds-mvp-roadmap.md) §0.3 (tick there first, mirror here,
+same commit):
 
-- **Phase 3: Engineer** — repair on trimesh + manifold3d; `--no-scale` preserves
-  spec-final dimensions; orientation and hollowing correctness fixed and measured
-- **Printability gate** — 11 deterministic checks, weighted 0–100 score,
-  `ready`/`risky`/`unprintable` verdict, per-job report persisted to telemetry
-- **Phase 4: Slicer** — CuraEngine with real profile translation (settings verified in
-  G-code), statistics derived from the E axis rather than Cura's unreliable header
-- **Phase 5 + dispatch gate** — a person confirms the exact target shown (409 on
-  drift); OctoPrint operator verified against a dockerized virtual printer
-- **Telemetry capture schema** — provenance, mesh lineage, slice results, engagement
-  events, cost in EUR, single-writer arbitration, outcome funnel where a machine write
-  never overwrites a human one
-- **Licence discipline** — Apache-2.0 grant kept coherent by policy-as-code guards and
-  a committed, CI-regenerated dependency tree
-- **The generative branch** — FLUX + TRELLIS.2 (three backends), benched intact for
-  decorative personalization
+### ✅ Phase 0 — Foundation (built)
 
-### In build (the cheap half the PRD says is the product)
+- [x] Five-phase pipeline, prompt → physical print (FLUX → TRELLIS.2 → repair → CuraEngine → dispatch) — now the benched generative branch
+- [x] Printability gate — 11 deterministic checks, weighted score, verdict, per-job report
+- [x] Telemetry capture schema — provenance, mesh lineage, slice results, engagement, single-writer collectors
+- [x] Outcome-feedback funnel — machine never overwrites human; `dev`/`declined` bucketed out
+- [x] Dispatch gate + blueprint gate — durable human-in-the-loop pauses that survive restarts
+- [x] OctoPrint operator verified against the dockerized virtual printer
+- [x] Licence discipline — policy-as-code guards, committed dependency tree, CI regeneration
+- [x] Database self-defence — integrity checks, rotating verified snapshots, off-disk mirror
+- [x] Web UI — submission, live phases, previews, telemetry, printability report
+- [x] Rename to Daedal Studio — banners, env vars, worker headers moved in one commit
+- [x] `--no-scale`: Phase 3 honours spec-final dimensions (PR #40 — scaling half of N1)
+- [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento)
+- [ ] University GPU access requests filed (post-beta fine-tuning only)
 
-- **M0** — spec schema (`pythonsrc/organizer/spec.py`), first archetype (deck box)
-  through Phases 3–5, dimensional-accuracy CI, kernel decision recorded
-- **M1** — token tray + divider archetypes, fit tolerances as printer-profile fields,
-  manifold CI over the whole template envelope, 3MF export, **Bambu operator on the
-  KTH machine**, **Moonraker test target in Trento**
-- **M2** — LLM spec extraction (structured outputs) + ≥90 % field-accuracy harness,
-  sleeve/card/dice/game-box dimension KB, clarify loop reusing the blueprint-gate
-  pause, mobile-first pass, mm-annotated preview, spec-diff iteration
-- **M3 (beta gate)** — test-fit coupon, accounts with the spec as the saved object,
-  bounded job queue, IP screening re-scoped for functional articles, decorative
-  embossing branch
+### 🔨 Phase 1 — Capability spike (PRD M0)
+
+- [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
+- [ ] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
+- [ ] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen)
+- [ ] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
+- [ ] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
+
+### 📋 Phase 2 — Internal alpha (PRD M1)
+
+- [ ] Token tray + card divider archetypes
+- [ ] Fit tolerances as `ProcessProfile` fields (friction / slide / magnet-pocket, per printer)
+- [ ] Manifold CI sweep across every archetype's parameter envelope
+- [ ] 3MF export (~one line + a test; trimesh exporter verified present)
+- [ ] Bambu operator for real — KTH machine, port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus)
+- [ ] Moonraker test target — headless Klipper + virtual MCU (Alberto)
+
+### 📱 Phase 3 — Closed preview (PRD M2)
+
+- [ ] LLM spec extraction — structured outputs, one API call, no agent loop
+- [ ] Held-out prompt set + field-accuracy harness (≥90 % gates the extractor)
+- [ ] Dimension KB v1 — curated JSON (research done: `docs/dimension-kb-research.md`)
+- [ ] Clarify loop — ≤3 chip questions, reusing the blueprint-gate pause
+- [ ] Mobile-first pass — split layouts become stacks; retire waiting-state theatre + figurine copy
+- [ ] mm-annotated preview — internal dimensions from the spec, not measured off the mesh
+- [ ] Spec-diff iteration ("make the lid deeper") on existing lineage columns
+- [ ] `preview_reached` job event (activation metric)
+
+### 🚀 Phase 4 — Beta launch gate (PRD M3)
+
+- [ ] Test-fit coupon — 10-minute tolerance validator through the dispatch gate
+- [ ] Coupon → tolerance calibration loop — verdicts update per-printer/material fit offsets
+- [ ] Fit verdict in `VALID_OUTCOMES` + outcome UI ("fits as intended" ≠ "printed")
+- [ ] Accounts, with the spec as the saved object
+- [ ] Bounded job queue replacing fire-and-forget dispatch
+- [ ] IP screening re-scoped for functional articles (a deck box *for* Pokémon cards is not a character)
+- [ ] Handoff verified on real hardware: Bambu **and** OctoPrint, end to end
+- [ ] Fit-verdict loop closed at least once on real hardware
+- [ ] Patent decision on the calibration loop — prior-art search + counsel **before** public beta
+- [ ] (Could) F13 lid embossing — only after the embossing-field IP screen exists
+
+### 🔭 Phase 5 — Post-beta: moat & scale
+
+- [ ] Fit-outcome dataset → does the printability/fit score predict reality (Bet 2 groundwork, no GPU needed)
+- [ ] Generative personalization premium tier — image relief, sculptural lids (F14) on parametric bases
+- [ ] Print-aware conditioning research on university GPUs (Bet 1)
+- [ ] KB depth: game-box internals curation, archetypes prioritized by prompt volume
+- [ ] Self-host / scale economics recomputed on real beta volume
 
 ---
 
