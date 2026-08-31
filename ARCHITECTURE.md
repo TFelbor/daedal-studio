@@ -1,9 +1,14 @@
 # ARCHITECTURE — the phase-by-phase map
 
-One prompt becomes one physical part in five phases. This file is the **factual index**
-of that chain: what runs each phase, which version is pinned and where, which Hugging
-Face repo the weights come from, which hardware it can run on, and what it has been
-measured to cost.
+One prompt becomes one physical part. This file is the **factual index** of that chain:
+what runs each phase, which version is pinned and where, which Hugging Face repo the
+weights come from, which hardware it can run on, and what it has been measured to cost.
+
+**Direction (committed 2026-08-31):** the product is parametric — prompt → structured
+spec → compiled geometry → Phases 3–5 (see `docs/PRD_daedal_tcg_organizers.md` and
+`docs/ds-mvp-roadmap.md` §0.1+). Phases 1–2 below are the **generative branch**: fully
+built, benched off the critical path, returning as the engine behind decorative
+personalization (PRD F13/F14). Phases 3–5 are shared by both paths, unchanged.
 
 It exists to be read *first* — by a person new to the repo, and by the recurring audit
 routines, which otherwise infer the stack from `requirements-base.txt` and guess at the
@@ -17,6 +22,27 @@ baseline is worse than one computed against nothing.
 ---
 
 ## The chain
+
+**Product path (in build — `pythonsrc/organizer/` does not exist yet):**
+
+```
+prompt ──▶ Extract (LLM → spec) ──▶ [clarify loop: ≤3 questions] ──▶ Compile (archetype → mesh)
+                                                │
+                       exact.stl ──▶ P3 Engineer (validate, seat, NEVER rescale) ──▶ [printability gate]
+                                                │
+                              part.gcode ◀── P4 Slicer
+                                                │
+                                  [dispatch gate: a person confirms]
+                                                │
+                                          P5 Operator ──▶ printer ──▶ telemetry ──▶ fit verdict
+```
+
+Geometry is arithmetic on CPU — sub-second, exact by construction. The only network
+call is one LLM extraction request (~€0,002); nothing on this path needs a GPU. Entry
+is the seam that already exists: `--skip-visualizer --skip-sculptor --mesh <path>
+--no-scale`. **Nothing on this path is measured yet.**
+
+**Generative branch (benched — everything below this line is built and measured):**
 
 ```
 prompt ──▶ P1 Visualizer ──▶ blueprint.png ──▶ [IP screen] ──▶ [blueprint gate: a person looks]
@@ -34,6 +60,20 @@ prompt ──▶ P1 Visualizer ──▶ blueprint.png ──▶ [IP screen] ─
 
 Phases 1 and 3–5 run on hardware you own. **Phase 2 is the exception** and is the only
 part of the pipeline that can cost money per job.
+
+### The geometry kernel (PRD §9.1, answered)
+
+**`manifold3d` now; `build123d`/OCCT only when an archetype needs true fillets or
+chamfers.** `manifold3d` 3.5.2 is already a hard Apache-2.0 dependency (it does the CSG
+union in `engineer.repair_mesh` and backs `printability.self_intersections`), every v1
+archetype is axis-aligned box CSG inside its envelope, and choosing it costs no new
+dependency and no new licence review. build123d is Apache-2.0 but wraps **OCCT**
+(LGPL-2.1 with an additional exception — commercial use permitted, prominent notice
+required): adopting it requires recording OCCT in
+`licence_policy.REVIEWED_WEAK_COPYLEFT`, adding a "Built with Open CASCADE Technology"
+notice alongside the DINOv3 one, and letting the licence workflow sweep its wheel's
+dependency tree. Full reasoning: `docs/pivot-brief-tcg-organizers.md` §6,
+`docs/ds-mvp-roadmap.md` §7A.
 
 ---
 

@@ -194,7 +194,7 @@ source is available from the upstream repositories linked above, at the exact
 versions our images install.
 
 For a copy of the corresponding source of either component as distributed in a
-Daedal Studio image, contact **legal@prompt2print.xyz**. We will supply it for no
+Daedal Studio image, contact **legal@daedal.studio**. We will supply it for no
 more than the cost of distribution, as AGPL-3.0 §6 permits.
 
 ### Weak copyleft — file-level

@@ -1,32 +1,41 @@
 # Pipeline Architecture
 
-The Daedal Studio generative engine works asynchronously across five core phases. Here is how your text prompt becomes a physical object.
+Daedal Studio turns a description of a tabletop organizer — a deck box, a token tray, a
+box insert — into a physical print whose internal dimensions match the request. The
+governing rule: **a language model interprets the words; deterministic code produces the
+geometry.** No dimension is ever guessed by a generative model.
 
-## Phase 1: Visualizer
-**Input**: Text Prompt  
-**Output**: 2D Blueprint Image  
-We use the state-of-the-art **FLUX.2-klein-4B** model to generate a clay-rendered image that clearly defines the geometry of the requested object.
+## The product path
 
-## Phase 2: Sculptor
-**Input**: 2D Blueprint Image  
-**Output**: Raw 3D Mesh (.obj)  
-The system uses **TRELLIS.2-4B** to turn the 2D image into a full 3D mesh. Rather than extracting an iso-surface from a field, it reconstructs into a sparse **O-Voxel** latent, which keeps sharp edges and thin walls instead of smoothing them away — so unlike the previous marching-cubes model, no smoothing pass is applied afterwards.
+1. **Extract** — an LLM parses the prompt into a structured spec: object type, card
+   count, sleeve brand and type, compartments, lid style, magnets. A curated dimension
+   knowledge base resolves "double-sleeved" into millimetres. If a required field is
+   missing, you get at most three quick clarifying questions.
+2. **Compile** — a parametric archetype (deck box, token tray, divider, insert grid)
+   turns the spec into watertight geometry, with fit tolerances applied per printer
+   profile. This is ordinary arithmetic on CPU: sub-second, exact by construction.
+3. **Engineer** (Phase 3) — the mesh is validated and seated for printing. A
+   spec-derived mesh carries its final dimensions, so it is **never rescaled**; its
+   dimensions are asserted instead.
+4. **Printability gate** — 11 deterministic checks and a weighted score, shown before
+   anything is sliced. Nothing non-manifold ships.
+5. **Slicer** (Phase 4) — a headless **CuraEngine** instance slices with your printer
+   profile's real settings (layer height, temperatures, adhesion), producing G-code
+   plus honest time and filament estimates. STL/3MF export is always available.
+6. **Operator** (Phase 5) — after you confirm the target printer, a firmware-specific
+   operator (OctoPrint, Klipper/Moonraker, Bambu) uploads and starts the job, and
+   telemetry streams back with failure detection.
 
-Only the shape half of the model runs: TRELLIS.2 can also generate PBR textures, but an FDM printer consumes geometry alone, so the texture stages are skipped entirely.
+The Extract and Compile stages are being built now — see the roadmap
+(`docs/ds-mvp-roadmap.md` in the repository). Phases 3–5 are the mature half of the
+system and carry over unchanged.
 
-TRELLIS.2 needs an NVIDIA GPU with about 24 GB of VRAM. On a machine without one, this phase runs on a separate GPU worker that the rest of the pipeline reaches over HTTP.
+## The generative branch (benched)
 
-## Phase 3: Engineer
-**Input**: Raw 3D Mesh  
-**Output**: Engineered Mesh (.obj)  
-Raw AI meshes often have holes, inverted normals, or incorrect scaling. We use `manifold3d` and `trimesh` to decimate polygon counts, repair the manifold, and scale the object to fit safely on your printer's build volume.
-
-## Phase 4: Slicer
-**Input**: Engineered Mesh  
-**Output**: G-code  
-The repaired mesh is passed to a headless instance of **CuraEngine** running in Docker. Using bundled machine profiles (e.g., Ender 3), it generates the exact toolpath instructions needed by your printer.
-
-## Phase 5: Operator
-**Input**: G-code  
-**Output**: Physical Print  
-Finally, a firmware-specific operator (like the OctoPrint Operator) uploads the G-code via REST API and commands the printer to begin.
+The original engine — text → blueprint image (**FLUX.2-klein-4B**) → image → 3D mesh
+(**TRELLIS.2-4B**, shape-only O-Voxel path) — remains in the tree but is off the
+critical path. Reconstruction from an image cannot promise ±0,15 mm internal accuracy,
+which is the promise this product is built on. The branch returns as the engine behind
+**decorative personalization** (embossed emblems, sculptural lids), where its output is
+post-validated for manifoldness and mounted onto parametrically exact bodies. It needs
+an NVIDIA GPU (~24 GB VRAM), a self-hosted GPU worker, or a paid hosted endpoint.
