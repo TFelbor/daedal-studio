@@ -1,9 +1,9 @@
 {
-  "schema": 2,
-  "generated_at": "2026-08-31T15:34:45Z",
-  "commit": "2fec1bb9cf81f0fc029183224a660a0de4270e15",
+  "schema": 3,
+  "generated_at": "2026-09-01T15:12:02Z",
+  "commit": "8dbdd9b7ffe909009f0046e7095c9529acc07b20",
   "project_licence": "Apache-2.0",
-  "verdict": "deny",
+  "verdict": "flag",
   "totals": {
     "packages": 2652,
     "sources": 12,
@@ -14,13 +14,12 @@
       "weak_copyleft": 198
     },
     "by_severity": {
-      "allow": 1099,
-      "deny": 6,
-      "flag": 1547
+      "allow": 1101,
+      "flag": 1551
     },
-    "findings": 78,
-    "deny": 6,
-    "flag": 1547
+    "findings": 70,
+    "deny": 0,
+    "flag": 1551
   },
   "licence_histogram": {
     "MIT": 478,
@@ -451,6 +450,8 @@
       "ecosystem": "npm",
       "tool": "license-checker",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 210,
       "private_packages_skipped": 1,
@@ -472,6 +473,8 @@
       "ecosystem": "npm",
       "tool": "license-checker",
       "in_process": true,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 61,
       "private_packages_skipped": 1,
@@ -489,6 +492,8 @@
       "ecosystem": "python",
       "tool": "pip-licenses",
       "in_process": true,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 43,
       "private_packages_skipped": 0,
@@ -511,6 +516,8 @@
       "ecosystem": "python",
       "tool": "pip-licenses",
       "in_process": true,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 139,
       "private_packages_skipped": 0,
@@ -533,6 +540,8 @@
       "ecosystem": "python",
       "tool": "pip-licenses",
       "in_process": true,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 109,
       "private_packages_skipped": 0,
@@ -555,6 +564,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 223,
       "private_packages_skipped": 0,
@@ -577,6 +588,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 228,
       "private_packages_skipped": 0,
@@ -595,10 +608,12 @@
     },
     {
       "name": "sbom/base-octoprint.json",
-      "label": "SBOM \u2014 base-octoprint",
+      "label": "SBOM \u2014 base-octoprint (arm's length)",
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": false,
+      "isolation": "octoprint/octoprint:latest \u2014 a peer service reached over HTTP/SockJS (pythonsrc/operators/). Nothing here imports anything inside this image.",
       "status": "ok",
       "packages": 568,
       "private_packages_skipped": 0,
@@ -621,6 +636,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 122,
       "private_packages_skipped": 0,
@@ -643,6 +660,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 101,
       "private_packages_skipped": 0,
@@ -665,6 +684,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 393,
       "private_packages_skipped": 0,
@@ -687,6 +708,8 @@
       "ecosystem": "image",
       "tool": "syft",
       "in_process": false,
+      "linked": true,
+      "isolation": "",
       "status": "ok",
       "packages": 455,
       "private_packages_skipped": 0,
@@ -705,66 +728,6 @@
     }
   ],
   "findings": [
-    {
-      "package": "octoprint",
-      "version": "1.11.8",
-      "licence": "GNU Affero General Public License v3",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Would put an AGPL-3.0 component in-process. \u00a7 13 then obliges offering this project's source to every user of the service."
-    },
-    {
-      "package": "octoprint",
-      "version": "1.11.8",
-      "licence": "GNU Affero General Public License v3",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Would put an AGPL-3.0 component in-process. \u00a7 13 then obliges offering this project's source to every user of the service."
-    },
-    {
-      "package": "octoprint-filecheck",
-      "version": "2025.7.23",
-      "licence": "AGPL-3.0-or-later",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Strong copyleft in-process is incompatible with the Apache-2.0 grant."
-    },
-    {
-      "package": "octoprint-firmwarecheck",
-      "version": "2025.7.23",
-      "licence": "AGPL-3.0-or-later",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Strong copyleft in-process is incompatible with the Apache-2.0 grant."
-    },
-    {
-      "package": "octoprint-pisupport",
-      "version": "2025.7.23",
-      "licence": "AGPL-3.0-or-later",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Strong copyleft in-process is incompatible with the Apache-2.0 grant."
-    },
-    {
-      "package": "unidecode",
-      "version": "1.4.0",
-      "licence": "GPL",
-      "classification": "strong_copyleft",
-      "severity": "deny",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Strong copyleft in-process is incompatible with the Apache-2.0 grant."
-    },
     {
       "package": "lightningcss",
       "version": "1.32.0",
@@ -1501,6 +1464,46 @@
       "note": "Operating-system layer of the image. Not linked in-process and not distributed today; a change in this count means a base image changed. Distributing the image would put source-offer obligations on the copyleft entries \u2014 see THIRD-PARTY-NOTICES.md."
     },
     {
+      "package": "(4 packages inside an arm's-length service)",
+      "version": "",
+      "licence": "AGPL-3.0-or-later x3, GPL x1",
+      "classification": "strong_copyleft",
+      "severity": "flag",
+      "source": "sbom/base-octoprint.json",
+      "ecosystem": "image",
+      "aggregate": true,
+      "layer": "service",
+      "count": 4,
+      "packages": [
+        "octoprint-filecheck@2025.7.23",
+        "octoprint-firmwarecheck@2025.7.23",
+        "octoprint-pisupport@2025.7.23",
+        "unidecode@1.4.0"
+      ],
+      "packages_truncated": 0,
+      "note": "octoprint/octoprint:latest \u2014 a peer service reached over HTTP/SockJS (pythonsrc/operators/). Nothing here imports anything inside this image. Not built here and not linked: this image is scanned so a change in what it ships is visible, not because its licences bind this project. A change in this count means the service image changed."
+    },
+    {
+      "package": "(4 packages inside an arm's-length service)",
+      "version": "",
+      "licence": "MPL-2.0 x1, LGPL v3 x1, LGPL-2.1-or-later x1, LGPL-3.0-only x1",
+      "classification": "weak_copyleft",
+      "severity": "flag",
+      "source": "sbom/base-octoprint.json",
+      "ecosystem": "image",
+      "aggregate": true,
+      "layer": "service",
+      "count": 4,
+      "packages": [
+        "certifi@2026.6.17",
+        "frozendict@2.4.7",
+        "zeroconf@0.136.2",
+        "zipstream-ng@1.9.2"
+      ],
+      "packages_truncated": 0,
+      "note": "octoprint/octoprint:latest \u2014 a peer service reached over HTTP/SockJS (pythonsrc/operators/). Nothing here imports anything inside this image. Not built here and not linked: this image is scanned so a change in what it ships is visible, not because its licences bind this project. A change in this count means the service image changed."
+    },
+    {
       "package": "(57 OS packages)",
       "version": "",
       "licence": "BSD-1-Clause AND BSD-2-Clause AND BSD-3-Clause AND BSL AND Expat AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-3.0-only AND GPL-3.0-or-later AND IJG AND ISC AND LGPL-2.0-only AND LGPL-2.0-or-later AND LGPL-2.1-only AND LGPL-2.1-or-later AND Sundry AND Zlib AND man-page AND public-domain x10, BSD-2-Clause AND BSD-3-Clause AND BSD-4-Clause AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-3.0-only AND GPL-3.0-or-later AND LGPL AND LGPL-2.0-only AND LGPL-2.0-or-later AND LGPL-2.1-only AND LGPL-2.1-or-later AND LGPL-3.0-only AND LGPL-3.0-or-later AND MIT AND public-domain x7, Artistic AND BSD-with-FSF-change-public-domain AND GNU-All-Permissive-License AND GPL-1.0-only AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-3.0-only AND GPL2+-with-Autoconf-Macros-exception AND GPL3+-with-Autoconf-Macros-exception AND GPL3+-with-Autoconf-Macros-exception-GNU AND ImageMagick AND ImageMagickLicensePartEZXML AND ImageMagickLicensePartFIG AND ImageMagickLicensePartGsview AND ImageMagickLicensePartOpenSSH AND ImageMagickPartGraphicsMagick AND ImageMagickPartlibjpeg AND ImageMagickPartlibsquish AND LGPL-3.0-only AND LGPL-3.0-or-later AND Magick++ AND Makefile-in AND Perllikelicence AND TatcherUlrichPublicDomain AND aclocal x6, LGPL-2.1-only AND LGPL-2.1-or-later x4, Artistic AND Artistic-2.0 AND Artistic-dist AND BSD-3-Clause AND BSD-3-clause-GENERIC AND BSD-3-clause-with-weird-numbering AND BSD-4-clause-POWERDOG AND BZIP AND DONT-CHANGE-THE-GPL AND Expat AND GPL-1.0-only AND GPL-1.0-or-later AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-3+-WITH-BISON-EXCEPTION AND HSIEH-BSD AND HSIEH-DERIVATIVE AND LGPL-2.1-only AND REGCOMP AND REGCOMP, AND RRA-KEEP-THIS-NOTICE AND SDBM-PUBLIC-DOMAIN AND TEXT-TABS AND Unicode AND Zlib x4, AGPL-3.0-only AND AGPL-3.0-or-later AND Adobe-2006 AND Apache-2.0 AND BSD-3-Clause AND BSD-3-Clause~Adobe AND Expat AND Expat~Ghostgum AND Expat~SunSoft AND FTL AND GAP~configure AND GPL AND GPL-2.0-only AND GPL-2.0-or-later AND GPL-3.0-only AND GPL-3.0-or-later AND ISC AND LGPL-2.1-only AND NTP~Lucent AND NTP~Open AND NTP~WSU AND Zlib AND public-domain x3",
@@ -1574,18 +1577,20 @@
       "note": "Operating-system layer of the image. Not linked in-process and not distributed today; a change in this count means a base image changed. Distributing the image would put source-offer obligations on the copyleft entries \u2014 see THIRD-PARTY-NOTICES.md."
     },
     {
-      "package": "(7 packages with no licence metadata)",
+      "package": "(9 packages inside an arm's-length service)",
       "version": "",
-      "licence": "UNDECLARED x5, Apache-2.0 AND BSD-2-Clause AND sha256:cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48 x1, Copyright (C) 2008-2021 by Vinay Sajip. All Rights Reserved. See LICENSE for license. x1",
+      "licence": "UNDECLARED x7, Apache-2.0 AND BSD-2-Clause AND sha256:cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48 x1, Copyright (C) 2008-2021 by Vinay Sajip. All Rights Reserved. See LICENSE for license. x1",
       "classification": "unknown",
       "severity": "flag",
       "source": "sbom/base-octoprint.json",
       "ecosystem": "image",
       "aggregate": true,
-      "layer": "unreadable",
-      "count": 7,
+      "layer": "service",
+      "count": 9,
       "packages": [
         "annotated-types@0.7.0",
+        "cambozola@UNKNOWN",
+        "cambozola@UNKNOWN",
         "emoji@2.15.0",
         "jinja2@3.1.6",
         "markdown-it-py@4.2.0",
@@ -1594,67 +1599,7 @@
         "sarge@0.1.7.post1"
       ],
       "packages_truncated": 0,
-      "note": "syft could not read a licence from the package metadata. These are the same distributions the pip-licenses / license-checker file for this image covers, and that file is the authoritative reading \u2014 a row each here would be 200 findings a week that another file already answers."
-    },
-    {
-      "package": "cambozola",
-      "version": "UNKNOWN",
-      "licence": "UNDECLARED",
-      "classification": "unknown",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "No readable licence declared. Read the package's own licence text."
-    },
-    {
-      "package": "cambozola",
-      "version": "UNKNOWN",
-      "licence": "UNDECLARED",
-      "classification": "unknown",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "No readable licence declared. Read the package's own licence text."
-    },
-    {
-      "package": "certifi",
-      "version": "2026.6.17",
-      "licence": "MPL-2.0",
-      "classification": "weak_copyleft",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Weak copyleft. Satisfied by dynamic linking and unmodified shipping, but each instance needs a recorded decision."
-    },
-    {
-      "package": "frozendict",
-      "version": "2.4.7",
-      "licence": "LGPL v3",
-      "classification": "weak_copyleft",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Weak copyleft. Satisfied by dynamic linking and unmodified shipping, but each instance needs a recorded decision."
-    },
-    {
-      "package": "zeroconf",
-      "version": "0.136.2",
-      "licence": "LGPL-2.1-or-later",
-      "classification": "weak_copyleft",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Weak copyleft. Satisfied by dynamic linking and unmodified shipping, but each instance needs a recorded decision."
-    },
-    {
-      "package": "zipstream-ng",
-      "version": "1.9.2",
-      "licence": "LGPL-3.0-only",
-      "classification": "weak_copyleft",
-      "severity": "flag",
-      "source": "sbom/base-octoprint.json",
-      "ecosystem": "image",
-      "note": "Weak copyleft. Satisfied by dynamic linking and unmodified shipping, but each instance needs a recorded decision."
+      "note": "octoprint/octoprint:latest \u2014 a peer service reached over HTTP/SockJS (pythonsrc/operators/). Nothing here imports anything inside this image. Not built here and not linked: this image is scanned so a change in what it ships is visible, not because its licences bind this project. A change in this count means the service image changed."
     },
     {
       "package": "(17 OS packages)",
@@ -2645,6 +2590,26 @@
       "source": "sbom/ds-mvp-pipeline.json",
       "ecosystem": "image",
       "note": "Weak copyleft. Satisfied by dynamic linking and unmodified shipping, but each instance needs a recorded decision."
+    },
+    {
+      "package": "octoprint",
+      "version": "1.11.8",
+      "licence": "GNU Affero General Public License v3",
+      "classification": "strong_copyleft",
+      "severity": "allow",
+      "source": "sbom/base-octoprint.json",
+      "ecosystem": "image",
+      "note": "AGPL-3.0, reached over HTTP/SockJS (pythonsrc/operators/). Never imported."
+    },
+    {
+      "package": "octoprint",
+      "version": "1.11.8",
+      "licence": "GNU Affero General Public License v3",
+      "classification": "strong_copyleft",
+      "severity": "allow",
+      "source": "sbom/base-octoprint.json",
+      "ecosystem": "image",
+      "note": "AGPL-3.0, reached over HTTP/SockJS (pythonsrc/operators/). Never imported."
     },
     {
       "package": "cura-engine",

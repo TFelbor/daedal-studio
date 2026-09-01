@@ -22,6 +22,14 @@ Two design points worth keeping:
   anything by being installed. AGPL-3.0 is a hard stop in the first case and a recorded
   isolation in the second, so the same licence string earns different verdicts and the
   source file is what tells them apart.
+* **A wheel in an image is in-process only when our code runs in that image.** The rule
+  above is right for `ds-mvp-pipeline` and `ds-api-server`, and for the registry images
+  they are built *on* — a wheel in `python:3.10-slim` is a wheel our server imports. It
+  is wrong for a peer service: `octoprint/octoprint` is reached over HTTP and holds
+  OctoPrint's own AGPL plugins, and scoring those as linked denied the build on every
+  merge to `main` for a tree this project never imports. `licence_policy`
+  `ARM_LENGTH_IMAGE_SBOMS` names the exceptions, and their flags aggregate rather than
+  listing one row per plugin — the isolation is recorded once, not re-litigated weekly.
 * **`allow` rows are counted, not listed.** `findings` carries flags, denials and the
   arm's-length components that are *expected* to appear. A report that lists all 1,400
   permissive packages is one nobody diffs, and the point of committing this is true
@@ -54,11 +62,12 @@ from pythonsrc.licence_policy import (  # noqa: E402  (path set above)
     FLAG,
     PROJECT_LICENCE,
     UNKNOWN,
+    arm_length_image,
     verdict,
     worst_severity,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: The files CI produces, and what each one is. `in_process` is the licensing question,
 #: not a description of the file: it decides whether strong copyleft in that tree is a
@@ -265,14 +274,24 @@ def _iter_source_files(licences_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
             }
         found.append((path, descriptor))
     for path in sorted((licences_dir / "sbom").glob("*.json")):
+        isolation = arm_length_image(path.stem)
         found.append(
             (
                 path,
                 {
-                    "label": f"SBOM — {path.stem}",
+                    "label": (
+                        f"SBOM — {path.stem} (arm's length)"
+                        if isolation
+                        else f"SBOM — {path.stem}"
+                    ),
                     "ecosystem": "image",
                     "tool": "syft",
                     "in_process": False,
+                    # `linked` is the question the per-row override below turns on: does
+                    # anything this project runs live inside this image? Defaulted True
+                    # so an unrecognised SBOM keeps the safe assumption.
+                    "linked": isolation is None,
+                    "isolation": isolation or "",
                 },
             )
         )
@@ -317,8 +336,12 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                 self_declared += 1
                 continue
             row_type = (row.get("type") or "").lower()
-            # An SBOM's own wheels are linked; its .debs are the platform underneath.
-            row_in_process = bool(descriptor["in_process"]) or row_type in LINKED_PACKAGE_TYPES
+            # An SBOM's own wheels are linked; its .debs are the platform underneath —
+            # but only for an image our code runs in. In a peer service every layer is
+            # arm's length, so `linked` gates the override rather than the type alone.
+            row_in_process = bool(descriptor["in_process"]) or (
+                descriptor.get("linked", True) and row_type in LINKED_PACKAGE_TYPES
+            )
             severity, classification, note = verdict(
                 package, row["licence"], in_process=row_in_process
             )
@@ -339,6 +362,10 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
             if descriptor["ecosystem"] == "image":
                 if row_type in OS_PACKAGE_TYPES and not row_in_process:
                     layer = "os"
+                elif not descriptor.get("linked", True):
+                    # A peer service's application packages. AGPL is what OctoPrint *is*;
+                    # the count moving is the signal, a row per plugin is not.
+                    layer = "service"
                 elif row_type in LINKED_PACKAGE_TYPES and classification == UNKNOWN:
                     layer = "unreadable"
 
@@ -376,6 +403,14 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                     "Distributing the image would put source-offer obligations on the "
                     "copyleft entries — see THIRD-PARTY-NOTICES.md."
                 )
+            elif layer == "service":
+                label = f"({bucket['count']} packages inside an arm's-length service)"
+                note = (
+                    (descriptor.get("isolation") or "")
+                    + " Not built here and not linked: this image is scanned so a change "
+                    "in what it ships is visible, not because its licences bind this "
+                    "project. A change in this count means the service image changed."
+                ).strip()
             else:
                 label = f"({bucket['count']} packages with no licence metadata)"
                 note = (
@@ -412,6 +447,8 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                 "ecosystem": descriptor["ecosystem"],
                 "tool": descriptor["tool"],
                 "in_process": bool(descriptor["in_process"]),
+                "linked": bool(descriptor.get("linked", True)),
+                "isolation": descriptor.get("isolation", ""),
                 "status": "ok" if rows else "empty",
                 "packages": len(rows) - self_declared,
                 "private_packages_skipped": self_declared,
@@ -596,11 +633,21 @@ def render_audit(report: dict[str, Any], audits_dir: Path, out_path: Path) -> st
     body += _delta_lines(digest, previous)
     body += ["", "## Findings", ""]
     body += _findings_table(report)
-    body += ["## Sources", "", "| File | Packages | Tool | In-process |", "|---|---|---|---|"]
+    # One "Linkage" column rather than a yes/no "In-process": an image SBOM is always
+    # `in_process: no` at the file level, which said nothing about the distinction that
+    # actually decides its verdicts — whether our code runs inside it.
+    body += ["## Sources", "", "| File | Packages | Tool | Linkage |", "|---|---|---|---|"]
     for source in report["sources"]:
+        if source["in_process"]:
+            linkage = "in-process"
+        elif not source.get("linked", True):
+            linkage = "arm's length"
+        elif source["ecosystem"] == "image":
+            linkage = "image (our code runs here)"
+        else:
+            linkage = "not linked into what ships"
         body.append(
-            f"| `{source['name']}` | {source['packages']} | {source['tool']} | "
-            f"{'yes' if source['in_process'] else 'no'} |"
+            f"| `{source['name']}` | {source['packages']} | {source['tool']} | {linkage} |"
         )
     body += [
         "",
