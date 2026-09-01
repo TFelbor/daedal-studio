@@ -33,6 +33,7 @@ An audit of the names in a requirements file could not have found either.
 | `node-dev.json` | The build toolchain (Vite, TypeScript, ESLint). Runs on our machines, not the user's. | `license-checker` |
 | `sbom/ds-*.json` | SBOMs of the built images: Python packages **and** OS packages. | `syft` (syft-json) |
 | `sbom/base-*.json` | SBOMs of the registry base images. Weekly. | `syft` (syft-json) |
+| `sbom/base-octoprint.json` | Same tool, but a **peer service**, not a base image — see below. | `syft` (syft-json) |
 
 `pip-licenses` runs **inside the built images**, not against a requirements file, because
 the requirements files are not what ships: `infra/docker/pipeline.Dockerfile` installs
@@ -42,6 +43,20 @@ else documents an environment nobody runs.
 
 The SBOMs exist for the same reason one layer down: **CuraEngine arrives as an apt
 package**, so no Python-level tool can see it, and it is AGPL-3.0.
+
+One scanned image is not ours. `base-*.json` is mostly the images our own images are
+*built on* — a wheel in `python:3.10-slim` is a wheel the api-server imports, so it is
+scored in-process like any other. `octoprint/octoprint` is the exception: it is a peer
+service the operators reach over HTTP and SockJS, so nothing inside it is linked into
+anything here. `licence_policy.ARM_LENGTH_IMAGE_SBOMS` names it, and adding a name there
+is a licensing decision — it must be justified in `THIRD-PARTY-NOTICES.md` first.
+
+Getting that wrong is what made every merge to `main` red for four days: the report
+overrode every `python`-typed SBOM row to in-process, so OctoPrint's own AGPL plugins
+scored as six § 13 denials against a tree this project never imports, `--fail-on deny`
+failed the job, and the one signal the gate exists to carry — a *new* copyleft package in
+something we link — arrived underneath six standing false positives. The flags for that
+image are aggregated now, the way the OS layer already was.
 
 ## Two deliberate gaps
 
