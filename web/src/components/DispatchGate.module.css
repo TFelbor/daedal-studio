@@ -26,7 +26,7 @@
 
 .headNote {
   font-size: 13.5px;
-  color: var(--ink-58);
+  color: var(--ink-soft);
 }
 
 .body {
@@ -68,7 +68,7 @@
 }
 
 .row dt {
-  color: var(--ink-42);
+  color: var(--ink-faint);
   white-space: nowrap;
 }
 
@@ -105,7 +105,7 @@
 
 .figureMax {
   font-size: 12px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   margin-left: 2px;
 }
 
@@ -117,7 +117,7 @@
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-top: 6px;
 }
 

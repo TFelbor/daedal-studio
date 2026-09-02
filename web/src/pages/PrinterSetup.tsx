@@ -36,7 +36,7 @@ const DEFAULT_PROFILES = [
 /** The four sections, in order. The index on the left is generated from this, so
  *  a section and its number can never disagree. */
 const SECTIONS = [
-  { id: 'settings-models', num: '01', title: 'AI models' },
+  { id: 'settings-models', num: '01', title: 'Spec engine' },
   { id: 'settings-printer', num: '02', title: 'Printer' },
   { id: 'settings-simulators', num: '03', title: 'Simulators' },
   { id: 'settings-developer', num: '04', title: 'Developer' },
@@ -205,7 +205,7 @@ export function PrinterSetup() {
 
     if (!hfSet && !skipViz) {
       setOverall('incomplete');
-      setOverallMessage('No HuggingFace token yet — Phase 1 cannot fetch the FLUX weights without one. Add it under AI models.');
+      setOverallMessage('No HuggingFace token yet — Phase 1 cannot fetch the FLUX weights without one. Add it under Spec engine.');
       return;
     }
 
@@ -476,15 +476,42 @@ export function PrinterSetup() {
             </div>
           )}
 
-          {/* ── 01 AI models ──────────────────────────────────────────────── */}
+          {/* ── 01 Spec engine ────────────────────────────────────────────── */}
           <section id={SECTIONS[0].id} className={styles.section}>
             <div className={styles.sectionHead}>
               <span className={styles.sectionNum}>{SECTIONS[0].num}</span>
               <h2 className="heading">{SECTIONS[0].title}</h2>
-              <span className={styles.sectionTag}>FLUX.2 · TRELLIS.2</span>
+              <span className={styles.sectionTag}>LLM · DIMENSION KB</span>
             </div>
 
             <div className={styles.sectionBody}>
+              {/* What this section will hold. There is nothing to configure yet —
+                  no LLM is called and no dimension KB is shipped — so it says that
+                  instead of offering a key field that writes to a setting nothing
+                  reads. An input that silently does nothing is worse than an
+                  absence: it looks configured. */}
+              <div className={styles.pendingBlock}>
+                <span className="label">Spec engine · not yet wired</span>
+                <p className="hint">
+                  The composer will take one LLM call per job to read words into a spec, and
+                  the compiler will size that spec against a dimension knowledge base of
+                  sleeve, card and dice measurements. Neither exists in this build — the
+                  parametric engine is roadmap §§0.1–7A. The model never produces geometry;
+                  it only reads words into numbers.
+                </p>
+              </div>
+
+              {/* Benched, not deleted. The generative path is off the critical path
+                  in the roadmap but it is still what every job in this build runs,
+                  so its credentials stay configurable and stay honestly labelled. */}
+              <div className={styles.pendingBlock}>
+                <span className="label">Generative branch · benched</span>
+                <p className="hint">
+                  Decorative lids and embossing, off the critical path — and, until the
+                  parametric engine lands, still what phases 01 and 02 actually run.
+                </p>
+              </div>
+
               <div className="field">
                 <div className={styles.fieldHead}>
                   <label className="field-label" htmlFor="hf-token">

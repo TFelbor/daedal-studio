@@ -14,6 +14,8 @@ import { MeshViewer } from '../components/MeshViewer';
 import { PrinterStateCard } from '../components/PrinterStateCard';
 import { ServicePlaceholder } from '../components/ServicePlaceholder';
 import { Blueprint, Marks } from '../components/Blueprint';
+import { SpecPanel } from '../components/SpecPanel';
+import { NO_SPEC_REASON, specFromJob } from '../organizer/spec';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
 import styles from './JobDetail.module.css';
@@ -408,6 +410,11 @@ export function JobDetail() {
           <div className={styles.mainCol}>
             <PhaseProgress jobId={job.job_id} />
 
+            <div className={styles.specBlock}>
+              <span className={`label ${styles.blockLabel}`}>Spec · what the part was built from</span>
+              <SpecPanel spec={specFromJob(job)} unavailableReason={NO_SPEC_REASON} />
+            </div>
+
             <div className={styles.figures}>
               <div className={styles.figure}>
                 <span className={`label ${styles.blockLabel}`}>Blueprint</span>
@@ -600,9 +607,11 @@ export function JobDetail() {
 
             {job.awaiting_verdict && (
               <Blueprint className={styles.panel}>
-                <span className={`label ${styles.blockLabel}`}>How did it come out?</span>
+                <span className={`label ${styles.blockLabel}`}>Does it fit?</span>
                 <p className={styles.verdictText}>
-                  The printer says it finished. Only you can say whether the part survived.
+                  The printer says it finished. Only you can say whether the part came out and
+                  holds what it was made for — that answer is the only ground truth here, and
+                  it is what a fit guarantee would have to be built from.
                 </p>
                 <div className={styles.verdictActions}>
                   <button
@@ -614,7 +623,7 @@ export function JobDetail() {
                     {verdictBusy === 'success' ? (
                       <Loader2 size={14} className="spin" strokeWidth={1.5} />
                     ) : null}
-                    Part is good
+                    Fits — it's good
                   </button>
                   <button
                     type="button"
@@ -625,7 +634,7 @@ export function JobDetail() {
                     {verdictBusy === 'failure' ? (
                       <Loader2 size={14} className="spin" strokeWidth={1.5} />
                     ) : null}
-                    It failed
+                    Doesn't fit / failed
                   </button>
                 </div>
                 {verdictError && (

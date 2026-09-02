@@ -29,7 +29,7 @@
 
 .panelMeta {
   font-size: 10.5px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 /* The live stage's own box, so the drawn states are reviewed at the size and on the
@@ -40,8 +40,8 @@
   height: 340px;
   overflow: hidden;
   background-color: var(--raised);
-  background-image: linear-gradient(rgba(242, 240, 237, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(242, 240, 237, 0.03) 1px, transparent 1px);
+  background-image: linear-gradient(var(--stage-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--stage-grid) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
@@ -53,7 +53,7 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   pointer-events: none;
 }
 
@@ -73,5 +73,5 @@
   max-width: 760px;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--ink-50);
+  color: var(--ink-mute);
 }

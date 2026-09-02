@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { cssToken, prefersReducedMotion } from '../theme';
+import { cssToken, prefersReducedMotion, accentAt, inkAt, onThemeChange } from '../theme';
 import styles from './DeadChannel.module.css';
 
 interface DeadChannelProps {
@@ -26,7 +26,12 @@ export function DeadChannel({ children, height = 120, className = '' }: DeadChan
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const accent = cssToken('--accent', '#eb8724');
+    // `let`, not `const`: the ground can move under an animating canvas now, and a
+    // surface that resolved its accent once goes on stroking the other theme's.
+    let accent = cssToken('--accent', '#43a38d');
+    const unsubscribeTheme = onThemeChange(() => {
+      accent = cssToken('--accent', '#43a38d');
+    });
     const reduced = prefersReducedMotion();
     let box = { w: 0, h: 0 };
     let raf = 0;
@@ -55,14 +60,14 @@ export function DeadChannel({ children, height = 120, className = '' }: DeadChan
 
       // Time graticule, then the baseline the trace would sit on.
       ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(242, 240, 237, 0.07)';
+      ctx.strokeStyle = inkAt(0.07);
       for (let x = 0; x < w; x += 22) {
         ctx.beginPath();
         ctx.moveTo(x + 0.5, 0);
         ctx.lineTo(x + 0.5, h);
         ctx.stroke();
       }
-      ctx.strokeStyle = 'rgba(242, 240, 237, 0.16)';
+      ctx.strokeStyle = inkAt(0.16);
       ctx.beginPath();
       ctx.moveTo(0, mid + 0.5);
       ctx.lineTo(w, mid + 0.5);
@@ -72,8 +77,8 @@ export function DeadChannel({ children, height = 120, className = '' }: DeadChan
       // reduced motion it parks mid-span rather than freezing at an arbitrary phase.
       const sx = reduced ? w * 0.5 : ((now / 22) % (w + 90)) - 45;
       const grad = ctx.createLinearGradient(sx - 70, 0, sx, 0);
-      grad.addColorStop(0, 'rgba(235, 135, 36, 0)');
-      grad.addColorStop(1, 'rgba(235, 135, 36, 0.5)');
+      grad.addColorStop(0, accentAt(0));
+      grad.addColorStop(1, accentAt(0.5));
       ctx.strokeStyle = grad;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -109,6 +114,7 @@ export function DeadChannel({ children, height = 120, className = '' }: DeadChan
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
+      unsubscribeTheme();
     };
   }, []);
 

@@ -29,7 +29,7 @@
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   white-space: nowrap;
 }
 
@@ -40,8 +40,8 @@
 }
 
 .swatchHotend { background: var(--accent); }
-.swatchBed { background: var(--ink-58); }
-.swatchZ { background: var(--ink-28); }
+.swatchBed { background: var(--ink-soft); }
+.swatchZ { background: var(--ink-trace); }
 
 /* Figure cells. `.plate` supplies the grid; these tighten it so five readings fit
    one row on a wide column and wrap cleanly on a narrow one. Doubled selectors so
@@ -75,7 +75,7 @@
   font-family: var(--font-body);
   font-size: 11.5px;
   letter-spacing: 0.04em;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-left: 5px;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .chart :global(.recharts-cartesian-axis-tick-value) {
-  fill: var(--ink-35);
+  fill: var(--ink-ghost);
   font-family: var(--font-mono);
   font-size: 10px;
 }
@@ -116,9 +116,9 @@
 }
 
 .seriesBed :global(.recharts-line-curve) {
-  stroke: var(--ink-58);
+  stroke: var(--ink-soft);
 }
 
 .seriesZ :global(.recharts-line-curve) {
-  stroke: var(--ink-28);
+  stroke: var(--ink-trace);
 }

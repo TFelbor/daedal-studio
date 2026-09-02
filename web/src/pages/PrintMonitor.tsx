@@ -196,7 +196,8 @@ export function PrintMonitor() {
             <h2 className={styles.emptyTitle}>Nothing is printing.</h2>
             <p className={`lede ${styles.emptyLede}`}>
               When a job reaches the operator phase, its temperatures, layer progress and
-              failure watch appear here.
+              failure watch appear here — for the whole print, not just the seconds the
+              pipeline took.
             </p>
             <Link to="/" className={`btn btn-primary blueprint marked-accent ${styles.cta}`}>
               <Marks />

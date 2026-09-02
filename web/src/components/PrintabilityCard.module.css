@@ -16,7 +16,7 @@
 
 .scoreMax {
   font-size: 12px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   margin-left: 2px;
 }
 
@@ -30,7 +30,7 @@
 /* An em dash in the score's own size and weight: the slot is never empty, because a
    panel with no number in it reads as a panel with no problem in it. */
 .scoreUnknown {
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 .chip,
@@ -41,7 +41,7 @@
   text-transform: uppercase;
   padding: 3px 7px;
   border: 1px solid var(--rule-strong);
-  color: var(--ink-50);
+  color: var(--ink-mute);
   white-space: nowrap;
 }
 
@@ -70,7 +70,7 @@
   align-items: center;
   gap: 10px;
   padding: 18px 0;
-  color: var(--ink-42);
+  color: var(--ink-faint);
 }
 
 .figures {
@@ -105,7 +105,7 @@
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-top: 4px;
 }
 
@@ -114,7 +114,7 @@
 .cellNote {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ink-28);
+  color: var(--ink-trace);
   margin-top: 3px;
 }
 
@@ -147,7 +147,7 @@
 
 .checkDetail {
   font-size: 12.5px;
-  color: var(--ink-50);
+  color: var(--ink-mute);
   overflow-wrap: anywhere;
 }
 
@@ -172,7 +172,7 @@
 }
 
 .statusSkipped {
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 /* What the panel has to say when it cannot say a score. Drawn as a plate rather than
@@ -192,7 +192,7 @@
 
 .noteBody {
   font-size: 13.5px;
-  color: var(--ink-50);
+  color: var(--ink-mute);
   margin-top: 6px;
 }
 
@@ -217,7 +217,7 @@
 .caveat {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   margin-top: 14px;
   max-width: 74ch;
 }

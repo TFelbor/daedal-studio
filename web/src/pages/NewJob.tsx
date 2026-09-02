@@ -16,6 +16,9 @@ import { DispatchGate } from '../components/DispatchGate';
 import { BlueprintGate } from '../components/BlueprintGate';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { PromptZoom } from '../components/PromptZoom';
+import { ArchetypeStrip } from '../components/ArchetypeStrip';
+import { FitsCheck } from '../components/FitsCheck';
+import { SpecPanel } from '../components/SpecPanel';
 import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
 import { createJob, fetchSizeHint, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
 import type { JobStatusResponse, SizeHint, TelemetrySample } from '../api/client';
@@ -23,6 +26,8 @@ import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
 import { closeSocket } from '../api/ws';
 import { useActivityFeed } from '../hooks/useActivityFeed';
+import { PIPELINE } from '../pipeline';
+import { NO_SPEC_REASON, specFromJob, type ArchetypeId } from '../organizer/spec';
 import styles from './NewJob.module.css';
 
 interface PhaseStatus {
@@ -61,19 +66,6 @@ const SIZE_PRESETS: { key: 'S' | 'M' | 'L'; mm: number }[] = [
 /** The preset the composer opens on. Not the pipeline's 50mm — see the comment at submit. */
 const DEFAULT_SIZE_PRESET = 'M';
 
-/**
- * The five phases, in the order they run, with the one line each needs to explain
- * itself before anything has happened yet. The numbering is structure: the pipeline
- * is genuinely ordered, and the same numbers key the .status protocol.
- */
-const PIPELINE = [
-  { phase: 1, name: 'Visualizer', blurb: 'Prompt becomes a clay-render blueprint image', tag: 'FLUX.2' },
-  { phase: 2, name: 'Sculptor', blurb: 'Blueprint reconstructed as a 3D geometry mesh', tag: 'TRELLIS.2' },
-  { phase: 3, name: 'Engineer', blurb: 'Watertight repair, scaled to the print bed', tag: '.OBJ / .STL' },
-  { phase: 4, name: 'Slicer', blurb: 'Wall thickness and overhangs inspected, then sliced', tag: 'G-CODE' },
-  { phase: 5, name: 'Operator', blurb: 'Streamed to OctoPrint, Klipper or Bambu Lab', tag: 'JOB' },
-];
-
 /** Lines held in memory. The full log is on disk; ProcessLog renders the tail. */
 const LOG_BUFFER = 800;
 
@@ -84,7 +76,7 @@ const TERMINAL_OUTCOMES = new Set(['success', 'awaiting_verdict', 'failure', 'ca
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 const STAGE_TABS = [
-  { id: 'blueprint', label: 'Blueprint', phase: 1 },
+  { id: 'spec', label: 'Spec', phase: 1 },
   { id: 'mesh', label: 'Mesh', phase: 3 },
   { id: 'slice', label: 'Slice', phase: 4 },
 ] as const;
@@ -183,6 +175,13 @@ function recallWatchedJob(): string | null {
 
 export function NewJob() {
   const [prompt, setPrompt] = useState('');
+  /**
+   * The archetype steer, or null for a free prompt.
+   *
+   * Held here rather than in the composer because it travels with the prompt to
+   * the composer phase; it is a hint about what is being asked for, not a mode.
+   */
+  const [archetype, setArchetype] = useState<ArchetypeId | null>(null);
   const [materialType, setMaterialType] = useState('PLA');
   const [materialBrand, setMaterialBrand] = useState('');
   const [materialColour, setMaterialColour] = useState('');
@@ -208,7 +207,7 @@ export function NewJob() {
   /** The pipeline's stdout, newest last. Fed by the socket's batched `log` messages. */
   const [logLines, setLogLines] = useState<string[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<StageTab>('blueprint');
+  const [activeTab, setActiveTab] = useState<StageTab>('spec');
   /** Ticks the elapsed figure. Presentation only — nothing is fetched on this timer. */
   const [now, setNow] = useState(() => Date.now());
   /** Whether the inline composer for the *next* job is open. */
@@ -563,7 +562,7 @@ export function NewJob() {
     }
     rememberWatchedJob(null);
     tabPinnedRef.current = false;
-    setActiveTab('blueprint');
+    setActiveTab('spec');
     setComposerOpen(false);
     setWsConnected(false);
     setSubmitError(null);
@@ -667,7 +666,7 @@ export function NewJob() {
       setTelemetrySamples([]);
       setCurrentJob(null);
       tabPinnedRef.current = false;
-      setActiveTab('blueprint');
+      setActiveTab('spec');
       setComposerOpen(false);
 
       setAttachedAt(Date.now());
@@ -748,16 +747,15 @@ export function NewJob() {
                 says where you are, and what a first-time user needs from this line is
                 that the thing they are about to trust with a printer is pre-beta. */}
             <div className={`eyebrow ${styles.heroEyebrow}`}>
-              <span className="label-accent">Pre-beta</span>
+              <span className="label-accent">Pre-beta · parametric engine</span>
             </div>
             <h1 className={`display-lg ${styles.hero}`}>
               What are we<br />making today?
             </h1>
             <p className={`lede ${styles.lede}`}>
-              Type the object the way you would describe it to someone: what it is, roughly how
-              big, what it needs to do. Everything after that is automatic — blueprint, geometry,
-              a printability check, then G-code. You can look it over before anything reaches the
-              printer.
+              Describe the cards, sleeves and dice it has to hold. Your words become a spec, the
+              spec becomes exact geometry — no guessing anywhere near a dimension, and nothing
+              prints until you approve the numbers.
             </p>
 
             <div className={styles.composeGroup}>
@@ -780,11 +778,19 @@ export function NewJob() {
               )}
 
               <form onSubmit={handleSubmit}>
+                <ArchetypeStrip
+                  value={archetype}
+                  onChange={(next) => {
+                    setArchetype(next);
+                    reportUi('archetype', next ?? 'cleared');
+                  }}
+                  disabled={!printerReady}
+                />
                 <Blueprint tone="accent" className={`field-frame ${styles.promptFrame}`}>
                   <textarea
                     id="job-prompt"
                     className={styles.promptInput}
-                    placeholder="A low poly planter box with a modern geometric design…"
+                    placeholder="A Commander deck box for 100 double-sleeved cards (Dragon Shield Perfect Fit + Matte), removable tray for 12 dice, magnetic snap lid."
                     aria-label="Describe the object to print"
                     value={prompt}
                     maxLength={MAX_PROMPT_CHARS}
@@ -975,6 +981,11 @@ export function NewJob() {
                   )}
                 </Blueprint>
 
+                {/* The fit verdict for what is being composed. Nothing computes one
+                    yet, so it states that rather than showing a hopeful tick — see
+                    FitsCheck. */}
+                <FitsCheck fits={null} unavailableReason={NO_SPEC_REASON} variant="badge" />
+
                 <PromptNotice className={styles.promptNotice} />
 
                 <div className={styles.submitRow}>
@@ -986,7 +997,7 @@ export function NewJob() {
                     disabled={!prompt.trim() || loading || !printerReady}
                   >
                     <Marks />
-                    {loading ? 'Starting…' : 'Generate & print'}
+                    {loading ? 'Starting…' : 'Compile & preview'}
                     {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                   </button>
                   <span className={styles.submitHint}>Enter to send · Shift + Enter for a new line</span>
@@ -1087,13 +1098,17 @@ export function NewJob() {
   const sliceFailed = currentJob?.slice_status === 'failed';
 
   const caption: { left: string; right: string } = {
-    blueprint: {
-      // A fixture run must not caption a bundled image as a render of this prompt. The
-      // `dev-` directory prefix and `used_reference_assets` kept fixture runs out of the
-      // dataset; this is the same honesty on the page a person is looking at.
+    spec: {
+      // Two things could be on this stage and they must not be confused for each
+      // other: a dimensioned spec (nothing produces one yet) and the phase-1 image
+      // (which is produced, by FLUX). The caption names whichever is actually
+      // there. A fixture run must not caption a bundled image as a render of this
+      // prompt either — the `dev-` directory prefix and `used_reference_assets`
+      // keep fixture runs out of the dataset, and this is the same honesty on the
+      // page a person is looking at.
       left: usedFixtures
         ? 'Reference blueprint — a fixture, not a render of this prompt'
-        : 'Blueprint drawn from the prompt',
+        : 'Phase 01 output — a blueprint image, not a dimensioned spec',
       right: currentJob?.blueprint_seed != null
         ? `seed ${currentJob.blueprint_seed}`
         : usedFixtures
@@ -1262,12 +1277,18 @@ export function NewJob() {
               role="tabpanel"
               aria-labelledby={`stage-tab-${activeTab}`}
             >
-              {activeTab === 'blueprint' && (
-                <BlueprintPreview
-                  jobId={jobId}
-                  status={phases[0]?.status ?? 'pending'}
-                  logLines={currentJob?.log_tail}
-                />
+              {activeTab === 'spec' && (
+                // The numbers the part is built from, when there are any. There are
+                // not yet, so the panel says so and shows the phase-1 artifact that
+                // does exist underneath — captioned as the image it is, not as a
+                // spec it is not.
+                <SpecPanel spec={specFromJob(currentJob)} unavailableReason={NO_SPEC_REASON}>
+                  <BlueprintPreview
+                    jobId={jobId}
+                    status={phases[0]?.status ?? 'pending'}
+                    logLines={currentJob?.log_tail}
+                  />
+                </SpecPanel>
               )}
               {activeTab === 'mesh' && (
                 <MeshViewer

@@ -38,7 +38,7 @@ const ROW: CSSProperties = {
   fontSize: '13.5px',
 };
 
-const KEY: CSSProperties = { color: 'var(--ink-50)' };
+const KEY: CSSProperties = { color: 'var(--ink-mute)' };
 
 export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }: JobControlPanelProps) {
   const [cancelling, setCancelling] = useState(false);

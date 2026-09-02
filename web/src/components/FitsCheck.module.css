@@ -1,0 +1,109 @@
+/* Two presentations of one verdict: a line under the composer, and a framed block
+   in the rail and at the spec gate. */
+
+.badge {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--rule);
+  padding: 14px 16px;
+}
+
+.pass {
+  border-color: var(--ok-line);
+}
+
+.fail {
+  border-color: var(--bad-line);
+  background: var(--bad-tint);
+}
+
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pass .verdict { color: var(--ok); }
+.fail .verdict { color: var(--bad); }
+
+.panel .verdict { font-size: 18px; }
+
+/* In the badge the verdict is a label beside the sum, not a heading over it. */
+.badge .verdict {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.11em;
+}
+
+.sum {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-mute);
+}
+
+.basis {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-ghost);
+}
+
+.remedy {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--bad-ink);
+}
+
+/* Nothing measured this. Dashed, like every other empty box in the app, so it
+   reads as absent rather than as a result. */
+.unavailable {
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px dashed var(--rule-strong);
+  background: none;
+  color: var(--ink-ghost);
+}
+
+.badge.unavailable {
+  padding: 10px 12px;
+}
+
+.unavailable svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.unavailableText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.unavailableHead {
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.unavailableBody {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-mute);
+}

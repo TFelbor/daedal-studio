@@ -1,0 +1,15 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  color: var(--ink-body);
+  transition: color var(--motion-quick) ease;
+}
+
+.toggle:hover {
+  color: var(--accent-ink);
+}

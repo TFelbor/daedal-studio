@@ -190,7 +190,7 @@ export function JobList() {
           </div>
           <div className={styles.statCell}>
             <div className={`plate-figure ${styles.figureOk}`}>{stats.completed}</div>
-            <div className="plate-label">Successful</div>
+            <div className="plate-label">Printed &amp; fit confirmed</div>
           </div>
           <div className={styles.statCell}>
             <div className={`plate-figure ${styles.figureBad}`}>{stats.failed}</div>
