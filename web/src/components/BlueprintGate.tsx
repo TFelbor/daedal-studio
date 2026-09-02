@@ -3,12 +3,23 @@ import { AlertTriangle, ArrowRight, RotateCcw } from 'lucide-react';
 import { decideBlueprint } from '../api/client';
 import type { BlueprintGateSubject } from '../api/client';
 import { Marks } from './Blueprint';
+import { SpecPanel } from './SpecPanel';
+import { NO_SPEC_REASON, type OrganizerSpec } from '../organizer/spec';
 import { reportUi } from '../api/activity';
 import styles from './BlueprintGate.module.css';
 
 interface BlueprintGateProps {
   jobId: string;
   subject: BlueprintGateSubject | null;
+  /**
+   * The compiled spec, when there is one.
+   *
+   * The gate is the same decision either way — a person looks at what will be
+   * built and says yes — but *what* they are looking at decides how it is
+   * titled. Nothing produces a spec yet, so this is null in every build today
+   * and the gate names the blueprint it is actually showing.
+   */
+  spec?: OrganizerSpec | null;
   /** Called once Phase 2 has been started, so the view can follow it. */
   onApproved: () => void;
   /** Called when the requester declines this blueprint. */
@@ -39,7 +50,7 @@ interface BlueprintGateProps {
  * replaced is not approving, and the server answers 409 — the same rule the dispatch
  * gate applies to a printer that is no longer the target.
  */
-export function BlueprintGate({ jobId, subject, onApproved, onRejected }: BlueprintGateProps) {
+export function BlueprintGate({ jobId, subject, spec = null, onApproved, onRejected }: BlueprintGateProps) {
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,13 +74,20 @@ export function BlueprintGate({ jobId, subject, onApproved, onRejected }: Bluepr
     <section className={`blueprint ${styles.gate}`} aria-labelledby="blueprint-gate-title">
       <Marks />
       <div className={styles.head}>
-        <h2 className="label-accent" id="blueprint-gate-title">Approve the blueprint</h2>
+        <h2 className="label-accent" id="blueprint-gate-title">
+          {spec ? 'Approve the spec · waiting on you' : 'Approve the blueprint · waiting on you'}
+        </h2>
         <p className={styles.blurb}>
-          Nothing has been reconstructed yet. This is the last step before the 3D model
-          is generated, which is the part that costs money and time. The print itself is
-          a single colour — what carries over from this image is the shape.
+          {spec
+            ? 'These are the numbers the part will be built from. Check the fit — nothing slices until you approve them.'
+            : 'Nothing has been reconstructed yet. This is the last step before the 3D model is generated, which is the part that costs money and time. The print itself is a single colour — what carries over from this image is the shape.'}
         </p>
       </div>
+
+      {/* The spec, when one exists. Today it never does, so this states the reason
+          rather than showing an empty table — and the blueprint below it stays the
+          thing being approved. */}
+      <SpecPanel spec={spec} unavailableReason={NO_SPEC_REASON} />
 
       {subject ? (
         <img className={styles.preview} src={subject.url} alt="The generated blueprint awaiting approval" />
@@ -92,7 +110,7 @@ export function BlueprintGate({ jobId, subject, onApproved, onRejected }: Bluepr
           disabled={busy !== null || !subject}
         >
           <Marks />
-          {busy === 'approve' ? 'Starting…' : 'Approve & build the model'}
+          {busy === 'approve' ? 'Starting…' : spec ? 'Approve & slice' : 'Approve & build the model'}
           {busy !== 'approve' && <ArrowRight size={15} strokeWidth={1.5} aria-hidden="true" />}
         </button>
         <button

@@ -7,7 +7,7 @@
   justify-content: space-between;
   gap: 20px;
   padding: 0 var(--gutter);
-  background: rgba(13, 13, 13, 0.92);
+  background: var(--nav-bg);
   border-bottom: 1px solid var(--rule);
   position: sticky;
   top: 0;
@@ -23,7 +23,16 @@
 }
 
 .brand {
-  display: block;
+  display: flex;
+  align-items: center;
+  flex: none;
+  color: var(--ink);
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  gap: 20px;
   flex: none;
 }
 
@@ -45,7 +54,7 @@
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: var(--ink-50);
+  color: var(--ink-mute);
   white-space: nowrap;
   transition: color 0.15s ease;
 }
@@ -68,8 +77,11 @@
   flex: none;
 }
 
-/* Model attribution. "Built with DINOv3" is a licence obligation, not branding —
-   see THIRD-PARTY-NOTICES.md — so this stays legible rather than receding. */
+/* The footer carries two different kinds of statement and they are set apart on
+   purpose. The trust line is what the product promises; the machine credits are
+   what its licences require ("Built with DINOv3" — see THIRD-PARTY-NOTICES.md).
+   Folding the obligation in among the promises makes it read as marketing, which
+   is exactly what an attribution requirement is not. */
 .attribution {
   display: flex;
   flex-wrap: wrap;
@@ -80,7 +92,14 @@
   background: var(--void);
   border-top: 1px solid var(--rule);
   font-size: 11.5px;
-  color: rgba(242, 240, 237, 0.32);
+  color: var(--ink-mute);
+}
+
+.attributionInner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .attributionCredits {
@@ -88,10 +107,23 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 14px;
+  color: var(--ink-soft);
+}
+
+/* One step back from the trust line: still legible, visibly a different register.
+   It does not go below `--ink-mute` — "Built with DINOv3" is an attribution the
+   DINOv3 licence requires be prominent, and prominent has a contrast floor. */
+.attributionMachines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--ink-mute);
 }
 
 .sep {
-  color: rgba(242, 240, 237, 0.16);
+  color: var(--rule-strong);
 }
 
 .plate {
@@ -112,5 +144,30 @@
 
   .navLinks {
     gap: 18px;
+  }
+
+  /* The mark alone below 720px. "Daedal Studio" is ~140px of a 375px bar, and
+     with it in place the four nav links were pushed out of their scroller
+     entirely while the engine pill came to rest on top of the logo. The mark is
+     still the link home and still carries the accessible name from the anchor. */
+  .brandWords {
+    display: none;
+  }
+
+  .navRight {
+    gap: 10px;
+  }
+
+  /* The dot stays — it is drawn by `.status::before` and carries the state colour. */
+  .engineLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }

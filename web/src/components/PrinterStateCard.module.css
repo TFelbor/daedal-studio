@@ -32,7 +32,7 @@
   font-family: var(--font-body);
   font-size: 12px;
   letter-spacing: 0.04em;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-left: 4px;
 }
 
@@ -133,7 +133,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--ink-80);
+  color: var(--ink-strong);
 }
 
 .controls {

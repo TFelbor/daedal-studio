@@ -16,6 +16,19 @@ path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. 
 engine (`pythonsrc/organizer/` — spec schema, archetypes, dimension KB) does not exist yet; do
 not treat generative-path tuning as roadmap work.
 
+**The UI has been moved onto the pivot's vocabulary ahead of the engine** (2026-09-02). The
+five phases now read **Composer · Compiler · Printability · Slicer · Operator** in the app,
+`web/src/pipeline.ts` is the single source for those names and blurbs, and the composer
+carries an archetype strip, a Fits Check and a spec panel. Phases 1–3 therefore *describe*
+the parametric pipeline while the backend still runs FLUX → TRELLIS.2 → repair; the comment
+at the top of `pipeline.ts` says so, and nothing in the telemetry columns changed
+(`blueprint_model` and `generation_model` still record what actually ran). The new panels are
+**shells with explicit empty states**, never placeholder numbers: `organizer/spec.ts` holds
+the types and `specFromJob` is the one seam to wire when the engine lands, and
+`NO_SPEC_REASON` is the single sentence every one of them shows meanwhile. A fits badge with
+no measurement behind it is the exact failure the Fits Check exists to prevent, and a
+screenshot of one outlives any caveat.
+
 The rest of this file documents the system as built. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
 
 **Phase 2 is the exception to "fully local".** TRELLIS.2-4B needs an NVIDIA GPU with ~24 GB of VRAM and four compiled CUDA extensions with no CPU kernels, so it cannot run in this project's amd64 CPU images or on Apple Silicon. It runs in-process on a CUDA host, in a GPU worker the rest of the pipeline reaches over HTTP, or on Pixazo's hosted endpoint (€0,32 per generation — the only option on a Mac). See **Sculptor** below.
@@ -1271,6 +1284,41 @@ All images are pinned to `linux/amd64` (CuraEngine is only available as amd64 ap
 ### Frontend (web/)
 
 React 19 + Vite 8 + TypeScript 6. Dependencies: `react-router-dom` (routing), `recharts` (telemetry charts), `three` + `@types/three` (3D mesh viewer). Vite dev server proxies `/jobs` and `/health` to `localhost:8000`. Production build goes to `web/dist/` which is copied into the API server Docker image.
+
+**There are two grounds now, and every colour is a token in both.** The palette is the
+marketing site's — teal `#43a38d` on `#2f3030` — and `[data-theme='light']` is a complete
+second sheet, not a filter. `theme.ts` owns the switch: an explicit stored choice always
+wins, and `prefers-color-scheme` is followed only while nothing is stored, because someone
+who has flipped the toggle must not be overruled at sunset. Three rules follow.
+
+- **The ink ladder is named by role, not by alpha** (`--ink-strong` … `--ink-ghost`, plus
+  `--ink-trace` below them). It was `--ink-80`/`--ink-58`/…; a name carrying a number is
+  wrong in one of the two themes the moment the second one exists, because the light sheet
+  expresses the ladder as *solid greys* rather than alphas. That is not a stylistic
+  preference: faded ink separates from a dark ground as the alpha drops and converges on a
+  light one, and the spec's light ladder measured **2.0:1** at the faint end — 51 elements
+  below AA, the whole footer among them. Both ladders are now solved for contrast against
+  the *stricter* of their two grounds (`--void` in light, `--ground` in dark, and they are
+  opposite because the void is darker in one and lighter in the other).
+- **`--accent` is a fill; `--accent-ink` is type.** #43a38d as text on the light ground is
+  2.21:1. Anything that sets a colour on a glyph uses `--accent-ink`, which is the same hue
+  walked down to 4.5:1 in light and nudged up to it in dark; borders, backgrounds and
+  registration marks keep `--accent`. The design system's own guidance says this — use a deep
+  ramp step for accent text, never the accent.
+- **The bottom two ladder steps are the orientation tier and are deliberately below AA.**
+  `--ink-faint` and `--ink-ghost` carry 10px uppercase tracked block labels ("PIPELINE",
+  "05 PHASES") at ~3.3–3.6:1 and are meant to recede; pushing them to 4.5 collapses them into
+  `--ink-mute` and flattens the hierarchy the whole board is built on. **Nothing that is a
+  sentence may use them** — prose goes on `--ink-mute` or above. The honest fix for the
+  residual is fewer 10px labels, not a flatter ramp.
+
+**A drawn surface must be told when the ground moves.** Canvas and WebGL resolve colours
+once, at the frame they draw, so `var(--ink)` cannot reach them. `theme.ts` exports
+`onThemeChange`, `inkAt(alpha)` and `accentAt(alpha)` for that, and `hooks/useTheme.ts`
+exposes the theme as React state for an effect dependency. `GCodeViewer` re-colours **in
+place** via the preview's setters rather than rebuilding — a rebuild tears down the WebGL
+context, re-downloads the G-code and snaps the camera back to the top — and `MeshViewer`
+holds refs to its scene and material for the same reason.
 
 Four layout rules are load-bearing enough to name, because breaking them is invisible in a
 diff and obvious on screen:

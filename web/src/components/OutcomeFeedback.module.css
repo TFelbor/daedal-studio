@@ -19,12 +19,12 @@
 }
 
 .header:hover {
-  background: rgba(242, 240, 237, 0.02);
+  background: var(--row-hover);
 }
 
 .headerIcon {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .headerText {
@@ -44,7 +44,7 @@
 
 .headerSub {
   font-size: 13px;
-  color: var(--ink-50);
+  color: var(--ink-mute);
 }
 
 .list {
@@ -84,7 +84,7 @@
 .meta {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 .actions {
@@ -102,7 +102,7 @@
   border: 1px solid var(--rule-strong);
   border-radius: 0;
   font-size: 13px;
-  color: var(--ink-80);
+  color: var(--ink-strong);
   transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -135,7 +135,7 @@
    quieter than the verdicts but not hidden. */
 .skip {
   border-color: var(--rule);
-  color: var(--ink-50);
+  color: var(--ink-mute);
 }
 
 .skip:hover:not(:disabled) {
@@ -162,7 +162,7 @@
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(242, 240, 237, 0.45);
+  color: var(--ink-ghost);
 }
 
 .thanks {
@@ -214,5 +214,5 @@
   padding-top: 12px;
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--ink-50);
+  color: var(--ink-mute);
 }

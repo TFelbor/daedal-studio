@@ -18,7 +18,7 @@
 .blurb {
   margin: 0;
   max-width: 68ch;
-  color: var(--ink-50);
+  color: var(--ink-mute);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -66,7 +66,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   font-size: 11px;
 }
 

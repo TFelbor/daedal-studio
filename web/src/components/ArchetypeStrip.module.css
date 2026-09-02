@@ -1,0 +1,35 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.legend {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-right: 4px;
+  flex: none;
+}
+
+.strip {
+  flex: 1;
+  max-width: 460px;
+  min-width: 260px;
+}
+
+.strip button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.strip button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

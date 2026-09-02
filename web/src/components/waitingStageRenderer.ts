@@ -1,4 +1,4 @@
-import { cssToken, prefersReducedMotion } from '../theme';
+import { accentAt, cssToken, inkAt, onThemeChange, prefersReducedMotion } from '../theme';
 
 export type WaitingKind = 'blueprint' | 'mesh' | 'slice';
 
@@ -38,6 +38,7 @@ export class WaitingStageRenderer {
   private raf = 0;
   private box: { w: number; h: number } = { w: 0, h: 0 };
   private observer: ResizeObserver | null = null;
+  private unsubscribeTheme: (() => void) | null = null;
   private refitScheduled = false;
   private drag: { x: number; y: number } | null = null;
   private onFirstDrag: () => void;
@@ -54,7 +55,7 @@ export class WaitingStageRenderer {
     this.canvas = canvas;
     this.kind = kind;
     this.onFirstDrag = onFirstDrag;
-    this.accent = cssToken('--accent', '#eb8724');
+    this.accent = cssToken('--accent', '#43a38d');
     this.reduced = prefersReducedMotion();
     this.mesh = buildStandIn();
   }
@@ -82,12 +83,21 @@ export class WaitingStageRenderer {
     this.canvas.addEventListener('pointerup', this.handleUp);
     this.canvas.addEventListener('pointercancel', this.handleUp);
 
+    // The accent was resolved once, at construction. A theme flip changes it, and
+    // this surface is animating — so it would go on stroking the old ground's
+    // accent until the component happened to remount.
+    this.unsubscribeTheme = onThemeChange(() => {
+      this.accent = cssToken('--accent', '#43a38d');
+    });
+
     this.raf = requestAnimationFrame(this.frame);
   }
 
   destroy() {
     cancelAnimationFrame(this.raf);
     this.observer?.disconnect();
+    this.unsubscribeTheme?.();
+    this.unsubscribeTheme = null;
     this.canvas.removeEventListener('pointerdown', this.handleDown);
     this.canvas.removeEventListener('pointermove', this.handleMove);
     this.canvas.removeEventListener('pointerup', this.handleUp);
@@ -269,7 +279,7 @@ export class WaitingStageRenderer {
     ctx.save();
     ctx.setLineDash([2, 5]);
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(242, 240, 237, 0.13)';
+    ctx.strokeStyle = inkAt(0.13);
     const ext: [Point, Point][] = [
       [P(-1, -1, 0), P(-1, -1, 1.5)],
       [P(1, 1, 0), P(1, 1, 1.5)],
@@ -283,7 +293,7 @@ export class WaitingStageRenderer {
     // head, so the leading edge glows without recolouring whole segments behind it.
     ctx.save();
     ctx.lineWidth = 1.25;
-    ctx.strokeStyle = 'rgba(242, 240, 237, 0.5)';
+    ctx.strokeStyle = inkAt(0.5);
     for (const [p, q] of segs) clipDraw(ctx, p, q, -1e5, sx);
     ctx.strokeStyle = this.accent;
     ctx.lineWidth = 1.4;
@@ -292,7 +302,7 @@ export class WaitingStageRenderer {
 
     // The head: a full-height rule with a crosshair on the drawing's centreline.
     ctx.save();
-    ctx.strokeStyle = 'rgba(235, 135, 36, 0.45)';
+    ctx.strokeStyle = accentAt(0.45);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(sx, 0);
@@ -311,7 +321,7 @@ export class WaitingStageRenderer {
     // Registration marks land on every corner the head has passed — the same
     // six-mark grammar the frames use, here as the drawing's own datum points.
     ctx.save();
-    ctx.strokeStyle = 'rgba(235, 135, 36, 0.7)';
+    ctx.strokeStyle = accentAt(0.7);
     ctx.lineWidth = 1;
     for (const c of corners) {
       for (const z of [0, 0.74]) {
@@ -381,7 +391,7 @@ export class WaitingStageRenderer {
       const fresh = p < 1 && i > eShown - 5;
       ctx.strokeStyle = fresh
         ? this.accent
-        : `rgba(242, 240, 237, ${(0.34 - depth * 0.13).toFixed(3)})`;
+        : inkAt(0.34 - depth * 0.13);
       ctx.beginPath();
       ctx.moveTo(a[0], a[1]);
       ctx.lineTo(b[0], b[1]);
@@ -393,7 +403,7 @@ export class WaitingStageRenderer {
     for (let i = 0; i < vShown; i++) {
       const q = proj[i];
       const front = q[2] < 0;
-      ctx.strokeStyle = front ? 'rgba(235, 135, 36, 0.9)' : 'rgba(235, 135, 36, 0.38)';
+      ctx.strokeStyle = front ? accentAt(0.9) : accentAt(0.38);
       cross(ctx, [q[0], q[1]], front ? 3.6 : 2.6);
     }
     ctx.restore();
@@ -402,7 +412,7 @@ export class WaitingStageRenderer {
     // the centring above already guarantees the pair fits, and a clamp would silently
     // reintroduce the asymmetry on a short stage.
     ctx.save();
-    ctx.strokeStyle = 'rgba(242, 240, 237, 0.09)';
+    ctx.strokeStyle = inkAt(0.09);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(cx, cy + BED_DROP * R, R * 0.8, R * 0.15, 0, 0, Math.PI * 2);
@@ -453,8 +463,8 @@ export class WaitingStageRenderer {
       const age = (whole - i) / SLICE_LAYERS;
       ctx.strokeStyle =
         i % 5 === 0
-          ? `rgba(242, 240, 237, ${(0.3 - age * 0.16).toFixed(3)})`
-          : `rgba(242, 240, 237, ${(0.16 - age * 0.09).toFixed(3)})`;
+          ? inkAt(0.3 - age * 0.16)
+          : inkAt(0.16 - age * 0.09);
       trace(ring(i / SLICE_LAYERS));
       ctx.stroke();
     }
@@ -465,7 +475,7 @@ export class WaitingStageRenderer {
     ctx.save();
     trace(top);
     ctx.clip();
-    ctx.strokeStyle = 'rgba(235, 135, 36, 0.35)';
+    ctx.strokeStyle = accentAt(0.35);
     ctx.lineWidth = 1;
     const dir = whole % 2 === 0 ? 1 : -1;
     for (let x = -R * 1.2; x < R * 1.2; x += 7) {

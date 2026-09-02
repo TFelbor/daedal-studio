@@ -3,6 +3,7 @@ import { WebGLPreview } from 'gcode-preview';
 import { Layers3, Maximize2, Move3d, RotateCcw, X } from 'lucide-react';
 import { cssToken } from '../theme';
 import { reportUi } from '../api/activity';
+import { useTheme } from '../hooks/useTheme';
 import styles from './GCodeViewer.module.css';
 
 /**
@@ -65,6 +66,7 @@ export function GCodeViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<WebGLPreview | null>(null);
+  const theme = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [maxLayer, setMaxLayer] = useState(0);
@@ -97,6 +99,28 @@ export function GCodeViewer({
     return { x: FALLBACK_VOLUME[0], y: FALLBACK_VOLUME[1], z: FALLBACK_VOLUME[2] };
   }, [buildVolumeMm]);
 
+  /**
+   * The viewer's colours, read live off the root.
+   *
+   * A separate function because they are needed twice — once at construction and
+   * again whenever the ground moves — and two copies of this list is how a
+   * toolpath ends up rendering in the other theme's accent.
+   */
+  const palette = useCallback(() => ({
+    backgroundColor: cssToken('--void', '#272828'),
+    // A gradient down the stack reads as depth without any lighting: the earliest
+    // layers recede, the newest sits forward. Same grammar as the slice waiting
+    // stage, where cooled layers fade.
+    extrusionColor: [
+      cssToken('--accent-press', '#388976'),
+      cssToken('--accent', '#43a38d'),
+      cssToken('--accent-hover', '#5bb29e'),
+    ],
+    topLayerColor: cssToken('--ink', '#dbdbdb'),
+    lastSegmentColor: cssToken('--run', '#5c9ce6'),
+    travelColor: cssToken('--run-line', 'rgba(92, 156, 230, 0.35)'),
+  }), []);
+
   // ── The renderer. Built once; everything else mutates it in place. ───────────
   useEffect(() => {
     if (!canvasRef.current || previewRef.current) return;
@@ -105,18 +129,7 @@ export function GCodeViewer({
       canvas: canvasRef.current,
       buildVolume: volume,
       initialCameraPosition: [-200, 320, 380],
-      backgroundColor: cssToken('--void', '#0d0d0d'),
-      // A gradient down the stack reads as depth without any lighting: the earliest
-      // layers recede, the newest sits forward. Same grammar as the slice waiting
-      // stage, where cooled layers fade.
-      extrusionColor: [
-        cssToken('--accent-press', '#c26f18'),
-        cssToken('--accent', '#eb8724'),
-        cssToken('--accent-hover', '#f7a24c'),
-      ],
-      topLayerColor: cssToken('--ink', '#f2f0ed'),
-      lastSegmentColor: cssToken('--run', '#5c9ce6'),
-      travelColor: 'rgba(92, 156, 230, 0.35)',
+      ...palette(),
       renderTravel: false,
       // Tubes, not lines: a 1px line cannot show that a wall is 0.4mm wide, and wall
       // width is most of what someone checks a preview for. Extrusion width comes
@@ -212,6 +225,16 @@ export function GCodeViewer({
       window.clearTimeout(timeoutId);
     };
   }, [jobId]);
+
+  // Re-colour when the ground moves. Setters plus a render, not a rebuild — the
+  // parsed G-code and the camera both live in the preview instance, and throwing
+  // it away would re-download the file and snap the view back to the top.
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    Object.assign(preview, palette());
+    preview.render();
+  }, [theme, palette]);
 
   /** Draw up to `index`, either as a stack or as that layer alone. */
   const draw = useCallback((index: number, isolateOne: boolean) => {

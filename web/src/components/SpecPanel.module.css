@@ -1,0 +1,91 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.archetype {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-ghost);
+}
+
+.unavailableTag {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.unavailableBody {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-mute);
+  max-width: 68ch;
+}
+
+.rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-sub);
+}
+
+.rowMain {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-size: 13.5px;
+}
+
+.rowLabel {
+  color: var(--ink-mute);
+}
+
+.valueEditable,
+.valueDerived {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+  min-width: 64px;
+}
+
+/* The field edge is the affordance: this number is an input, that one is a result. */
+.valueEditable {
+  border: 1px solid var(--field-line);
+  background: var(--field-bg);
+  padding: 3px 8px;
+}
+
+.valueDerived {
+  color: var(--ink-body);
+}
+
+.rowNote {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-ghost);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}

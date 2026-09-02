@@ -3,6 +3,7 @@ import { AlertTriangle, Check } from 'lucide-react';
 import { getJob } from '../api/client';
 import type { JobStatusResponse } from '../api/client';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
+import { PHASE_NAMES } from '../pipeline';
 import { BootMark } from './BootMark';
 import styles from './PhaseProgress.module.css';
 
@@ -13,9 +14,6 @@ export interface PipelinePhase {
   name: string;
   status: PipelinePhaseStatus;
 }
-
-/** The five phases, in the order the pipeline runs them. */
-const PHASE_NAMES = ['Visualizer', 'Sculptor', 'Engineer', 'Slicer', 'Operator'];
 
 const PHASE_STATUSES: PipelinePhaseStatus[] = ['pending', 'running', 'complete', 'error'];
 

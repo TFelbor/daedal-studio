@@ -12,7 +12,7 @@
   gap: 8px;
   margin-bottom: 22px;
   font-size: 12.5px;
-  color: var(--ink-50);
+  color: var(--ink-mute);
   transition: color 0.15s ease;
 }
 
@@ -43,7 +43,7 @@
 .jobId {
   font-family: var(--font-mono);
   font-size: 11.5px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   overflow-wrap: anywhere;
 }
 
@@ -160,7 +160,7 @@
   margin-top: 6px;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 .chartCaptionMid {
@@ -193,7 +193,7 @@
 }
 
 .recordKey {
-  color: var(--ink-50);
+  color: var(--ink-mute);
   flex: none;
 }
 
@@ -217,14 +217,14 @@
 .printerMeta {
   font-family: var(--font-mono);
   font-size: 11.5px;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-top: 2px;
 }
 
 .verdictText {
   font-size: 13.5px;
   line-height: 1.55;
-  color: var(--ink-58);
+  color: var(--ink-soft);
   margin-bottom: 14px;
 }
 
@@ -275,20 +275,20 @@
 .failureWhen {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   white-space: nowrap;
 }
 
 .failureMeta {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-top: 4px;
 }
 
 .failureNotes {
   font-size: 13px;
-  color: var(--ink-58);
+  color: var(--ink-soft);
   margin-top: 5px;
 }
 
@@ -315,4 +315,13 @@
   .figures {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The spec sits above the artifact figures: it is what the part was built from,
+   and the figures are what came out. */
+.specBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 26px;
 }

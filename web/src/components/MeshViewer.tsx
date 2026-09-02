@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from '../hooks/useTheme';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { cssToken, prefersReducedMotion } from '../theme';
@@ -54,6 +55,11 @@ function parseOBJ(text: string) {
 
 export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  // Held so the theme effect below can re-colour them without tearing the scene
+  // down — a rebuild would re-download the mesh and reset the orbit camera.
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -68,7 +74,8 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
     const currentMount = mountRef.current;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(token('--raised', '#1e1e1e'));
+    scene.background = new THREE.Color(token('--raised', '#343535'));
+    sceneRef.current = scene;
 
     const width = currentMount.clientWidth || 1;
     const height = currentMount.clientHeight || 1;
@@ -146,11 +153,12 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
           // Any metalness at all puts a specular sheen on a white surface that
           // reads as metal, which is not what will come off the bed.
           const material = new THREE.MeshStandardMaterial({
-            color: token('--ink', '#f2f0ed'),
+            color: token('--ink', '#dbdbdb'),
             roughness: 0.95,
             metalness: 0,
             flatShading: false,
           });
+          materialRef.current = material;
           mesh = new THREE.Mesh(geometry, material);
           scene.add(mesh);
 
@@ -182,6 +190,8 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
 
     return () => {
       isActive = false;
+      sceneRef.current = null;
+      materialRef.current = null;
       window.removeEventListener('resize', handleResize);
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       if (mesh) {
@@ -200,6 +210,14 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
       }
     };
   }, [jobId, isPhase3Complete]);
+
+  // The ground moved: repaint the scene and the plastic. The animation loop is
+  // already running, so setting the colours is the whole update.
+  useEffect(() => {
+    const background = sceneRef.current?.background;
+    if (background instanceof THREE.Color) background.set(token('--raised', '#343535'));
+    materialRef.current?.color.set(token('--ink', '#dbdbdb'));
+  }, [theme]);
 
   // A failed fetch is the one case that must not animate hopefully — the waiting
   // stage promises the mesh is on its way, and here it is not.

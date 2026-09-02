@@ -20,12 +20,12 @@ const TOOLTIP_SURFACE = {
 };
 
 const TOOLTIP_LABEL = {
-  color: 'var(--ink-42)',
+  color: 'var(--ink-faint)',
   marginBottom: '4px',
   letterSpacing: '0.06em',
 };
 
-const TOOLTIP_ITEM = { color: 'var(--ink-80)' };
+const TOOLTIP_ITEM = { color: 'var(--ink-strong)' };
 
 const format = (value: number | null | undefined, decimals: number) => {
   if (value == null || Number.isNaN(value)) return '—';

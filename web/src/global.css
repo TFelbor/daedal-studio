@@ -1,54 +1,111 @@
 /* Daedal Studio — the app in the language of the marketing site.
-   Near-black ground, one orange for actions, condensed display type over Barlow,
+   A warm-neutral ground, one teal for actions, condensed display type over Barlow,
    hairline rules and registration marks. Every colour, face and rule width below is
    a token: pages must not hard-code a hex.
 
-   This is a single-theme design. The ground is the identity, so there is no light
-   variant to fall back to — see .stitch.md. */
+   Two themes, not one. The dark ground is the default and the identity — the
+   overlapping gamer/maker/developer audience works in dark tools — but the
+   toggle is real and the light sheet is complete, because taking a viewer's
+   control away is its own kind of rudeness. Both sheets define *every* token
+   they change; a colour whose only definition sits inside the light block is a
+   colour the dark theme inherits by accident.
+
+   The ink ladder is named by role, not by alpha (`--ink-soft`, not `--ink-58`):
+   the alpha changes between the two themes — ink is light-on-dark in one and
+   dark-on-light in the other — so a name carrying a number would be wrong in
+   one of them the moment the light sheet exists. */
 
 :root {
   /* Ground — three steps, darkest at the page edge */
-  --void: #0d0d0d;
-  --ground: #171717;
-  --raised: #1e1e1e;
+  --void: #272828;
+  --ground: #2f3030;
+  --raised: #343535;
+  /* The barely-there fill that lifts a thumbnail or a cell off the ground. Not a
+     step of the ground ladder: it is an overlay, so it composites over whatever
+     it sits on and stays correct in both themes. */
+  --panel: rgba(255, 255, 255, 0.018);
 
   /* Ink, and the alpha ladder every muted text step comes from */
-  --ink: #f2f0ed;
-  --ink-80: rgba(242, 240, 237, 0.8);
-  --ink-58: rgba(242, 240, 237, 0.58);
-  --ink-50: rgba(242, 240, 237, 0.5);
-  --ink-42: rgba(242, 240, 237, 0.42);
-  --ink-35: rgba(242, 240, 237, 0.35);
-  --ink-28: rgba(242, 240, 237, 0.28);
+  --ink: #dbdbdb;
+  --ink-strong: rgba(219, 219, 219, 0.86);
+  --ink-body: rgba(219, 219, 219, 0.74);
+  --ink-soft: rgba(219, 219, 219, 0.67);
+  /* The ladder splits in two, and the split is the point.
+
+     `--ink-strong` down to `--ink-mute` carry prose — sentences someone reads —
+     so each is pinned to an alpha that clears 4.5:1 against `--ground`, the
+     lighter and therefore stricter of the two dark grounds. (`--void` is darker,
+     so anything passing here passes there too.)
+
+     `--ink-faint` and `--ink-ghost` are the orientation tier: 10px uppercase
+     tracked labels that name a block — "PIPELINE", "05 PHASES" — and are meant to
+     recede. They sit at roughly 3.3–3.6:1 and do not meet AA for small text. That
+     is deliberate and it is the design's, not an oversight: pushing them to 4.5
+     collapses them into `--ink-mute` and the hierarchy the whole board is built
+     on goes flat. It is also pre-existing — the previous single-theme ladder
+     bottomed out at 0.28. The real fix is fewer 10px labels, not a flatter ramp,
+     and until then nothing that is actually a sentence may use these two steps. */
+  --ink-mute: rgba(219, 219, 219, 0.61);
+  --ink-faint: rgba(219, 219, 219, 0.5);
+  --ink-ghost: rgba(219, 219, 219, 0.46);
+  /* Below ghost: registration marks and the dashed edge of an empty box. Present,
+     not read. */
+  --ink-trace: rgba(219, 219, 219, 0.28);
 
   /* Action. The only saturated colour that is ever clickable. */
-  --accent: #eb8724;
-  --accent-press: #c26f18;
-  --accent-hover: #f7a24c;
-  /* Ink for text sitting *on* the accent fill — near-black, not the page ground,
-     so the filled button keeps its contrast against its own colour. */
-  --on-accent: #141414;
-  --accent-tint: rgba(235, 135, 36, 0.1);
-  --accent-line: rgba(235, 135, 36, 0.45);
-  --accent-mark: rgba(235, 135, 36, 0.7);
+  --accent: #43a38d;
+  /* The accent as *text*. On the dark ground it is the accent itself; the light
+     sheet overrides it with a darker step, because #43a38d on paper is 2.21:1.
+     Anything setting a colour on type uses this; fills and borders use --accent. */
+  --accent-ink: #44a790;
+  --accent-press: #388976;
+  --accent-hover: #5bb29e;
+  /* Ink for text sitting *on* the accent fill — a near-black tuned to the teal,
+     not the page ground, so the filled button keeps its contrast against its own
+     colour. */
+  --on-accent: #16221f;
+  --accent-tint: rgba(67, 163, 141, 0.08);
+  --accent-line: rgba(67, 163, 141, 0.5);
+  --accent-mark: rgba(67, 163, 141, 0.8);
+  --accent-select: rgba(67, 163, 141, 0.3);
 
   /* Status only — never used for actions, so a colour always means state */
   --ok: #4fae7f;
   --run: #5c9ce6;
-  --bad: #d9564f;
+  --bad: #e17973;
   --bad-ink: #e0837c;
   --ok-line: rgba(79, 174, 127, 0.4);
+  --ok-tint: rgba(79, 174, 127, 0.08);
   --run-line: rgba(92, 156, 230, 0.35);
+  --run-mark: rgba(92, 156, 230, 0.6);
   --bad-line: rgba(217, 86, 79, 0.45);
   --bad-tint: rgba(217, 86, 79, 0.07);
   --run-tint: rgba(92, 156, 230, 0.04);
 
   /* Rules. Four weights, in descending emphasis. */
-  --rule-strong: rgba(242, 240, 237, 0.2);
-  --rule: rgba(242, 240, 237, 0.13);
-  --rule-row: rgba(242, 240, 237, 0.1);
-  --rule-sub: rgba(242, 240, 237, 0.08);
-  --field-line: rgba(242, 240, 237, 0.18);
+  --rule-strong: rgba(255, 255, 255, 0.16);
+  --rule: rgba(255, 255, 255, 0.12);
+  --rule-row: rgba(255, 255, 255, 0.09);
+  --rule-sub: rgba(255, 255, 255, 0.07);
+
+  /* Fields. The sunken ground a control sits in, and its edge. */
+  --field-line: rgba(255, 255, 255, 0.2);
+  --field-bg: rgba(255, 255, 255, 0.045);
+  --field-bg-deep: rgba(255, 255, 255, 0.028);
+  /* A focused field opens further rather than brighter — the frame carries the
+     accent, the ground just gets out of the way. */
+  --field-bg-focus: rgba(255, 255, 255, 0.07);
+  --field-placeholder: rgba(219, 219, 219, 0.6);
+  /* The dim behind a modal. Shallow on purpose: the page under PromptZoom is
+     still the thing being edited. */
+  --scrim: rgba(20, 21, 21, 0.62);
+
+  /* The two drawn grids: the page surface, and the darker stage a mesh or a
+     toolpath is rendered on. */
+  --grid-line: rgba(255, 255, 255, 0.035);
+  --stage-grid: rgba(255, 255, 255, 0.045);
+  --nav-bg: rgba(47, 48, 48, 0.86);
+  --row-hover: rgba(67, 163, 141, 0.08);
 
   --font-heading: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
   --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -77,6 +134,96 @@
   color-scheme: dark;
 }
 
+/* The light sheet. It redefines only what changes, but it changes every token
+   whose *role* inverts — ink goes dark-on-light, so the whole ladder is restated
+   rather than reused at a different alpha. The accent hex is deliberately the
+   same in both: it is the brand, and it clears 3:1 on either ground. */
+:root[data-theme='light'] {
+  --void: #d2d2d2;
+  --ground: #dbdbdb;
+  --raised: #d6d6d6;
+  --panel: rgba(71, 71, 71, 0.03);
+
+  /* Solid greys, not alphas — and this is the one place the two sheets are built
+     differently on purpose.
+
+     Faded ink works on the dark ground because light-on-dark keeps separating as
+     the alpha drops. On paper it does the opposite: the ladder runs *toward* the
+     background, so the muted steps converge on it. The spec's alpha ladder
+     (.9 … .45 of #474747 on #dbdbdb) measured 2.0:1 at the faint end — 51
+     elements below AA, including the whole footer and every micro-label.
+
+     These are solved for contrast instead: every step that carries text clears
+     4.5:1 against `--void`, the *darker* of the two light grounds — the footer and
+     the nav sit on it, so solving against `--ground` alone left them short — and
+     `--ink-trace` is the only step that does not, because
+     it is the only one that never carries text — registration marks and the
+     dashed edge of an empty box. The ladder is compressed compared with the dark
+     sheet's, which is simply what a light ground affords; stretching it back out
+     means picking a lighter ground, not fainter ink. */
+  --ink: #2d2d2d;
+  --ink-strong: #3a3a3a;
+  --ink-body: #434343;
+  --ink-soft: #4c4c4c;
+  --ink-mute: #545454;
+  --ink-faint: #595959;
+  --ink-ghost: #5a5a5a;
+  --ink-trace: #868686;
+
+  /* The accent splits in two on paper. #43a38d is the brand and stays the *fill*
+     — a solid button, a tinted cell — where the ink on top of it carries the
+     contrast. As *text* it measures 2.21:1 on this ground, so anything set in the
+     accent (a kicker, a phase number, a link) takes `--accent-ink` instead, which
+     is the same hue walked down to 4.5:1. The system's own guidance says this:
+     use a deep ramp step for accent text, never the accent itself.
+     Hover goes darker here, not lighter — it has to keep separating from paper. */
+  --accent-ink: #296457;
+  --accent-hover: #3c9280;
+  --accent-press: #2f7266;
+  --accent-tint: rgba(67, 163, 141, 0.1);
+  --accent-select: rgba(67, 163, 141, 0.25);
+  /* Rules and registration marks are chrome, not text: 3:1, from the darker step
+     so they stay visible against paper. */
+  --accent-line: rgba(41, 100, 87, 0.55);
+  --accent-mark: rgba(41, 100, 87, 0.85);
+
+  /* The status colours are darkened rather than reused: #4fae7f on #dbdbdb is
+     under 2:1, so the dark-theme green would read as a tint, not a verdict. These
+     are each walked down their own hue to 4.5:1 — a status word is 11px text, and
+     "Failure" that cannot be read is not a status. */
+  --ok: #2e654a;
+  --run: #195aa6;
+  --bad: #aa2b25;
+  --bad-ink: #8f3b34;
+  --ok-line: rgba(55, 131, 95, 0.45);
+  --ok-tint: rgba(55, 131, 95, 0.09);
+  --run-line: rgba(61, 120, 186, 0.4);
+  --run-mark: rgba(61, 120, 186, 0.6);
+  --bad-line: rgba(192, 72, 64, 0.45);
+  --bad-tint: rgba(192, 72, 64, 0.06);
+  --run-tint: rgba(61, 120, 186, 0.05);
+
+  --rule-strong: rgba(71, 71, 71, 0.35);
+  --rule: rgba(71, 71, 71, 0.25);
+  --rule-row: rgba(71, 71, 71, 0.18);
+  --rule-sub: rgba(71, 71, 71, 0.14);
+
+  --field-line: rgba(71, 71, 71, 0.32);
+  --field-bg: rgba(71, 71, 71, 0.05);
+  --field-bg-deep: rgba(71, 71, 71, 0.03);
+  --field-bg-focus: rgba(71, 71, 71, 0.08);
+  /* Solid, like the rest of the light ladder: a placeholder is text someone has to
+     read before they can decide whether to replace it. */
+  --field-placeholder: #5a5a5a;
+  --scrim: rgba(160, 160, 160, 0.62);
+
+  --grid-line: rgba(71, 71, 71, 0.07);
+  --stage-grid: rgba(71, 71, 71, 0.09);
+  --nav-bg: rgba(219, 219, 219, 0.86);
+  --row-hover: rgba(67, 163, 141, 0.08);
+
+  color-scheme: light;
+}
 * {
   box-sizing: border-box;
 }
@@ -123,7 +270,7 @@ button {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-ink);
   text-decoration: none;
 }
 
@@ -137,7 +284,7 @@ a:hover {
 }
 
 ::selection {
-  background: rgba(235, 135, 36, 0.28);
+  background: var(--accent-select);
 }
 
 h1,
@@ -171,8 +318,8 @@ p {
   /* Anchors the pointer-trail layer to the same box the grid is drawn on. */
   position: relative;
   background-color: var(--ground);
-  background-image: linear-gradient(rgba(242, 240, 237, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(242, 240, 237, 0.022) 1px, transparent 1px);
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: var(--module) var(--module);
 }
 
@@ -235,33 +382,33 @@ p {
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--ink-42);
+  color: var(--ink-faint);
 }
 
 .label-tight {
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
 }
 
 .label-accent {
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .mono {
   font-family: var(--font-mono);
   font-size: 11.5px;
-  color: var(--ink-42);
+  color: var(--ink-faint);
 }
 
 .lede {
   font-size: 15.5px;
   line-height: 1.62;
-  color: var(--ink-58);
+  color: var(--ink-soft);
 }
 
 /* The accent rule + kicker that opens a page or a hero block. */
@@ -305,7 +452,7 @@ p {
   position: absolute;
   width: 7px;
   height: 7px;
-  color: var(--ink-28);
+  color: var(--ink-trace);
   pointer-events: none;
 }
 
@@ -358,7 +505,7 @@ p {
   border-color: var(--field-line);
   /* The sunken ground `.input`/`.textarea` sit on: the void at half alpha. Held here
      rather than on each field so the two prompt frames cannot drift apart. */
-  background: rgba(13, 13, 13, 0.5);
+  background: var(--field-bg);
   transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
@@ -374,11 +521,11 @@ p {
 
 .blueprint.field-frame:focus-within {
   border-color: var(--accent-line);
-  background: rgba(13, 13, 13, 0.72);
+  background: var(--field-bg-focus);
 }
 
 .blueprint.field-frame:focus-within > .corner {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .blueprint.field-frame:focus-within > .tl { left: -2px; top: -2px; }
@@ -423,7 +570,7 @@ p {
 
 .btn-secondary {
   border-color: var(--rule-strong);
-  color: var(--ink-80);
+  color: var(--ink-strong);
   font-family: var(--font-body);
   font-weight: 400;
   font-size: 13.5px;
@@ -432,7 +579,7 @@ p {
 
 .btn-secondary:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .btn-danger {
@@ -499,7 +646,7 @@ p {
 .status-ok { color: var(--ok); }
 .status-run { color: var(--run); }
 .status-bad { color: var(--bad); }
-.status-off { color: var(--ink-35); }
+.status-off { color: var(--ink-mute); }
 
 .status-run::before {
   animation: ds-pulse 1.6s infinite;
@@ -559,7 +706,7 @@ p {
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(242, 240, 237, 0.45);
+  color: var(--ink-ghost);
 }
 
 .input,
@@ -568,7 +715,7 @@ p {
   width: 100%;
   border: 1px solid var(--field-line);
   border-radius: 0;
-  background: rgba(13, 13, 13, 0.5);
+  background: var(--field-bg);
   color: var(--ink);
   padding: 12px 14px;
   font-family: var(--font-mono);
@@ -585,7 +732,7 @@ p {
 
 .input::placeholder,
 .textarea::placeholder {
-  color: rgba(242, 240, 237, 0.32);
+  color: var(--field-placeholder);
 }
 
 .input:focus,
@@ -597,13 +744,15 @@ p {
 
 .hint {
   font-size: 12.5px;
-  color: rgba(242, 240, 237, 0.4);
+  /* `--ink-mute`, not `--ink-ghost`: a hint is a sentence, and the two steps below
+     mute are the orientation tier reserved for 10px block labels. */
+  color: var(--ink-mute);
 }
 
 /* Segmented control — equal cells divided by hairlines, no radius. */
 .seg {
   display: flex;
-  border: 1px solid rgba(242, 240, 237, 0.14);
+  border: 1px solid var(--rule);
 }
 
 .seg > *:not(.corner) {
@@ -613,8 +762,8 @@ p {
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(242, 240, 237, 0.45);
-  border-left: 1px solid rgba(242, 240, 237, 0.14);
+  color: var(--ink-ghost);
+  border-left: 1px solid var(--rule);
   background: none;
   transition: color 0.15s ease, background-color 0.15s ease;
 }
@@ -629,7 +778,7 @@ p {
 
 .seg > .is-active {
   background: var(--accent-tint);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ── Notices ──────────────────────────────────────────────────────────────── */
@@ -686,7 +835,7 @@ p {
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   margin-top: 10px;
 }
 
@@ -700,7 +849,7 @@ p {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(242, 240, 237, 0.4);
+  color: var(--ink-ghost);
 }
 
 .row {
@@ -711,7 +860,7 @@ p {
 }
 
 .row-link:hover {
-  background: rgba(242, 240, 237, 0.02);
+  background: var(--row-hover);
 }
 
 /* ── Numbered phase rows ──────────────────────────────────────────────────────
@@ -731,7 +880,7 @@ p {
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 16px;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -740,7 +889,7 @@ p {
 .phase-num { transition: color var(--motion-move) var(--motion-ease); }
 .phase-num-done { color: var(--ok); }
 .phase-num-run { color: var(--run); }
-.phase-num-idle { color: rgba(242, 240, 237, 0.3); }
+.phase-num-idle { color: var(--ink-trace); }
 
 @media (prefers-reduced-motion: reduce) {
   .phase-num { transition: none; }
@@ -753,7 +902,7 @@ p {
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.85;
-  color: var(--ink-42);
+  color: var(--ink-faint);
   white-space: pre-wrap;
   max-height: 260px;
   overflow-y: auto;
@@ -767,10 +916,10 @@ p {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px dashed rgba(242, 240, 237, 0.14);
+  border: 1px dashed var(--rule);
   padding: 26px;
   font-size: 12px;
-  color: var(--ink-35);
+  color: var(--ink-ghost);
   text-align: center;
 }
 
