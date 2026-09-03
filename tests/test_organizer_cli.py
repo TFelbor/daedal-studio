@@ -61,3 +61,16 @@ def test_measure_fails_a_mesh_that_is_not_the_spec(tmp_path, capsys):
     wrong = tmp_path / "cube.stl"
     trimesh.creation.box(extents=[10, 10, 10]).export(str(wrong))
     assert main(["measure", str(spec_path), str(wrong)]) == 1
+
+
+def test_measure_can_write_the_dimension_report_beside_the_table(tmp_path, capsys):
+    from pythonsrc.organizer.archetypes import example_spec
+    spec_path = dump_spec(example_spec("deck_box"), tmp_path / "deck.json")
+    out = tmp_path / "deck.stl"
+    assert main(["compile", str(spec_path), "--out", str(out)]) == 0
+    report = tmp_path / "dimension_report.json"
+    assert main(["measure", str(spec_path), str(out), "--report", str(report)]) == 0
+    doc = json.loads(report.read_text())
+    assert doc["within_tolerance"] is True
+    assert doc["features_checked"] == 19
+    assert "cavity_width_mm" in doc["features"]

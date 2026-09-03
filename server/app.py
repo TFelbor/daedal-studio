@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -37,6 +37,10 @@ from pythonsrc.operators import PrinterFactory
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
 from pythonsrc.size_hint import parse_size_hint
 from pythonsrc.ip_screen import screen_prompt
+# The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
+# or manifold3d, which is what lets the api-server image validate a spec without the
+# kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
+from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec
 import httpx
 from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
@@ -607,8 +611,54 @@ class JobRequest(BaseModel):
     scale_axis: Optional[str] = Field(None, pattern="^(height|longest)$")
     # Whether the person typed the size or accepted a suggestion parsed out of their
     # prompt. Only the client knows, so only the client can say — but "default" is
-    # not the client's to claim: the server writes that itself when no size arrived.
+    # not the client's to claim: the server writes that itself when no size arrived,
+    # and "spec" when a spec did (below).
     size_source: Optional[str] = Field(None, pattern="^(user|prompt_hint)$")
+    # The parametric path. An organizer spec (`pythonsrc/organizer/spec.py`) as JSON;
+    # the pipeline compiles it in place of Phases 1–2 and asserts its dimensions after
+    # Phase 3. Validated on the model with the stdlib-only schema, so a bad spec is a
+    # 422 listing every problem and no row is ever written for it.
+    spec: Optional[Dict[str, Any]] = None
+    # Where `POST /jobs` wrote the spec, as the *container* sees it — the
+    # `blueprint_path` precedent. Server-populated; a client value is overwritten.
+    spec_path: Optional[str] = None
+
+    @field_validator("spec")
+    @classmethod
+    def _spec_is_valid(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Run the schema, and make its problem list the 422 detail.
+
+        Only the schema: the archetype's own rules (`deck_box.validate`) need the
+        kernel, which the api-server image does not have, so those refusals arrive
+        as a failed Phase 2. What the schema refuses — unknown keys, a bad archetype
+        name, a negative millimetre — must not become a job.
+        """
+        if value is None:
+            return None
+        try:
+            OrganizerSpec.from_dict(value)
+        except SpecError as exc:
+            raise ValueError("invalid spec: " + "; ".join(exc.problems)) from None
+        return value
+
+    @model_validator(mode="after")
+    def _spec_decides_the_size(self) -> "JobRequest":
+        """A spec and a requested size are two deciders for one dimension.
+
+        `size_source` exists so the row can say who chose the size; a request naming
+        both would make it lie whichever way it answered. Refuse the combination.
+        """
+        if self.spec is not None:
+            named = [
+                name for name in ("target_mm", "scale_axis", "size_source")
+                if getattr(self, name) is not None
+            ]
+            if named:
+                raise ValueError(
+                    f"a spec decides every dimension; {', '.join(named)} cannot be "
+                    "combined with spec"
+                )
+        return self
 
 
 class OutcomeRequest(BaseModel):
@@ -683,7 +733,7 @@ class JobStatusResponse(BaseModel):
     #: the request from this row, so a size that is not here silently resets to the
     #: pipeline default on every regenerate and misattributes the change to the model.
     requested_size_mm: Optional[float] = None
-    #: "default" | "user" | "prompt_hint". See `VALID_SIZE_SOURCES`.
+    #: "default" | "user" | "prompt_hint" | "spec". See `VALID_SIZE_SOURCES`.
     size_source: Optional[str] = None
     #: "height" | "longest" — which extent `requested_size_mm` described.
     requested_scale_axis: Optional[str] = None
@@ -1243,6 +1293,21 @@ def _attach_job_telemetry(job_id: str, firmware: str, base_url: str, api_key) ->
         )
 
 
+def _phase_skips(request: JobRequest) -> tuple[bool, bool]:
+    """Whether Phases 1 and 2 are skipped for this request: `(skip_viz, skip_sculpt)`.
+
+    A spec request skips both regardless of the request's own flags or the config
+    store: the compiler *is* its Phase 2, there is no image for a Phase 1 to make, and
+    — because the blueprint gate arms exactly when Phase 1 runs — a spec job is never
+    parked for an approval of an image that does not exist.
+    """
+    if request.spec_path or request.spec is not None:
+        return True, True
+    skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
+    skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+    return bool(skip_viz), bool(skip_sculpt)
+
+
 def _pipeline_args(
     request: JobRequest,
     *,
@@ -1269,7 +1334,13 @@ def _pipeline_args(
     """
     args: List[str] = []
 
-    if skip_viz:
+    if request.spec_path:
+        # The parametric path. `--spec` implies the skip flags and `--no-scale` in the
+        # pipeline itself, and it must *not* be handed `--blueprint`: a spec run has no
+        # image, and the shared path holds whichever job's render was written last —
+        # snapshotting it would record that job's hash as this one's Phase 1 provenance.
+        args.extend(["--spec", request.spec_path])
+    elif skip_viz:
         # `blueprint_path` was declared on `JobRequest` and forwarded nowhere, which is
         # what let the approval gate approve one image and reconstruct another: the
         # continuation was launched against the flat input path, which belongs to no
@@ -1281,7 +1352,7 @@ def _pipeline_args(
             "--blueprint",
             request.blueprint_path or "/app/data/inputs/blueprint.png",
         ])
-    if skip_sculpt:
+    if skip_sculpt and not request.spec_path:
         args.append("--skip-sculptor")
 
     if profile:
@@ -1389,8 +1460,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     
     strategy = get_resolved_strategy()
     
-    skip_viz = request.skip_visualizer or config_store.get("SKIP_VISUALIZER") == "true"
-    skip_sculpt = request.skip_sculptor or config_store.get("SKIP_SCULPTOR") == "true"
+    skip_viz, skip_sculpt = _phase_skips(request)
     # Phase 1 writes one blueprint per job, not one per machine.
     # `data/inputs/blueprint.png` is a single filename shared by every run, and Phase 1
     # overwrites it in place — whether it runs natively on this host or inside the
@@ -1569,17 +1639,22 @@ async def _run_pipeline(job_id: str, request: JobRequest):
 
                 clean_args = _strip_phase1_args(pipeline_args)
 
+                # A spec run has no image: `--spec` implies the skip, and handing it the
+                # blueprint path would snapshot another job's render as its provenance.
+                phase1_flags = [] if request.spec_path else [
+                    "--skip-visualizer",
+                    # The approved snapshot when this is a gate continuation, else this
+                    # job's own per-job render — never the shared path, which belongs to
+                    # whichever run wrote it last.
+                    "--blueprint", request.blueprint_path or blueprint_container_path,
+                ]
                 cmd = [
                     "docker", "compose", "-f", "infra/docker-compose.yml",
                     "run", "--rm"
                 ] + docker_env_args + [
                     "pipeline-runner",
                     "python", "pythonsrc/pipeline.py", request.prompt,
-                    "--skip-visualizer",
-                    # The approved snapshot when this is a gate continuation, else this
-                    # job's own per-job render — never the shared path, which belongs to
-                    # whichever run wrote it last.
-                    "--blueprint", request.blueprint_path or blueprint_container_path,
+                    *phase1_flags,
                     "--job-id", job_id
                 ] + _strip_stop_after(clean_args)
             elif strategy == "nvidia_docker":
@@ -1797,6 +1872,15 @@ async def create_job(request: JobRequest):
 
     process_params, nozzle_diameter_mm = _profile_snapshot(profile_path)
 
+    if request.spec is not None:
+        # The spec is the job's input the way a blueprint is: written into the job's own
+        # directory, which nothing else writes, in canonical form so the file on disk
+        # hashes to the `spec_sha256` Phase 2 records. `spec_path` is the container's
+        # view of it and rides in `request_params` with everything else.
+        spec_rel = Path("data") / "inputs" / job_id / "spec.json"
+        dump_spec(OrganizerSpec.from_dict(request.spec), repo_root / spec_rel)
+        request.spec_path = "/app/" + spec_rel.as_posix()
+
     db = TelemetryDB()
     job = PrintJob(
         job_id=job_id,
@@ -1820,8 +1904,11 @@ async def create_job(request: JobRequest):
         # rather than a reconstruction of it.
         request_params=request.model_dump(mode="json"),
         requested_size_mm=request.target_mm,
+        # "spec" when a spec decided every dimension — no single size, no axis — and
+        # the model has already refused a spec arriving with a size beside it.
         size_source=(
-            (request.size_source or "user") if request.target_mm is not None
+            "spec" if request.spec is not None
+            else (request.size_source or "user") if request.target_mm is not None
             else "default"
         ),
         requested_scale_axis=request.scale_axis,
@@ -1839,7 +1926,8 @@ async def create_job(request: JobRequest):
             ("firmware", firmware),
             ("material", request.material_type or "unset"),
             ("seed", request.seed if request.seed is not None else "drawn at run time"),
-            ("size", f"{request.target_mm} mm" if request.target_mm is not None
+            ("size", "from spec" if request.spec is not None
+                     else f"{request.target_mm} mm" if request.target_mm is not None
                      else "50 mm (default)"),
             ("regen of", request.parent_job_id[:8] if request.parent_job_id else None),
         ],

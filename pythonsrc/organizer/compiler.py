@@ -133,6 +133,95 @@ def compare_features(
     }
 
 
+@dataclass(frozen=True)
+class DimensionReport:
+    """Spec → mesh error per feature: the record the pipeline writes beside the mesh.
+
+    `features` maps a name to `(designed_mm, measured_mm, error_mm)` for every required
+    feature that was measured; `missing` names required features the archetype could
+    not read off this mesh; `out_of_tolerance` names the measured ones whose absolute
+    error exceeds `tolerance_mm`. The verdict is derived from those two tuples, so it
+    cannot disagree with the rows it summarises.
+    """
+
+    tolerance_mm: float
+    features: dict[str, tuple[float, float, float]]
+    missing: tuple[str, ...] = ()
+    out_of_tolerance: tuple[str, ...] = ()
+
+    @property
+    def within_tolerance(self) -> bool:
+        return not self.missing and not self.out_of_tolerance
+
+    @property
+    def max_abs_error_mm(self) -> Optional[float]:
+        """The largest absolute error over the measured features, or None if none were."""
+        if not self.features:
+            return None
+        return max(abs(err) for _, _, err in self.features.values())
+
+    def problems(self) -> list[str]:
+        """One sentence per finding, in the order a reader fixes them: missing first."""
+        out = [f"{name}: not measured" for name in self.missing]
+        for name in self.out_of_tolerance:
+            want, got, err = self.features[name]
+            out.append(f"{name}: designed {want:.3f} mm, measured {got:.3f} mm (error {err:+.3f} mm)")
+        return out
+
+    def to_dict(self) -> dict[str, Any]:
+        """Plain JSON types. Errors are kept to the micron; the noise floor of a float32
+        STL is ~1e-5 mm and rounding it away would report a measurement that was not
+        made."""
+        return {
+            "tolerance_mm": self.tolerance_mm,
+            "within_tolerance": self.within_tolerance,
+            "features_checked": len(self.features),
+            "features_within": len(self.features) - len(self.out_of_tolerance),
+            "max_abs_error_mm": (
+                None if self.max_abs_error_mm is None else round(self.max_abs_error_mm, 6)
+            ),
+            "features": {
+                name: {
+                    "designed_mm": designed,
+                    "measured_mm": round(measured, 6),
+                    "error_mm": round(error, 6),
+                }
+                for name, (designed, measured, error) in self.features.items()
+            },
+            "missing": list(self.missing),
+            "out_of_tolerance": list(self.out_of_tolerance),
+        }
+
+
+def check_dimensions(
+    designed: dict[str, float],
+    measured: dict[str, float],
+    tol_mm: float = DEFAULT_TOLERANCE_MM,
+    required: Optional[set[str]] = None,
+) -> DimensionReport:
+    """Compare designed and measured features and report, without raising.
+
+    Args:
+        designed: Feature → designed mm (everything the archetype derived).
+        measured: Feature → measured mm (everything `measure()` read off the mesh).
+        tol_mm: Allowed absolute error per feature.
+        required: Features that must be present in `measured`; defaults to all of
+            `designed`. An archetype passes its `MEASURED_FEATURES`, because a designed
+            feature that is not on the mesh (a stack height) is not a missing one.
+    """
+    required = set(designed) if required is None else set(required)
+    rows = {
+        name: values
+        for name, values in compare_features(designed, measured, tol_mm).items()
+        if name in required
+    }
+    missing = tuple(sorted(required - set(measured)))
+    out = tuple(name for name, (_, _, err) in rows.items() if abs(err) > tol_mm)
+    return DimensionReport(
+        tolerance_mm=float(tol_mm), features=rows, missing=missing, out_of_tolerance=out,
+    )
+
+
 def assert_features_within(
     designed: dict[str, float],
     measured: dict[str, float],
@@ -141,20 +230,12 @@ def assert_features_within(
 ) -> None:
     """Raise `MeasureError` naming every feature outside `tol_mm`, or missing.
 
-    Args:
-        designed: Feature → designed mm.
-        measured: Feature → measured mm.
-        tol_mm: Allowed absolute error.
-        required: Features that must be present in `measured`; defaults to all of
-            `designed`.
+    The raising form of `check_dimensions`, for callers that want a verdict and not a
+    report. Same arguments.
     """
-    required = set(designed) if required is None else required
-    problems = [f"{name}: not measured" for name in sorted(required - set(measured))]
-    for name, (want, got, err) in compare_features(designed, measured, tol_mm).items():
-        if abs(err) > tol_mm:
-            problems.append(f"{name}: designed {want:.3f} mm, measured {got:.3f} mm (error {err:+.3f} mm)")
-    if problems:
-        raise MeasureError("features out of tolerance: " + "; ".join(problems))
+    report = check_dimensions(designed, measured, tol_mm, required)
+    if not report.within_tolerance:
+        raise MeasureError("features out of tolerance: " + "; ".join(report.problems()))
 
 
 def export_stl(mesh: trimesh.Trimesh, path: str | Path) -> Path:

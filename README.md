@@ -142,13 +142,25 @@ Open **http://localhost:8000** — the web UI handles job submission, live phase
 
 ### 3. Run the pipeline
 
-On a mesh whose dimensions are final (the route the parametric engine uses):
+From an organizer spec (the parametric path — see `pythonsrc/organizer/`):
+
+```bash
+python -m pythonsrc.organizer example deck_box > data/inputs/deck.json
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py --spec /app/data/inputs/deck.json --print --start-print
+```
+
+`--spec` compiles the spec as Phase 2, then Phase 3 **asserts** the mesh is a solid and
+measures every designed feature back off the engineered mesh to ±0,05 mm — it never
+repairs or scales it, and a miss fails the run with `dimension_report.json` beside the
+mesh. `POST /jobs` accepts the same spec as `"spec"` and records `size_source="spec"`.
+
+On a mesh of your own whose dimensions are final:
 
 ```bash
 docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "deck box" --skip-visualizer --skip-sculptor --mesh /app/data/inputs/box.stl --no-scale --print --start-print
 ```
 
-`--no-scale` means "these dimensions are final" — Phase 3 validates and seats the mesh
+`--no-scale` means "these dimensions are final" — Phase 3 repairs and seats the mesh
 but never resizes it.
 
 Or run the generative branch from a prompt:
@@ -259,13 +271,13 @@ same commit):
 - [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento)
 - [ ] University GPU access requests filed (post-beta fine-tuning only)
 
-### 🔨 Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
+### ✅ Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
 
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
 - [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable (2026-09-03)
 - [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen) — `pipeline.py --spec`, kernel `manifold3d` (2026-09-03)
-- [ ] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
-- [ ] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
+- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"` — `Engineer.process(repair_mode="assert")`, `dimension_report.json` after Phase 3, `JobRequest.spec` (2026-09-03)
+- [x] Dimensional-accuracy CI — spec → exported-mesh error per critical feature — `tests/test_organizer_dimensional_accuracy.py`, 405-spec envelope on the exported STL + Phase 3 assert path, its own CI step (2026-09-03)
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 

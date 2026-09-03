@@ -68,6 +68,16 @@ ESCAPE_HOLE_WALLS = 2.0
 logger = logging.getLogger("ds.engineer")
 
 
+class MeshAssertionError(RuntimeError):
+    """A mesh handed to Phase 3 as final is not a solid, and repair was not asked for.
+
+    Raised by `Engineer.assert_manifold` with every failing finding in the message. It
+    is deliberately not a `ValueError`: the arguments were fine, the geometry was not,
+    and the caller that asked for an assertion instead of a repair wants the finding,
+    not a fix.
+    """
+
+
 def _setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -920,6 +930,85 @@ class Engineer:
             self._hollow_stats = {"hollowed": False, "hollow_reason": f"{type(exc).__name__}: {exc}"}
             return mesh
 
+    # ── Assert ────────────────────────────────────────────────────────────────
+    #: What `process` may do about topology: repair it, or refuse it.
+    REPAIR_MODES = ("repair", "assert")
+
+    def assert_manifold(self, mesh: trimesh.Trimesh) -> dict:
+        """Check that a mesh is already the solid `repair_mesh` would try to make it.
+
+        The assert half of the N1 fix. A mesh compiled from a spec is watertight by
+        construction — the kernel that built it guarantees that — so if it arrives
+        otherwise the compiler is wrong, and *repairing* it would hide the bug: the
+        voxel escalation rebuilds the surface at a pitch that discards exactly the
+        dimensions the spec fixed, and the report would still say `scale_applied:
+        false`. Refusing names the finding instead.
+
+        Every check is one `repair_mesh` performs on the way to a fix, evaluated
+        here and reported rather than acted on: watertight, no boundary edges (a
+        hole to fill), no non-manifold edges (a face to remove), consistent winding
+        with positive volume (an inversion to flip), and acceptance by the
+        `manifold3d` kernel — the same construction repair uses as its own final
+        test. The component count is recorded, not judged: a plate of two parts is
+        two solids as designed, and `printability` is told how many to expect.
+
+        Args:
+            mesh: The mesh as loaded. Not modified.
+
+        Returns:
+            The findings, all passing — written into `last_report["assertion"]`.
+
+        Raises:
+            MeshAssertionError: Naming every failing finding at once.
+        """
+        _, edge_counts = self._edge_face_counts(mesh)
+        boundary = int((edge_counts == 1).sum())
+        nonmanifold = int((edge_counts > 2).sum())
+        winding_ok = bool(mesh.is_winding_consistent)
+        volume_ok = bool(mesh.is_volume)
+        try:
+            man = self._to_manifold(mesh)
+            kernel_status = man.status()
+            kernel_ok = kernel_status == manifold3d.Error.NoError and not man.is_empty()
+            components = len(man.decompose()) if kernel_ok else 0
+            kernel_name = kernel_status.name if hasattr(kernel_status, "name") else str(kernel_status)
+        except Exception as exc:  # noqa: BLE001 — the kernel's refusal is the finding
+            kernel_ok, components, kernel_name = False, 0, f"{type(exc).__name__}: {exc}"
+
+        findings = {
+            "watertight": bool(mesh.is_watertight),
+            "boundary_edges": boundary,
+            "nonmanifold_edges": nonmanifold,
+            "winding_consistent": winding_ok,
+            "positive_volume": volume_ok,
+            "kernel_status": kernel_name,
+            "components": components,
+        }
+        problems = []
+        if not findings["watertight"]:
+            problems.append("not watertight")
+        if boundary:
+            problems.append(f"{boundary} boundary edge{'s' if boundary != 1 else ''} (holes to fill)")
+        if nonmanifold:
+            problems.append(
+                f"{nonmanifold} non-manifold edge{'s' if nonmanifold != 1 else ''} (faces to remove)"
+            )
+        if not winding_ok:
+            problems.append("inconsistent winding")
+        elif not volume_ok:
+            problems.append("no positive volume (inverted or degenerate)")
+        if not kernel_ok:
+            problems.append(f"manifold3d rejected it ({kernel_name})")
+        if problems:
+            raise MeshAssertionError(
+                "the mesh was handed to Phase 3 as final and is not a solid — "
+                + "; ".join(problems)
+                + ". Nothing was repaired: a compiled mesh with these defects is a "
+                "compiler bug, and repairing it would hide the bug while shipping "
+                "dimensions the spec did not ask for."
+            )
+        return findings
+
     # ── Analysis ──────────────────────────────────────────────────────────────
     def analyze_mesh(self, mesh: trimesh.Trimesh) -> dict:
         # Edge counts are reported because "not watertight" on its own does not
@@ -951,8 +1040,19 @@ class Engineer:
         wall_thickness: float = 1.2,
         scale_axis: str = "height",
         vent: bool = True,
+        repair_mode: str = "repair",
     ) -> Path:
-        """Repair, orient, size and export a mesh for the slicer.
+        """Repair (or assert), orient, size and export a mesh for the slicer.
+
+        **`repair_mode="assert"` means the mesh is already a solid and must be refused
+        if it is not.** Repair is the right service for a reconstruction, which arrives
+        torn. It is the wrong one for a mesh compiled from a spec: such a mesh is
+        watertight by construction, so a defect is a compiler bug, and repairing it —
+        through the voxel escalation in particular — hides the bug while shipping a
+        part whose dimensions are no longer the spec's, with `scale_applied: false`
+        in the report saying they were honoured. Assert mode runs `assert_manifold`
+        instead of `repair_mesh`, exports nothing on failure, and records
+        `repair_method="asserted"` on success. It requires `target_mm=None`.
 
         **`target_mm=None` means the mesh already carries its final dimensions**,
         and scaling is skipped entirely. That case is not hypothetical and it was
@@ -983,11 +1083,19 @@ class Engineer:
             wall_thickness: Shell thickness for `hollow`, in millimetres.
             scale_axis: Which extent `target_mm` describes.
             vent: Whether to breach hollow cavities to the outside.
+            repair_mode: "repair" (default — every reconstruction) or "assert"
+                (the mesh is final; refuse it rather than fix it).
 
         Returns:
             The path written.
 
         Raises:
+            MeshAssertionError: In assert mode, when the mesh is not a solid. Every
+                failing finding is in the message and nothing has been written.
+            ValueError: If `repair_mode` is not one of `REPAIR_MODES`, or if
+                `repair_mode="assert"` is combined with a `target_mm`: asserting that
+                a mesh is exactly what was authored and then resizing it is a
+                contradiction, and refusing keeps "assert" meaning one thing.
             ValueError: If `hollow` is combined with `target_mm=None`. Hollowing
                 voxelises at a `wall_thickness` pitch, which moves the surface by
                 up to half a voxel and is why the hollow path below re-scales
@@ -998,6 +1106,16 @@ class Engineer:
                 base under the plate. A part that needs an internal cavity and exact
                 dimensions must model the cavity, not voxel-hollow it.
         """
+        if repair_mode not in self.REPAIR_MODES:
+            raise ValueError(
+                f"Unknown repair_mode {repair_mode!r}; expected one of {self.REPAIR_MODES}"
+            )
+        if repair_mode == "assert" and target_mm is not None:
+            raise ValueError(
+                "repair_mode='assert' cannot be combined with a target_mm: the mesh is "
+                "being asserted to be exactly what was authored, and resizing it "
+                "afterwards contradicts that. Pass target_mm=None."
+            )
         if hollow and target_mm is None:
             raise ValueError(
                 "hollow=True cannot be combined with target_mm=None: hollowing "
@@ -1014,8 +1132,23 @@ class Engineer:
         mesh = trimesh.load(str(input_path), force="mesh")
         logger.info("Input analysis: %s", self.analyze_mesh(mesh))
 
-        logger.info("Repairing mesh…")
-        mesh = self.repair_mesh(mesh)
+        if repair_mode == "assert":
+            logger.info("Asserting the mesh is a solid (no repair — the dimensions are final)…")
+            findings = self.assert_manifold(mesh)
+            # The same record shape `repair_mesh` writes, so `repair_report` reads
+            # the same for every job; "asserted" is the fourth `repair_method`.
+            self._repair_stats = {
+                "repair_method": "asserted",
+                "watertight_before": True,
+                "watertight_after": True,
+                "faces_before": len(mesh.faces),
+                "faces_after": len(mesh.faces),
+                "unioned_components": 0,
+                "assertion": findings,
+            }
+        else:
+            logger.info("Repairing mesh…")
+            mesh = self.repair_mesh(mesh)
 
         logger.info("Orienting for print…")
         mesh = self.orient_for_print(mesh)

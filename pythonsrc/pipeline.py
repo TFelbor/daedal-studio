@@ -814,10 +814,94 @@ def _apply_spec_mode(args: argparse.Namespace) -> argparse.Namespace:
             "--spec refuses --hollow: a compiled spec's dimensions are final, and "
             "hollowing voxelises then re-scales. Model the cavity in the spec instead."
         )
+    if args.blueprint:
+        # Dropped, not refused: the server's mps_native strategy hardcodes this flag for
+        # every containerised run. A spec run has no image, and reading the shared path
+        # would snapshot whichever job's render sits there and record its hash as this
+        # job's Phase 1 provenance.
+        logger.warning(
+            "--spec ignores --blueprint %s: a compiled spec has no image, so nothing is "
+            "read, snapshotted or hashed from it.", args.blueprint,
+        )
+        args.blueprint = None
     args.skip_visualizer = True
     args.skip_sculptor = True
     args.no_scale = True
     return args
+
+
+def _repair_mode_for(args) -> str:
+    """Which of `Engineer.REPAIR_MODES` Phase 3 runs: "assert" for a spec, else "repair".
+
+    A reconstruction arrives torn and repair is the service. A compiled mesh is
+    watertight by construction, so a defect is a compiler bug and repairing it hides
+    the bug — the voxel escalation rebuilds the surface at a pitch that discards the
+    dimensions the spec fixed. `--mesh` stays on the repair path: a mesh of one's own
+    made no promise about its topology.
+    """
+    return "assert" if getattr(args, "spec", None) else "repair"
+
+
+def _assert_spec_dimensions(compile_result, engineered_path: Path, outputs_dir: Path) -> dict:
+    """Measure Phase 3's output against the spec and refuse it if it drifted.
+
+    The dimensional half of the assertion. `compile_features.json` says what was
+    designed; this reads what the slicer will receive — the engineered mesh, after
+    orientation, as exported — with the archetype's own `measure()` and compares every
+    feature it promises to read back, at `DEFAULT_TOLERANCE_MM` (PRD N1).
+
+    Three things about the order. The spec is reloaded from `spec.json` in the job
+    directory — what Phase 2 recorded — not from the argument, so a file edited between
+    phases cannot move the goalposts. `dimension_report.json` is written **before** the
+    verdict, so a failure leaves the numbers behind to read. And the verdict is a raised
+    `MeasureError`, which the caller's `_phase_fail(3)` turns into a failed Phase 3: a
+    spec run that ships a wrong dimension has failed, however watertight it is.
+
+    Args:
+        compile_result: Phase 2's `CompileResult` (the designed features).
+        engineered_path: Phase 3's exported mesh.
+        outputs_dir: The job directory holding `spec.json`; the report is written here.
+
+    Returns:
+        The report as written, for `last_report["dimension_check"]`.
+
+    Raises:
+        MeasureError: If any required feature is missing or out of tolerance, or the
+            mesh does not have the planes the design says it has.
+        FileNotFoundError: If Phase 2's `spec.json` is not in the job directory.
+    """
+    try:
+        from organizer.spec import load_spec
+        from organizer.archetypes import verify_spec_mesh
+        from organizer.compiler import MeasureError
+    except ImportError:
+        from pythonsrc.organizer.spec import load_spec
+        from pythonsrc.organizer.archetypes import verify_spec_mesh
+        from pythonsrc.organizer.compiler import MeasureError
+    import trimesh
+
+    spec = load_spec(outputs_dir / "spec.json")
+    mesh = trimesh.load(str(engineered_path), force="mesh")
+    report = verify_spec_mesh(spec, compile_result.features, mesh)
+    document = report.to_dict()
+    (outputs_dir / "dimension_report.json").write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n"
+    )
+    max_err = document["max_abs_error_mm"]
+    print(
+        f"[DS] Dimensions: {document['features_within']}/{document['features_checked']} designed "
+        f"features within ±{report.tolerance_mm:g} mm of the spec"
+        + (f" (max error {max_err:.6f} mm)" if max_err is not None else ""),
+        flush=True,
+    )
+    for problem in report.problems():
+        print(f"[DS]   ✗ {problem}", flush=True)
+    if not report.within_tolerance:
+        raise MeasureError(
+            "Phase 3's output does not match the spec: " + "; ".join(report.problems())
+            + f". See {outputs_dir / 'dimension_report.json'}."
+        )
+    return document
 
 
 def _blueprint_path(args, inputs_root: Path) -> Path:
@@ -1261,7 +1345,17 @@ def run(args: argparse.Namespace) -> None:
             hollow=args.hollow,
             wall_thickness=args.wall,
             scale_axis=args.scale_axis,
+            # A compiled mesh is asserted, never repaired: a defect is a compiler bug,
+            # and repairing it would ship dimensions the spec did not ask for.
+            repair_mode=_repair_mode_for(args),
         )
+        if compile_result is not None:
+            # The dimensional half. Measured on the exported mesh, recorded on the row
+            # via `repair_report` (the `achieved_extent_mm` precedent), and a failure
+            # here is a failed Phase 3 — see `_assert_spec_dimensions`.
+            eng.last_report["dimension_check"] = _assert_spec_dimensions(
+                compile_result, final_mesh_path, outputs_dir
+            )
         # Height mode bounds one axis by construction and the other two not at all, so
         # a wide model asked for a tall height can come out past the bed. The size is
         # *not* silently reduced — a part quietly scaled to something other than what

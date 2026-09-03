@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from ..compiler import CompileResult, FitsResult
+from ..compiler import DEFAULT_TOLERANCE_MM, CompileResult, DimensionReport, FitsResult, check_dimensions
 from ..spec import ARCHETYPES, OrganizerSpec, SpecError
 from . import deck_box
 
@@ -49,6 +49,28 @@ def example_spec(name: str) -> OrganizerSpec:
 def measure_spec_mesh(spec: OrganizerSpec, mesh) -> dict[str, float]:
     """Read a spec's designed features off a mesh with the spec's own archetype."""
     return get_archetype(spec.archetype).measure(mesh)
+
+
+def required_measurements(spec: OrganizerSpec) -> tuple[str, ...]:
+    """The designed features the spec's archetype promises to read back off geometry."""
+    return tuple(get_archetype(spec.archetype).MEASURED_FEATURES)
+
+
+def verify_spec_mesh(
+    spec: OrganizerSpec,
+    designed: dict[str, float],
+    mesh,
+    tol_mm: float = DEFAULT_TOLERANCE_MM,
+) -> DimensionReport:
+    """Measure `mesh` with the spec's archetype and compare it to `designed`.
+
+    The one call the pipeline, the CLI and the tests share, so "within tolerance" means
+    the same thing in all three. Raises the archetype's `MeasureError` when the mesh does
+    not have the planes the design says it has — that finding is not a per-feature error
+    and is not reported as one.
+    """
+    measured = measure_spec_mesh(spec, mesh)
+    return check_dimensions(designed, measured, tol_mm, required=set(required_measurements(spec)))
 
 
 def fits_for(spec: OrganizerSpec) -> FitsResult:
