@@ -866,6 +866,7 @@ def evaluate_printability(
     profile: Optional[ProcessProfile] = None,
     job_id: Optional[str] = None,
     was_hollowed: bool = False,
+    expected_components: Optional[int] = None,
 ) -> PrintabilityReport:
     """Score a mesh for printability.
 
@@ -877,6 +878,11 @@ def evaluate_printability(
         was_hollowed: Whether the Engineer hollowed the mesh. Enclosed voids are expected
             in that case and are reported as a missing escape hole rather than stray
             geometry.
+        expected_components: How many separate bodies the mesh was *designed* to have,
+            when the caller knows — a compiled deck box is a body and a lid. With no
+            expectation, more than one body warns (the split may be an accident); with
+            a matching expectation it passes. A floating body fails regardless: an
+            intended part in mid-air is still in mid-air.
 
     Returns:
         A PrintabilityReport with per-check results, a composite score and the mesh
@@ -951,6 +957,13 @@ def evaluate_printability(
             f"{floating} component(s) float above the build plate and will print in mid-air. "
             "Flagged, not removed — they may be intended parts needing support or a raft."
         )
+    elif components > 1 and expected_components is not None and components == expected_components:
+        # A compiled deck box is a body and a lid: two grounded bodies *as designed*.
+        # Without this the check scored every intended multi-part plate "risky", which
+        # is the mirror image of a fits badge with no measurement behind it.
+        floating_status, floating_detail = "pass", (
+            f"{components} separate parts as designed, all resting on the plate."
+        )
     elif components > 1:
         floating_status, floating_detail = "warn", (
             f"{components} separate components, all touching the plate. Printable, but check "
@@ -963,7 +976,7 @@ def evaluate_printability(
         check="floating_components",
         status=floating_status,
         detail=floating_detail,
-        value={"components": components, "floating": floating},
+        value={"components": components, "floating": floating, "expected": expected_components},
         threshold=0,
         weight=2.0,
         critical=True,
@@ -1153,6 +1166,7 @@ def evaluate_mesh_file(
     profile: Optional[ProcessProfile] = None,
     job_id: Optional[str] = None,
     was_hollowed: bool = False,
+    expected_components: Optional[int] = None,
 ) -> PrintabilityReport:
     """Load a mesh from disk and score it.
 
@@ -1166,4 +1180,7 @@ def evaluate_mesh_file(
         The PrintabilityReport for the loaded mesh.
     """
     mesh = trimesh.load(str(mesh_path), force="mesh")
-    return evaluate_printability(mesh, profile=profile, job_id=job_id, was_hollowed=was_hollowed)
+    return evaluate_printability(
+        mesh, profile=profile, job_id=job_id, was_hollowed=was_hollowed,
+        expected_components=expected_components,
+    )
