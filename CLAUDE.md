@@ -12,9 +12,11 @@ governing rule: *the LLM interprets words; it never produces geometry.* Phases 1
 (FLUX → TRELLIS.2) are **benched, not deleted** — they leave the critical path and become the
 branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,
 printability gate, slicing, dispatch gate, telemetry) is unchanged and is what the parametric
-path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric
-engine (`pythonsrc/organizer/` — spec schema, archetypes, dimension KB) does not exist yet; do
-not treat generative-path tuning as roadmap work.
+path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric engine has its first two pieces (2026-09-03): the spec schema
+(`pythonsrc/organizer/spec.py`) and the deck box archetype
+(`pythonsrc/organizer/archetypes/deck_box.py`), entered through `pipeline.py --spec` —
+see **Organizer — the parametric path** below. The dimension KB, LLM extraction and
+the server wiring do not exist yet; do not treat generative-path tuning as roadmap work.
 
 **The UI has been moved onto the pivot's vocabulary ahead of the engine** (2026-09-02). The
 five phases now read **Composer · Compiler · Printability · Slicer · Operator** in the app,
@@ -437,6 +439,66 @@ mesh bytes with `X-DS-Up-Axis`, `X-DS-Model`, `X-DS-Model-Version`, `X-DS-Mesh-F
   which beats a container that exits on startup.
 - Built by `infra/docker/trellis2-worker.Dockerfile` (CUDA 12.4 devel). `TORCH_CUDA_ARCH_LIST`
   must match the deployment GPU or the compiled kernels will not load.
+
+### Organizer — the parametric path (pythonsrc/organizer/)
+
+The pivot's engine, as far as M0 built it: a **spec schema** and one **archetype**,
+entered through `pipeline.py --spec PATH`. *The LLM interprets words; it never produces
+geometry* — and the spec is the boundary that rule describes. Everything left of it may
+be probabilistic; everything right of it is deterministic, and the same spec compiles to
+the same STL byte for byte (`tests/test_deck_box.py` pins that).
+
+- **`spec.py` is stdlib-only, on purpose.** Frozen dataclasses (`OrganizerSpec`,
+  `Compartment`, `CardStack`, `Lid`, `Constraints`, `Process`), millimetres rounded to
+  1 µm on construction so `from_dict(to_dict(s)) == s` holds exactly, `from_dict`
+  refusing unknown keys, and one `SpecError` listing *every* problem with its dotted
+  path. `canonical_json` / `spec_hash` / `spec_diff` make one spec one string, one
+  hash, and two specs a path-by-path diff (F8). `pythonsrc.organizer` exports the schema
+  and nothing else, so the api-server image — no trimesh, no manifold3d — can import it
+  when the request model grows a spec field. Do not add pydantic here; it is not in the
+  pipeline image.
+- **`dimensions.py` is a seed, not the KB.** The standard card footprint, the single and
+  double sleeved envelopes and the three design pitches (0.305 / 0.60 / 0.70 mm per
+  card), each with its source from `docs/dimension-kb-research.md`. Only `standard` is
+  offered: the Japanese size has no sourced sleeve envelope and an invented one is
+  exactly the fabricated number the schema exists to refuse. The M2 KB replaces this
+  file; `resolve_stack`'s `basis` string is what the UI's fits line shows.
+- **Archetype rules live in the archetype.** A lip thinner than `min_feature_mm`, a
+  second compartment, magnets, a lid taller than the cavity — `deck_box.validate`
+  refuses each with the remedy named. Ignoring an unsupported field prints a different
+  box than the one asked for, silently.
+- **Every designed feature is measured back off the mesh** (`deck_box.measure`, the
+  shape of text-to-cad's measure/align checkers): the plate is split into body and lid,
+  their distinct axis-aligned planes are read, and each feature is a difference of
+  planes. It runs on the compiled mesh *and on Phase 3's output*, which is what makes the
+  ±0.05 mm assertion honest — it measures what the slicer receives. A plane count that
+  does not match the design is itself the finding (`MeasureError`).
+- **`--spec` is the `--skip-visualizer --skip-sculptor --mesh --no-scale` seam with a
+  compile step in front.** The three flags are implied (`_apply_spec_mode`) — the run
+  that forgets `--no-scale` prints a 50 mm deck box. `--mesh` and `--hollow` are refused.
+  The compile runs inside the **real Phase 2 banners**, so the UI's "Compiler" moves
+  truthfully and the banner contract is untouched. A spec run substitutes nothing:
+  `_will_use_reference_assets` and `_should_install_reference_blueprint` both return
+  False, so it lands in `data/outputs/{job_id}` and gets no invented blueprint. The job
+  directory holds `compiled_mesh.stl`, `spec.json` (canonical) and
+  `compile_features.json`.
+- **The compiler is the generation model.** `generation_model = "organizer/deck_box"`,
+  `generation_model_version = "1"`, `generation_backend = "local"`, the spec hash and
+  features in `generation_params`. No new column — this is exactly what those columns
+  record. `blueprint_*` stay NULL, correctly. `size_source="spec"` is *not* written yet;
+  that is the repair-assertion tick-box and needs the request model.
+- **The gate is told the part count.** `evaluate_printability(expected_components=)`:
+  a body and a lid are two grounded bodies as designed, and used to score every deck
+  box "risky" for a possible unintended split. A mismatch still warns; a floating body
+  still fails. The remaining warn on a deck box is `min_wall_thickness`: the measurement
+  pitch grows with the plate's width, so a 1.4 mm lip reads as "within tolerance of the
+  minimum", and the verdict stays `risky` because that check is critical. That is the
+  check's known quantisation, not a thin lip.
+- **Not built, and where it is:** the repair-assertion path and `size_source="spec"`
+  (roadmap §0.3 Phase 1, tick-box 4), the envelope sweep CI (tick-box 5), the server and
+  UI wiring (`specFromJob` is the seam; `NO_SPEC_REASON` is still true), LLM extraction
+  and the KB (M2). `python -m pythonsrc.organizer example|compile|measure` is the
+  developer loop.
 
 ### Server (server/app.py)
 

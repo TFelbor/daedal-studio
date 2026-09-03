@@ -49,9 +49,9 @@ pythonsrc/organizer/
   __init__.py            public surface: OrganizerSpec, load_spec, compile_spec, SpecError
   spec.py                schema, validation, JSON, canonical form, hash, diff, UI view
   dimensions.py          M0 seed constants with KB sources (replaced by the KB in M2)
-  compiler.py            compile_spec() → CompileResult; archetype registry
+  compiler.py            CompileResult, FitsResult, MeasureError, kernel bridge, plane sets
   archetypes/
-    __init__.py
+    __init__.py          registry + dispatch: compile_spec, measure_spec_mesh, fits_for, view_for, example_spec
     deck_box.py          v1: spec → parts → plate mesh, features, measure()
   __main__.py            `python -m pythonsrc.organizer compile|example|measure`
 ```
