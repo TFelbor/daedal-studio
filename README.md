@@ -256,56 +256,76 @@ same commit):
 - [x] Web UI — submission, live phases, previews, telemetry, printability report
 - [x] Rename to Daedal Studio — banners, env vars, worker headers moved in one commit
 - [x] `--no-scale`: Phase 3 honours spec-final dimensions (PR #40 — scaling half of N1)
-- [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento)
-- [ ] University GPU access requests filed (post-beta fine-tuning only)
+- [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento); printers arrived ~2 Sep
+- [x] ~~University GPU access requests filed~~ — dropped 3 Sep: the Trento request was rejected (28 Aug) and it is moot after the pivot
 
 ### 🔨 Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
 
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
-- [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
-- [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen)
-- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
-- [x] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
+- [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable — on `feat/ui-redesign-pivot` (PR #46), merge to `main` pending
+- [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--spec` seam (authored in Claude Code against `manifold3d`, source frozen) — PR #46, merge pending
+- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"` — PR #47, merge pending
+- [x] Dimensional-accuracy CI — 405-spec envelope, ±0,05 mm per feature, own CI step — PR #47, merge pending
+- [ ] Merge `feat/ui-redesign-pivot` into `main`, then run one spec job end to end (`POST /jobs` → CuraEngine → OctoPrint simulator → telemetry row)
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
 - [ ] Token tray + card divider archetypes
-- [ ] Fit tolerances as `ProcessProfile` fields (friction / slide / magnet-pocket, per printer)
+- [ ] Fit-offset determinism decided (printer profile as a recorded compile input), then fit tolerances as `ProcessProfile` fields
 - [ ] Manifold CI sweep across every archetype's parameter envelope
-- [ ] 3MF export (~one line + a test; trimesh exporter verified present)
-- [ ] Bambu operator for real — KTH machine, port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus)
+- [ ] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint)
+- [ ] Bambu operator for real — KTH machine in Developer Mode; port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus)
 - [ ] Moonraker test target — headless Klipper + virtual MCU (Alberto)
+- [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
+- [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
 
-### 📱 Phase 3 — Closed preview (PRD M2 · 11 October – 10 November 2026)
+### 📱 Phase 3 — Closed preview, friendly-user alpha (PRD M2 · 11–31 October 2026)
 
-- [ ] LLM spec extraction — structured outputs, one API call, no agent loop
+- [ ] LLM spec extraction — structured outputs, one API call, no agent loop (optional for the alpha; the form-driven configurator is the fallback, §5A cut #3)
 - [ ] Held-out prompt set + field-accuracy harness (≥90 % gates the extractor)
 - [ ] Dimension KB v1 — curated JSON (research done: `docs/dimension-kb-research.md`)
-- [ ] Clarify loop — ≤3 chip questions, reusing the blueprint-gate pause
+- [ ] Clarify loop — ≤3 chip questions, reusing the blueprint-gate pause pattern
 - [ ] Mobile-first pass — split layouts become stacks; retire waiting-state theatre + figurine copy
-- [ ] mm-annotated preview — internal dimensions from the spec, not measured off the mesh
+- [ ] Installable PWA — manifest, service worker, home-screen install, web push, camera capture for the fit photo
+- [ ] mm-annotated preview — spec-driven; fix the viewer's 80-unit normalisation first, carry the spec on `GET /jobs/{id}`
 - [ ] Spec-diff iteration ("make the lid deeper") on existing lineage columns
 - [ ] `preview_reached` job event (activation metric)
+- [ ] N3 measured end to end on a real phone (≤20 s); the per-job `docker compose run` replaced if it blows the budget
+- [ ] IP screen re-scoped for functional articles — "deck box for Pokémon cards" must pass before any external user sees the app
+- [ ] Friendly-user alpha — 5–10 known users, form-driven deck box, we print and send a photo, scripted usability sessions
 
-### 🚀 Phase 4 — Beta launch gate (PRD M3 · 11 November – 20 December 2026)
+### 🧪 Phase 4 — Closed beta on our own printers (1–30 November 2026)
 
+- [ ] Hosted environment — API + web + database on one VM, TLS, access gate, admin surface locked down, no Docker socket in the public build
+- [ ] Bounded job queue + rate limits replacing fire-and-forget dispatch
+- [ ] Printer-reachability decision for a hosted server — 3MF download / Bambu Cloud / local agent / phone-as-LAN-bridge
+- [ ] ToS (warranty, indemnity, right to refuse, data-use consent) + privacy policy live before the first external tester
+- [ ] Closed beta cohort 1 — external users prompt, we print on KTH/Trento, photo + fit verdict back; every participant interviewed
 - [ ] Test-fit coupon — 10-minute tolerance validator through the dispatch gate
-- [ ] Coupon → tolerance calibration loop — verdicts update per-printer/material fit offsets
 - [ ] Fit verdict in `VALID_OUTCOMES` + outcome UI ("fits as intended" ≠ "printed")
-- [ ] Accounts, with the spec as the saved object
-- [ ] Bounded job queue replacing fire-and-forget dispatch
-- [ ] IP screening re-scoped for functional articles (a deck box *for* Pokémon cards is not a character)
-- [ ] Handoff verified on real hardware: Bambu **and** OctoPrint, end to end
+- [ ] Coupon → tolerance calibration loop — verdicts update per-printer/material fit offsets
 - [ ] Fit-verdict loop closed at least once on real hardware
-- [ ] Patent decision on the calibration loop — prior-art search + counsel **before** public beta
+- [ ] Handoff verified on real hardware: Bambu **and** OctoPrint, end to end
+- [ ] Patent decision on the calibration loop — prior-art search + counsel **before** anything public discloses it
+- [ ] Sentry + `AnomalyDetector` re-tuned on real print telemetry
+
+### 🚀 Phase 5 — Public launch (December 2026 · target 20 Dec, hard stop 31 Dec)
+
+- [ ] Minimal accounts — magic-link auth, spec as the saved object, ownership checks on job routes (F11)
+- [ ] Load-test the job queue and LLM rate limits
+- [ ] EU AI Act transparency review; GDPR data-subject path (retention window, export/delete, LLM processor terms)
+- [ ] Mobile web QA on real iOS + Android devices — viewer, install flow, push, camera
+- [ ] Pre-launch checklist verified; cybersecurity review
+- [ ] Public launch — parametric TCG organizers, STL/3MF export, OctoPrint handoff, Bambu handoff where verified
 - [ ] (Could) F13 lid embossing — only after the embossing-field IP screen exists
 
-### 🔭 Phase 5 — Post-beta: moat & scale (Q1–Q2 2027 →)
+### 🔭 Phase 6 — Post-launch: moat & scale (Q1–Q2 2027 →)
 
 - [ ] Fit-outcome dataset → does the printability/fit score predict reality (Bet 2 groundwork, no GPU needed)
-- [ ] Generative personalization premium tier — image relief, sculptural lids (F14) on parametric bases
-- [ ] Print-aware conditioning research on university GPUs (Bet 1)
-- [ ] KB depth: game-box internals curation, archetypes prioritized by prompt volume
+- [ ] Native apps — iOS App Store + Google Play as a Capacitor wrapper of the PWA; phone-as-LAN-bridge to the printer; store economics reviewed first
+- [ ] Generative personalization premium tier — text emboss and image relief on the parametric kernel first; sculptural lids (F14) as the niche add-on
+- [ ] Print-aware conditioning research (Bet 1) — only if the F14 tier is pursued
+- [ ] KB depth: game-box internals curation, archetypes prioritized by prompt volume; adjacent categories (inserts, dice trays, desk organizers) before phone cases
 - [ ] Self-host / scale economics recomputed on real beta volume
 
 ---
