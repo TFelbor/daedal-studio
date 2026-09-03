@@ -262,8 +262,8 @@ same commit):
 ### 🔨 Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
 
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
-- [ ] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
-- [ ] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen)
+- [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
+- [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen)
 - [ ] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
 - [ ] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
 
