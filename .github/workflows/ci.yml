@@ -104,6 +104,16 @@ jobs:
         # ARCHITECTURE.md. Those go wrong silently and are what the audit reads.
         run: pytest tests/test_licensing_guards.py tests/test_licence_data.py
 
+      - name: Dimensional accuracy (PRD N1)
+        # Named separately for the same reason as the licence guards: the claim that a
+        # compiled organizer's every designed feature reaches the slicer within 0,05 mm
+        # is the product's promise, and a regression in it should be legible from the
+        # job list. `test_organizer_dimensional_accuracy.py` sweeps the deck box's
+        # parameter envelope on the exported, reloaded STL and again through Phase 3's
+        # assert path; `test_deck_box.py` measures the one archetype's compiled and
+        # engineered output feature by feature. Both run again in the full suite below.
+        run: pytest tests/test_organizer_dimensional_accuracy.py tests/test_deck_box.py tests/test_engineer_assert.py
+
       - name: Test suite
         run: pytest tests/
 

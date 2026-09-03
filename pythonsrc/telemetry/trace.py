@@ -291,7 +291,7 @@ _EXPECTED_NULL = {
     "support_filament_mm3": "only set when supports were generated",
     "dispatched_printer_url": "only set once a print is dispatched",
     "print_duration_s": "only set once the printer reports one",
-    "requested_size_mm": "only set when a size was chosen; the default applied otherwise",
+    "requested_size_mm": "only set when a size was chosen; the default applied otherwise, or the spec decided",
     "requested_scale_axis": "only set when a size was chosen",
 }
 
