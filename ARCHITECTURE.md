@@ -144,6 +144,22 @@ resolution quality: **not measured**.
 
 ---
 
+## Phase 2 — Compiler: spec → geometry (parametric path)
+
+The pivot's engine (`docs/PRD_daedal_tcg_organizers.md` F5; roadmap §0.3 Phase 1). Runs
+under the same phase number and banners as the sculptor; `pipeline.py --spec` selects it
+and Phases 1–2 above are then not run at all.
+
+| | |
+|---|---|
+| **Code** | `pythonsrc/organizer/` — `spec.py` (schema), `dimensions.py` (seed numbers), `archetypes/deck_box.py` (v1) |
+| **Model** | None. Deterministic CSG; the same spec compiles to the same STL byte for byte |
+| **Kernel** | `manifold3d` 3.5.2 (Apache-2.0) — the decision recorded under *The geometry kernel* above, exercised |
+| **Recorded as** | `generation_model = organizer/deck_box`, `generation_model_version = 1`, `generation_backend = local`, spec sha256 in `generation_params` |
+| **Licence delta** | None — no new dependency, no weights |
+| **Measured** | Compile of a 100-card deck box: 72 faces, 0.1 s in the pipeline image. Every designed feature within 0.05 mm on the compiled mesh and on Phase 3's output (`tests/test_deck_box.py`; 19/19 on the container run of 2026-09-03). Gate 92.9 / `risky`, the one warn being the wall check's quantisation on a 158 mm plate |
+| **Not yet** | Repair-assertion path, `size_source="spec"`, envelope sweep, server/UI wiring, dimension KB, LLM extraction |
+
 ## Phase 3 — Engineer: repair, scale, orient, hollow
 
 | | |

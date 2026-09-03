@@ -418,3 +418,42 @@ def test_an_open_mesh_gets_a_reason_rather_than_a_division(fdm):
 
     assert feasibility["smallest_viable_mm"] is None
     assert feasibility["reason"]
+
+
+def _two_parts_on_the_bed():
+    return on_bed(trimesh.util.concatenate([
+        trimesh.creation.box(extents=[20, 20, 20]),
+        trimesh.creation.box(extents=[20, 20, 6]).apply_translation([40, 0, -7]),
+    ]))
+
+
+def test_two_grounded_parts_still_warn_when_nobody_said_how_many(fdm):
+    report = evaluate_printability(_two_parts_on_the_bed(), fdm)
+    check = next(c for c in report.checks if c.check == "floating_components")
+    assert check.status == "warn"
+
+
+def test_two_grounded_parts_pass_when_two_were_designed(fdm):
+    """A deck box is a body and a lid. A risk badge on every intended two-part plate is
+    the mirror image of a fits badge with no measurement behind it."""
+    report = evaluate_printability(_two_parts_on_the_bed(), fdm, expected_components=2)
+    check = next(c for c in report.checks if c.check == "floating_components")
+    assert check.status == "pass"
+    assert "as designed" in check.detail
+    assert check.value["expected"] == 2
+
+
+def test_a_part_count_that_does_not_match_the_design_still_warns(fdm):
+    report = evaluate_printability(_two_parts_on_the_bed(), fdm, expected_components=3)
+    check = next(c for c in report.checks if c.check == "floating_components")
+    assert check.status == "warn"
+
+
+def test_a_floating_part_fails_even_when_it_was_expected(fdm):
+    parts = trimesh.util.concatenate([
+        trimesh.creation.box(extents=[20, 20, 20]),
+        trimesh.creation.box(extents=[6, 6, 6]).apply_translation([0, 0, 40]),
+    ])
+    report = evaluate_printability(on_bed(parts), fdm, expected_components=2)
+    check = next(c for c in report.checks if c.check == "floating_components")
+    assert check.status == "fail"
