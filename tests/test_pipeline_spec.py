@@ -114,3 +114,80 @@ def test_the_generation_record_names_the_compiler(tmp_path, monkeypatch):
     assert recorded["backend"] == "local"
     assert recorded["params"]["spec_sha256"] == result.spec_hash
     assert recorded["cost_eur"] is None
+
+
+# ── The assert half: Phase 3 checks a compiled mesh rather than repairing it ──────
+#
+# The scaling half of N1 is `--no-scale`. This is the other half: a spec run's Phase 3
+# runs `Engineer.process(repair_mode="assert")` and then measures the engineered mesh
+# against the spec's own features, writing the record beside the mesh *before* deciding,
+# so a failure is inspectable, and failing Phase 3 when anything is out of tolerance.
+
+import trimesh  # noqa: E402
+
+from pythonsrc.organizer.compiler import MeasureError  # noqa: E402
+from pythonsrc.pipeline import _assert_spec_dimensions, _repair_mode_for  # noqa: E402
+
+
+def test_a_spec_run_drops_a_blueprint_it_is_handed():
+    """The server's mps_native strategy hardcodes `--blueprint <shared path>`. A spec run
+    has no image, and reading that path would snapshot whichever job's render sits
+    there and stamp its hash as this job's Phase 1 provenance."""
+    args = parse("--spec", "deck.json", "--blueprint", "/app/data/inputs/blueprint.png")
+    assert args.blueprint is None
+
+
+def test_phase_3_asserts_for_a_spec_and_repairs_for_everything_else():
+    assert _repair_mode_for(_ns(spec="deck.json")) == "assert"
+    assert _repair_mode_for(_ns(spec=None)) == "repair"
+    assert _repair_mode_for(_ns(spec=None, mesh="own.stl")) == "repair"
+
+
+def _compiled_and_engineered(tmp_path):
+    from pythonsrc.engineer import Engineer
+    spec_path = dump_spec(example_spec("deck_box"), tmp_path / "in" / "deck.json")
+    outputs = tmp_path / "out"
+    mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    engineered = outputs / "engineered_mesh.obj"
+    eng = Engineer()
+    eng.process(input_path=mesh_path, output_path=engineered, target_mm=None, repair_mode="assert")
+    return outputs, result, engineered, eng
+
+
+def test_the_dimension_check_writes_its_report_and_says_so(tmp_path, capsys):
+    outputs, result, engineered, eng = _compiled_and_engineered(tmp_path)
+    report = _assert_spec_dimensions(result, engineered, outputs)
+    assert report["within_tolerance"] is True
+    assert report["features_checked"] == 19 and report["features_within"] == 19
+    written = json.loads((outputs / "dimension_report.json").read_text())
+    assert written == report
+    out = capsys.readouterr().out
+    assert "[DS] Dimensions: 19/19" in out and "±0.05 mm" in out
+    # Six decimals: the noise floor of a float32 STL is ~1e-5 mm, and a line that
+    # rounds it to "0.0000 mm" reports a measurement that was not made.
+    import re
+    assert re.search(r"max error \d\.\d{6} mm", out), out
+
+
+def test_the_dimension_check_fails_phase_3_on_drift_and_still_writes_the_report(tmp_path, capsys):
+    outputs, result, engineered, eng = _compiled_and_engineered(tmp_path)
+    drifted = trimesh.load(str(engineered), force="mesh")
+    drifted.apply_scale(1.002)
+    drifted.export(str(engineered))
+    with pytest.raises(MeasureError) as exc:
+        _assert_spec_dimensions(result, engineered, outputs)
+    assert "cavity_width_mm" in str(exc.value)
+    written = json.loads((outputs / "dimension_report.json").read_text())
+    assert written["within_tolerance"] is False
+    assert "cavity_width_mm" in written["out_of_tolerance"]
+    out = capsys.readouterr().out
+    assert "✗ cavity_width_mm" in out
+
+
+def test_the_dimension_check_reads_the_spec_phase_2_recorded_not_the_argument(tmp_path):
+    """`spec.json` in the job directory is what was compiled; the check must measure
+    against that, so a spec file edited between phases cannot move the goalposts."""
+    outputs, result, engineered, eng = _compiled_and_engineered(tmp_path)
+    (outputs / "spec.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        _assert_spec_dimensions(result, engineered, outputs)

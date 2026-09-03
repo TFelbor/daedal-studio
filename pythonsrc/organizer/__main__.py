@@ -2,7 +2,7 @@
 
     python -m pythonsrc.organizer example deck_box > deck.json
     python -m pythonsrc.organizer compile deck.json --out deck.stl --features features.json
-    python -m pythonsrc.organizer measure deck.json deck.stl
+    python -m pythonsrc.organizer measure deck.json deck.stl [--report dimension_report.json]
 
 In the pipeline image (`PYTHONPATH=/app/pythonsrc`) the module is `organizer`. Exit codes:
 0 ok, 1 measurement out of tolerance, 2 a spec or usage problem.
@@ -16,8 +16,8 @@ from pathlib import Path
 
 import trimesh
 
-from .archetypes import compile_spec, example_spec, measure_spec_mesh
-from .compiler import DEFAULT_TOLERANCE_MM, MeasureError, compare_features, export_stl
+from .archetypes import compile_spec, example_spec, verify_spec_mesh
+from .compiler import DEFAULT_TOLERANCE_MM, MeasureError, export_stl
 from .spec import SpecError, dump_spec, load_spec
 
 
@@ -43,19 +43,22 @@ def _cmd_measure(args: argparse.Namespace) -> int:
     result = compile_spec(spec)
     mesh = trimesh.load(str(args.mesh), force="mesh")
     try:
-        measured = measure_spec_mesh(spec, mesh)
+        report = verify_spec_mesh(spec, result.features, mesh, args.tol)
     except MeasureError as exc:
         print(f"cannot measure {args.mesh}: {exc}", file=sys.stderr)
         return 1
-    rows = compare_features(result.features, measured, args.tol)
+    if args.report:
+        # The same document `pipeline.py --spec` writes as `dimension_report.json`.
+        Path(args.report).write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n")
+    rows = report.features
     width = max(len(name) for name in rows)
-    failed = 0
     for name, (designed, got, err) in rows.items():
-        ok = abs(err) <= args.tol
-        failed += not ok
+        ok = name not in report.out_of_tolerance
         print(f"{name:<{width}}  designed {designed:9.3f}  measured {got:9.3f}  error {err:+.3f}  {'OK' if ok else 'OUT'}")
-    print(f"{len(rows) - failed}/{len(rows)} features within ±{args.tol:g} mm")
-    return 1 if failed else 0
+    for name in report.missing:
+        print(f"{name:<{width}}  not measured")
+    print(f"{len(rows) - len(report.out_of_tolerance)}/{len(rows)} features within ±{args.tol:g} mm")
+    return 0 if report.within_tolerance else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     p_measure.add_argument("spec")
     p_measure.add_argument("mesh")
     p_measure.add_argument("--tol", type=float, default=DEFAULT_TOLERANCE_MM, help="allowed error per feature, mm")
+    p_measure.add_argument("--report", help="also write the per-feature report as JSON (the pipeline's dimension_report.json)")
     p_measure.set_defaults(func=_cmd_measure)
 
     args = parser.parse_args(argv)
