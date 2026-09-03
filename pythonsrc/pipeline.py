@@ -434,6 +434,70 @@ def _record_blueprint(args, blueprint_path, result=None) -> None:
         logger.warning("Could not record blueprint provenance: %s", exc)
 
 
+def _compile_spec_phase(args, outputs_dir: Path):
+    """Phase 2 for a spec run: compile the spec into the job directory.
+
+    Writes three files beside each other so the job directory explains itself:
+    `compiled_mesh.stl` (what Phase 3 receives), `spec.json` (the spec in canonical,
+    sorted form — the saved object, F11) and `compile_features.json` (every designed
+    dimension, the part list, the archetype and version, the spec hash). Nothing here
+    is a fixture, so the caller's `outputs_dir` is the real namespace.
+
+    Args:
+        args: Parsed CLI arguments; `args.spec` names the spec file.
+        outputs_dir: The job's output directory.
+
+    Returns:
+        The compiled mesh path and the `CompileResult`.
+
+    Raises:
+        SpecError: If the file is not a spec, or the archetype refuses it.
+    """
+    try:
+        from organizer.spec import load_spec, dump_spec
+        from organizer.archetypes import compile_spec
+        from organizer.compiler import export_stl
+    except ImportError:
+        from pythonsrc.organizer.spec import load_spec, dump_spec
+        from pythonsrc.organizer.archetypes import compile_spec
+        from pythonsrc.organizer.compiler import export_stl
+
+    spec = load_spec(args.spec)
+    result = compile_spec(spec)
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    mesh_path = export_stl(result.mesh, outputs_dir / "compiled_mesh.stl")
+    dump_spec(spec, outputs_dir / "spec.json")
+    (outputs_dir / "compile_features.json").write_text(
+        json.dumps(result.features_document(), indent=2, sort_keys=True) + "\n"
+    )
+    print(
+        f"[DS] Compiled {result.archetype} v{result.archetype_version} "
+        f"(spec {result.spec_hash[:12]}, {len(result.parts)} parts, "
+        f"{len(result.mesh.faces)} faces) → {mesh_path}",
+        flush=True,
+    )
+    return mesh_path, result
+
+
+def _record_spec_generation(args, result, duration_s: float) -> None:
+    """Record the compiler as this job's generation model.
+
+    `generation_model` records what actually made the mesh, and for a spec run that is
+    the archetype — no weights, no cost, `local` backend. The spec hash rides in
+    `generation_params` so the row can be joined back to the exact spec without a new
+    column; `blueprint_*` stay NULL, which is correct, because no image ever existed.
+    """
+    _record_generation(
+        args,
+        model=f"organizer/{result.archetype}",
+        model_version=result.archetype_version,
+        backend="local",
+        params={"schema_version": 1, **result.features_document()},
+        cost_eur=None,
+        duration_s=round(duration_s, 3),
+    )
+
+
 def _record_mesh_lineage(args, raw_mesh_path, repaired_mesh_path, repair_report=None) -> None:
     """Persist a before/after description of the mesh around repair.
 
@@ -859,7 +923,13 @@ def run(args: argparse.Namespace) -> None:
     else:
         outputs_dir = Path(OUTPUTS_DIR)
 
-    raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
+    if args.spec:
+
+        raw_mesh_path = outputs_dir / "compiled_mesh.stl"
+
+    else:
+
+        raw_mesh_path = Path(args.mesh) if args.mesh else outputs_dir / "raw_mesh.obj"
     final_mesh_path = outputs_dir / "engineered_mesh.obj"
     gcode_path = outputs_dir / "engineered_mesh.gcode"
 
@@ -927,11 +997,19 @@ def run(args: argparse.Namespace) -> None:
             # `--skip-sculptor --mesh real.obj` with no blueprint: legitimately nothing
             # to show. Said out loud, because the running view's first stage will be
             # empty and an unexplained empty stage reads as a broken pipeline.
-            logger.warning(
-                "No blueprint at %s and none will be installed — the mesh came from "
-                "--mesh, so there is no Phase 1 output to show or hash.",
-                blueprint_path,
-            )
+            if args.spec:
+                # Not a gap: a compiled spec has no image stage. Said at INFO so the
+                # running view's empty first stage has an explanation in the log.
+                logger.info(
+                    "Phase 1 does not apply — the geometry is compiled from %s, so there "
+                    "is no blueprint to show or hash.", args.spec,
+                )
+            else:
+                logger.warning(
+                    "No blueprint at %s and none will be installed — the mesh came from "
+                    "--mesh, so there is no Phase 1 output to show or hash.",
+                    blueprint_path,
+                )
 
         # Checked by content every time, not just when this run installed it: a stand-in
         # left behind by an earlier run is still a stand-in, and Phase 2 must refuse to
@@ -1026,8 +1104,33 @@ def run(args: argparse.Namespace) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Blueprint image screen did not run: %s", exc)
 
-    # ── Phase 2: Sculptor ─────────────────────────────────────────────────────
-    if not args.skip_sculptor:
+    # ── Phase 2: Sculptor, or the Compiler for a spec run ─────────────────────
+
+    compile_result = None
+
+    if args.spec:
+
+        # The parametric path. Same phase number and the same banner emitters as the
+
+        # sculptor — the UI names this phase "Compiler" and keys off the number — so a
+
+        # spec run's rail moves truthfully and the banner contract is untouched.
+
+        t0 = _phase_start(2)
+
+        try:
+
+            raw_mesh_path, compile_result = _compile_spec_phase(args, outputs_dir)
+
+            _record_spec_generation(args, compile_result, time.time() - t0)
+
+            _phase_pass(2, t0, str(raw_mesh_path))
+
+        except Exception as exc:  # noqa: BLE001 — a SpecError is a Phase 2 failure
+
+            _phase_fail(2, t0, exc)
+
+    elif not args.skip_sculptor:
         t0 = _phase_start(2)
         sculptor = None
         try:
@@ -1219,6 +1322,7 @@ def run(args: argparse.Namespace) -> None:
             profile=process_profile,
             job_id=args.job_id,
             was_hollowed=args.hollow,
+            expected_components=len(compile_result.parts) if compile_result else None,
         )
         printability_report = report
 
