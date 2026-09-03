@@ -157,10 +157,11 @@ and Phases 1–2 above are then not run at all.
 | **Kernel** | `manifold3d` 3.5.2 (Apache-2.0) — the decision recorded under *The geometry kernel* above, exercised |
 | **Recorded as** | `generation_model = organizer/deck_box`, `generation_model_version = 1`, `generation_backend = local`, spec sha256 in `generation_params` |
 | **Licence delta** | None — no new dependency, no weights |
-| **Measured** | Compile of a 100-card deck box: 72 faces, 0.1 s in the pipeline image. Every designed feature within 0.05 mm on the compiled mesh and on Phase 3's output (`tests/test_deck_box.py`; 19/19 on the container run of 2026-09-03). Gate 92.9 / `risky`, the one warn being the wall check's quantisation on a 158 mm plate |
-| **Not yet** | Repair-assertion path, `size_source="spec"`, envelope sweep, server/UI wiring, dimension KB, LLM extraction |
+| **Measured** | Compile of a 100-card deck box: 72 faces, 0.1 s in the pipeline image. Every designed feature within 0.05 mm on the compiled mesh and on Phase 3's output (`tests/test_deck_box.py`; 19/19 on the container run of 2026-09-03). Across the envelope — 405 specs, counts 15–160 × three sleevings × walls 2.6–4.0 × clearances 0.1–0.35 × lid engagement 8–30 mm — the largest error on the exported, reloaded STL is float32 noise, ~5 µm (`tests/test_organizer_dimensional_accuracy.py`). Gate 92.9 / `risky`, the one warn being the wall check's quantisation on a 158 mm plate |
+| **Asserted, not repaired** | A spec run's Phase 3 is `Engineer.process(repair_mode="assert")`: watertight, no boundary or non-manifold edges, consistent winding, kernel acceptance — refused with `MeshAssertionError` rather than fixed — then every designed feature measured on the engineered mesh at 0,05 mm (`dimension_report.json`, `repair_report["dimension_check"]`); a miss fails Phase 3. `repair_method="asserted"` on the row, `size_source="spec"` from `POST /jobs` |
+| **Not yet** | Envelope sweep across *every* archetype (there is one), the spec on `GET /jobs/{id}` for the UI, dimension KB, LLM extraction |
 
-## Phase 3 — Engineer: repair, scale, orient, hollow
+## Phase 3 — Engineer: repair or assert, scale, orient, hollow
 
 | | |
 |---|---|

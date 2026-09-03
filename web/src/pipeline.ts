@@ -14,9 +14,11 @@
  * `pythonsrc/organizer/` compiles a deck-box spec and `pipeline.py --spec` runs that
  * compile as phase 2, so "Compiler" is literal on that path. On the generative path
  * phase 1 still renders a blueprint with FLUX.2 and phase 2 reconstructs it with
- * TRELLIS.2. The server does not yet carry a spec on `JobStatusResponse`, so
- * `specFromJob` still returns null and `NO_SPEC_REASON` is still true. Phase 3 is the
- * Engineer — watertight repair and scaling — and the printability gate it is named for
+ * TRELLIS.2. `POST /jobs` accepts a spec (`JobRequest.spec`) and the pipeline asserts
+ * its dimensions after phase 3, but the server does not yet carry the spec back on
+ * `JobStatusResponse`, so `specFromJob` still returns null and `NO_SPEC_REASON` is still
+ * true for every job this UI can submit. Phase 3 is the Engineer — watertight repair
+ * (or, for a spec run, assertion) and scaling — and the printability gate it is named for
  * actually runs *between* phases 3 and 4, deliberately unnumbered, because the
  * `.status` protocol and every historical status file key off phases 1–5.
  *
