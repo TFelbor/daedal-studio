@@ -155,6 +155,10 @@ def _should_install_reference_blueprint(args, blueprint_path: Path) -> bool:
     Returns:
         True if the bundled reference blueprint should be copied to `blueprint_path`.
     """
+    if getattr(args, "spec", None):
+        # There was never an image. Inventing one would stamp a fixture's hash as this
+        # job's Phase 1 provenance.
+        return False
     if not args.skip_visualizer:
         return False
     if blueprint_path.exists():
@@ -712,11 +716,44 @@ def _will_use_reference_assets(args, blueprint_path: Path, mesh_candidates: list
     Returns:
         True if the blueprint or the mesh will come from `assets/dev_reference/`.
     """
+    if getattr(args, "spec", None):
+        # A spec run compiles its own geometry and substitutes nothing. Its outputs
+        # belong in the real namespace: nothing in them came from a fixture.
+        return False
     if args.skip_visualizer and not blueprint_path.exists():
         return True
     if args.skip_sculptor and not any(path.exists() for path in mesh_candidates):
         return True
     return False
+
+
+def _apply_spec_mode(args: argparse.Namespace) -> argparse.Namespace:
+    """Make `--spec` mean what it says, and refuse what it cannot mean.
+
+    A spec run *is* the documented `--skip-visualizer --skip-sculptor --mesh --no-scale`
+    seam with the compile step in front of it, so the three flags are implied rather than
+    required — asking a person to type them is asking for the run that forgets
+    `--no-scale` and prints a 50 mm deck box. Two combinations are refused rather than
+    resolved: `--mesh` is a second source of geometry, and `--hollow` voxelises at a
+    pitch and re-scales, which cannot honour authored dimensions (`Engineer.process`
+    refuses it too; refusing here names the reason before anything runs).
+
+    Raises:
+        ValueError: Naming the offending flag.
+    """
+    if not getattr(args, "spec", None):
+        return args
+    if args.mesh:
+        raise ValueError("--spec and --mesh both supply the geometry; pass one of them")
+    if args.hollow:
+        raise ValueError(
+            "--spec refuses --hollow: a compiled spec's dimensions are final, and "
+            "hollowing voxelises then re-scales. Model the cavity in the spec instead."
+        )
+    args.skip_visualizer = True
+    args.skip_sculptor = True
+    args.no_scale = True
+    return args
 
 
 def _blueprint_path(args, inputs_root: Path) -> Path:
@@ -1466,6 +1503,13 @@ def _build_parser() -> argparse.ArgumentParser:
              "with --job-id, data/inputs/blueprint.png without)",
     )
     paths.add_argument("--mesh", metavar="PATH", help="Override raw mesh path")
+    paths.add_argument(
+        "--spec",
+        metavar="PATH",
+        help="Compile an organizer spec (pythonsrc/organizer) into the mesh instead of "
+             "running Phases 1-2. Implies --skip-visualizer --skip-sculptor --no-scale; "
+             "refuses --mesh and --hollow",
+    )
     
     # Telemetry
     telemetry = parser.add_argument_group("telemetry")
@@ -1603,7 +1647,11 @@ def _build_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = _build_parser()
     args = parser.parse_args()
-    
+    try:
+        _apply_spec_mode(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+
     if args.job_id:
         CURRENT_JOB_ID = args.job_id
     _setup_logging(args.verbose)
