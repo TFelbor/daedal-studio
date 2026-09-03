@@ -264,8 +264,8 @@ same commit):
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
 - [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable
 - [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--skip… --mesh --no-scale` seam (authored with text-to-cad, source frozen)
-- [ ] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
-- [ ] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
+- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"`
+- [x] Dimensional-accuracy CI — spec → exported-mesh error per critical feature
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
