@@ -190,3 +190,105 @@ def test_from_json_refuses_text_that_is_not_json():
     with pytest.raises(SpecError) as exc:
         OrganizerSpec.from_json("{not json")
     assert "JSON" in str(exc.value)
+
+
+from pythonsrc.organizer.spec import canonical_json, dump_spec, load_spec, spec_diff, spec_hash  # noqa: E402
+
+
+# ── canonical form and hash ────────────────────────────────────────────────────
+
+def test_canonical_json_ignores_key_order():
+    d = deck().to_dict()
+    shuffled = {k: d[k] for k in reversed(list(d))}
+    assert canonical_json(OrganizerSpec.from_dict(shuffled)) == canonical_json(OrganizerSpec.from_dict(d))
+
+
+def test_canonical_json_is_compact_and_sorted():
+    text = canonical_json(deck())
+    assert " " not in text
+    keys = list(json.loads(text))
+    assert keys == sorted(keys)
+
+
+def test_the_hash_is_sha256_of_the_canonical_form():
+    import hashlib
+    spec = deck()
+    assert spec_hash(spec) == hashlib.sha256(canonical_json(spec).encode("utf-8")).hexdigest()
+    assert len(spec_hash(spec)) == 64
+
+
+def test_any_field_change_changes_the_hash():
+    base = spec_hash(deck())
+    assert spec_hash(deck(count=99)) != base
+    assert spec_hash(deck(lid=Lid(clearance_mm=0.25))) != base
+    assert spec_hash(deck(process=Process(wall_mm=2.4))) != base
+
+
+def test_the_hash_is_stable_across_processes():
+    """A fixed vector: if this changes, every stored hash in the world changes with it,
+    which is a schema-version bump, not a refactor."""
+    spec = OrganizerSpec(
+        archetype="deck_box",
+        compartments=(Compartment(CardStack(count=100)),),
+        lid=Lid(),
+    )
+    assert canonical_json(spec) == (
+        '{"archetype":"deck_box","compartments":[{"contents":{"card":"standard",'
+        '"count":100,"sleeving":"double"}}],"constraints":{"max_external_mm":null},'
+        '"lid":{"clearance_mm":0.2,"height_mm":15.0,"kind":"lift_off","magnets":false,'
+        '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
+        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
+    )
+
+
+# ── diff ───────────────────────────────────────────────────────────────────────
+
+def test_diff_reports_a_changed_path_with_old_and_new():
+    a, b = deck(), deck(lid=Lid(height_mm=20.0))
+    assert spec_diff(a, b) == {"lid.height_mm": (15.0, 20.0)}
+
+
+def test_diff_reports_added_and_removed_paths_with_none():
+    a = deck()
+    b = deck(constraints=Constraints(max_external_mm=(80.0, 80.0, 100.0)))
+    d = spec_diff(a, b)
+    assert d["constraints.max_external_mm[0]"] == (None, 80.0)
+    assert spec_diff(b, a)["constraints.max_external_mm[0]"] == (80.0, None)
+
+
+def test_diff_of_identical_specs_is_empty():
+    assert spec_diff(deck(), deck()) == {}
+
+
+def test_diff_indexes_into_lists():
+    a, b = deck(count=100), deck(count=60)
+    assert spec_diff(a, b) == {"compartments[0].contents.count": (100, 60)}
+
+
+# ── files ──────────────────────────────────────────────────────────────────────
+
+def test_dump_then_load_round_trips(tmp_path):
+    spec = deck()
+    path = dump_spec(spec, tmp_path / "deck.json")
+    assert load_spec(path) == spec
+    assert path.read_text().endswith("\n")
+
+
+def test_load_refuses_a_bad_file_with_the_problems(tmp_path):
+    path = tmp_path / "bad.json"
+    path.write_text('{"archetype": "deck_box", "compartments": []}')
+    with pytest.raises(SpecError) as exc:
+        load_spec(path)
+    assert "compartments" in str(exc.value)
+
+
+def test_the_package_exports_the_schema_without_the_kernel():
+    """`pythonsrc.organizer` must stay importable where trimesh is not installed, so its
+    `__init__` may import the schema and nothing else."""
+    import ast, importlib.util
+    import pythonsrc.organizer as pkg
+    assert pkg.OrganizerSpec is OrganizerSpec and pkg.spec_hash is spec_hash
+    tree = ast.parse(open(importlib.util.find_spec("pythonsrc.organizer").origin).read())
+    imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    assert imported == {"spec"}

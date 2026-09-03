@@ -331,3 +331,66 @@ def _from_mapping(cls: type, data: Any, path: str, problems: list[str]) -> Any:
         # A missing required argument is the only TypeError a keyword-only build raises.
         problems.append(f"{path} is missing a required field ({exc})")
     return None
+
+
+# ── canonical form, hash, diff ─────────────────────────────────────────────────
+
+def canonical_json(spec: OrganizerSpec) -> str:
+    """One string per spec: sorted keys, no whitespace, UTF-8 kept as is."""
+    return json.dumps(spec.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def spec_hash(spec: OrganizerSpec) -> str:
+    """sha256 of the canonical form. Two specs with equal hashes compile identically."""
+    return hashlib.sha256(canonical_json(spec).encode("utf-8")).hexdigest()
+
+
+def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
+    """`{"a": {"b": [1]}}` → `{"a.b[0]": 1}`. Leaves keep their JSON value."""
+    out: dict[str, Any] = {}
+    if isinstance(value, Mapping):
+        for key in sorted(value):
+            out.update(_flatten(value[key], f"{prefix}.{key}" if prefix else key))
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            out.update(_flatten(item, f"{prefix}[{i}]"))
+    else:
+        out[prefix] = value
+    return out
+
+
+def spec_diff(a: OrganizerSpec, b: OrganizerSpec) -> dict[str, tuple[Any, Any]]:
+    """Every dotted path whose value differs, as (old, new); None on a missing side.
+
+    This is F8 — "make the lid deeper" → spec diff → regenerate — made mechanical,
+    and what a saved design's history is made of.
+    """
+    fa, fb = _flatten(a.to_dict()), _flatten(b.to_dict())
+    return {
+        path: (fa.get(path), fb.get(path))
+        for path in sorted(set(fa) | set(fb))
+        if fa.get(path) != fb.get(path)
+    }
+
+
+# ── files ──────────────────────────────────────────────────────────────────────
+
+def load_spec(path: str | Path) -> OrganizerSpec:
+    """Read and validate a spec file.
+
+    Raises:
+        SpecError: With every problem, if the file is not a valid spec.
+        OSError: If the file cannot be read.
+    """
+    return OrganizerSpec.from_json(Path(path).read_text(encoding="utf-8"))
+
+
+def dump_spec(spec: OrganizerSpec, path: str | Path) -> Path:
+    """Write a spec as sorted, indented JSON with a trailing newline (diff-friendly)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(spec.to_dict(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
