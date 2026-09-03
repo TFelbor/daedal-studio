@@ -245,3 +245,165 @@ def example() -> OrganizerSpec:
         compartments=(Compartment(CardStack(count=100, card="standard", sleeving="double")),),
         lid=Lid(),
     )
+
+
+#: Features `measure()` reads off geometry. `stack_height_mm` is designed only — a card
+#: stack is not on the mesh — so it is the one designed feature deliberately absent here.
+MEASURED_FEATURES: tuple[str, ...] = (
+    "cavity_width_mm", "cavity_depth_mm", "cavity_height_mm",
+    "external_width_mm", "external_depth_mm", "external_height_mm",
+    "body_height_mm", "floor_mm", "wall_mm",
+    "lip_height_mm", "lip_wall_mm", "lip_outer_width_mm", "lip_outer_depth_mm",
+    "lid_cavity_width_mm", "lid_cavity_depth_mm", "lid_cavity_height_mm",
+    "lid_height_mm", "lid_wall_mm", "lid_clearance_mm",
+)
+
+
+def _planes(part: Any, axis: int, expected: int, what: str) -> list[float]:
+    planes = plane_set(part.vertices[:, axis])
+    if len(planes) != expected:
+        raise MeasureError(
+            f"the {what} has {len(planes)} distinct {'XYZ'[axis]} planes where a deck box "
+            f"v{ARCHETYPE_VERSION} has {expected}: {[round(v, 3) for v in planes]}"
+        )
+    return planes
+
+
+def measure(mesh: Any) -> dict[str, float]:
+    """Read the designed features back off a deck-box mesh — compiled or post-Phase-3.
+
+    Splits the plate into its two bodies (the body is the larger by volume), takes the
+    distinct axis-aligned planes of each, and reads every feature as a difference of
+    planes. A plane count that does not match the design is a `MeasureError`: geometry
+    that does not have the planes the design says it has *is* the finding.
+
+    Raises:
+        MeasureError: If the mesh is not two bodies with the deck box's plane structure.
+    """
+    parts = mesh.split(only_watertight=False)
+    if len(parts) != 2:
+        raise MeasureError(f"expected 2 bodies (body and lid), found {len(parts)}")
+    body, lid = sorted(parts, key=lambda p: p.volume, reverse=True)
+    # Body planes: X and Y each {0, lip_inset, wall, wall + cavity, W − lip_inset, W};
+    # Z {0, floor, body_h − lip_height, body_h}.
+    bx = _planes(body, 0, 6, "body")
+    by = _planes(body, 1, 6, "body")
+    bz = _planes(body, 2, 4, "body")
+    # Lid planes: X and Y each {0, lid_wall, W − lid_wall, W}; Z {0, top, top + height}.
+    lx = _planes(lid, 0, 4, "lid")
+    ly = _planes(lid, 1, 4, "lid")
+    lz = _planes(lid, 2, 3, "lid")
+    lid_cavity_w = lx[2] - lx[1]
+    lip_outer_w = bx[4] - bx[1]
+    measured = {
+        "external_width_mm": bx[5] - bx[0],
+        "external_depth_mm": by[5] - by[0],
+        "body_height_mm": bz[3] - bz[0],
+        "floor_mm": bz[1] - bz[0],
+        "lip_height_mm": bz[3] - bz[2],
+        "cavity_width_mm": bx[3] - bx[2],
+        "cavity_depth_mm": by[3] - by[2],
+        "cavity_height_mm": bz[3] - bz[1],
+        "lip_outer_width_mm": lip_outer_w,
+        "lip_outer_depth_mm": by[4] - by[1],
+        "wall_mm": bx[2] - bx[0],
+        "lip_wall_mm": bx[2] - bx[1],
+        "lid_cavity_width_mm": lid_cavity_w,
+        "lid_cavity_depth_mm": ly[2] - ly[1],
+        "lid_cavity_height_mm": lz[2] - lz[1],
+        "lid_height_mm": lz[2] - lz[0],
+        "lid_wall_mm": lx[1] - lx[0],
+        "lid_clearance_mm": (lid_cavity_w - lip_outer_w) / 2.0,
+        "external_height_mm": (bz[3] - bz[0]) + (lz[1] - lz[0]),
+    }
+    return {k: float(v) for k, v in measured.items()}
+
+
+def fits_check(spec: OrganizerSpec) -> FitsResult:
+    """The millimetre arithmetic, and whether the result fits its external constraint.
+
+    Without a constraint the deck fits its own cavity by construction — the cavity is
+    derived from the stack — and the sum is still returned, because the sum *is* the
+    value: it is what a person checks against their own callipers. With
+    `constraints.max_external_mm`, each assembled external dimension is compared and a
+    failing remedy names the axis, the overshoot and the card count that would fit.
+    """
+    validate(spec)
+    d = derive(spec)
+    s = d.stack
+    line = (
+        f"{s.count} × {s.pitch_mm:g} mm = {s.stack_height_mm:g} mm stack · "
+        f"internal {d.cavity_d:g} mm · "
+        f"external {d.external_w:g} × {d.external_d:g} × {d.external_h:g} mm"
+    )
+    fits = s.stack_height_mm <= d.cavity_d
+    remedy = None
+    limit = spec.constraints.max_external_mm
+    if limit is not None:
+        over = [
+            (axis, extent, maximum)
+            for axis, extent, maximum in zip(
+                ("width", "depth", "height"), (d.external_w, d.external_d, d.external_h), limit
+            )
+            if extent > maximum + 1e-9
+        ]
+        if over:
+            fits = False
+            notes = [
+                f"external {axis} {extent:g} mm exceeds {maximum:g} mm by {extent - maximum:.1f} mm"
+                for axis, extent, maximum in over
+            ]
+            if any(axis == "depth" for axis, _, _ in over):
+                room = limit[1] - 2 * spec.process.wall_mm - spec.process.stack_slack_mm
+                fitting = max(0, int(math.floor(room / s.pitch_mm + 1e-9)))
+                notes.append(f"{fitting} cards would fit the depth limit")
+            remedy = "; ".join(notes) + ". Reduce the card count, the wall or the slack, or relax the constraint."
+    return FitsResult(fits=fits, line=line, basis=s.basis, remedy=remedy)
+
+
+def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
+    """The spec as `web/src/organizer/spec.ts` declares it: labelled millimetres, a fits
+    verdict, and the hash the gate binds to. Not wired to the server in M0; it exists so
+    that wiring is one field rather than a second derivation."""
+    d = derive(spec)
+    s = d.stack
+    p = spec.process
+    lid = spec.lid
+    assert lid is not None
+
+    def row(key: str, label: str, value: float, unit: str, editable: bool,
+            note: str | None = None) -> dict[str, Any]:
+        out: dict[str, Any] = {"key": key, "label": label, "value": value, "unit": unit, "editable": editable}
+        if note:
+            out["note"] = note
+        return out
+
+    dimensions = [
+        row("card_count", "Cards", s.count, "cards", True),
+        row("pitch_mm", "Pitch per card", s.pitch_mm, "mm", False, s.basis),
+        row("stack_height_mm", "Stack height", s.stack_height_mm, "mm", False, f"{s.count} × {s.pitch_mm:g} mm"),
+        row("cavity_width_mm", "Internal width", d.cavity_w, "mm", False,
+            f"{s.footprint_w_mm:g} mm envelope + {p.cavity_clearance_mm:g} mm clearance"),
+        row("cavity_depth_mm", "Internal depth", d.cavity_d, "mm", False,
+            f"{s.stack_height_mm:g} mm stack + {p.stack_slack_mm:g} mm slack"),
+        row("cavity_height_mm", "Internal height", d.cavity_h, "mm", False,
+            f"{s.footprint_h_mm:g} mm envelope + {p.cavity_clearance_mm:g} mm clearance"),
+        row("external_width_mm", "External width", d.external_w, "mm", False),
+        row("external_depth_mm", "External depth", d.external_d, "mm", False),
+        row("external_height_mm", "External height", d.external_h, "mm", False, "assembled, lid on"),
+        row("wall_mm", "Wall", p.wall_mm, "mm", True),
+        row("floor_mm", "Floor", p.floor_mm, "mm", True),
+        row("cavity_clearance_mm", "Cavity clearance", p.cavity_clearance_mm, "mm", True,
+            "total per axis over the sleeve envelope"),
+        row("stack_slack_mm", "Stack slack", p.stack_slack_mm, "mm", True),
+        row("lid_clearance_mm", "Lid clearance", lid.clearance_mm, "mm", True,
+            "per side; the fit tolerance a test coupon prints first"),
+        row("lid_height_mm", "Lid engagement", lid.height_mm, "mm", True),
+    ]
+    return {
+        "archetype": ARCHETYPE,
+        "archetypeVersion": f"v{ARCHETYPE_VERSION}",
+        "hash": result.spec_hash,
+        "dimensions": dimensions,
+        "fits": fits_check(spec).to_dict(),
+    }

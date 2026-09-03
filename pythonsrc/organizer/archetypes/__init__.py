@@ -44,3 +44,16 @@ def compile_spec(spec: OrganizerSpec) -> CompileResult:
 
 def example_spec(name: str) -> OrganizerSpec:
     return get_archetype(name).example()
+
+
+def measure_spec_mesh(spec: OrganizerSpec, mesh) -> dict[str, float]:
+    """Read a spec's designed features off a mesh with the spec's own archetype."""
+    return get_archetype(spec.archetype).measure(mesh)
+
+
+def fits_for(spec: OrganizerSpec) -> FitsResult:
+    return get_archetype(spec.archetype).fits_check(spec)
+
+
+def view_for(spec: OrganizerSpec, result: CompileResult) -> dict:
+    return get_archetype(spec.archetype).to_view(spec, result)

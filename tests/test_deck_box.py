@@ -185,3 +185,113 @@ def test_the_example_spec_compiles():
     spec = example_spec("deck_box")
     assert spec.compartments[0].contents.count == 100
     assert compile_spec(spec).mesh.is_watertight
+
+
+from pythonsrc.engineer import Engineer  # noqa: E402
+from pythonsrc.organizer.archetypes import fits_for, measure_spec_mesh, view_for  # noqa: E402
+from pythonsrc.organizer.compiler import export_stl  # noqa: E402
+from pythonsrc.printability import ProcessProfile, evaluate_printability  # noqa: E402
+
+TOL_MM = 0.05  # PRD N1: internal dimensions exact to spec within ≤ ±0,05 mm
+
+
+# ── measure: designed features read back off the geometry ──────────────────────
+
+@pytest.mark.parametrize("count", [40, 60, 100])
+@pytest.mark.parametrize("sleeving", ["none", "single", "double"])
+def test_every_designed_feature_is_on_the_compiled_mesh(count, sleeving):
+    spec = deck(count=count, sleeving=sleeving)
+    result = compile_spec(spec)
+    measured = measure_spec_mesh(spec, result.mesh)
+    assert_features_within(result.features, measured, TOL_MM, required=set(deck_box.MEASURED_FEATURES))
+
+
+def test_the_lid_clears_the_lip_by_exactly_the_clearance():
+    spec = deck(lid=Lid(clearance_mm=0.25))
+    measured = measure_spec_mesh(spec, compile_spec(spec).mesh)
+    assert measured["lid_clearance_mm"] == pytest.approx(0.25, abs=1e-4)
+
+
+def test_measure_refuses_a_mesh_that_is_not_a_deck_box():
+    with pytest.raises(MeasureError):
+        deck_box.measure(trimesh.creation.box(extents=[10, 10, 10]))
+
+
+def test_phase_3_hands_the_slicer_the_dimensions_that_were_designed(tmp_path):
+    """The seam the roadmap names: --skip-visualizer --skip-sculptor --mesh --no-scale.
+    Repair runs; scaling does not; every feature survives within tolerance."""
+    spec = deck()
+    result = compile_spec(spec)
+    raw = export_stl(result.mesh, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(input_path=raw, output_path=tmp_path / "engineered.obj", target_mm=None)
+    engineered = trimesh.load(str(out), force="mesh")
+    measured = measure_spec_mesh(spec, engineered)
+    assert_features_within(result.features, measured, TOL_MM, required=set(deck_box.MEASURED_FEATURES))
+    assert eng.last_report["scale_applied"] is False
+    assert eng.last_report["scale_axis"] == "preserved"
+    assert eng.last_report.get("faces_dropped", 0) == 0
+
+
+def test_the_gate_does_not_fail_the_deck_box(tmp_path):
+    spec = deck()
+    result = compile_spec(spec)
+    raw = export_stl(result.mesh, tmp_path / "compiled_mesh.stl")
+    out = Engineer().process(input_path=raw, output_path=tmp_path / "engineered.obj", target_mm=None)
+    report = evaluate_printability(
+        trimesh.load(str(out), force="mesh"),
+        ProcessProfile(build_volume_mm=[220.0, 220.0, 250.0]),
+        expected_components=len(result.parts),
+    )
+    by_name = {c.check: c for c in report.checks}
+    assert not any(c.status == "fail" for c in report.checks), [(c.check, c.detail) for c in report.checks if c.status == "fail"]
+    assert by_name["floating_components"].status == "pass"
+    assert by_name["watertight"].status == "pass"
+    assert report.verdict != "unprintable"
+
+
+# ── fits check and the UI view ─────────────────────────────────────────────────
+
+def test_the_fits_line_shows_the_arithmetic():
+    fits = fits_for(deck())
+    assert fits.fits is True
+    assert fits.line.startswith("100 × 0.7 mm = 70 mm stack")
+    assert "internal 71 mm" in fits.line
+    assert "external 74.1 × 76.6 × 97.5 mm" in fits.line
+    assert "0.70 mm/card" in fits.basis
+    assert fits.remedy is None
+
+
+def test_an_external_constraint_that_fails_names_the_axis_and_a_card_count():
+    spec = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0)))
+    fits = fits_for(spec)
+    assert fits.fits is False
+    assert "depth" in fits.remedy and "76.6" in fits.remedy and "70" in fits.remedy
+    # (70 − 2·2.8 − 1.0) / 0.70 = 90.57 → 90 cards
+    assert "90 cards" in fits.remedy
+
+
+def test_an_external_constraint_that_holds_passes():
+    spec = deck(constraints=Constraints(max_external_mm=(80.0, 80.0, 100.0)))
+    assert fits_for(spec).fits is True
+
+
+def test_the_view_has_the_shape_the_ui_declares():
+    spec = deck()
+    result = compile_spec(spec)
+    view = view_for(spec, result)
+    assert view["archetype"] == "deck_box"
+    assert view["archetypeVersion"] == "v1"
+    assert view["hash"] == result.spec_hash
+    assert view["fits"]["fits"] is True and "stack" in view["fits"]["line"]
+    keys = [d["key"] for d in view["dimensions"]]
+    assert keys[0] == "card_count"
+    for row in view["dimensions"]:
+        assert set(row) >= {"key", "label", "value", "unit", "editable"}
+        assert isinstance(row["value"], (int, float)) and isinstance(row["editable"], bool)
+    editable = {d["key"] for d in view["dimensions"] if d["editable"]}
+    derived = {d["key"] for d in view["dimensions"] if not d["editable"]}
+    assert {"card_count", "wall_mm", "lid_clearance_mm"} <= editable
+    assert {"stack_height_mm", "cavity_depth_mm", "external_height_mm"} <= derived
+    pitch = next(d for d in view["dimensions"] if d["key"] == "pitch_mm")
+    assert "0.70 mm/card" in pitch["note"]
