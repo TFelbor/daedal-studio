@@ -274,8 +274,6 @@ same commit):
 - [ ] Fit-offset determinism decided (printer profile as a recorded compile input), then fit tolerances as `ProcessProfile` fields
 - [ ] Manifold CI sweep across every archetype's parameter envelope
 - [ ] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint)
-- [ ] Bambu operator for real — KTH machine in Developer Mode; port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus)
-- [ ] Moonraker test target — headless Klipper + virtual MCU (Alberto)
 - [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
 - [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
 
@@ -301,6 +299,8 @@ same commit):
 - [ ] Printer-reachability decision for a hosted server — 3MF download / Bambu Cloud / local agent / phone-as-LAN-bridge
 - [ ] ToS (warranty, indemnity, right to refuse, data-use consent) + privacy policy live before the first external tester
 - [ ] Closed beta cohort 1 — external users prompt, we print on KTH/Trento, photo + fit verdict back; every participant interviewed
+- [ ] Bambu operator for real — KTH machine in Developer Mode; port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus) — moved from Phase 2 on 4 Sep: the beta prints on our own machine via Bambu Studio by hand
+- [ ] Moonraker test target — headless Klipper + virtual MCU (Alberto) — moved from Phase 2 on 4 Sep
 - [ ] Test-fit coupon — 10-minute tolerance validator through the dispatch gate
 - [ ] Fit verdict in `VALID_OUTCOMES` + outcome UI ("fits as intended" ≠ "printed")
 - [ ] Coupon → tolerance calibration loop — verdicts update per-printer/material fit offsets
