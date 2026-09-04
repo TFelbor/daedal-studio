@@ -47,7 +47,7 @@ NON_EVIDENCE_OUTCOMES = frozenset({"unknown", "awaiting_verdict", "dev", "declin
 #: - ``prompt_hint`` — a size was parsed out of the prompt and the user *accepted*
 #:   the suggestion. Never written for a hint that was merely offered: a size the
 #:   software inferred and applied by itself is not a size anyone asked for.
-VALID_SIZE_SOURCES = frozenset({"default", "user", "prompt_hint"})
+VALID_SIZE_SOURCES = frozenset({"default", "user", "prompt_hint", "spec"})
 
 #: Which bounding-box extent a target size describes. Mirrors `Engineer.SCALE_AXES`;
 #: "height" is the Z extent after the part is seated on the plate, "longest" is the
@@ -273,10 +273,12 @@ class PrintJob:
     separate columns precisely so they can be compared — a control labelled "Height"
     that produced a longest-edge part is a bug this pairing makes visible."""
 
-    size_source: Literal["default", "user", "prompt_hint"] | None = None
+    size_source: Literal["default", "user", "prompt_hint", "spec"] | None = None
     """Who decided `requested_size_mm`. See `VALID_SIZE_SOURCES`. None only on rows
     written before this column existed — a live job always has a source, because
-    "the default applied" is itself a fact worth recording."""
+    "the default applied" is itself a fact worth recording. `spec` means the job was
+    compiled from an organizer spec: every dimension is the spec's, there is no single
+    size to record, and `requested_size_mm` and `requested_scale_axis` stay NULL."""
 
     # ── Lineage and engagement ────────────────────────────────────────────────
 

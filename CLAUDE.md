@@ -12,9 +12,13 @@ governing rule: *the LLM interprets words; it never produces geometry.* Phases 1
 (FLUX → TRELLIS.2) are **benched, not deleted** — they leave the critical path and become the
 branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,
 printability gate, slicing, dispatch gate, telemetry) is unchanged and is what the parametric
-path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric
-engine (`pythonsrc/organizer/` — spec schema, archetypes, dimension KB) does not exist yet; do
-not treat generative-path tuning as roadmap work.
+path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric engine has its first two pieces (2026-09-03): the spec schema
+(`pythonsrc/organizer/spec.py`) and the deck box archetype
+(`pythonsrc/organizer/archetypes/deck_box.py`), entered through `pipeline.py --spec` —
+see **Organizer — the parametric path** below. Phase 3 asserts a spec run's geometry
+instead of repairing it and measures every designed feature back to ±0,05 mm, and
+`POST /jobs` accepts a spec (2026-09-03). The dimension KB, LLM extraction and the UI's
+spec panel wiring do not exist yet; do not treat generative-path tuning as roadmap work.
 
 **The UI has been moved onto the pivot's vocabulary ahead of the engine** (2026-09-02). The
 five phases now read **Composer · Compiler · Printability · Slicer · Operator** in the app,
@@ -438,6 +442,100 @@ mesh bytes with `X-DS-Up-Axis`, `X-DS-Model`, `X-DS-Model-Version`, `X-DS-Mesh-F
 - Built by `infra/docker/trellis2-worker.Dockerfile` (CUDA 12.4 devel). `TORCH_CUDA_ARCH_LIST`
   must match the deployment GPU or the compiled kernels will not load.
 
+### Organizer — the parametric path (pythonsrc/organizer/)
+
+The pivot's engine, as far as M0 built it: a **spec schema** and one **archetype**,
+entered through `pipeline.py --spec PATH`. *The LLM interprets words; it never produces
+geometry* — and the spec is the boundary that rule describes. Everything left of it may
+be probabilistic; everything right of it is deterministic, and the same spec compiles to
+the same STL byte for byte (`tests/test_deck_box.py` pins that).
+
+- **`spec.py` is stdlib-only, on purpose.** Frozen dataclasses (`OrganizerSpec`,
+  `Compartment`, `CardStack`, `Lid`, `Constraints`, `Process`), millimetres rounded to
+  1 µm on construction so `from_dict(to_dict(s)) == s` holds exactly, `from_dict`
+  refusing unknown keys, and one `SpecError` listing *every* problem with its dotted
+  path. `canonical_json` / `spec_hash` / `spec_diff` make one spec one string, one
+  hash, and two specs a path-by-path diff (F8). `pythonsrc.organizer` exports the schema
+  and nothing else, so the api-server image — no trimesh, no manifold3d — can import it
+  when the request model grows a spec field. Do not add pydantic here; it is not in the
+  pipeline image.
+- **`dimensions.py` is a seed, not the KB.** The standard card footprint, the single and
+  double sleeved envelopes and the three design pitches (0.305 / 0.60 / 0.70 mm per
+  card), each with its source from `docs/dimension-kb-research.md`. Only `standard` is
+  offered: the Japanese size has no sourced sleeve envelope and an invented one is
+  exactly the fabricated number the schema exists to refuse. The M2 KB replaces this
+  file; `resolve_stack`'s `basis` string is what the UI's fits line shows.
+- **Archetype rules live in the archetype.** A lip thinner than `min_feature_mm`, a
+  second compartment, magnets, a lid taller than the cavity — `deck_box.validate`
+  refuses each with the remedy named. Ignoring an unsupported field prints a different
+  box than the one asked for, silently.
+- **Every designed feature is measured back off the mesh** (`deck_box.measure`, the
+  shape of text-to-cad's measure/align checkers): the plate is split into body and lid,
+  their distinct axis-aligned planes are read, and each feature is a difference of
+  planes. It runs on the compiled mesh *and on Phase 3's output*, which is what makes the
+  ±0.05 mm assertion honest — it measures what the slicer receives. A plane count that
+  does not match the design is itself the finding (`MeasureError`).
+- **`--spec` is the `--skip-visualizer --skip-sculptor --mesh --no-scale` seam with a
+  compile step in front.** The three flags are implied (`_apply_spec_mode`) — the run
+  that forgets `--no-scale` prints a 50 mm deck box. `--mesh` and `--hollow` are refused.
+  The compile runs inside the **real Phase 2 banners**, so the UI's "Compiler" moves
+  truthfully and the banner contract is untouched. A spec run substitutes nothing:
+  `_will_use_reference_assets` and `_should_install_reference_blueprint` both return
+  False, so it lands in `data/outputs/{job_id}` and gets no invented blueprint, and a
+  `--blueprint` it is handed is dropped with a warning (the mps_native strategy
+  hardcodes one; reading the shared path would record another job's render as this
+  job's provenance). The job directory holds `compiled_mesh.stl`, `spec.json`
+  (canonical), `compile_features.json` and, after Phase 3, `dimension_report.json`.
+- **Phase 3 asserts a spec run; it never repairs it** (`_repair_mode_for`,
+  `Engineer.process(repair_mode="assert")`). A compiled mesh is watertight by
+  construction, so a defect is a compiler bug, and repairing it hides the bug — the
+  voxel escalation rebuilds the surface at a pitch that discards the dimensions the spec
+  fixed, while `scale_applied: false` says they were honoured. `assert_manifold` checks
+  what repair would fix (watertight, boundary and non-manifold edge counts, winding and
+  positive volume, kernel acceptance) and raises `MeshAssertionError` naming every
+  finding; nothing is exported. `repair_method="asserted"` is the fourth value of that
+  key. Assert mode requires `target_mm=None`; `--mesh` stays on the repair path, because a
+  mesh of one's own made no promise about its topology.
+- **Then the dimensions are asserted** (`_assert_spec_dimensions`): the spec Phase 2
+  recorded is reloaded from `spec.json`, the engineered mesh is measured with the
+  archetype's `measure()`, and every feature in `MEASURED_FEATURES` is compared at
+  `DEFAULT_TOLERANCE_MM` (0,05 mm). `dimension_report.json` is written **before** the
+  verdict so a failure is inspectable; one `[DS] Dimensions: 19/19 …` line and a `✗` per
+  miss are printed; the report rides on the row as `repair_report["dimension_check"]`
+  (the `achieved_extent_mm` precedent — no new column); and a miss is a `MeasureError`,
+  which is a failed Phase 3. A spec run that ships a wrong dimension has failed, however
+  watertight it is. `tests/test_organizer_dimensional_accuracy.py` sweeps 405 specs
+  across the deck box's envelope on the exported, reloaded STL and a corner set through
+  the assert path, and runs as its own CI step.
+- **The compiler is the generation model.** `generation_model = "organizer/deck_box"`,
+  `generation_model_version = "1"`, `generation_backend = "local"`, the spec hash and
+  features in `generation_params`. No new column — this is exactly what those columns
+  record. `blueprint_*` stay NULL, correctly. `size_source="spec"` is written by
+  `POST /jobs` when the request carries a spec (below).
+- **The gate is told the part count.** `evaluate_printability(expected_components=)`:
+  a body and a lid are two grounded bodies as designed, and used to score every deck
+  box "risky" for a possible unintended split. A mismatch still warns; a floating body
+  still fails. The remaining warn on a deck box is `min_wall_thickness`: the measurement
+  pitch grows with the plate's width, so a 1.4 mm lip reads as "within tolerance of the
+  minimum", and the verdict stays `risky` because that check is critical. That is the
+  check's known quantisation, not a thin lip.
+- **`POST /jobs` accepts a spec** (`JobRequest.spec`). Validated on the model with the
+  stdlib-only schema — `pythonsrc.organizer` imports nothing heavy for exactly this — so
+  a bad spec is a 422 listing every problem and no row is written; the archetype's own
+  rules need the kernel and arrive as a failed Phase 2. A spec beside `target_mm`,
+  `scale_axis` or `size_source` is refused: the spec decides every dimension. The
+  handler writes the spec canonically to `data/inputs/{job_id}/spec.json`, sets
+  `request.spec_path` to the container path (the `blueprint_path` precedent) and
+  forwards `--spec`; `_phase_skips` makes a spec request skip both generative phases —
+  no native Phase 1, no blueprint gate — and neither `_pipeline_args` nor the mps_native
+  command hands it `--skip-visualizer --blueprint <shared>`. The row records
+  `size_source="spec"` with `requested_size_mm` and `requested_scale_axis` NULL.
+- **Not built, and where it is:** the spec on `GET /jobs/{id}` and the UI wiring
+  (`specFromJob` is the seam; `NO_SPEC_REASON` is still true for every job the UI can
+  submit), the envelope sweep across *every* archetype (M1 — there is one), LLM
+  extraction and the KB (M2). `python -m pythonsrc.organizer example|compile|measure
+  [--report]` is the developer loop.
+
 ### Server (server/app.py)
 
 FastAPI application with:
@@ -533,10 +631,11 @@ FastAPI application with:
   written at insert time by `POST /jobs`. `requested_size_mm` is **NULL when nobody
   chose** rather than 50.0 — the applied value is already recoverable from
   `repair_report["target_mm"]`, and a stored default is indistinguishable from a user
-  who typed the default. `size_source` is `default` | `user` | `prompt_hint` and is
-  *always* written, because "the default applied" is itself the fact; the client may
-  claim `user` or `prompt_hint` for a size it sent, but never `default`, which the
-  server derives. `requested_scale_axis` is the **promise made to the requester** — the
+  who typed the default. `size_source` is `default` | `user` | `prompt_hint` | `spec`
+  and is *always* written, because "the default applied" is itself the fact; the client
+  may claim `user` or `prompt_hint` for a size it sent, but never `default` or `spec`,
+  which the server derives — `spec` from the presence of `JobRequest.spec`, with the
+  size and axis NULL because the spec fixed every dimension. `requested_scale_axis` is the **promise made to the requester** — the
   axis the control was labelled with — while `repair_report["scale_axis"]` is the axis
   Phase 3 actually applied. Two columns precisely so they can disagree: a control
   labelled "Height" that produced a longest-edge part is a bug this pairing makes

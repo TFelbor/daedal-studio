@@ -142,13 +142,25 @@ Open **http://localhost:8000** — the web UI handles job submission, live phase
 
 ### 3. Run the pipeline
 
-On a mesh whose dimensions are final (the route the parametric engine uses):
+From an organizer spec (the parametric path — see `pythonsrc/organizer/`):
+
+```bash
+python -m pythonsrc.organizer example deck_box > data/inputs/deck.json
+docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py --spec /app/data/inputs/deck.json --print --start-print
+```
+
+`--spec` compiles the spec as Phase 2, then Phase 3 **asserts** the mesh is a solid and
+measures every designed feature back off the engineered mesh to ±0,05 mm — it never
+repairs or scales it, and a miss fails the run with `dimension_report.json` beside the
+mesh. `POST /jobs` accepts the same spec as `"spec"` and records `size_source="spec"`.
+
+On a mesh of your own whose dimensions are final:
 
 ```bash
 docker compose -f infra/docker-compose.yml run --rm pipeline-runner python pythonsrc/pipeline.py "deck box" --skip-visualizer --skip-sculptor --mesh /app/data/inputs/box.stl --no-scale --print --start-print
 ```
 
-`--no-scale` means "these dimensions are final" — Phase 3 validates and seats the mesh
+`--no-scale` means "these dimensions are final" — Phase 3 repairs and seats the mesh
 but never resizes it.
 
 Or run the generative branch from a prompt:
@@ -259,14 +271,15 @@ same commit):
 - [ ] Real-hardware bring-up — first print on a physical machine (Bambu @ KTH, printer @ Trento); printers arrived ~2 Sep
 - [x] ~~University GPU access requests filed~~ — dropped 3 Sep: the Trento request was rejected (28 Aug) and it is moot after the pivot
 
-### 🔨 Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
+### ✅ Phase 1 — Capability spike (PRD M0 · 1–14 September 2026)
 
 - [x] Kernel decision recorded — `manifold3d` now, `build123d`/OCCT when fillets earn the review (`ARCHITECTURE.md`)
-- [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable — on `feat/ui-redesign-pivot` (PR #46), merge to `main` pending
-- [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--spec` seam (authored in Claude Code against `manifold3d`, source frozen) — PR #46, merge pending
-- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"` — PR #47, merge pending
-- [x] Dimensional-accuracy CI — 405-spec envelope, ±0,05 mm per feature, own CI step — PR #47, merge pending
-- [ ] Merge `feat/ui-redesign-pivot` into `main`, then run one spec job end to end (`POST /jobs` → CuraEngine → OctoPrint simulator → telemetry row)
+- [x] Spec schema — `pythonsrc/organizer/spec.py`, JSON-serialisable, diffable (PR #46, 2026-09-03)
+- [x] First archetype: deck box, spec → mesh → Phases 3–5 via the `--spec` seam (authored in Claude Code against `manifold3d`, source frozen) — `pipeline.py --spec`, kernel `manifold3d` (PR #46, 2026-09-03)
+- [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"` — `Engineer.process(repair_mode="assert")`, `dimension_report.json` after Phase 3, `JobRequest.spec` (PR #47, 2026-09-03)
+- [x] Dimensional-accuracy CI — spec → exported-mesh error per critical feature — `tests/test_organizer_dimensional_accuracy.py`, 405-spec envelope on the exported STL at ±0,05 mm per feature (`DEFAULT_TOLERANCE_MM`) + Phase 3 assert path, its own CI step (PR #47, 2026-09-03)
+- [x] `feat/ui-redesign-pivot` merged into `main` — PR #48, 2026-09-04. The four boxes above were ticked on `main` before the code was there; they are now true of `main`
+- [ ] One spec job end to end (`POST /jobs` → CuraEngine → OctoPrint simulator → telemetry row) — no spec job has yet run through the real slicer, printer or telemetry DB
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
