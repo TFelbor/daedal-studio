@@ -1,7 +1,7 @@
 {
   "schema": 3,
-  "generated_at": "2026-09-03T18:56:38Z",
-  "commit": "4fd664551e9144f9d77b24d9b0c14cb1bfb8fdee",
+  "generated_at": "2026-09-04T10:55:37Z",
+  "commit": "37a7d5d04181da6bd9f4899116a0b34d29f20ef3",
   "project_licence": "Apache-2.0",
   "verdict": "flag",
   "totals": {
@@ -2076,7 +2076,7 @@
         "cli-arm64@UNKNOWN",
         "cli@UNKNOWN",
         "debian-archive-keyring@2025.1",
-        "docker-ce-cli@5:29.7.2-1~debian.12~bookworm",
+        "docker-ce-cli@5:29.8.0-1~debian.12~bookworm",
         "docker-compose-plugin@5.5.1-1~debian.12~bookworm",
         "gcc-14-base@14.2.0-19",
         "gui-32@UNKNOWN",
