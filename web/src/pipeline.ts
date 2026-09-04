@@ -9,14 +9,18 @@
  * is what makes this file the single source rather than a second opinion.
  *
  * ── A note the next person needs ──────────────────────────────────────────────
- * These names describe the parametric pipeline the product is pivoting to
- * (`docs/PRD_daedal_tcg_organizers.md`, roadmap §§0.1–7A), not, phase for phase,
- * what the backend runs today. Today phase 1 renders a blueprint image with
- * FLUX.2 and phase 2 reconstructs it with TRELLIS.2; `pythonsrc/organizer/`
- * does not exist yet. Phase 3 is the Engineer — watertight repair and scaling —
- * and the printability gate it is named for actually runs *between* phases 3 and
- * 4, deliberately unnumbered, because the `.status` protocol and every
- * historical status file key off phases 1–5.
+ * These names describe the parametric pipeline (`docs/PRD_daedal_tcg_organizers.md`,
+ * roadmap §§0.1–7A). As of 2026-09-03 the engine exists for one archetype:
+ * `pythonsrc/organizer/` compiles a deck-box spec and `pipeline.py --spec` runs that
+ * compile as phase 2, so "Compiler" is literal on that path. On the generative path
+ * phase 1 still renders a blueprint with FLUX.2 and phase 2 reconstructs it with
+ * TRELLIS.2. `POST /jobs` accepts a spec (`JobRequest.spec`) and the pipeline asserts
+ * its dimensions after phase 3, but the server does not yet carry the spec back on
+ * `JobStatusResponse`, so `specFromJob` still returns null and `NO_SPEC_REASON` is still
+ * true for every job this UI can submit. Phase 3 is the Engineer — watertight repair
+ * (or, for a spec run, assertion) and scaling — and the printability gate it is named for
+ * actually runs *between* phases 3 and 4, deliberately unnumbered, because the
+ * `.status` protocol and every historical status file key off phases 1–5.
  *
  * The names were adopted ahead of the engine on purpose, as the product's
  * vocabulary. When the parametric engine lands, phases 1–3 start meaning what
