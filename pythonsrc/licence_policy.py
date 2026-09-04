@@ -90,6 +90,41 @@ ARM_LENGTH_COMPONENTS = {
     "octoprint": "AGPL-3.0, reached over HTTP/SockJS (pythonsrc/operators/). Never imported.",
 }
 
+#: Container images this project *talks to* rather than builds on, keyed by the stem of
+#: their SBOM in `licenses/sbom/`. Nothing of ours runs inside them, so **every** package
+#: they contain — wheels included — is in someone else's process.
+#:
+#: This distinction is not cosmetic and it is not the same as "is it a base image".
+#: `python:3.10-slim` and `nvidia/cuda` are scanned too, and a wheel in either of those
+#: really does end up imported by our code, because our images are built *on* them.
+#: `octoprint/octoprint` is the one scanned image that is a peer service: the operators
+#: in `pythonsrc/operators/` reach it over HTTP and SockJS, which is exactly the isolation
+#: `ARM_LENGTH_COMPONENTS` records for the distribution of the same name.
+#:
+#: Getting this wrong is what made every merge to `main` red: the report scored
+#: OctoPrint's own AGPL plugins as in-process denials, so the one signal the gate exists
+#: to carry — a *new* copyleft package in a tree we link — arrived buried under six
+#: standing false positives.
+ARM_LENGTH_IMAGE_SBOMS = {
+    "octoprint": (
+        "octoprint/octoprint:latest — a peer service reached over HTTP/SockJS "
+        "(pythonsrc/operators/). Nothing here imports anything inside this image."
+    ),
+}
+
+
+def arm_length_image(sbom_stem: str) -> str | None:
+    """The isolation note for an SBOM stem, or None when the image is one we link.
+
+    Takes the stem rather than the image ref because that is what the report has: the
+    `base-` prefix is how `licence-data.yml` names a registry scan, and it says nothing
+    about whether our code runs inside.
+    """
+    key = (sbom_stem or "").strip().lower()
+    if key.startswith("base-"):
+        key = key[len("base-") :]
+    return ARM_LENGTH_IMAGE_SBOMS.get(key)
+
 #: Requirement specifiers whose *extra* drags in a copyleft package. The specifier looks
 #: innocuous and the licence arrives two levels down, which is why this is a named list
 #: rather than a thing to notice in review: `trimesh[all]` includes trimesh's own

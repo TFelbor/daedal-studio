@@ -46,7 +46,7 @@
   "License": "MIT",
   "Name": "anyio",
   "URL": "https://anyio.readthedocs.io/en/stable/versionhistory.html",
-  "Version": "4.14.2"
+  "Version": "4.15.0"
  },
  {
   "Author": "Andrew Svetlov <andrew.svetlov@gmail.com>",
@@ -202,21 +202,21 @@
   "License": "MIT",
   "Name": "pydantic",
   "URL": "https://github.com/pydantic/pydantic",
-  "Version": "2.13.4"
+  "Version": "2.13.5"
  },
  {
   "Author": "Samuel Colvin <s@muelcolvin.com>, Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, David Montague <david@pydantic.dev>, David Hewitt <mail@davidhewitt.dev>, Sydney Runkle <sydneymarierunkle@gmail.com>, Victorien Plot <contact@vctrn.dev>",
   "License": "MIT",
   "Name": "pydantic_core",
   "URL": "https://github.com/pydantic",
-  "Version": "2.46.4"
+  "Version": "2.46.5"
  },
  {
   "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",
   "License": "MIT",
   "Name": "python-engineio",
-  "URL": "https://github.com/miguelgrinberg/python-engineio",
-  "Version": "4.13.5"
+  "URL": "https://code.miguelgrinberg.com/miguelgrinberg/python-engineio",
+  "Version": "4.14.0"
  },
  {
   "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",

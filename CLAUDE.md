@@ -1553,6 +1553,17 @@ only thing that can see `cura-engine` arriving as an AGPL-3.0 apt package.
   floor, not an SPDX choice) and `verdict()` adds the question the text turns on —
   `in_process`. Same name, opposite answers: `octoprint` as a pip distribution is a
   denial, `octoprint` in an image SBOM is the server we speak HTTP to.
+- **A wheel in an image is in-process only when our code runs in that image.**
+  `licence_report.py` overrides `python`-typed SBOM rows to in-process, which is right for
+  `ds-mvp-pipeline`, `ds-api-server` and the registry images those are *built on* — a
+  wheel in `python:3.10-slim` is one the api-server imports. It was wrong for the one
+  scanned image that is a **peer service**: `octoprint/octoprint` holds OctoPrint's own
+  AGPL plugins, and scoring them as linked made `licence-data` red on **every merge to
+  `main`** with six standing denials against a tree nothing here imports — burying the one
+  signal the gate exists to carry. `ARM_LENGTH_IMAGE_SBOMS` names the exception (keyed by
+  SBOM stem, `base-` prefix ignored) and its flags aggregate under a `service` layer, the
+  way the OS layer already did. Adding a name there is a licensing decision: justify it in
+  `THIRD-PARTY-NOTICES.md` first.
 - **Expected findings are recorded, not rediscovered.** `ARM_LENGTH_COMPONENTS` and
   `REVIEWED_WEAK_COPYLEFT` carry their reason, and OS-layer copyleft is aggregated into
   one row per image with a **count** — every Debian base carries dozens of GPL packages,

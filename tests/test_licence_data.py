@@ -30,6 +30,7 @@ from pythonsrc.licence_policy import (
     STRONG_COPYLEFT,
     UNKNOWN,
     WEAK_COPYLEFT,
+    arm_length_image,
     classify,
     verdict,
     worst_severity,
@@ -344,6 +345,89 @@ def test_a_wheel_inside_an_image_is_still_scored_in_process(licences_dir: Path):
     report = report_script.build_report(licences_dir)
     finding = next(f for f in report["findings"] if f["package"] == "some-agpl-wheel")
     assert finding["severity"] == DENY
+
+
+def test_a_peer_services_own_wheels_are_not_scored_in_process(licences_dir: Path):
+    """The regression that made every merge to `main` red.
+
+    `octoprint/octoprint` is scanned like any other image, but nothing this project runs
+    lives inside it — the operators reach it over HTTP. The report used to override every
+    `python`-typed SBOM row to in-process, which is right for `ds-mvp-pipeline` and wrong
+    here: OctoPrint's own AGPL plugins came back as six § 13 denials, `--fail-on deny`
+    failed the job, and the gate spent every merge reporting a tree we never link.
+    """
+    (licences_dir / "sbom" / "base-octoprint.json").write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    {
+                        "name": "octoprint",
+                        "version": "1.11.8",
+                        "type": "python",
+                        "licenses": [{"value": "GNU Affero General Public License v3"}],
+                    },
+                    {
+                        "name": "octoprint-filecheck",
+                        "version": "2025.7.23",
+                        "type": "python",
+                        "licenses": [{"spdxExpression": "AGPL-3.0-or-later"}],
+                    },
+                ]
+            }
+        )
+    )
+    report = report_script.build_report(licences_dir)
+    assert report["totals"]["deny"] == 0
+
+    rows = [f for f in report["findings"] if f["source"] == "sbom/base-octoprint.json"]
+    # OctoPrint itself is the recorded exception, so it stays a named `allow` row rather
+    # than disappearing: an isolation nobody can see in the report is one nobody rechecks.
+    named = [f for f in rows if not f.get("aggregate")]
+    assert [f["package"] for f in named] == ["octoprint"]
+    assert named[0]["severity"] == ALLOW
+    assert "HTTP" in named[0]["note"]
+
+    # Its plugins aggregate. AGPL is what OctoPrint *is*; a row per plugin every week
+    # buries the one thing worth diffing, which is the count moving.
+    aggregate = [f for f in rows if f.get("aggregate")]
+    assert [f["layer"] for f in aggregate] == ["service"]
+    assert aggregate[0]["count"] == 1
+    assert aggregate[0]["classification"] == STRONG_COPYLEFT
+    assert "octoprint/octoprint" in aggregate[0]["note"]
+
+
+def test_a_base_image_our_own_images_build_on_is_still_linked(licences_dir: Path):
+    """`arm's length` is not `base-`.
+
+    `python:3.10-slim` and `nvidia/cuda` are scanned with the same `base-` prefix, and a
+    wheel in either really is imported by our code — the api-server image is built on the
+    first. Only an image named in `ARM_LENGTH_IMAGE_SBOMS` gets the exemption.
+    """
+    (licences_dir / "sbom" / "base-python-3.10-slim.json").write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    {
+                        "name": "some-agpl-wheel",
+                        "version": "1.0",
+                        "type": "python",
+                        "licenses": [{"spdxExpression": "AGPL-3.0-only"}],
+                    }
+                ]
+            }
+        )
+    )
+    report = report_script.build_report(licences_dir)
+    finding = next(f for f in report["findings"] if f["package"] == "some-agpl-wheel")
+    assert finding["severity"] == DENY
+
+
+def test_arm_length_image_lookup_ignores_the_scan_prefix():
+    """`licence-data.yml` names a registry scan `base-<image>`; the prefix is bookkeeping."""
+    assert arm_length_image("base-octoprint") == arm_length_image("octoprint")
+    assert arm_length_image("octoprint") is not None
+    assert arm_length_image("ds-mvp-pipeline") is None
+    assert arm_length_image("base-python-3.10-slim") is None
 
 
 def test_unreadable_sbom_wheels_are_aggregated_not_listed_one_by_one(licences_dir: Path):
