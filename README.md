@@ -57,7 +57,7 @@ what it is lives in [`CLAUDE.md`](CLAUDE.md); why the pivot, in
 | Printability      | `pythonsrc/printability.py` | trimesh/manifold3d | shared | Pre-print geometry scoring + verdict |
 | Slicer            | `pythonsrc/`      | CuraEngine        | shared | Mesh → G-code with real profile translation |
 | Operators         | `pythonsrc/operators/` | REST/HTTP/MQTT | shared | Printer control (OctoPrint/Klipper/Bambu stub) |
-| Telemetry         | `pythonsrc/telemetry/` | SQLite/WebSocket/SockJS | shared | Printer state streaming + failure detection |
+| Telemetry         | `pythonsrc/telemetry/` | PostgreSQL (Supabase)/WebSocket/SockJS | shared | Printer state streaming + failure detection |
 | Job API           | `server/`         | FastAPI/uvicorn   | shared | Async job orchestration, human gates |
 | Web UI            | `web/`            | React/Vite/TS     | shared | Job submission, previews, printer control |
 | Visualizer        | `pythonsrc/`      | FLUX.2-klein-4B   | benched | Text → blueprint image |
@@ -205,7 +205,7 @@ the `extrusion_factor_pct` rule is still Klipper-only.
 
 ## Telemetry & Failure Detection
 
-The system collects real-time telemetry from active printers — hotend and bed temperatures, Z height, current G-code line, progress and extrusion factor — into a local SQLite database, and streams it to the frontend over WebSocket. When several processes could collect for the same job, the first whose sample lands claims the job and the others stand down, so no row is written twice.
+The system collects real-time telemetry from active printers — hotend and bed temperatures, Z height, current G-code line, progress and extrusion factor — into the telemetry database (PostgreSQL on Supabase, `DS_DATABASE_URL`), and streams it to the frontend over WebSocket. When several processes could collect for the same job, the first whose sample lands claims the job and the others stand down, so no row is written twice.
 
 `AnomalyDetector` (`pythonsrc/telemetry/detector.py`) evaluates five rules per sample over a 20-sample history, each firing at most once per job:
 

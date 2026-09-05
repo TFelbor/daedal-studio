@@ -2,6 +2,89 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ds-mvp — Claude Code guide
+
+The pipeline's contract with this repository. `docs/PIPELINE.md` explains how an issue
+becomes a pull request; this section is what an agent must know before it changes a
+file. Everything below it in this document is the system as built — read that too,
+and read the part that covers what you are touching.
+
+### Build and test
+
+- **Install:**
+  `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-mac.txt`
+  (`requirements-linux.txt` on Linux; CI installs `torch` from PyTorch's CPU index
+  first, then `requirements-base.txt`), then
+  `cp pythonsrc/config.template.py pythonsrc/config.py`, `cp .env.template .env`,
+  `mkdir -p data/inputs data/outputs data/logs`, `npm --prefix web ci`.
+- **Test:** `pytest tests/` — must pass before opening a PR. `pytest.ini` deselects the
+  `slow` markers, so this is the selection CI runs. It needs a PostgreSQL: either
+  Docker running, in which case `tests/conftest.py` starts a throwaway
+  `postgres:17-alpine`, or `DS_TEST_DATABASE_URL` pointing at a database the suite may
+  administer. Frontend: `npm --prefix web run build`, which is `tsc -b && vite build`
+  and therefore the type check as well.
+- **Lint:** `npm --prefix web run lint` (ESLint). It currently **fails on 27
+  pre-existing errors** unrelated to any new change, and CI runs it
+  `continue-on-error`. Do not treat a red lint as a reason to stop; do leave it no
+  redder than you found it.
+  <!-- TODO: no Python linter or formatter is configured — no ruff, flake8, black or
+  pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
+  replace this note with the command. -->
+  <!-- TODO: no coverage measurement exists anywhere — pytest.ini, requirements-base.txt,
+  the Makefile and ci.yml all lack it. The only figure available today is 949 test
+  functions across 65 files. Add pytest-cov and a floor before anyone quotes a
+  percentage. -->
+
+### Layout
+
+- `pythonsrc/` — the five-phase pipeline (`pipeline.py`), the parametric organizer
+  engine (`organizer/`), sculptor backends (`sculptors/`), printer operators
+  (`operators/`), telemetry (`telemetry/`), printability, IP screening, licence policy.
+- `server/` — FastAPI app (`app.py`), WebSocket broadcaster, encrypted config store,
+  OctoPrint simulator manager. Serves the built SPA.
+- `web/` — React 19 + Vite + TypeScript SPA. `npm run build` writes `web/dist/`, which
+  the API server image copies and serves.
+- `services/trellis2_worker/` — the GPU sculptor worker; runs only on a CUDA host.
+- `supabase/migrations/` — the telemetry DDL, **generated** from
+  `python -m pythonsrc.telemetry.db --ddl`. `infra/` — Dockerfiles, compose, CI helpers.
+- `tests/` — 65 files, 949 test functions. `docs/` — PRD, roadmap, `PIPELINE.md`,
+  `deferred-legal-tasks.md`. `licenses/` — the committed dependency tree.
+
+### Conventions
+
+- One task = one PR, referencing the issue; acceptance criteria copied into the PR body
+  as a checklist.
+- Tests for every behaviour change.
+- Never modify files containing `LEGAL-DEFERRED` unless the issue explicitly says so.
+  (No file carries the marker today. When one does, it is legal work parked
+  deliberately — see `docs/deferred-legal-tasks.md` — and moving it is a legal
+  decision, not a code one.)
+- Never add dependencies without stating why in the PR. A dependency here is also a
+  licence decision: read **Licensing Constraints** below before adding one, check the
+  weights any package downloads at runtime as well as the package, and update
+  `THIRD-PARTY-NOTICES.md`. `tests/test_licensing_guards.py` is a required part of the
+  suite, not an optional one.
+- Never touch these unless the issue explicitly says so:
+  - **Credentials and secrets** — `server/config_store.py` (the Fernet-encrypted store),
+    `.env.template`, `pythonsrc/operators/` (printer API keys),
+    `supabase/README.md`'s security posture. There is no end-user authentication in
+    this repository yet; these are the paths that hold secrets, and they are what
+    "auth" means here.
+  - **Anything that spends money** — `pythonsrc/sculptors/pixazo.py` is the only code
+    that incurs a charge (EUR 0,32 per generation) and `generation_cost_eur` is where
+    it is booked. There is no payments or billing code in this repository yet; when
+    there is, list it here.
+  - **Migrations** — `supabase/migrations/` and `pythonsrc/telemetry/db.py`. The
+    migration file is generated from the code, and `tests/test_supabase_migration.py`
+    fails when they disagree; never hand-edit the SQL.
+- Units are metric, currency is EUR — in code, in the UI and in prose.
+
+### Definition of done
+
+Tests pass, lint passes, checklist complete, no out-of-scope changes.
+
+---
+
 ## Project Overview
 
 **Direction (committed 2026-08-31): Daedal Studio builds custom-fit tabletop/TCG organizers
@@ -564,15 +647,15 @@ FastAPI application with:
   **Uvicorn's access log is switched off** because it logged every request a second
   time, at INFO, cancelling that demotion out; `$DS_UVICORN_ACCESS_LOG=1` restores it.
 - **SPA serving**: catch-all route serves `web/dist/` — the React app must be pre-built before server start
-- **Config store** (`config_store.py`): Fernet-encrypted key-value store in SQLite (`app_config` table); encryption key at `.config_key` in repo root
+- **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
 
 ### Data Flow
 
-1. User submits job via UI → POST `/jobs` → `PrintJob` inserted in SQLite telemetry DB
+1. User submits job via UI → POST `/jobs` → `PrintJob` inserted in the telemetry database (PostgreSQL on Supabase)
 2. Pipeline subprocess launched → stdout parsed for `[DS]` phase banners → WebSocket broadcasts
 3. If `--print` flag set: Phase 4 slices mesh to G-code, Phase 5 uploads to printer via `PrinterFactory`
-4. After Phase 5 starts printing: a telemetry collector (Moonraker WebSocket or OctoPrint SockJS) plus an `AnomalyDetector` stream samples into SQLite; whichever process claims the job first is the sole writer
+4. After Phase 5 starts printing: a telemetry collector (Moonraker WebSocket or OctoPrint SockJS) plus an `AnomalyDetector` stream samples into the database; whichever process claims the job first is the sole writer
 5. Frontend receives live phase updates, telemetry, and job outcomes via WebSocket
 
 ### Telemetry (pythonsrc/telemetry/)
@@ -589,9 +672,9 @@ FastAPI application with:
   writes that filled it, in write order, each annotated with the `TelemetryDB` method and
   call site that performs it, and each column marked written / placeholder / expected-null.
   `--list` indexes recent jobs with a coverage count, `--latest` takes the newest, `--json`
-  emits a per-stage coverage map, `--db` accepts a `telemetry.db.backup-*` snapshot. The
-  connection is opened `mode=ro`: the database has exactly one writer by design, and an
-  inspection tool holding a writable handle is one `commit` away from being the second.
+  emits a per-stage coverage map, `--db` takes a PostgreSQL URL (default
+  `$DS_DATABASE_URL`). The session is opened `READ ONLY` server-side: an inspection tool
+  holding a writable handle is one `commit` away from being a writer.
   `STAGES` in that module is the map, and `tests/test_telemetry_trace.py` asserts it against
   the live schema — the union of its columns must equal `print_job`'s exactly, in both
   directions, with each column claimed by one stage. **Adding a capture column means adding
@@ -700,69 +783,83 @@ FastAPI application with:
   and report its knobs from `generation_params()`. `pipeline._record_generation()` reads all of it
   off the instance after Phase 2, so a pay-per-generation backend needs no pipeline change to get
   its cost and latency recorded per job.
-- **DB** (`db.py`): SQLite wrapper with thread-safe locking; `check_same_thread=False` for use across asyncio tasks.
-- **One database, and where it lives.** The telemetry database is
-  **`~/.ds-mvp/telemetry.db` on the host** — always, in every execution mode. Containers
-  reach that same file through the `~/.ds-mvp:/root/.ds-mvp` bind mount: `HOME` is
-  `/root` in the image, so `get_default_db_path()` resolves to the mounted host file
-  rather than to anything container-local. The Fernet key for the encrypted config store
-  (`.config_key`) sits in that same directory, so one database means one key.
+- **DB** (`db.py`): PostgreSQL via `psycopg` 3, one shared `psycopg_pool` per process
+  per URL. A `TelemetryDB` is cheap to construct — the server does it per request — and
+  borrows a pooled connection for exactly one operation; `close()` is a no-op kept for
+  the callers that pair it with construction. Prepared statements are off so the same
+  code works behind Supabase's transaction pooler; connections are validated on checkout
+  so one Supabase closed while idle is replaced rather than handed out.
+- **One database, and where it lives.** The telemetry database is **PostgreSQL on
+  Supabase** (project `lxdtmktcaaypdqeuheoq`), reached by every process — the API
+  server, the pipeline container, the native Mac pipeline, `run_operator.py` — through
+  one variable, **`DS_DATABASE_URL`**, set in `.env`. Compose passes it to `api-server`
+  and `pipeline-runner`, the server forwards it into the pipeline container (rewriting a
+  loopback host to `host.docker.internal` for a local PostgreSQL in development), and
+  `load_native_env.sh` lifts it into `make start-native`. **An unset URL is a
+  configuration error** (`DatabaseConfigError`, naming the variable), never a silent
+  default: the previous storage had one, and it split native runs and container runs
+  across two databases without anything saying so. The Fernet key for the encrypted
+  config store stays on the host at `~/.ds-mvp/.config_key`, which is what the
+  `~/.ds-mvp:/root/.ds-mvp` bind mount is still for.
 
-  **Do not set `TELEMETRY_DB_PATH`** in `.env`, in compose, or in a shell that will run
-  the server. Leaving it unset is what keeps every process on one file. The only
-  legitimate use is pointing a throwaway environment somewhere else — which is exactly
-  what `tests/conftest.py` does, redirecting it to a temp directory in `pytest_configure`
-  so the suite cannot touch real data.
+  **Why it moved.** It was one SQLite file, `~/.ds-mvp/telemetry.db`, bind-mounted into
+  the containers — and it corrupted once: `telemetry_sample`'s b-tree ended up with pages
+  referenced twice, 346 rows were unreadable, and `.recover` salvaged none of them.
+  `synchronous` was FULL and there was no hot journal, so it was not a crash mid-write;
+  on macOS the containers run in a Linux VM, so the host process and the pipeline
+  container were two machines sharing a file over VirtioFS, which SQLite does not
+  support for concurrent writers. Everything built around the file afterwards —
+  integrity check at startup, rotating snapshots, an off-disk mirror, "WAL deliberately
+  off" — compensated for the storage. A network PostgreSQL removes the failure class
+  (real concurrent writers, real transactions, backups that are Supabase's), so all of
+  that machinery is gone, and with it `TELEMETRY_DB_PATH`, `POST /system/database/backup`
+  and the `DS_DB_BACKUP_*` variables. Existing rows were **not** migrated: the product
+  had not launched and a fresh schema was cheaper than a conversion nobody needed.
 
-  This is written down because it went wrong. `.env` used to set
-  `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` and compose mounted a **named volume**
-  `ds-telemetry` there. A named volume is invisible from the host, so container runs
-  wrote job rows into a database nobody could see while their artifacts landed in the
-  bind-mounted `data/outputs/` — 27 job directories with no matching rows anywhere a
-  developer would look. Native runs meanwhile used the default path, so the two modes
-  had separate histories and separate encrypted config stores. There is deliberately no
-  telemetry volume in compose now, and `infra/scripts/patch_env.py`, which rewrote that
-  variable back into `.env` on every run, has been deleted.
+  **Schema.** `schema_statements()` in `db.py` is the single source. `init_schema()` runs
+  it (idempotent, under an advisory lock so two processes starting together queue rather
+  than race the catalogue) and then adds any column in `_PRINT_JOB_EXTRA_COLUMNS` an
+  existing table lacks — the one migration this module performs. `supabase/migrations/
+  *_telemetry_schema.sql` is *rendered* from the same function
+  (`python -m pythonsrc.telemetry.db --ddl`) and `tests/test_supabase_migration.py`
+  fails when the file and the code disagree. JSON payloads are `JSONB` (a malformed blob
+  is refused at write time, not tolerated at read time), timestamps `TIMESTAMPTZ` (read
+  back UTC-aware; `_str_to_dt` still accepts ISO text), reals `DOUBLE PRECISION`.
+  **Row-level security is enabled on every table with no policies**: Supabase exposes
+  `public` through PostgREST to its `anon`/`authenticated` roles, and RLS with no policy
+  is what stops them reading the dataset; the server connects as the tables' owner and is
+  unaffected.
 
-  **It is checked and snapshotted at startup, and WAL is deliberately off.** The
-  database went corrupt once — `telemetry_sample`'s b-tree ended up with pages
-  referenced twice — and nothing noticed until a query answered `database disk image
-  is malformed`, by which point 346 rows were unreadable and their pages reused, so
-  `.recover` salvaged none of them. `synchronous` was already FULL and there was no
-  hot journal, so it was not a crash mid-write: `~/.ds-mvp` is bind-mounted into
-  the containers, and on macOS those run in a Linux VM, so the host process and the
-  pipeline container are two machines sharing a file over VirtioFS — which SQLite
-  does not support for concurrent writers. **WAL would make that worse, not better**:
-  it needs shared memory between every writer, and the journal mode is persisted *in
-  the file*, so enabling it from the host would leave the container unable to open
-  the database at all. The real fix is one writer, which the existing
-  `internal_telemetry.send_internal_telemetry` relay already makes possible; until
-  then, `db.integrity_check()` runs in the server's startup event, again every
-  `$DS_DB_BACKUP_INTERVAL_MIN` minutes (default 360, 0 disables), and on
-  `POST /system/database/backup`; `GET /health` reports `database.healthy`, and
-  `db.backup_to()` takes a rotating snapshot (`$DS_DB_BACKUP_COPIES`, default 5)
-  using SQLite's online backup API — **only when the check passes**, so a corrupt
-  file cannot launder itself through every slot. It refuses rather than hangs if
-  the caller holds an open transaction.
+  **Health, not integrity.** `TelemetryDB.health_check()` answers "does it respond and
+  are the tables there" — a missing table is reported as `missing table: <name>` so
+  `server.check_database_health` can tell "run `init_schema`" from "the network is down",
+  and does the former itself. It runs at startup and every `$DS_DB_HEALTH_INTERVAL_S`
+  seconds (default 60, 0 disables); `GET /health` reports the *cached* verdict with a
+  `checked_at`, because the endpoint is polled and a dead database would otherwise hold
+  every poll for the pool timeout (`$DS_DATABASE_TIMEOUT_S`, default 10). A server whose
+  database is unreachable at startup still comes up, degraded, and the periodic check
+  creates the schema when the connection returns; a server with **no URL** does not
+  start. `tests/test_db_health.py` and `tests/test_db_connection.py` hold this.
 
-  **Off-disk mirror**: every verified snapshot is additionally copied to
-  `$DS_DB_BACKUP_MIRROR_DIR` when that is set (it is deliberately unset until the
-  data is worth keeping; the intended target is the Drive-synced data-collection
-  folder). The copy runs on a **daemon thread**, staged as `.part` then renamed —
-  the Drive File Provider mount was measured blocking a directory listing for 10+
-  seconds, so nothing Drive-facing may ever run on the event loop or the startup
-  path. `$DS_DB_BACKUP_MIRROR_COPIES` (default 10) prunes the mirror.
-  `tests/test_db_backup_policy.py` holds all of this.
-
-  `tests/test_single_database.py` is the regression guard: it fails if compose or
-  `.env.template` starts pinning the variable again, or if a telemetry volume reappears.
-- **Foreign keys are enforced** (`PRAGMA foreign_keys = ON`, per connection in
-  `_configure_connection`). They were declared and decorative — SQLite's default —
-  which is the actual root cause of the orphaned-events incident. A sample, job
-  event or failure event for a nonexistent job is now refused at write time.
+  **Tests run against PostgreSQL too.** `tests/conftest.py` points `DS_DATABASE_URL` at
+  a schema it creates before collection and drops afterwards, on the database named by
+  `DS_TEST_DATABASE_URL` (CI: a `postgres` service container) or, when that is unset, on
+  a throwaway `postgres:17-alpine` container it starts with the Docker CLI
+  (`tests/testing_postgres.py`). Every test that needs its own database takes the
+  `isolated_db` / `isolated_db_url` / `isolated_db_env` fixtures — a schema per test,
+  carried in the URL as `options=-csearch_path=…` so `TelemetryDB` needs no test knob.
+  The SQLite-era `:memory:` and temp-file idioms are gone. `tests/test_single_database.py`
+  is the regression guard: it fails if the retired `TELEMETRY_DB_PATH` is read anywhere,
+  if compose stops handing a writer the URL, or if a telemetry volume reappears.
+- **Foreign keys are enforced** — declared constraints, named
+  (`job_event_job_id_fkey`, …), always on. In the SQLite era they were declared and
+  decorative (`PRAGMA foreign_keys` defaults to OFF), which is the actual root cause of
+  the orphaned-events incident. A sample, job event or failure event for a nonexistent
+  job is refused at write time (`IntegrityError`, re-exported from `db.py`).
   `feedback_funnel()` and `count_job_events()` keep their `print_job` joins and
-  `count_orphaned_job_events()` stays, because databases written before the pragma
-  still carry orphans. Tests that need a legacy orphan suspend the pragma explicitly.
+  `count_orphaned_job_events()` stays, because a database can still acquire orphans by
+  other routes. Tests that need a legacy orphan drop the named constraint for one insert
+  and re-add it `NOT VALID`.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`DS_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
@@ -1469,7 +1566,7 @@ of every effect, so this fired on every dev page load and read like a dead backe
 
 ## Configuration
 
-System config (`.env` template at `.env.template`) is loaded by Docker Compose. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry SQLite database (`app_config` table). The encryption key file `.config_key` is gitignored and auto-generated on first use.
+System config (`.env` template at `.env.template`) is loaded by Docker Compose; `DS_DATABASE_URL` in it is the one required value. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry database (`app_config` table, PostgreSQL on Supabase). The Fernet key file lives at `~/.ds-mvp/.config_key` (`$DS_CONFIG_KEY_PATH`), is gitignored and auto-generated on first use.
 
 Key pipeline paths: `data/inputs/{job_id}/` (blueprint and its provenance sidecar; runs without `--job-id` use flat `data/inputs/`), `data/outputs/{job_id}/` (per-job mesh, G-code and a blueprint snapshot — runs without `--job-id` still use flat `data/outputs/`), `data/logs/` (per-job logs and status files). Server artifact endpoints resolve the per-job path first and fall back to the flat layout for pre-existing rows. These are gitignored runtime directories.
 

@@ -1,0 +1,65 @@
+# Tier 1 of the Claude Code pipeline: plan before implementing.
+#
+# A labelled issue that the Dispatcher judged multi-module, architectural, ambiguous
+# or Size L gets one Fable pass that produces a written plan and nothing else. The
+# plan is a comment on the issue, so the human who wrote the issue can correct the
+# approach before Opus spends eighty turns on the wrong one.
+#
+# The job adds `plan-ready` as its last act, and `claude-implement.yml` triggers on
+# that label. That is the whole handshake between the two workflows — there is no
+# shared state beyond the issue's labels and comments.
+name: claude-plan
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  # The action exchanges a GitHub OIDC token for the Claude App token. Without
+  # this it fails with "Could not fetch an OIDC token" before reaching the model.
+  id-token: write
+
+# Three labels applied in quick succession are three `labeled` events. Serialising
+# per issue keeps two planners from posting two "Plan" comments on one issue.
+concurrency:
+  group: claude-plan-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan
+    # `github.event.issue.labels` is the label set *after* this event, so the
+    # `plan-ready` clause is what stops the job re-triggering on the label it adds
+    # itself.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'claude') &&
+      contains(github.event.issue.labels.*.name, 'tier:fable-plan') &&
+      !contains(github.event.issue.labels.*.name, 'plan-ready')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Plan with Fable
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Either credential the setup guide names works; whichever secret
+          # exists is the one used. `/install-github-app` stores one of them.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+
+            Read this issue and CLAUDE.md. Produce an implementation plan: approach, files to change, tests to add, risks, open questions. Post it as a single issue comment titled "Plan". Do not write code. Then add the label `plan-ready`.
+          # Read the repo, comment on the issue, add one label. No write tools: this
+          # tier exists precisely because it does not touch the tree.
+          claude_args: |
+            --model claude-fable-5-1
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*)"

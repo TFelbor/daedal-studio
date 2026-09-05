@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from pythonsrc.telemetry.db import TelemetryDB, _str_to_dt
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample, VALID_FAILURE_TYPES
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
@@ -541,6 +542,30 @@ def _append_phase_status(job_id: str, phase: int, status: str, error: str | None
         logger.warning("Could not write phase status for %s: %s", job_id, exc)
 
 
+def _container_database_url(dsn: str) -> str:
+    """`dsn` as the pipeline container must see it.
+
+    A PostgreSQL on this host's loopback is `host.docker.internal` from inside the
+    container; a Supabase URL passes through unchanged. Parsed rather than
+    string-replaced so a password containing "localhost" is left alone.
+    """
+    try:
+        parts = conninfo_to_dict(dsn)
+    except Exception:  # noqa: BLE001 — an unparseable URL fails later, with its own message
+        return dsn
+    if parts.get("host") in ("localhost", "127.0.0.1"):
+        parts["host"] = "host.docker.internal"
+        return make_conninfo(**parts)
+    return dsn
+
+
+def _iso(value) -> Optional[str]:
+    """A timestamp column as ISO 8601 text, whether it arrived as datetime or text."""
+    if value is None:
+        return None
+    return value.isoformat() if isinstance(value, datetime) else str(value)
+
+
 def job_status_from_outcome(outcome: str | None, started_at) -> str:
     """Map a stored outcome onto the synthetic status the API exposes.
 
@@ -824,224 +849,122 @@ def _profile_snapshot(profile_path: str) -> tuple[Optional[dict], Optional[float
     return data, nozzle
 
 
-#: How many rotating snapshots of the telemetry database to keep locally.
-#: Overridable with $DS_DB_BACKUP_COPIES — five restarts in five minutes used to
-#: discard every older snapshot, because rotation is by count, not age.
-DB_BACKUP_COPIES = 5
-
-#: How many mirrored snapshots to keep in $DS_DB_BACKUP_MIRROR_DIR.
-DB_BACKUP_MIRROR_COPIES = 10
-
-#: Default minutes between periodic snapshots. The startup snapshot alone let a
-#: long-running server accumulate unbacked-up writes indefinitely.
-DB_BACKUP_INTERVAL_MIN = 360.0
-
-#: Set when the last startup integrity check found damage, so `/health` can say so.
+#: Verdict of the most recent database health check, so `/health` can answer without
+#: a round trip to Supabase on every poll. Refreshed at startup and then every
+#: `$DS_DB_HEALTH_INTERVAL_S` seconds while the server runs.
 database_problems: list[str] = []
 
-#: The daemon thread mirroring the latest snapshot, when a mirror is configured.
-#: Module-level so tests (and a curious operator) can join it; the serving path
-#: never does.
-last_mirror_thread: Optional[threading.Thread] = None
+#: When `database_problems` was last refreshed, so a stale verdict is visible as one.
+database_checked_at: Optional[datetime] = None
+
+#: Default seconds between health checks. The database is a network service, and a
+#: verdict taken once at startup would go on saying "healthy" through an outage.
+DB_HEALTH_INTERVAL_S = 60.0
 
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def backup_interval_s(env: dict | None = None) -> Optional[float]:
-    """Seconds between periodic database snapshots, or None to disable.
+def health_interval_s(env: dict | None = None) -> Optional[float]:
+    """Seconds between periodic database health checks, or None to disable.
 
     Args:
         env: Environment mapping; defaults to os.environ.
 
     Returns:
         The interval in seconds; 0 or negative disables the loop; an unparseable
-        value falls back to the default rather than silently disabling backups.
+        value falls back to the default rather than silently disabling the check.
     """
-    raw = (env if env is not None else os.environ).get("DS_DB_BACKUP_INTERVAL_MIN")
+    raw = (env if env is not None else os.environ).get("DS_DB_HEALTH_INTERVAL_S")
     try:
-        minutes = float(raw) if raw is not None else DB_BACKUP_INTERVAL_MIN
+        seconds = float(raw) if raw is not None else DB_HEALTH_INTERVAL_S
     except (TypeError, ValueError):
-        minutes = DB_BACKUP_INTERVAL_MIN
-    if minutes <= 0:
+        seconds = DB_HEALTH_INTERVAL_S
+    if seconds <= 0:
         return None
-    return minutes * 60.0
-
-
-def _mirror_snapshot_sync(snapshot: Path, mirror_dir: Path) -> None:
-    """Copy one finished snapshot into the mirror directory and prune old copies.
-
-    Runs on a daemon thread only. The intended mirror is a cloud-synced folder
-    (Google Drive File Provider), and every filesystem call against that mount can
-    block for seconds to minutes — measured: a directory listing hanging 10+
-    seconds. Nothing here may ever run on the event loop or the startup path.
-
-    The copy goes to a `.part` name first and is renamed into place, so the sync
-    client never uploads a torn file; the source is an already-closed snapshot
-    produced by SQLite's online backup API, so reading it needs no locks.
-
-    Args:
-        snapshot: The local snapshot file to mirror.
-        mirror_dir: The mirror directory, e.g. the Drive data-collection folder.
-    """
-    import shutil
-
-    try:
-        mirror_dir.mkdir(parents=True, exist_ok=True)
-        staged = mirror_dir / (snapshot.name + ".part")
-        shutil.copyfile(snapshot, staged)
-        os.replace(staged, mirror_dir / snapshot.name)
-
-        prefix = snapshot.name.split(".backup-")[0]
-        copies = sorted(mirror_dir.glob(f"{prefix}.backup-*"))
-        keep = _env_int("DS_DB_BACKUP_MIRROR_COPIES", DB_BACKUP_MIRROR_COPIES)
-        for stale in copies[:-keep] if keep > 0 else []:
-            stale.unlink(missing_ok=True)
-        logger.info("Mirrored database snapshot to %s", mirror_dir / snapshot.name)
-    except Exception as exc:  # noqa: BLE001 — the mirror is best-effort by design
-        logger.warning("Could not mirror the database snapshot to %s: %s", mirror_dir, exc)
-
-
-def _mirror_snapshot(snapshot: Optional[Path]) -> None:
-    """Kick off the background mirror of a verified snapshot, when configured.
-
-    `$DS_DB_BACKUP_MIRROR_DIR` unset means no mirroring at all — the mirror is
-    switched on deliberately, once the telemetry is worth keeping, not by default.
-    """
-    global last_mirror_thread
-    last_mirror_thread = None
-    mirror_dir = os.environ.get("DS_DB_BACKUP_MIRROR_DIR")
-    if not mirror_dir or snapshot is None:
-        return
-    thread = threading.Thread(
-        target=_mirror_snapshot_sync,
-        args=(snapshot, Path(mirror_dir)),
-        daemon=True,
-        name="db-backup-mirror",
-    )
-    last_mirror_thread = thread
-    thread.start()
+    return seconds
 
 
 def check_database_health(db: TelemetryDB) -> list[str]:
-    """Verify the telemetry database and, if it is sound, snapshot it.
+    """Verify the telemetry database is reachable and carries the schema.
 
-    The database went corrupt once — `telemetry_sample`'s b-tree ended up with pages
-    referenced twice — and nothing noticed. It was found only because a query for
-    telemetry samples started returning `database disk image is malformed`, by which
-    point 346 rows were unreadable and the pages had been reused. There was no
-    integrity check anywhere in the codebase and no backup, so there was neither a
-    warning nor anything to restore from.
+    The SQLite file this replaced corrupted once and nothing noticed until a query
+    answered `database disk image is malformed`; the lesson kept from that is that a
+    server on a broken database must say so in its logs and on `/health`, not fail one
+    endpoint at a time. What is checked changed with the storage: PostgreSQL's pages
+    are its own business, so the questions are "does it answer" and "are the tables
+    there".
 
-    Running at startup is the right moment: it is the one point where the file is
-    known-quiescent from this process's side, and a server that comes up on a broken
-    database should say so in its logs rather than fail one endpoint at a time.
-
-    Snapshots are taken **only when the check passes**, so a corrupt file cannot
-    overwrite the last good copy — the rotation would otherwise launder the damage
-    through every slot in five restarts.
+    A missing table is the one problem this process can fix itself — the schema is
+    idempotent DDL — so it is retried here before being reported. Anything else (the
+    project paused, the network gone, a wrong URL) is reported as found. The verdict
+    is cached in `database_problems` for `/health`.
 
     Args:
-        db: An open telemetry database.
+        db: A telemetry database handle.
 
     Returns:
         The problems found; empty when the database is sound.
     """
-    global database_problems
+    global database_problems, database_checked_at
 
-    problems = db.integrity_check()
+    problems = db.health_check()
+    if problems and all(p.startswith("missing table") for p in problems):
+        try:
+            db.init_schema()
+            problems = db.health_check()
+        except Exception as exc:  # noqa: BLE001 — reported, not raised
+            problems = [f"schema initialisation failed: {exc}"]
+
     database_problems = problems
-
+    database_checked_at = datetime.now(timezone.utc)
     if problems:
         logger.error(
-            "Telemetry database FAILED its integrity check (%s). Data is being lost. "
-            "Repair it before relying on anything it reports: %s",
-            db.db_path, "; ".join(problems),
+            "Telemetry database is UNHEALTHY (%s). Nothing is being recorded until "
+            "this clears: %s", db.describe, "; ".join(problems),
         )
-        return problems
-
-    snapshot: Optional[Path] = None
-    try:
-        source = Path(db.db_path)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        snapshot = db.backup_to(source.with_name(f"{source.name}.backup-{stamp}"))
-
-        # Oldest first, so the newest copies survive.
-        keep = _env_int("DS_DB_BACKUP_COPIES", DB_BACKUP_COPIES)
-        snapshots = sorted(source.parent.glob(f"{source.name}.backup-*"))
-        for stale in snapshots[:-keep] if keep > 0 else []:
-            if stale != snapshot:
-                stale.unlink(missing_ok=True)
-    except Exception as exc:
-        # A failed backup is not a reason to refuse to start.
-        logger.warning("Could not snapshot the telemetry database: %s", exc)
-
-    # Off the serving path, off this thread: the mirror target may be a cloud
-    # mount that blocks for seconds at a time.
-    _mirror_snapshot(snapshot)
-
     return problems
 
 
-#: Handle for the periodic snapshot loop, cancelled at shutdown.
-_db_backup_task: Optional[asyncio.Task] = None
+#: Handle for the periodic health loop, cancelled at shutdown.
+_db_health_task: Optional[asyncio.Task] = None
 
 
-async def _periodic_db_backup(interval_s: float) -> None:
-    """Re-verify and snapshot the database on a cadence.
+async def _periodic_db_health(interval_s: float) -> None:
+    """Re-check the database on a cadence.
 
-    The startup snapshot alone meant a server that stays up for a week backs up
-    nothing written in that week. The integrity check walks every page, so it runs
-    in a worker thread; a failure is logged and the loop keeps its schedule.
+    Also what heals a server that started while Supabase was unreachable: the first
+    check that succeeds creates any missing table, and `/health` turns green.
 
     Args:
-        interval_s: Seconds between snapshots.
+        interval_s: Seconds between checks.
     """
     while True:
         await asyncio.sleep(interval_s)
         try:
             db = TelemetryDB()
-            try:
-                await asyncio.to_thread(check_database_health, db)
-            finally:
-                db.close()
+            await asyncio.to_thread(check_database_health, db)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Periodic database snapshot failed: %s", exc)
-
-
-@app.post("/system/database/backup")
-async def trigger_database_backup() -> Dict[str, Any]:
-    """Take a verified snapshot now — the manual "flash" before risky work.
-
-    Runs the same integrity-gated path as startup and the periodic loop: a corrupt
-    database is reported, never snapshotted, so damage cannot launder itself into
-    the backup rotation or the mirror.
-
-    Returns:
-        The health verdict and whether a mirror directory is configured.
-    """
-    db = TelemetryDB()
-    try:
-        problems = await asyncio.to_thread(check_database_health, db)
-    finally:
-        db.close()
-    return {
-        "healthy": not problems,
-        "problems": problems,
-        "mirroring": bool(os.environ.get("DS_DB_BACKUP_MIRROR_DIR")),
-    }
+            logger.warning("Periodic database health check failed: %s", exc)
 
 
 @app.on_event("startup")
 def startup_event():
     """Handle application startup events."""
-    config_store.init_schema()
+    # The database comes first: everything below it — the strategy override, the
+    # printer target, the secrets forwarded to subprocesses — is read from the config
+    # store, whose table this is what creates. A missing URL is a configuration error
+    # and stops the server here (`TelemetryDB()` raises, naming the variable); an
+    # *unreachable* database is not — the server comes up degraded, `/health` says
+    # why, and the periodic check below creates the schema once the connection returns.
+    db = TelemetryDB()
+    try:
+        config_store.init_schema()
+        db.init_schema()
+    except Exception as exc:  # noqa: BLE001 — reported by the health check below
+        logger.error("Could not initialise the database schema (%s): %s", db.describe, exc)
+    check_database_health(db)
+    db.close()
+
     strategy = get_resolved_strategy()
     logger.info(f"Resolved execution strategy: {strategy}")
     
@@ -1060,23 +983,18 @@ def startup_event():
     (repo_root / "data" / "outputs").mkdir(parents=True, exist_ok=True)
     (repo_root / "data" / "logs").mkdir(parents=True, exist_ok=True)
     
-    db = TelemetryDB()
-    db.init_schema()
-    check_database_health(db)
-    db.close()
-
     for k, v in config_store.get_all().items():
         os.environ[k] = v
 
-    # Snapshots on a cadence, not just at startup. $DS_DB_BACKUP_INTERVAL_MIN=0
+    # Re-checked on a cadence, not just at startup. $DS_DB_HEALTH_INTERVAL_S=0
     # disables the loop.
-    global _db_backup_task
-    interval = backup_interval_s()
+    global _db_health_task
+    interval = health_interval_s()
     if interval:
-        _db_backup_task = asyncio.get_event_loop().create_task(
-            _periodic_db_backup(interval)
+        _db_health_task = asyncio.get_event_loop().create_task(
+            _periodic_db_health(interval)
         )
-        logger.info("Periodic database snapshots every %.0f min", interval / 60)
+        logger.info("Database health check every %.0f s", interval)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1084,8 +1002,8 @@ async def shutdown_event():
 
     Gracefully stops all active telemetry collectors.
     """
-    if _db_backup_task:
-        _db_backup_task.cancel()
+    if _db_health_task:
+        _db_health_task.cancel()
     for detector_task in active_detectors.values():
         detector_task.cancel()
     active_detectors.clear()
@@ -1564,8 +1482,14 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 f.write("\n[DS] ─── resumed after blueprint approval ───\n")
                 f.flush()
             docker_env_args = ["-e", "DS_LOGS_DIR=/app/data/logs"]
-            if "TELEMETRY_DB_PATH" in pipeline_env:
-                docker_env_args.extend(["-e", f"TELEMETRY_DB_PATH={pipeline_env['TELEMETRY_DB_PATH']}"])
+            if pipeline_env.get("DS_DATABASE_URL"):
+                # The pipeline writes its own telemetry, so it needs the database.
+                # `compose run` passes nothing from the host environment unless named
+                # here — and a URL naming this host's loopback (a local PostgreSQL in
+                # development) has to be translated for the container.
+                docker_env_args.extend([
+                    "-e", f"DS_DATABASE_URL={_container_database_url(pipeline_env['DS_DATABASE_URL'])}",
+                ])
             if "DS_PRINTER_URL" in pipeline_env:
                 docker_env_args.extend(["-e", f"DS_PRINTER_URL={pipeline_env['DS_PRINTER_URL']}"])
             if "DS_PRINTER_KEY" in pipeline_env:
@@ -1985,10 +1909,9 @@ async def get_job(job_id: str):
     """
     db = TelemetryDB()
     job = db.get_job(job_id)
-    # Both gates are derived here, on the open handle rather than from a second
-    # connection: this database has exactly one writer by design over a VirtioFS bind
-    # mount, and an extra reader is not free. Guarded on `job` because the 404 below
-    # is deliberately raised *after* `db.close()`, so a missing row reaches this point.
+    # Both gates are derived here, on the same handle, so the list and the page cannot
+    # disagree about who is waiting. Guarded on `job` because the 404 below is
+    # deliberately raised *after* `db.close()`, so a missing row reaches this point.
     job_blueprint_gate_state = blueprint_gate_state(job, db) if job else "not_ready"
     blueprint_gate_subject = None
     if job and job_blueprint_gate_state == "awaiting_approval":
@@ -2929,10 +2852,9 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         )
 
     db = TelemetryDB()
-    cursor = db.conn.cursor()
-    
+
     where_clause = ""
-    params = []
+    params: list = []
     
     if status == 'running':
         # Parked at the blueprint gate is waiting, not running, and it has its own
@@ -2982,13 +2904,12 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             "AND job_id NOT IN (SELECT job_id FROM job_event WHERE kind = 'dispatch_confirmed')"
         )
 
-    count_query = f"SELECT COUNT(*) FROM print_job {where_clause}"
-    cursor.execute(count_query, params)
-    total = cursor.fetchone()[0]
-    
-    global_counts_query = "SELECT outcome, COUNT(*) as count FROM print_job GROUP BY outcome"
-    cursor.execute(global_counts_query)
-    global_counts = cursor.fetchall()
+    count_row = db.query_one(f"SELECT COUNT(*) AS n FROM print_job {where_clause}", params)
+    total = int(count_row["n"]) if count_row else 0
+
+    global_counts = db.query(
+        "SELECT outcome, COUNT(*) AS count FROM print_job GROUP BY outcome"
+    )
     
     stats = {
         "total": 0, "running": 0, "completed": 0, "failed": 0,
@@ -3014,16 +2935,20 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
         else:
             stats["failed"] += c
 
-    query = f"SELECT * FROM print_job {where_clause} ORDER BY started_at DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    cursor.execute(query, params)
-    
-    rows = cursor.fetchall()
+    # NULLS LAST keeps the order the SQLite version had: PostgreSQL sorts NULL as the
+    # largest value, which would put every never-started job at the top of the list.
+    rows = db.query(
+        f"SELECT * FROM print_job {where_clause} "
+        "ORDER BY started_at DESC NULLS LAST LIMIT %s OFFSET %s",
+        [*params, limit, offset],
+    )
 
     # Which of these have actually been sent. One query rather than one per row, and the
     # only way a list row can tell "finished" from "finished and waiting on a person".
-    cursor.execute("SELECT DISTINCT job_id FROM job_event WHERE kind = 'dispatch_confirmed'")
-    dispatched = {r['job_id'] for r in cursor.fetchall()}
+    dispatched = {
+        r['job_id']
+        for r in db.query("SELECT DISTINCT job_id FROM job_event WHERE kind = 'dispatch_confirmed'")
+    }
 
     jobs = []
     for row in rows:
@@ -3035,8 +2960,8 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
             "prompt": row['prompt'],
             "printer_id": row['printer_id'],
             "printer_firmware": row['printer_firmware'],
-            "started_at": row['started_at'],
-            "completed_at": row['completed_at'],
+            "started_at": _iso(row['started_at']),
+            "completed_at": _iso(row['completed_at']),
             "outcome": job_outcome,
             "status": status_val,
             # Read via `keys` because a database migrated mid-session may not carry
@@ -3110,11 +3035,13 @@ async def prompt_size_hint(request: SizeHintRequest):
 async def health_check():
     """Health check endpoint.
 
-    `database` reports the verdict from the startup integrity check rather than
-    re-running it: `PRAGMA integrity_check` walks every page, and this endpoint is
-    polled. A degraded database is still reported as reachable — the server does
-    work, it is the data underneath that cannot be trusted — so the caller gets the
-    problems and decides.
+    `database` reports the verdict of the most recent health check rather than
+    making a round trip to Supabase: this endpoint is polled, and a database that
+    has gone away would otherwise hold every poll for the pool timeout. The check
+    runs at startup and every `$DS_DB_HEALTH_INTERVAL_S` seconds; `checked_at` says
+    how old the verdict is. A degraded database is still reported by a server that
+    answers — the server does work, it is the data underneath that is not being
+    kept — so the caller gets the problems and decides.
     """
     strategy = get_resolved_strategy()
     detected = get_execution_strategy()
@@ -3126,6 +3053,7 @@ async def health_check():
         "database": {
             "healthy": not database_problems,
             "problems": database_problems,
+            "checked_at": database_checked_at.isoformat() if database_checked_at else None,
         },
     }
 

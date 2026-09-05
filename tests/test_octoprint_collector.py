@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 import logging
-import sqlite3
 from types import SimpleNamespace
 from unittest.mock import patch
 from datetime import datetime, timezone
@@ -9,14 +8,13 @@ import json
 
 import aiohttp
 
-from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.db import OperationalError, TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 
 @pytest.fixture
-def memory_db():
-    db = TelemetryDB(":memory:")
-    db.init_schema()
+def memory_db(isolated_db):
+    db = isolated_db
     job = PrintJob(
         job_id="test-job-123",
         prompt="test prompt",
@@ -297,7 +295,7 @@ CURRENT_FRAME = {
 
 
 def _unwritable(*args, **kwargs):
-    raise sqlite3.OperationalError("unable to open database file")
+    raise OperationalError("unable to open database file")
 
 
 @pytest.mark.asyncio

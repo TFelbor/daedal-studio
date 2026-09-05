@@ -1,32 +1,36 @@
-import pytest
-import os
-import sqlite3
+import asyncio
 from datetime import datetime, timezone
-from pathlib import Path
+
+import pytest
 
 from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
-from pythonsrc.telemetry.db import TelemetryDB, get_default_db_path
+from pythonsrc.telemetry.db import (
+    TELEMETRY_TABLES,
+    DatabaseConfigError,
+    TelemetryDB,
+    get_database_url,
+)
+
 
 @pytest.fixture
-def temp_db(tmp_path):
-    db_file = tmp_path / "test_telemetry.db"
-    db = TelemetryDB(str(db_file))
-    db.init_schema()
-    yield db
-    db.close()
+def temp_db(isolated_db):
+    return isolated_db
 
-def test_idempotent_schema_init(tmp_path):
-    db_file = tmp_path / "test_init.db"
-    db = TelemetryDB(str(db_file))
+
+def test_idempotent_schema_init(isolated_db_url):
+    db = TelemetryDB(isolated_db_url)
     db.init_schema()
     # Calling it again should not fail
     db.init_schema()
-    
-    # Verify tables exist
-    cursor = db.conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = {row[0] for row in cursor.fetchall()}
-    assert {"print_job", "telemetry_sample", "failure_event"}.issubset(tables)
+
+    tables = {
+        row["table_name"]
+        for row in db.query(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = current_schema()"
+        )
+    }
+    assert set(TELEMETRY_TABLES).issubset(tables)
     db.close()
 
 def test_insert_retrieve_job(temp_db):
@@ -122,15 +126,18 @@ def test_insert_retrieve_failure_event(temp_db):
     assert len(events) == 1
     assert events[0] == event
 
-def test_get_default_db_path(monkeypatch):
-    monkeypatch.setenv("TELEMETRY_DB_PATH", "/tmp/custom_telemetry.db")
-    assert get_default_db_path() == "/tmp/custom_telemetry.db"
-    
-    monkeypatch.delenv("TELEMETRY_DB_PATH", raising=False)
-    assert Path(get_default_db_path()).name == "telemetry.db"
-    assert ".ds-mvp" in get_default_db_path()
 
-import asyncio
+def test_get_database_url(monkeypatch):
+    monkeypatch.setenv("DS_DATABASE_URL", "postgresql://u:p@example.invalid:5432/db")
+    assert get_database_url() == "postgresql://u:p@example.invalid:5432/db"
+
+    monkeypatch.delenv("DS_DATABASE_URL", raising=False)
+    with pytest.raises(DatabaseConfigError, match="DS_DATABASE_URL"):
+        get_database_url()
+    monkeypatch.setenv("DS_DATABASE_URL", "   ")
+    with pytest.raises(DatabaseConfigError):
+        TelemetryDB()
+
 
 @pytest.mark.asyncio
 async def test_concurrent_inserts(temp_db):

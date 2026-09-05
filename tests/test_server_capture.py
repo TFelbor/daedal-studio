@@ -84,10 +84,8 @@ def test_dev_and_declined_get_their_own_stats_buckets():
     assert declined_id not in failed_ids
 
 
-def test_declined_and_dev_verdicts_are_not_answers_in_the_funnel(tmp_path, monkeypatch):
-    monkeypatch.setenv("TELEMETRY_DB_PATH", str(tmp_path / "funnel.db"))
+def test_declined_and_dev_verdicts_are_not_answers_in_the_funnel(isolated_db_env):
     db = TelemetryDB()
-    db.init_schema()
 
     def job(job_id, verdict):
         db.insert_job(

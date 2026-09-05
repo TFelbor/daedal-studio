@@ -9,8 +9,6 @@ it is knowable. A seed drawn and discarded cannot be recovered; a profile read a
 time is whatever the file says today; "the printer finished" is not "the part survived".
 """
 
-import sqlite3
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from pythonsrc.telemetry import db as db_module
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import JOB_EVENT_KINDS, JobEvent, PrintJob
 from server.app import app
@@ -34,8 +33,8 @@ CREATE TABLE print_job (
     printer_firmware TEXT NOT NULL,
     slicer TEXT NOT NULL,
     profile_name TEXT NOT NULL,
-    started_at TEXT NOT NULL,
-    completed_at TEXT,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
     outcome TEXT NOT NULL
 )
 """
@@ -59,13 +58,9 @@ def make_job(job_id: str, **kwargs) -> PrintJob:
 
 
 @pytest.fixture
-def db():
+def db(isolated_db):
     """A throwaway telemetry database with the current schema."""
-    with tempfile.TemporaryDirectory() as tmp:
-        database = TelemetryDB(str(Path(tmp) / "telemetry.db"))
-        database.init_schema()
-        yield database
-        database.close()
+    return isolated_db
 
 
 # ── Blueprint provenance ──────────────────────────────────────────────────────
@@ -388,40 +383,36 @@ def test_pending_queue_lists_only_unconfirmed_prints(db):
 # ── Migration ─────────────────────────────────────────────────────────────────
 
 
-def test_migrates_a_database_predating_every_new_column():
-    """Real databases predate all of this, including the NOT NULL started_at era."""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = str(Path(tmp) / "legacy.db")
-        legacy = sqlite3.connect(path)
-        legacy.execute(OLD_SCHEMA)
-        legacy.execute(
-            "INSERT INTO print_job VALUES ('legacy-1','old prompt','p','octoprint','cura','d',"
-            "'2026-01-01T00:00:00+00:00',NULL,'success')"
-        )
-        legacy.commit()
-        legacy.close()
+def test_migrates_a_database_predating_every_new_column(isolated_db_url):
+    """A table carrying only the original nine columns gains the rest, and keeps its rows."""
+    legacy = TelemetryDB(isolated_db_url)
+    legacy.execute(OLD_SCHEMA)
+    legacy.execute(
+        "INSERT INTO print_job VALUES ('legacy-1','old prompt','p','octoprint','cura','d',"
+        "'2026-01-01T00:00:00+00:00',NULL,'success')"
+    )
 
-        database = TelemetryDB(path)
-        database.init_schema()
+    database = TelemetryDB(isolated_db_url)
+    database.init_schema()
 
-        job = database.get_job("legacy-1")
-        assert job.prompt == "old prompt"
-        # Nothing is backfilled: a seed that was never recorded cannot be invented, and
-        # a partial backfill would be indistinguishable from captured data.
-        assert job.blueprint_seed is None
-        assert job.material_type is None
-        assert job.slice_status is None
-        assert job.download_count == 0
+    job = database.get_job("legacy-1")
+    assert job.prompt == "old prompt"
+    # Nothing is backfilled: a seed that was never recorded cannot be invented, and
+    # a partial backfill would be indistinguishable from captured data.
+    assert job.blueprint_seed is None
+    assert job.material_type is None
+    assert job.slice_status is None
+    assert job.download_count == 0
 
-        database.update_job_blueprint("legacy-1", seed=7)
-        database.update_job_slice("legacy-1", status="success")
-        database.record_job_event("legacy-1", "download")
-        assert database.get_job("legacy-1").blueprint_seed == 7
-        assert len(database.get_job_events("legacy-1")) == 1
+    database.update_job_blueprint("legacy-1", seed=7)
+    database.update_job_slice("legacy-1", status="success")
+    database.record_job_event("legacy-1", "download")
+    assert database.get_job("legacy-1").blueprint_seed == 7
+    assert len(database.get_job_events("legacy-1")) == 1
 
-        database.init_schema()  # idempotent
-        assert database.get_job("legacy-1").blueprint_seed == 7
-        database.close()
+    database.init_schema()  # idempotent
+    assert database.get_job("legacy-1").blueprint_seed == 7
+    database.close()
 
 
 def test_insert_job_carries_every_new_column(db):
@@ -469,7 +460,7 @@ class _Args:
         self.material_type = material_type
 
 
-def test_record_slice_parses_the_gcode(tmp_path, monkeypatch):
+def test_record_slice_parses_the_gcode(tmp_path, isolated_db_env):
     """The recorder derives its numbers from the file, not the header."""
     from pythonsrc import pipeline
 
@@ -480,15 +471,13 @@ def test_record_slice_parses_the_gcode(tmp_path, monkeypatch):
         ";TYPE:SUPPORT\nG1 X2 E2.0\n"
     )
 
-    database = TelemetryDB(str(tmp_path / "t.db"))
-    database.init_schema()
+    database = TelemetryDB()
     database.insert_job(make_job("rec-1"))
     database.close()
 
-    monkeypatch.setenv("TELEMETRY_DB_PATH", str(tmp_path / "t.db"))
     pipeline._record_slice(_Args(material_type="PLA"), gcode, 3.0, status="success")
 
-    database = TelemetryDB(str(tmp_path / "t.db"))
+    database = TelemetryDB()
     job = database.get_job("rec-1")
     database.close()
 
@@ -501,13 +490,14 @@ def test_record_slice_parses_the_gcode(tmp_path, monkeypatch):
     assert job.layer_count == 1
 
 
-def test_record_slice_without_a_job_id_is_a_no_op(tmp_path, monkeypatch):
-    """Manual CLI runs have no telemetry row to write to."""
+def test_record_slice_without_a_job_id_is_a_no_op(monkeypatch):
+    """Manual CLI runs have no telemetry row to write to — and open no connection."""
     from pythonsrc import pipeline
 
-    monkeypatch.setenv("TELEMETRY_DB_PATH", str(tmp_path / "absent.db"))
+    unreachable = "postgresql://nobody:x@127.0.0.1:1/none?connect_timeout=1"
+    monkeypatch.setenv("DS_DATABASE_URL", unreachable)
     pipeline._record_slice(_Args(job_id=None), None, 1.0, status="success")
-    assert not (tmp_path / "absent.db").exists()
+    assert unreachable not in db_module._POOLS
 
 
 def test_recorders_swallow_database_errors(tmp_path, monkeypatch, caplog):
@@ -603,7 +593,7 @@ def _orphan_event(db, kind: str, job_id: str) -> None:
     """
     from pythonsrc.telemetry.schema import JobEvent
 
-    db.conn.execute("PRAGMA foreign_keys = OFF")
+    db.execute("ALTER TABLE job_event DROP CONSTRAINT job_event_job_id_fkey")
     try:
         db.insert_job_event(
             JobEvent(
@@ -614,12 +604,16 @@ def _orphan_event(db, kind: str, job_id: str) -> None:
             )
         )
     finally:
-        db.conn.execute("PRAGMA foreign_keys = ON")
+        # NOT VALID: re-arm the constraint for new rows without validating the
+        # orphan just written, which is the legacy debris being simulated.
+        db.execute(
+            "ALTER TABLE job_event ADD CONSTRAINT job_event_job_id_fkey "
+            "FOREIGN KEY (job_id) REFERENCES print_job (job_id) NOT VALID"
+        )
 
 
-def test_the_response_rate_ignores_events_whose_job_is_gone(tmp_path):
-    db = TelemetryDB(str(tmp_path / "t.db"))
-    db.init_schema()
+def test_the_response_rate_ignores_events_whose_job_is_gone(isolated_db):
+    db = isolated_db
 
     _orphan_event(db, "outcome_prompt_shown", "ghost-1")
     _orphan_event(db, "outcome_reported", "ghost-1")
@@ -630,9 +624,8 @@ def test_the_response_rate_ignores_events_whose_job_is_gone(tmp_path):
     db.close()
 
 
-def test_a_live_job_still_counts_normally(tmp_path):
-    db = TelemetryDB(str(tmp_path / "t.db"))
-    db.init_schema()
+def test_a_live_job_still_counts_normally(isolated_db):
+    db = isolated_db
 
     job = make_job("live-1")
     db.insert_job(job)
@@ -646,9 +639,8 @@ def test_a_live_job_still_counts_normally(tmp_path):
     db.close()
 
 
-def test_raw_event_totals_also_exclude_orphans(tmp_path):
-    db = TelemetryDB(str(tmp_path / "t.db"))
-    db.init_schema()
+def test_raw_event_totals_also_exclude_orphans(isolated_db):
+    db = isolated_db
 
     job = make_job("live-1")
     db.insert_job(job)
@@ -659,10 +651,9 @@ def test_raw_event_totals_also_exclude_orphans(tmp_path):
     db.close()
 
 
-def test_orphaned_events_are_measurable(tmp_path):
+def test_orphaned_events_are_measurable(isolated_db):
     """Excluded from the metric, but still countable — a non-zero value is a signal."""
-    db = TelemetryDB(str(tmp_path / "t.db"))
-    db.init_schema()
+    db = isolated_db
 
     assert db.count_orphaned_job_events() == 0
     _orphan_event(db, "download", "ghost-4")

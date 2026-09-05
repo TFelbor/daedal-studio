@@ -236,14 +236,19 @@ services:
       # On macOS/Windows, OctoPrint on the host is reached via host.docker.internal.
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
+      # The telemetry database: PostgreSQL on Supabase, one URL for every process.
+      # `env_file` above carries it from .env; named here too so `docker compose run`
+      # with a URL exported in the shell also reaches it. See "One database" in
+      # CLAUDE.md.
+      DS_DATABASE_URL: ${DS_DATABASE_URL:-}
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
       - ${HOST_PROJECT_ROOT:-..}/data/logs:/app/data/logs
       - ${HOST_PROJECT_ROOT:-..}/pythonsrc:/app/pythonsrc
-      # The one telemetry database. HOME is /root in the container, so the
-      # library's default path resolves through this mount to the same file the
-      # host uses — see "One database" in CLAUDE.md.
+      # The config store's Fernet key (~/.ds-mvp/.config_key). HOME is /root in the
+      # container, so the default key path resolves through this mount to the same
+      # file the host uses — one key for one database.
       - ~/.ds-mvp:/root/.ds-mvp
       - ds-models-flux:/models/flux
       - ds-models-trellis2:/models/trellis2
@@ -275,15 +280,16 @@ services:
       # simulator" button silently sets the URL and no key, and every call to a
       # simulator that is running perfectly comes back 403.
       - ${HOST_PROJECT_ROOT:-..}/data/octoprint:/app/data/octoprint:ro
-      # Same single database as every other execution mode. Deliberately a bind
-      # mount rather than a named volume: a volume is invisible from the host, and
-      # that is how a month of job history was written somewhere nobody could see.
+      # The config store's Fernet key lives here (~/.ds-mvp/.config_key), the same
+      # file the host uses. A bind mount rather than a named volume: a volume is
+      # invisible from the host, and that is how a month of job history once went
+      # somewhere nobody could see.
       - ~/.ds-mvp:/root/.ds-mvp
     environment:
-      # TELEMETRY_DB_PATH is deliberately NOT set. Leaving it unset makes every
-      # process — native, container, pipeline subprocess — resolve the same default,
-      # ~/.ds-mvp/telemetry.db. Setting it here to a container path is what split
-      # the data across two databases. See "One database" in CLAUDE.md.
+      # The telemetry database: PostgreSQL on Supabase. One URL, read from .env in
+      # the directory compose is run from, for every process — native, container,
+      # pipeline subprocess. See "One database" in CLAUDE.md.
+      - DS_DATABASE_URL=${DS_DATABASE_URL:-}
       - DS_LOGS_DIR=/app/data/logs
       - DOCKER_HOST=unix:///var/run/docker.sock
       - HOST_PROJECT_ROOT=${PWD}

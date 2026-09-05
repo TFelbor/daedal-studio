@@ -28,9 +28,19 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_INTERVAL_S = 30.0
 STALE_AFTER_S = 120.0
 
-# SQLite's wording when a table is absent. Matched as a substring rather than by
-# exception type so a caller passing a duck-typed database is treated the same way.
-MISSING_TABLE_ERROR = "no such table"
+# Wordings for "the claim table is absent": PostgreSQL's `relation ... does not exist`
+# and the SQLite phrasing older tests and duck-typed databases still use. Matched as
+# substrings rather than by exception type so a caller passing a duck-typed database is
+# treated the same way as the real driver.
+MISSING_TABLE_ERRORS = ("no such table", "does not exist")
+#: Kept for callers that imported the old single-string name.
+MISSING_TABLE_ERROR = MISSING_TABLE_ERRORS[0]
+
+
+def _is_missing_table(exc: Exception) -> bool:
+    """Whether `exc` says the claim table does not exist, in any driver's words."""
+    message = str(exc).lower()
+    return any(phrase in message for phrase in MISSING_TABLE_ERRORS)
 
 
 class CollectorClaim:
@@ -102,11 +112,11 @@ class CollectorClaim:
           database predating ``telemetry_collector_claim``. Arbitration is genuinely
           unavailable, but there is no second collector to conflict with either, and
           the sample itself can still be written. Collect.
-        * **The database is unreachable** — unopenable file, locked, corrupt. This
-          used to take the same branch, which told the collector it had *won* a claim
-          it never took: it went on to ``insert_sample``, died there instead, and the
-          caller reported the result as a connection error. Nothing can be written by
-          anyone, so decline and name the real cause.
+        * **The database is unreachable** — Supabase down, the network gone, the pool
+          timed out. This used to take the same branch, which told the collector it
+          had *won* a claim it never took: it went on to ``insert_sample``, died there
+          instead, and the caller reported the result as a connection error. Nothing
+          can be written by anyone, so decline and name the real cause.
 
         Args:
             exc: The failure raised by ``try_claim_collector``.
@@ -115,15 +125,15 @@ class CollectorClaim:
         Returns:
             True if the sample should still be written despite the failure.
         """
-        if MISSING_TABLE_ERROR in str(exc).lower():
+        if _is_missing_table(exc):
             logger.debug("Collector claim unavailable for job %s: %s", self.job_id, exc)
             self._holds_claim = True
             self._last_heartbeat = now
             return True
 
         # Not "someone else owns it" — nobody does, and this collector does not know
-        # whether it would have won. Every later sample retries, so a locked database
-        # recovers on its own and logs the recovery as a fresh claim.
+        # whether it would have won. Every later sample retries, so a database that
+        # comes back recovers on its own and logs the recovery as a fresh claim.
         self._holds_claim = None
         if not self._unavailable_logged:
             logger.error(

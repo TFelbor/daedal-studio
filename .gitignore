@@ -78,3 +78,10 @@ data/octoprint/
 # Scripts used by Alberto
 setup_venv.sh
 start_website.sh
+
+# Per-developer agent tooling — project MCP config and installed agent skills
+# (`npx skills add …`). Local, not part of the source.
+.mcp.json
+.agents/
+.claude/skills/
+skills-lock.json

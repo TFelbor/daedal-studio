@@ -37,8 +37,8 @@ up:
 # Docker services get .env through compose's `env_file:`; a native run got nothing,
 # so credentials in .env (HF_TOKEN, PIXAZO_API_KEY, ...) were silently absent unless
 # exported by hand. load_native_env.sh lifts those across — and *only* those: .env
-# also holds container paths like TELEMETRY_DB_PATH=/app/..., and exporting one of
-# those into a host process makes the server try to write the read-only root.
+# also holds container paths like FLUX_MODEL_PATH=/models/..., and exporting one of
+# those into a host process points it at a directory that does not exist.
 start-native:
 	@echo "Starting API server natively on host to enable MPS acceleration..."
 	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"

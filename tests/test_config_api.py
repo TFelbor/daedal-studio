@@ -3,15 +3,26 @@
 # `python tests/test_config_api.py`, which never loads tests/conftest.py and therefore misses the
 # database isolation there. Unguarded, it overwrites the developer's real HF_TOKEN with "test123" and deletes
 # their MOONRAKER_URL row from the encrypted config store.
-# Redirect the database before importing server.app, which builds a ConfigStore at
-# import time.
+# Redirect the database before importing server.app. Run standalone, this refuses to
+# start without DS_TEST_DATABASE_URL — a throwaway PostgreSQL the script may write to
+# (see tests/testing_postgres.py) — so it can never reach the Supabase project. Under
+# pytest, conftest has already pointed DS_DATABASE_URL at a schema it created.
 import os as _os
+import sys as _sys
 import tempfile as _tempfile
 
-_os.environ.setdefault(
-    "TELEMETRY_DB_PATH",
-    _os.path.join(_tempfile.mkdtemp(prefix="ds-smoke-"), "telemetry.db"),
-)
+if __name__ == "__main__":
+    _test_url = _os.environ.get("DS_TEST_DATABASE_URL", "").strip()
+    if not _test_url:
+        _sys.exit(
+            "Set DS_TEST_DATABASE_URL to a throwaway PostgreSQL before running this "
+            "smoke script; it writes rows and must never see the real database."
+        )
+    _os.environ["DS_DATABASE_URL"] = _test_url
+    _os.environ.setdefault(
+        "DS_CONFIG_KEY_PATH",
+        _os.path.join(_tempfile.mkdtemp(prefix="ds-smoke-"), ".config_key"),
+    )
 
 import os
 from fastapi.testclient import TestClient

@@ -252,8 +252,8 @@ is what the CLI and automation use.
 | | |
 |---|---|
 | **API** | FastAPI + uvicorn (`server/app.py`), WebSocket phase/telemetry fan-out |
-| **Database** | SQLite at `~/.ds-mvp/telemetry.db` — **one file in every execution mode**, reached from containers through a bind mount. WAL is deliberately off |
-| **Config** | Fernet-encrypted key-value store in the same database; key at `.config_key` |
+| **Database** | PostgreSQL on Supabase via `psycopg` 3 (LGPL-3.0, recorded) — **one URL, `DS_DATABASE_URL`, in every execution mode**; one pooled connection set per process; JSONB/TIMESTAMPTZ columns; RLS on with no policies. Schema in `pythonsrc/telemetry/db.py`, rendered to `supabase/migrations/` |
+| **Config** | Fernet-encrypted key-value store in the same database; key on the host at `~/.ds-mvp/.config_key` |
 | **Frontend** | React 19.2.6, Vite 8, TypeScript ~6.0.2, `three` 0.184, `recharts` 3.8.1, `react-router-dom` 7.17, `gcode-preview` 2.18 |
 | **Served** | `web/dist/` is built into the api-server image and served by a catch-all route |
 

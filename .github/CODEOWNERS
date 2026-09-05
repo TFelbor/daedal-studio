@@ -1,0 +1,70 @@
+# Code owners for ds-mvp.
+#
+# Owners are the two technical co-founders; they are the only accounts with push
+# access, and the pipeline is operated only by them.
+#
+# One limitation is worth stating rather than leaving to be discovered: **CODEOWNERS
+# matches paths, never file contents.** The rule "the two technical co-founders own
+# every file containing LEGAL-DEFERRED" cannot be expressed here at all. It is
+# enforced in two other places instead — `claude-review.yml` checks that no file
+# containing the marker was touched unless the issue said so, and
+# `claude-automerge.yml` greps the changed files at the head commit and declines to
+# merge if any of them carries it. What this file can do is own the paths where such
+# markers are most likely to land, which is what the legal block below is.
+#
+# Requiring review from owners is a branch-protection setting ("Require review from
+# Code Owners" on `main`), not something this file turns on.
+
+# ---------------------------------------------------------------------------
+# Legal, licensing and IP screening.
+#
+# The Apache-2.0 grant depends on these; a break here cannot be fixed after a
+# release. `docs/deferred-legal-tasks.md` is where LEGAL-DEFERRED markers point.
+# ---------------------------------------------------------------------------
+/LICENSE                              @TFelbor @Alberto-Garcia-de-la-Torre
+/THIRD-PARTY-NOTICES.md               @TFelbor @Alberto-Garcia-de-la-Torre
+/licenses/                            @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/licence_policy.py          @TFelbor @Alberto-Garcia-de-la-Torre
+/tests/test_licensing_guards.py       @TFelbor @Alberto-Garcia-de-la-Torre
+/tests/test_licence_data.py           @TFelbor @Alberto-Garcia-de-la-Torre
+/docs/deferred-legal-tasks.md         @TFelbor @Alberto-Garcia-de-la-Torre
+/docs/audits/                         @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/ip_screen.py                @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/ip_screen_image.py          @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/data/ip_blocklist.json      @TFelbor @Alberto-Garcia-de-la-Torre
+
+# ---------------------------------------------------------------------------
+# Credentials and secrets — this repository's "auth".
+#
+# There is no end-user authentication yet. These are the paths that hold or shape
+# secrets: the Fernet-encrypted runtime config store, the environment template, the
+# printer clients that carry API keys, and Supabase's RLS posture.
+# ---------------------------------------------------------------------------
+/server/config_store.py               @TFelbor @Alberto-Garcia-de-la-Torre
+/.env.template                        @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/operators/                 @TFelbor @Alberto-Garcia-de-la-Torre
+/supabase/README.md                   @TFelbor @Alberto-Garcia-de-la-Torre
+
+# ---------------------------------------------------------------------------
+# Anything that spends money — this repository's "payments".
+#
+# There is no billing or checkout code. The hosted sculptor is the only call that
+# incurs a charge (EUR 0,32 a generation), and `generation_cost_eur` is where spend
+# is booked. Add the real payment paths here when they exist.
+# ---------------------------------------------------------------------------
+/pythonsrc/sculptors/pixazo.py        @TFelbor @Alberto-Garcia-de-la-Torre
+
+# ---------------------------------------------------------------------------
+# Migrations and the telemetry schema.
+#
+# `supabase/migrations/*.sql` is generated from `pythonsrc/telemetry/db.py`; the two
+# are pinned together by `tests/test_supabase_migration.py`. The data is the moat.
+# ---------------------------------------------------------------------------
+/supabase/                            @TFelbor @Alberto-Garcia-de-la-Torre
+/pythonsrc/telemetry/db.py            @TFelbor @Alberto-Garcia-de-la-Torre
+
+# ---------------------------------------------------------------------------
+# The pipeline's own configuration. A pull request that edits these is a pull
+# request that edits the gate it has to pass.
+# ---------------------------------------------------------------------------
+/.github/                             @TFelbor @Alberto-Garcia-de-la-Torre

@@ -6,12 +6,11 @@ knowable (see CLAUDE.md, "the capture principle") — or, for the FK pragma,
 because the orphaned-events incident proved a declared-but-unenforced foreign
 key is how a dataset quietly rots.
 """
-import sqlite3
 from datetime import datetime, timezone
 
 import pytest
 
-from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.db import IntegrityError, TelemetryDB
 from pythonsrc.telemetry.schema import (
     PrintJob,
     TelemetrySample,
@@ -22,11 +21,8 @@ from pythonsrc.telemetry.schema import (
 
 
 @pytest.fixture
-def db(tmp_path):
-    handle = TelemetryDB(str(tmp_path / "capture.db"))
-    handle.init_schema()
-    yield handle
-    handle.close()
+def db(isolated_db):
+    return isolated_db
 
 
 def _job(job_id="job-ctx") -> PrintJob:
@@ -129,12 +125,12 @@ def _sample(job_id) -> TelemetrySample:
 
 
 def test_sample_for_nonexistent_job_is_refused(db):
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         db.insert_sample(_sample("no-such-job"))
 
 
 def test_job_event_for_nonexistent_job_is_refused(db):
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         db.record_job_event("no-such-job", "download")
 
 
@@ -150,7 +146,7 @@ def test_failure_event_for_nonexistent_job_is_refused(db):
         notes=None,
         snapshot=[],
     )
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         db.insert_failure_event(event)
 
 
@@ -274,12 +270,11 @@ def test_resolve_git_sha_finds_this_repo():
     assert re.fullmatch(r"[0-9a-f]{7,40}", sha)
 
 
-def test_record_run_context_writes_the_row(tmp_path, monkeypatch):
+def test_record_run_context_writes_the_row(isolated_db_env):
     import argparse
 
     from pythonsrc import pipeline
 
-    monkeypatch.setenv("TELEMETRY_DB_PATH", str(tmp_path / "ctx.db"))
     handle = TelemetryDB()
     handle.init_schema()
     handle.insert_job(_job("ctx-job"))

@@ -1,0 +1,143 @@
+# Tier 3 of the Claude Code pipeline: the required check.
+#
+# The job is named `claude-review` because that string is what you select in
+# Settings → Branches → require status checks. Renaming the job silently detaches
+# branch protection from this workflow.
+#
+# The check is red when Fable asks for changes. That is the whole point: a review
+# that only ever posts a comment is advice, and advice does not gate a merge. The
+# verdict travels out of the model as structured output (`--json-schema`) rather than
+# as prose the workflow would have to parse.
+name: claude-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  # The action exchanges a GitHub OIDC token for the Claude App token. Without
+  # this it fails with "Could not fetch an OIDC token" before reaching the model.
+  id-token: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    name: claude-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Review with Fable
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Either credential the setup guide names works; whichever secret
+          # exists is the one used. `/install-github-app` stores one of them.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR against the linked issue's acceptance criteria and CLAUDE.md. Check: criteria met; tests present and meaningful; no changes outside scope; no file containing LEGAL-DEFERRED touched unless the issue says so; no secrets; no new dependencies without a stated reason. Post one review. Approve only if everything passes; otherwise request changes with specific, actionable items.
+
+            Post the review as one top-level PR comment, and use inline comments for
+            findings tied to a specific line. Then return your verdict as structured
+            output: `verdict` is "approve" or "request_changes", and `summary` is one
+            sentence. The verdict decides whether this required check passes, so
+            return "request_changes" whenever any check above fails.
+          claude_args: |
+            --model claude-fable-5-1
+            --max-turns 20
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
+
+      - name: Decide the check from the verdict
+        # Three outcomes, and they are three different facts:
+        #
+        #   a verdict of "approve"          -> green
+        #   a verdict of "request_changes"  -> ask for a fix, then red
+        #   no verdict at all               -> red, unless the action refused to run
+        #
+        # That last case is narrow and real. The action validates its own workflow
+        # file against the default branch and skips when they differ, which is exactly
+        # what happens on a pull request that edits `.github/workflows/`. It logs
+        # "Workflow validation failed ... this is normal". Reporting that as a review
+        # failure would make the required check permanently red on every pull request
+        # that touches this pipeline, and a check that is red for a documented reason
+        # is a check people learn to override. So it passes — loudly, saying it was
+        # not reviewed and that a human has to read it. The exemption is conditioned
+        # on the PR actually changing a workflow file; nothing else earns it.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_OUTPUT: ${{ steps.review.outputs.structured_output }}
+          MAX_ROUNDS: "3"
+        run: |
+          set -euo pipefail
+
+          if [ -z "$REVIEW_OUTPUT" ]; then
+            touched=$(gh pr view "$PR_NUMBER" --json files \
+              --jq '[.files[].path | select(startswith(".github/workflows/"))] | length')
+            if [ "$touched" -gt 0 ]; then
+              {
+                echo "### claude-review did not run"
+                echo ""
+                echo "This pull request changes \`.github/workflows/\`, and the action refuses to"
+                echo "run a workflow version that differs from the default branch."
+                echo ""
+                echo "**Nothing reviewed this pull request. A human has to read it.**"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "Review skipped: this PR changes workflow files."
+              exit 0
+            fi
+            echo "The review step returned no structured output, so there is no verdict to gate on." >&2
+            exit 1
+          fi
+
+          verdict=$(printf '%s' "$REVIEW_OUTPUT" | jq -r '.verdict')
+          summary=$(printf '%s' "$REVIEW_OUTPUT" | jq -r '.summary')
+          echo "verdict=${verdict}"
+          echo "summary=${summary}"
+
+          if [ "$verdict" = "approve" ]; then
+            echo "claude-review approved this pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Section 4e's fix loop. The comment is what re-enters claude-implement.yml's
+          # interactive `fix` job. The round cap is in the repository as well as in the
+          # Dispatcher because the loop closes here — a fix pushes, `synchronize` fires,
+          # this workflow runs again — and a cap that lives only in a process outside
+          # the repository does not stop a runaway that starts inside it.
+          marker='<!-- claude-fix-request -->'
+          rounds=$(gh pr view "$PR_NUMBER" --json comments \
+            --jq "[.comments[] | select(.body | contains(\"${marker}\"))] | length")
+          echo "fix rounds so far: ${rounds}"
+
+          if [ "$rounds" -lt "$MAX_ROUNDS" ]; then
+            body=$(printf '%s\n@claude please address the review.\n\nRound %s of %s. Latest verdict: %s\n' \
+              "$marker" "$((rounds + 1))" "$MAX_ROUNDS" "$summary")
+          else
+            body=$(printf '%s\nReview has requested changes %s times, which is the cap. Not asking again — a human needs to look at this one.\n\nLatest verdict: %s\n' \
+              "$marker" "$rounds" "$summary")
+          fi
+          gh pr comment "$PR_NUMBER" --body "$body"
+
+          {
+            echo "claude-review requested changes."
+            echo ""
+            echo "${summary}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

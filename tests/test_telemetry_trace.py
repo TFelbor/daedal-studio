@@ -12,10 +12,10 @@ without adding it to the map fails here rather than being silently invisible in
 every trace.
 """
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import psycopg
 import pytest
 
 from pythonsrc.telemetry.db import TelemetryDB
@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def traced_db(tmp_path):
+def traced_db(isolated_db_url):
     """A database holding one fully populated job and one that stopped early.
 
     Written through the real `TelemetryDB` writers rather than raw SQL, so the rows
@@ -46,10 +46,10 @@ def traced_db(tmp_path):
     empty here reads as a coverage hole in the tool rather than in the fixture.
 
     Returns:
-        A tuple of (db_path, complete_job_id, partial_job_id).
+        A tuple of (database_url, complete_job_id, partial_job_id).
     """
-    db_path = tmp_path / "telemetry.db"
-    db = TelemetryDB(db_path=str(db_path))
+    db_path = isolated_db_url
+    db = TelemetryDB(db_path)
     db.init_schema()
     now = datetime.now(timezone.utc)
 
@@ -110,22 +110,19 @@ def traced_db(tmp_path):
         started_at=None, completed_at=None, outcome="unknown",
     ))
     db.close()
-    return str(db_path), complete, partial
+    return db_path, complete, partial
 
 
 # ── The map matches the schema ─────────────────────────────────────────────────
 
-def test_stages_cover_every_print_job_column(tmp_path):
+def test_stages_cover_every_print_job_column(isolated_db):
     """No column may exist without a stage claiming it, and none may be invented.
 
     This is the test that keeps the tool honest. A capture column added to
     `_PRINT_JOB_EXTRA_COLUMNS` but not to `STAGES` would never appear in a trace,
     so a reader would conclude it was already covered by an existing stage.
     """
-    db = TelemetryDB(db_path=str(tmp_path / "schema.db"))
-    db.init_schema()
-    columns = {row[1] for row in db.conn.execute("PRAGMA table_info(print_job)")}
-    db.close()
+    columns = isolated_db.table_columns("print_job")
 
     mapped = {name for stage in STAGES for name in stage.columns}
     # job_id is the key the trace is looked up by, not something a stage writes.
@@ -188,7 +185,7 @@ def test_render_reports_full_coverage_for_a_complete_job(traced_db):
     """A job that ran end to end shows every stage as at least partly filled."""
     db_path, complete, _ = traced_db
     conn = open_readonly(db_path)
-    row = conn.execute("SELECT * FROM print_job WHERE job_id = ?", (complete,)).fetchone()
+    row = conn.execute("SELECT * FROM print_job WHERE job_id = %s", (complete,)).fetchone()
     from pythonsrc.telemetry.db import _row_to_job
 
     job = _row_to_job(row)
@@ -208,7 +205,7 @@ def test_render_shows_an_early_exit_as_empty_stages(traced_db):
     """A job that never reached Phase 1 must read as empty, not as absent."""
     db_path, _, partial = traced_db
     conn = open_readonly(db_path)
-    row = conn.execute("SELECT * FROM print_job WHERE job_id = ?", (partial,)).fetchone()
+    row = conn.execute("SELECT * FROM print_job WHERE job_id = %s", (partial,)).fetchone()
     from pythonsrc.telemetry.db import _row_to_job
 
     job = _row_to_job(row)
@@ -230,7 +227,7 @@ def test_expected_nulls_are_not_reported_as_gaps(traced_db):
     """
     db_path, complete, _ = traced_db
     conn = open_readonly(db_path)
-    row = conn.execute("SELECT * FROM print_job WHERE job_id = ?", (complete,)).fetchone()
+    row = conn.execute("SELECT * FROM print_job WHERE job_id = %s", (complete,)).fetchone()
     from pythonsrc.telemetry.db import _row_to_job
 
     output = render(
@@ -247,7 +244,7 @@ def test_json_output_is_a_stage_by_stage_coverage_map(traced_db):
     """`--json` must be queryable without parsing the report."""
     db_path, complete, _ = traced_db
     conn = open_readonly(db_path)
-    row = conn.execute("SELECT * FROM print_job WHERE job_id = ?", (complete,)).fetchone()
+    row = conn.execute("SELECT * FROM print_job WHERE job_id = %s", (complete,)).fetchone()
     from pythonsrc.telemetry.db import _row_to_job
 
     payload = build_json(_row_to_job(row), dict(row), read_extras(conn, complete))
@@ -265,7 +262,7 @@ def test_download_count_of_zero_is_not_a_populated_column(traced_db):
     """`download_count` defaults to 0, which is an absence of downloads."""
     db_path, _, partial = traced_db
     conn = open_readonly(db_path)
-    row = conn.execute("SELECT * FROM print_job WHERE job_id = ?", (partial,)).fetchone()
+    row = conn.execute("SELECT * FROM print_job WHERE job_id = %s", (partial,)).fetchone()
     from pythonsrc.telemetry.db import _row_to_job
 
     payload = build_json(_row_to_job(row), dict(row), read_extras(conn, partial))
@@ -303,25 +300,32 @@ def test_tracing_cannot_write_to_the_database(traced_db):
     """
     db_path, complete, _ = traced_db
     conn = open_readonly(db_path)
-    with pytest.raises(sqlite3.OperationalError):
-        conn.execute("UPDATE print_job SET prompt = 'x' WHERE job_id = ?", (complete,))
+    with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
+        conn.execute("UPDATE print_job SET prompt = 'x' WHERE job_id = %s", (complete,))
     conn.close()
 
 
-def test_a_missing_database_is_an_error_not_a_new_file(tmp_path):
-    """`TelemetryDB` creates its parent directory; the tracer must not."""
-    missing = tmp_path / "nested" / "absent.db"
-    assert main(["--db", str(missing), "--latest"]) == 1
-    assert not missing.exists()
-    assert not missing.parent.exists()
+def test_an_unreachable_database_is_an_error(capsys):
+    """A wrong URL is reported and exits 1; nothing is created or retried."""
+    unreachable = "postgresql://nobody:secret@127.0.0.1:1/none?connect_timeout=1"
+    assert main(["--db", unreachable, "--latest"]) == 1
+    err = capsys.readouterr().err
+    assert "Cannot reach" in err
+    assert "secret" not in err
 
 
-def test_listing_an_empty_database_explains_itself(tmp_path):
+def test_no_url_is_a_configuration_error(monkeypatch, capsys):
+    monkeypatch.delenv("DS_DATABASE_URL", raising=False)
+    assert main(["--latest"]) == 1
+    assert "DS_DATABASE_URL" in capsys.readouterr().err
+
+
+def test_listing_an_empty_database_explains_itself(isolated_db_url):
     """A developer with no jobs yet should get a next step, not a blank page."""
-    db = TelemetryDB(db_path=str(tmp_path / "empty.db"))
+    db = TelemetryDB(isolated_db_url)
     db.init_schema()
     db.close()
-    conn = open_readonly(str(tmp_path / "empty.db"))
+    conn = open_readonly(isolated_db_url)
     output = list_jobs(conn, 20, Palette(False))
     conn.close()
     assert "No jobs" in output
@@ -341,7 +345,7 @@ def test_an_ambiguous_prefix_is_refused(traced_db, capsys):
     # match one, so ambiguity is provoked with a prefix common to both.
     assert main(["--db", db_path, partial[:1]]) == 0
 
-    db = TelemetryDB(db_path=db_path)
+    db = TelemetryDB(db_path)
     db.insert_job(PrintJob(
         job_id=partial[:8] + "-dupe", prompt="collides", printer_id="ender3",
         printer_firmware="octoprint", slicer="cura", profile_name="ender3",

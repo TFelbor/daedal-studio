@@ -16,15 +16,13 @@ client = TestClient(app)
 def clear_db():
     db = TelemetryDB()
     db.init_schema()
-    cursor = db.conn.cursor()
-    cursor.execute("DELETE FROM failure_event")
-    cursor.execute("DELETE FROM telemetry_sample")
+    db.execute("DELETE FROM failure_event")
+    db.execute("DELETE FROM telemetry_sample")
     # job_event and the collector claim table reference print_job too, and
     # foreign keys are enforced — children go first.
-    cursor.execute("DELETE FROM job_event")
-    cursor.execute("DELETE FROM telemetry_collector_claim")
-    cursor.execute("DELETE FROM print_job")
-    db.conn.commit()
+    db.execute("DELETE FROM job_event")
+    db.execute("DELETE FROM telemetry_collector_claim")
+    db.execute("DELETE FROM print_job")
     db.close()
     
     # clear background collectors

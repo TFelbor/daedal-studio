@@ -104,7 +104,11 @@ uvicorn
 # Required by the sculptor worker's multipart /sculpt endpoint. FastAPI raises at
 # import time without it, so its absence takes out the whole worker test module.
 python-multipart
-aiosqlite
+# The telemetry database is PostgreSQL (Supabase). psycopg 3 is LGPL-3.0-only —
+# imported unmodified as a separate wheel, recorded in THIRD-PARTY-NOTICES.md and
+# licence_policy.REVIEWED_WEAK_COPYLEFT. `binary` bundles libpq so no system
+# library is needed; `pool` is the shared per-process connection pool.
+psycopg[binary,pool]>=3.2,<4
 websockets
 
 pytest
