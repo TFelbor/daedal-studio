@@ -289,6 +289,10 @@ same commit):
 - [ ] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint)
 - [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
 - [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
+- [ ] Chamfer + vertical-fillet primitives in `compiler.py` — 45° base chamfer (anti-warp) and internal/external corner rounds (anti-elephant-foot, token-bin scooping) via `Manifold.hull` and `CrossSection.offset(Round)`; no new dependency, no OCCT review (§0.5)
+- [ ] `Process.fit_intent` (`snug` | `easy`) driving cavity clearance — one hardcoded 1,5 mm serves a snug deck box and a lift-out tray today; the +1,5–2 / +4–6 mm split is already sourced in `docs/dimension-kb-research.md` §3
+- [ ] Justify or retire `Process.wall_mm = 2.8` — seven perimeters at a 0,4 nozzle, unsourced; derive the floor from the profile's nozzle and let the archetype set the rest
+- [ ] `constraints.max_external_mm` gains the −2 mm safety buffer (research §7, BIT's leave-3/3/2 rule) — today it is a hard limit against dimensions that vary ±1–2 mm between copies of the same box
 
 ### 📱 Phase 3 — Closed preview, friendly-user alpha (PRD M2 · 11–31 October 2026)
 
@@ -304,6 +308,8 @@ same commit):
 - [ ] N3 measured end to end on a real phone (≤20 s); the per-job `docker compose run` replaced if it blows the budget
 - [ ] IP screen re-scoped for functional articles — "deck box for Pokémon cards" must pass before any external user sees the app
 - [ ] Friendly-user alpha — 5–10 known users, form-driven deck box, we print and send a photo, scripted usability sessions
+- [ ] Finger cutouts + non-structural lightweighting cutouts on tray archetypes — dual-purpose (cards pushed up from below, filament cut); makes the mass `gcode_stats` already computes actionable
+- [ ] **Decide: multi-compartment box-insert archetype before launch, or board gamers explicitly post-launch?** `deck_box` refuses a second compartment and `Compartment` holds card stacks only, so the composition wedge PRD §1 claims is unbuilt; locking tabs (anti-slide) ride with this decision (§0.5)
 
 ### 🧪 Phase 4 — Closed beta on our own printers (1–30 November 2026)
 

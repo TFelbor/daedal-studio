@@ -58,6 +58,18 @@ Design against **63,5 × 88,9** raw; the four target games share one footprint w
 | **Design rule, double-sleeved** | **0,70** | measured stacks + air margin |
 | **Design rule, single-sleeved** | **0,60** | derived + air margin |
 
+**The air margin is load-bearing — do not tune it out.** Practitioner accounts of insert
+design report that freshly sleeved cards trap air, and that the displacement is enough to
+stop the last **5–6 cards** of a deck fitting a tray sized to the nominal stack; the remedy
+named is "compression room" that lets the air expel over time. Our numbers already provide
+it, by arithmetic nobody had written down: 0,70 mm/card sits **3,3 mm** above the measured
+66,7 mm stack over 100 cards, and `Process.stack_slack_mm` adds **1,0 mm** — together
+≈4,3 mm, or about six cards. That is compliance by coincidence of two independently chosen
+values, so it is recorded here: **anyone tightening either number is removing the air
+margin, and the symptom appears only after a deck is sleeved.** Audited 2026-09-05 (roadmap
+§0.5) against a practitioner source; the 5–6 card figure is that source's, uncited, and is
+corroboration rather than a measurement of ours.
+
 ## 3. Sleeved footprint and box clearances
 
 | Item | Value (mm) | Source |
