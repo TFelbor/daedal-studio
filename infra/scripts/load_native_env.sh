@@ -15,16 +15,15 @@
 # directory that does not exist, or at `/`, which is read-only — a crash before
 # uvicorn ever binds a port.
 #
-# `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` used to be the worst example, and
-# it is no longer in `.env` at all: the database is now the single host file
-# `~/.ds-mvp/telemetry.db`, bind-mounted into the containers, so no execution mode
-# needs the variable. It was not just a crash risk — while it was set, container
-# runs and native runs used two *different* databases and nothing said so. See
-# "One database" in CLAUDE.md.
+# `TELEMETRY_DB_PATH=/app/telemetry/telemetry.db` used to be the worst example.
+# While it was set, container runs and native runs used two *different* databases
+# and nothing said so. The database is PostgreSQL on Supabase now, named by
+# `DS_DATABASE_URL` — a URL, which means the same thing on both sides of the
+# boundary, so it *is* lifted across. See "One database" in CLAUDE.md.
 #
 # So only keys that mean the same thing on both sides of the container boundary
-# are lifted across — credentials and backend selection. Every path is left at its
-# native default, which is what `config.py` and `telemetry/db.py` already compute
+# are lifted across — credentials, backend selection and the database URL. Every
+# path is left at its native default, which is what `config.py` already computes
 # from the repo root and `$HOME`.
 #
 # Adding a key here is a claim that it is host-agnostic. If it names a filesystem
@@ -55,6 +54,7 @@ PIXAZO_API_KEY
 # where someone would reach for it.
 DS_DISABLE_PAID_BACKENDS
 OCTOPRINT_API_KEY
+DS_DATABASE_URL
 DS_SCULPTOR_BACKEND
 DS_SCULPTOR_REMOTE_URL
 DS_SCULPTOR_REMOTE_KEY

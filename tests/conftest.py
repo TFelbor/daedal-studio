@@ -10,31 +10,46 @@ import websockets
 import socketio
 from aiohttp import web
 
-_ISOLATED_DB_DIR: str | None = None
+from tests.testing_postgres import TestPostgres
+
+_ISOLATED_DIR: str | None = None
+_TEST_PG: TestPostgres | None = None
+_SESSION_SCHEMA: str | None = None
 
 
 def pytest_configure(config):
-    """Redirect the telemetry database somewhere disposable, before anything reads it.
+    """Point every database read and write at a throwaway PostgreSQL, before anything reads it.
 
-    Nineteen call sites across tests/ construct ``TelemetryDB()`` with no path, which
-    resolves to ``~/.ds-mvp/telemetry.db`` — the developer's *real* database. Two of
-    them (``test_server.py`` and ``test_server_telemetry.py``) then run
-    ``DELETE FROM print_job`` against it. A full ``pytest tests/`` run therefore
-    destroyed 312 real job rows and left their ``job_event`` children orphaned.
+    Dozens of call sites across tests/ construct ``TelemetryDB()`` with no argument,
+    which resolves ``DS_DATABASE_URL`` — in a developer's shell, the Supabase project.
+    Two of them (``test_server.py`` and ``test_server_telemetry.py``) then run
+    ``DELETE FROM print_job``. The SQLite-era suite once destroyed 312 real job rows
+    exactly this way; the variable is therefore rewritten here, to a schema this run
+    created and will drop, before a single test module is imported.
 
     This is a ``pytest_configure`` hook rather than an autouse fixture because it has
-    to win a race: ``TelemetryDB.__init__`` reads ``TELEMETRY_DB_PATH`` at construction
-    time and some test modules construct one at *import* time, which happens during
-    collection — before any fixture, autouse or not, has run. ``pytest_configure`` is
-    the last hook that fires before collection begins.
+    to win a race: ``TelemetryDB.__init__`` reads the URL at construction time and some
+    test modules construct one at *import* time, which happens during collection —
+    before any fixture, autouse or not, has run. ``pytest_configure`` is the last hook
+    that fires before collection begins.
 
-    ``ConfigStore`` derives ``.config_key`` from the same directory, so redirecting the
-    database also keeps tests away from the real encrypted config store — which holds
-    HF_TOKEN and OCTOPRINT_API_KEY.
+    ``ConfigStore`` keeps its Fernet key at ``DS_CONFIG_KEY_PATH``, so that is
+    redirected to the same temporary directory — the real key decrypts HF_TOKEN and
+    OCTOPRINT_API_KEY, and the suite must not read or rotate it.
+
+    See ``tests/testing_postgres.py`` for where the PostgreSQL comes from.
     """
-    global _ISOLATED_DB_DIR
-    _ISOLATED_DB_DIR = tempfile.mkdtemp(prefix="ds-test-db-")
-    os.environ["TELEMETRY_DB_PATH"] = os.path.join(_ISOLATED_DB_DIR, "telemetry.db")
+    global _ISOLATED_DIR, _TEST_PG, _SESSION_SCHEMA
+    _ISOLATED_DIR = tempfile.mkdtemp(prefix="ds-test-")
+    os.environ["DS_CONFIG_KEY_PATH"] = os.path.join(_ISOLATED_DIR, ".config_key")
+
+    _TEST_PG = TestPostgres()
+    try:
+        _TEST_PG.start()
+    except RuntimeError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    _SESSION_SCHEMA, session_url = _TEST_PG.create_schema()
+    os.environ["DS_DATABASE_URL"] = session_url
 
     # Belt and braces for the paid Phase 2 backend. `PIXAZO_API_KEY` in the
     # environment makes `resolve_backend_name("auto")` select the hosted endpoint at
@@ -45,19 +60,16 @@ def pytest_configure(config):
     os.environ["DS_DISABLE_PAID_BACKENDS"] = "1"
     os.environ.pop("PIXAZO_API_KEY", None)
 
-    # Give the throwaway database the shape a deployed one has. `print_job` and
-    # friends come from TelemetryDB; `app_config` comes from ConfigStore, whose
-    # init_schema() the server only calls from its startup event — and
-    # `TestClient(app)` outside a `with` block never fires startup. Against the real
-    # database that went unnoticed because the table was already there from ordinary
-    # use; against a fresh one, /health dies with "no such table: app_config".
+    # Give the throwaway schema the shape a deployed one has. `print_job` and friends
+    # come from TelemetryDB; `app_config` comes from ConfigStore, whose init_schema()
+    # the server only calls from its startup event — and `TestClient(app)` outside a
+    # `with` block never fires startup, so /health would otherwise die with
+    # `relation "app_config" does not exist`.
     from pythonsrc.telemetry.db import TelemetryDB as _TelemetryDB
     from server.config_store import ConfigStore as _ConfigStore
 
-    _db = _TelemetryDB(os.environ["TELEMETRY_DB_PATH"])
-    _db.init_schema()
-    _db.close()
-    _ConfigStore(os.environ["TELEMETRY_DB_PATH"]).init_schema()
+    _TelemetryDB().init_schema()
+    _ConfigStore().init_schema()
 
     # Cut the shared SimulatorManager off from the real Docker daemon, for the same
     # reason the database is redirected: the suite must not reach outside itself.
@@ -69,7 +81,8 @@ def pytest_configure(config):
     # `stop_octoprint` becomes a no-op. Tests that need simulator behaviour build
     # their own `SimulatorManager(client_factory=...)` with a fake, and the two that
     # need the singleton monkeypatch the method they care about — so nothing here
-    # depends on this ever succeeding.
+    # depends on this ever succeeding. (The test PostgreSQL container is started with
+    # the Docker *CLI*, deliberately outside this manager.)
     from server.simulator_manager import SimulatorAvailabilityError, simulator_manager as _sim
 
     def _no_docker_in_tests():
@@ -105,7 +118,7 @@ def _stash_shared_blueprint():
     and the tests then create their own from scratch.
 
     Restored by `pytest_unconfigure`. A crash hard enough to skip that leaves the file
-    under `_ISOLATED_DB_DIR`, named as it was, rather than gone.
+    under `_ISOLATED_DIR`, named as it was, rather than gone.
     """
     import pathlib
 
@@ -114,7 +127,7 @@ def _stash_shared_blueprint():
         source = inputs / name
         if not source.exists():
             continue
-        stashed = pathlib.Path(_ISOLATED_DB_DIR) / f"stashed-{name}"
+        stashed = pathlib.Path(_ISOLATED_DIR) / f"stashed-{name}"
         try:
             # `shutil.move`, not `os.rename`: the stash is a tempdir, which is
             # routinely on a different filesystem from the repo, and `os.rename` fails
@@ -129,7 +142,7 @@ def _stash_shared_blueprint():
 
 
 def pytest_unconfigure(config):
-    """Put back the shared blueprint, then remove the throwaway database directory."""
+    """Put back the shared blueprint, drop the session schema, stop the container."""
     for stashed, original in _STASHED_BLUEPRINT:
         try:
             # The tests leave their own file behind on some paths; the real one wins.
@@ -140,20 +153,66 @@ def pytest_unconfigure(config):
             pass
     _STASHED_BLUEPRINT.clear()
 
-    if _ISOLATED_DB_DIR:
-        shutil.rmtree(_ISOLATED_DB_DIR, ignore_errors=True)
+    try:
+        from pythonsrc.telemetry.db import close_pools
+
+        close_pools()
+    except Exception:  # noqa: BLE001 — teardown must finish
+        pass
+    if _TEST_PG is not None:
+        try:
+            if _SESSION_SCHEMA:
+                _TEST_PG.drop_schema(_SESSION_SCHEMA)
+        except Exception:  # noqa: BLE001
+            pass
+        _TEST_PG.stop()
+
+    if _ISOLATED_DIR:
+        shutil.rmtree(_ISOLATED_DIR, ignore_errors=True)
 
 
-from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.db import TelemetryDB, close_pool
 from pythonsrc.telemetry.schema import PrintJob, TelemetrySample
 
+
 @pytest.fixture
-def tmp_db():
-    with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
-        db = TelemetryDB(db_path=tmp.name)
-        db.init_schema()
-        yield db
-        db.close()
+def isolated_db_url():
+    """A URL onto a fresh, empty schema that exists only for this test.
+
+    What a temporary SQLite file used to be: a database nothing else can see, thrown
+    away afterwards. Pass it to `TelemetryDB(...)`, or set it as `DS_DATABASE_URL` for
+    code that resolves the default.
+    """
+    name, url = _TEST_PG.create_schema()
+    yield url
+    close_pool(url)
+    _TEST_PG.drop_schema(name)
+
+
+@pytest.fixture
+def isolated_db(isolated_db_url):
+    """A `TelemetryDB` on its own schema, with the current schema applied."""
+    db = TelemetryDB(isolated_db_url)
+    db.init_schema()
+    yield db
+    db.close()
+
+
+@pytest.fixture
+def isolated_db_env(isolated_db_url, monkeypatch):
+    """Make the fresh schema the *default* database for the duration of the test.
+
+    For code that constructs `TelemetryDB()` with no argument — the pipeline recorders,
+    the server's handlers — and must be kept off the session schema other tests share.
+    """
+    monkeypatch.setenv("DS_DATABASE_URL", isolated_db_url)
+    TelemetryDB().init_schema()
+    return isolated_db_url
+
+
+@pytest.fixture
+def tmp_db(isolated_db):
+    return isolated_db
 
 @pytest.fixture
 def sample_job(tmp_db):

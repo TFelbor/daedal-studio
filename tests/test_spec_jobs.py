@@ -45,7 +45,7 @@ def _request(**overrides):
 
 def _row_count():
     db = TelemetryDB()
-    n = db.conn.execute("SELECT COUNT(*) FROM print_job").fetchone()[0]
+    n = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
     db.close()
     return n
 

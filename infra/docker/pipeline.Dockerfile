@@ -92,7 +92,9 @@ RUN pip install --no-cache-dir \
         "fast-simplification>=0.1.6" \
         "scipy>=1.11.0"
 
-# 5. Phase 5 deps (requests / OctoPrint client)
+# 5. Phase 5 deps (requests / OctoPrint client) and the telemetry database driver.
+# psycopg is LGPL-3.0-only, imported unmodified as its own wheel — recorded in
+# THIRD-PARTY-NOTICES.md and licence_policy.REVIEWED_WEAK_COPYLEFT.
 RUN pip install --no-cache-dir \
         "requests>=2.31.0" \
         "numpy>=1.24.0" \
@@ -100,7 +102,8 @@ RUN pip install --no-cache-dir \
         "matplotlib>=3.7.0" \
         "paho-mqtt>=1.6.1" \
         "aiohttp>=3.9.0" \
-        "python-socketio[asyncio_client]"
+        "python-socketio[asyncio_client]" \
+        "psycopg[binary,pool]>=3.2,<4"
 
 # ── Entrypoint script ────────────────────────────────────────────────────────
 # Bootstraps config.py from config.template.py on first run (config.py is

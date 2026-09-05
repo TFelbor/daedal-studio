@@ -172,12 +172,29 @@ DISTRO_PROVIDED_PACKAGES = (
 #: satisfied by dynamic linking and by shipping the library unmodified, but each
 #: instance is a judgement, so the accepted ones are named rather than blanket-passed.
 #: Anything LGPL *not* on this list stays a flag.
+_PSYCOPG_NOTE = (
+    "LGPL-3.0-only. The PostgreSQL driver for the telemetry database "
+    "(pythonsrc/telemetry/db.py, server/config_store.py). Imported unmodified as a "
+    "separate wheel — the dynamic linking the LGPL permits — and replaceable by "
+    "reinstalling it; the licence text ships with the wheel. Recorded in "
+    "THIRD-PARTY-NOTICES.md § 1, 'Weak copyleft — library-level'."
+)
+
 REVIEWED_WEAK_COPYLEFT = {
     "opencv-python-headless": (
         "Bundles FFmpeg (LGPLv2.1) as a shared library; the headless wheel is pinned "
         "precisely to keep the Qt 5 (LGPLv3) payload of the GUI wheels out. Nothing in "
         "this project imports cv2."
     ),
+    # psycopg 3 and its two companion distributions. `psycopg-binary` carries the C
+    # speedups and a bundled libpq (PostgreSQL Licence, permissive); `psycopg-pool`
+    # is the connection pool. Listed under both spellings because pip-licenses and
+    # syft normalise distribution names differently.
+    "psycopg": _PSYCOPG_NOTE,
+    "psycopg-binary": _PSYCOPG_NOTE,
+    "psycopg_binary": _PSYCOPG_NOTE,
+    "psycopg-pool": _PSYCOPG_NOTE,
+    "psycopg_pool": _PSYCOPG_NOTE,
 }
 
 # ── Licence-string classification ────────────────────────────────────────────

@@ -128,7 +128,7 @@ def test_an_impossible_size_is_refused_by_the_request_model(mock_run, bad):
     runs — which is what the row count asserts.
     """
     db = TelemetryDB()
-    before = db.conn.execute("SELECT COUNT(*) FROM print_job").fetchone()[0]
+    before = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
     db.close()
 
     resp = client.post(
@@ -137,7 +137,7 @@ def test_an_impossible_size_is_refused_by_the_request_model(mock_run, bad):
     assert resp.status_code == 422
 
     db = TelemetryDB()
-    after = db.conn.execute("SELECT COUNT(*) FROM print_job").fetchone()[0]
+    after = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
     db.close()
 
     assert after == before

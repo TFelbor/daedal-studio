@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import sqlite3
 from typing import AsyncGenerator, Callable, Coroutine, Any
 from datetime import datetime, timezone
 
@@ -20,9 +19,8 @@ logger = logging.getLogger(__name__)
 TEST_JOB_ID = "job-123"
 
 @pytest.fixture
-def in_memory_db():
-    db = TelemetryDB(":memory:")
-    db.init_schema()
+def in_memory_db(isolated_db):
+    db = isolated_db
     
     # Insert a dummy job so foreign key constraints pass
     job = PrintJob(

@@ -30,14 +30,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # The telemetry database is PostgreSQL (Supabase) everywhere, so the suite runs
+    # against a real PostgreSQL here too. `tests/conftest.py` would otherwise start a
+    # throwaway container with the Docker CLI; a service container is faster on a
+    # hosted runner and needs no daemon socket.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     env:
       # Belt and braces over `tests/conftest.py`, which sets the same flag in
       # `pytest_configure`. Phase 2's hosted backend bills EUR 0.32 a generation and
       # selects itself from `$PIXAZO_API_KEY`; a runner that ever gains one must not be
       # able to spend it.
       DS_DISABLE_PAID_BACKENDS: "1"
-      # `TELEMETRY_DB_PATH` is deliberately unset — see CLAUDE.md. conftest redirects it
-      # to a temp directory before collection; pinning it here would defeat that.
+      # The suite administers this database: it creates one schema per test and drops
+      # it. `DS_DATABASE_URL` is deliberately unset — conftest points it at a schema it
+      # created before collection; pinning it here would defeat that.
+      DS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
     steps:
       - uses: actions/checkout@v4

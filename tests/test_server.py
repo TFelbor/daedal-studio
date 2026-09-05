@@ -97,8 +97,7 @@ def test_health_check_empty_db():
     # still has rows pointing at it is refused.
     for table in ('job_event', 'failure_event', 'telemetry_sample',
                   'telemetry_collector_claim', 'print_job'):
-        db.conn.execute(f'DELETE FROM {table}')
-    db.conn.commit()
+        db.execute(f'DELETE FROM {table}')
     db.close()
     
     response = client.get("/health")

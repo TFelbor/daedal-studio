@@ -45,7 +45,6 @@ Persistent storage ensures weights don't re-download and outputs aren't lost acr
 | ds-models-hf-cache  | `/models/hf_cache`   | HuggingFace hub cache                       |
 | ds-inputs           | `/app/inputs`        | Blueprint images (pipeline input)           |
 | ds-outputs          | `/app/outputs`       | Meshes, G-code (pipeline output)            |
-| ds-telemetry        | `/app/telemetry`     | SQLite telemetry DB (job history, samples)  |
 
 ---
 
@@ -68,7 +67,7 @@ These variables configure the `.env` file at the repository root.
 | `PYTORCH_ENABLE_MPS_FALLBACK` | `1` | No | CPU fallback for macOS MPS operations |
 | `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
 | `TRANSFORMERS_CACHE` | `/models/hf_cache` | No | Alias for HF_HOME |
-| `TELEMETRY_DB_PATH` | `/app/telemetry/telemetry.db` | No | Path to the SQLite DB storing telemetry |
+| `DS_DATABASE_URL` | — | **Yes** | PostgreSQL URL of the telemetry database (Supabase session pooler or direct connection). Every process uses this one URL |
 | `PAUSE_ON_FAILURE` | `false` | No | Automatically pause printer on anomaly |
 
 ---
@@ -237,20 +236,21 @@ docker volume rm ds-models-flux
 
 ## 12. Telemetry Database
 
-The system records all print telemetry, failure events, and job status in a SQLite database at `/app/telemetry/telemetry.db` (mapped to the `ds-telemetry` volume).
+All print telemetry, failure events, job rows and the encrypted config store live in
+**PostgreSQL on Supabase**, named by `DS_DATABASE_URL` in `.env`. The api-server and the
+pipeline container both receive that URL from compose; nothing is stored in a volume.
+The only host-side state is the config store's Fernet key at `~/.ds-mvp/.config_key`,
+bind-mounted into both containers.
 
-Query it directly from the host:
+Query it from the host with any PostgreSQL client, or with the trace tool:
 ```bash
-docker compose -f infra/docker-compose.yml exec api-server sqlite3 /app/telemetry/telemetry.db \
-  "SELECT job_id, outcome, started_at FROM print_job ORDER BY started_at DESC LIMIT 10;"
+python -m pythonsrc.telemetry.trace --list
+python -m pythonsrc.telemetry.trace <job_id>
 ```
 
-Back it up locally:
-```bash
-docker cp $(docker compose -f infra/docker-compose.yml ps -q api-server):/app/telemetry/telemetry.db ./telemetry_backup.db
-```
-
----
+Backups are Supabase's (daily on every plan; point-in-time recovery as an add-on). The
+schema is created by the server on startup and is also committed as
+`supabase/migrations/*_telemetry_schema.sql` — see `supabase/README.md`.
 
 ## 13. Troubleshooting
 
@@ -283,9 +283,13 @@ docker cp $(docker compose -f infra/docker-compose.yml ps -q api-server):/app/te
 **Cause:** Another service is bound to port 8000 on the host machine.
 **Fix:** Find the blocking process (`lsof -i :8000`), kill it, or map `api-server` to a different host port in `docker-compose.yml`.
 
-### `Telemetry DB locked`
-**Cause:** Multiple `api-server` instances attempting concurrent SQLite writes.
-**Fix:** Ensure only one `api-server` container is running at a time via `docker compose down` and `docker compose up api-server`.
+### `DS_DATABASE_URL is not set`
+**Cause:** The telemetry database URL is missing from `.env` (or, for `make start-native`, not exported).
+**Fix:** Copy the Supabase connection string (Project Settings → Database, session pooler) into `DS_DATABASE_URL` in `.env`. Compose passes it to both containers; `load_native_env.sh` lifts it into a native run.
+
+### `GET /health` reports `database.healthy: false`
+**Cause:** Supabase is unreachable from this machine, the URL is wrong, or the project is paused.
+**Fix:** `problems` names the cause. The server keeps running and re-checks every `DS_DB_HEALTH_INTERVAL_S` seconds; nothing is recorded until it clears.
 
 ### `OctoPrint telemetry not collecting: Socket.IO version mismatch`
 **Cause:** OctoPrint's Socket.IO server version does not match the `python-socketio` client version expected.

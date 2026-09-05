@@ -78,7 +78,7 @@ identifier.
 ### Python libraries
 
 **Permissive — Q1 yes, Q2 yes, Q3 no restriction, all [d]:**
-torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore (BSD) · trimesh, aiosqlite, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
+torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
 
 **Weak copyleft — permitted, obligations only on distribution:**
 
@@ -86,6 +86,7 @@ torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, ht
 |---|---|---|
 | `certifi`, `bidict` | MPL-2.0 **[d]** | File-level copyleft. Using them imposes nothing; modifying *their* files and distributing would require publishing those files. Neither is modified |
 | `paho-mqtt` | EPL-2.0 / EDL-1.0 dual **[d]** | Same shape. Used as an MQTT client for Bambu; unmodified |
+| `psycopg`, `psycopg-binary`, `psycopg-pool` | **LGPL-3.0-only** **[v]** | Library-level copyleft. The PostgreSQL driver for the telemetry database (`pythonsrc/telemetry/db.py`), imported unmodified as its own wheel — the dynamic linking the LGPL permits. Distributing an image carrying it means shipping the licence text (it is in the wheel) and leaving the library replaceable (it is a pip reinstall). `psycopg-binary` also bundles libpq under the PostgreSQL Licence (permissive). Recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`; see § 1 |
 
 **Copyleft — needs a decision, see finding 3:**
 
@@ -104,6 +105,7 @@ All permissive **[v]**, read from the installed packages: `react`, `react-dom`,
 | Service | Basis | Notes |
 |---|---|---|
 | Pixazo `trellis-2-image-to-3d` | Contract, not a licence | Their terms govern, and their matte weights are invisible from here. The three questions have to be answered **in writing by them** — see Task L4 |
+| Supabase (managed PostgreSQL) | Contract, not a licence | Hosts the telemetry database. Reached over the PostgreSQL wire protocol with `psycopg`; no Supabase client library is installed. Q1/Q2 yes under their terms; what needs reading is the DPA, because prompts and job rows are user content stored off-premises |
 
 ---
 
@@ -201,6 +203,27 @@ more than the cost of distribution, as AGPL-3.0 §6 permits.
 
 None currently. `torchmcubes` (MPL-2.0) was removed with TripoSR — see
 [§3 Removed components](#3-removed-components).
+
+### Weak copyleft — library-level
+
+**psycopg 3** (`psycopg`, `psycopg-binary`, `psycopg-pool`) — **LGPL-3.0-only**,
+added 2026-09-05 when the telemetry database moved from a SQLite file to PostgreSQL on
+Supabase. It is the driver `pythonsrc/telemetry/db.py` and `server/config_store.py`
+import.
+
+The LGPL's conditions on a "Combined Work" are met by construction: the library is
+imported unmodified as a separate wheel (§ 4(d)(1) — a Python import is the dynamic
+linking the licence contemplates, and a user replaces the library with `pip install`),
+the licence text ships inside the wheel (§ 4(b)), and this file gives notice (§ 4(a)).
+No source of psycopg is modified, so § 2 does not arise. `psycopg-binary` also carries
+a bundled `libpq`, which is under the PostgreSQL Licence (permissive).
+
+Why LGPL rather than a permissive driver: `pg8000` (BSD) is pure Python and would have
+avoided the question, but psycopg 3 is the driver the PostgreSQL ecosystem — Supabase's
+own Python guidance included — tests against, and its pool, its typed adapters and its
+connection-loss semantics are what the telemetry layer's reliability rests on. The
+decision is recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`, which is what turns
+the weekly audit's `flag` into an `allow` with this reason attached.
 
 ---
 
@@ -364,6 +387,7 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | Service | Notes |
 |---|---|
 | Pixazo `trellis-2-image-to-3d` | Runs TRELLIS.2 (MIT) as a paid endpoint, €0,32 per generation. Returns GLB. No client library is installed — `pythonsrc/sculptors/pixazo.py` uses `requests` against the documented REST API, so the arm's-length rule that governs CuraEngine and OctoPrint applies here by construction |
+| Supabase | Managed PostgreSQL holding the telemetry database (`DS_DATABASE_URL`). Reached over the PostgreSQL wire protocol; no Supabase SDK is installed. PostgreSQL itself is under the PostgreSQL Licence (permissive); the hosted service is governed by Supabase's terms and DPA, which matter here because prompts, job rows and print telemetry are stored there |
 
 > **The upstream defaults this project overrides are not overridden on someone
 > else's servers.** A hosted TRELLIS.2 endpoint most likely runs the checkpoint as

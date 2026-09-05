@@ -5,8 +5,6 @@ finishes, nothing else records which model produced the mesh, what the generatio
 what the geometry looked like before it was sliced.
 """
 
-import sqlite3
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from pythonsrc.telemetry import db as db_module
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
 from server.app import app
@@ -28,8 +27,8 @@ CREATE TABLE print_job (
     printer_firmware TEXT NOT NULL,
     slicer TEXT NOT NULL,
     profile_name TEXT NOT NULL,
-    started_at TEXT NOT NULL,
-    completed_at TEXT,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
     outcome TEXT NOT NULL
 )
 """
@@ -52,12 +51,8 @@ def make_job(job_id: str, **kwargs) -> PrintJob:
 
 
 @pytest.fixture
-def db():
-    with tempfile.TemporaryDirectory() as tmp:
-        database = TelemetryDB(str(Path(tmp) / "telemetry.db"))
-        database.init_schema()
-        yield database
-        database.close()
+def db(isolated_db):
+    return isolated_db
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -156,12 +151,16 @@ def test_update_job_printability(db):
     assert job.printability_report["checks"][0]["check"] == "min_wall_thickness"
 
 
-def test_malformed_json_column_does_not_break_reads(db):
-    """A hand-edited or truncated blob should degrade to None, not raise on every read."""
+def test_malformed_json_is_refused_at_write_time(db):
+    """JSONB validates on write, so a truncated blob can never reach a reader.
+
+    The SQLite version of this test wrote `{not json` into a TEXT column and checked
+    the reader degraded to None. The stronger guarantee is that the write itself is
+    refused — and the row it targeted is untouched.
+    """
     db.insert_job(make_job("j7"))
-    with db._lock:
-        db.conn.execute("UPDATE print_job SET mesh_features = ? WHERE job_id = ?", ("{not json", "j7"))
-        db.conn.commit()
+    with pytest.raises(db_module.DatabaseError):
+        db.execute("UPDATE print_job SET mesh_features = %s WHERE job_id = %s", ("{not json", "j7"))
 
     job = db.get_job("j7")
     assert job.mesh_features is None
@@ -171,34 +170,30 @@ def test_malformed_json_column_does_not_break_reads(db):
 # ── Migration ─────────────────────────────────────────────────────────────────
 
 
-def test_migrates_a_pre_existing_database():
-    """Real databases predate these columns, including the NOT NULL started_at era."""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = str(Path(tmp) / "legacy.db")
-        legacy = sqlite3.connect(path)
-        legacy.execute(OLD_SCHEMA)
-        legacy.execute(
-            "INSERT INTO print_job VALUES ('legacy-1','old prompt','p','octoprint','cura','d',"
-            "'2026-01-01T00:00:00+00:00',NULL,'success')"
-        )
-        legacy.commit()
-        legacy.close()
+def test_migrates_a_pre_existing_database(isolated_db_url):
+    """A table carrying only the original nine columns gains the rest, and keeps its rows."""
+    legacy = TelemetryDB(isolated_db_url)
+    legacy.execute(OLD_SCHEMA)
+    legacy.execute(
+        "INSERT INTO print_job VALUES ('legacy-1','old prompt','p','octoprint','cura','d',"
+        "'2026-01-01T00:00:00+00:00',NULL,'success')"
+    )
 
-        database = TelemetryDB(path)
-        database.init_schema()
+    database = TelemetryDB(isolated_db_url)
+    database.init_schema()
 
-        job = database.get_job("legacy-1")
-        assert job.prompt == "old prompt"
-        assert job.outcome == "success"
-        assert job.printability_score is None
+    job = database.get_job("legacy-1")
+    assert job.prompt == "old prompt"
+    assert job.outcome == "success"
+    assert job.printability_score is None
 
-        # The migrated table accepts the new columns.
-        database.update_job_printability("legacy-1", score=50.0, verdict="unprintable")
-        assert database.get_job("legacy-1").printability_score == 50.0
+    # The migrated table accepts the new columns.
+    database.update_job_printability("legacy-1", score=50.0, verdict="unprintable")
+    assert database.get_job("legacy-1").printability_score == 50.0
 
-        database.init_schema()  # idempotent
-        assert database.get_job("legacy-1").printability_score == 50.0
-        database.close()
+    database.init_schema()  # idempotent
+    assert database.get_job("legacy-1").printability_score == 50.0
+    database.close()
 
 
 # ── API ───────────────────────────────────────────────────────────────────────

@@ -104,7 +104,7 @@ def test_the_colour_field_is_screened_too():
 @patch("server.app._run_pipeline", new_callable=AsyncMock)
 def test_a_blocked_prompt_never_creates_a_job(mock_run, printer_configured):
     db = TelemetryDB()
-    before = db.conn.execute("SELECT COUNT(*) FROM print_job").fetchone()[0]
+    before = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
     db.close()
 
     resp = client.post(
@@ -115,7 +115,7 @@ def test_a_blocked_prompt_never_creates_a_job(mock_run, printer_configured):
     assert "pikachu" in resp.json()["detail"].lower()
 
     db = TelemetryDB()
-    after = db.conn.execute("SELECT COUNT(*) FROM print_job").fetchone()[0]
+    after = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
     db.close()
 
     assert after == before

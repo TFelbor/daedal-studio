@@ -2,13 +2,12 @@
 
 import asyncio
 import logging
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from pythonsrc.telemetry.collector_claim import CollectorClaim
-from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.db import OperationalError, TelemetryDB
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.telemetry.schema import PrintJob
 
@@ -21,9 +20,8 @@ CURRENT_PAYLOAD = {
 
 
 @pytest.fixture
-def memory_db():
-    db = TelemetryDB(":memory:")
-    db.init_schema()
+def memory_db(isolated_db):
+    db = isolated_db
     db.insert_job(
         PrintJob(
             job_id=JOB_ID,
@@ -85,12 +83,10 @@ def test_stale_claim_is_taken_over(memory_db):
     assert dead.may_write(now=0.0) is True
 
     stale = datetime.now(timezone.utc) - timedelta(seconds=600)
-    with memory_db._lock:
-        memory_db.conn.execute(
-            "UPDATE telemetry_collector_claim SET heartbeat_at = ? WHERE job_id = ?",
-            (stale.isoformat(), JOB_ID),
-        )
-        memory_db.conn.commit()
+    memory_db.execute(
+        "UPDATE telemetry_collector_claim SET heartbeat_at = %s WHERE job_id = %s",
+        (stale, JOB_ID),
+    )
 
     live = CollectorClaim(memory_db, JOB_ID, "live")
     assert live.may_write(now=0.0) is True
@@ -120,7 +116,7 @@ class UnreachableDB:
     """A database that cannot be opened at all — root-owned directory, corrupt file."""
 
     def try_claim_collector(self, *a, **k):
-        raise sqlite3.OperationalError("unable to open database file")
+        raise OperationalError("unable to open database file")
 
 
 def test_unreachable_database_does_not_grant_a_claim(memory_db):
@@ -168,7 +164,7 @@ def test_claim_is_taken_once_the_database_comes_back(memory_db):
 
         def try_claim_collector(self, *a, **k):
             if self.broken:
-                raise sqlite3.OperationalError("database is locked")
+                raise OperationalError("connection timeout expired")
             return self.real.try_claim_collector(*a, **k)
 
     db = FlakyDB(memory_db)
@@ -190,20 +186,21 @@ def test_claim_is_taken_once_the_database_comes_back(memory_db):
 # has already crashed, which is when the telemetry matters most.
 #
 # These tests need two *connections*, not two `CollectorClaim` objects sharing one.
-# The single-writer bug is a cross-process one, `TelemetryDB` serialises its own calls
-# behind an instance lock, and `:memory:` cannot be shared — so the database is a file
-# and each side opens it the way a separate process would.
+# The single-writer bug is a cross-process one. Every `TelemetryDB` operation borrows
+# its own pooled connection and runs in its own transaction, so a second handle on the
+# same URL behaves the way a separate process does — READ COMMITTED, and the rival's
+# commit is what the late UPDATE's WHERE clause sees.
 #
-# The interleaving is forced through `_dt_to_str`, which the claim path calls after it
-# has read the row and settled on a decision but before its UPDATE reaches SQLite. The
-# rival's entire claim runs inside that window.
+# The interleaving is forced through `_dt_param`, which the claim path calls after it
+# has read the row and settled on a decision but before its UPDATE reaches the server.
+# The rival's entire claim runs inside that window, on a second connection.
 
 
 @pytest.fixture
-def shared_db_path(tmp_path):
-    """A file-backed telemetry database with the job row already in it."""
-    path = tmp_path / "telemetry.db"
-    seed = TelemetryDB(str(path))
+def shared_db_path(isolated_db_url):
+    """A telemetry database with the job row already in it; the URL is what is shared."""
+    path = isolated_db_url
+    seed = TelemetryDB(path)
     seed.init_schema()
     seed.insert_job(
         PrintJob(
@@ -219,12 +216,12 @@ def shared_db_path(tmp_path):
         )
     )
     seed.close()
-    return str(path)
+    return path
 
 
 @pytest.fixture
 def connect(shared_db_path):
-    """Open another connection to the same file, as another process would."""
+    """Open another handle on the same database, as another process would."""
     handles = []
 
     def open_one() -> TelemetryDB:
@@ -248,7 +245,7 @@ def rival_in_the_window(monkeypatch):
     """
     import pythonsrc.telemetry.db as db_module
 
-    real = db_module._dt_to_str
+    real = db_module._dt_param
 
     def arrange(action):
         fired = []
@@ -259,7 +256,7 @@ def rival_in_the_window(monkeypatch):
                 action()
             return real(value)
 
-        monkeypatch.setattr(db_module, "_dt_to_str", hook)
+        monkeypatch.setattr(db_module, "_dt_param", hook)
         return fired
 
     return arrange
@@ -268,12 +265,10 @@ def rival_in_the_window(monkeypatch):
 def _make_stale(db: TelemetryDB, seconds: int = 600) -> None:
     """Backdate the claim's heartbeat so it reads as abandoned."""
     stale = datetime.now(timezone.utc) - timedelta(seconds=seconds)
-    with db._lock:
-        db.conn.execute(
-            "UPDATE telemetry_collector_claim SET heartbeat_at = ? WHERE job_id = ?",
-            (stale.isoformat(), JOB_ID),
-        )
-        db.conn.commit()
+    db.execute(
+        "UPDATE telemetry_collector_claim SET heartbeat_at = %s WHERE job_id = %s",
+        (stale, JOB_ID),
+    )
 
 
 def test_only_one_of_two_collectors_takes_over_a_stale_claim(connect, rival_in_the_window):

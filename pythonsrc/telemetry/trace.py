@@ -13,10 +13,10 @@ order it happens, annotated with the call site that performs it. Rendering a rea
 row against that map turns "50 optional columns" into "these 7 were written at
 Phase 1, these 6 at Phase 2, this one is still empty".
 
-**Read-only by construction.** The connection is opened with `mode=ro`, so this
-tool can never become the second writer the single-writer rule exists to prevent
-(see `db._configure_connection`). That also makes `--db` safe to point at one of
-the rotating `telemetry.db.backup-*` snapshots.
+**Read-only by construction.** The session is opened `READ ONLY`, so this tool
+can never become a second writer: any UPDATE it might grow is refused by the
+server rather than by convention. `--db` takes a PostgreSQL URL and defaults to
+`$DS_DATABASE_URL`.
 """
 
 from __future__ import annotations
@@ -25,14 +25,19 @@ import argparse
 import dataclasses
 import json
 import os
-import sqlite3
 import sys
-from pathlib import Path
+from datetime import datetime
+
+import psycopg
+from psycopg import errors as pg_errors
+from psycopg.rows import dict_row
 
 from pythonsrc.telemetry.db import (
+    DatabaseConfigError,
     _row_to_job,
     _str_to_dt,
-    get_default_db_path,
+    get_database_url,
+    redact_dsn,
 )
 
 
@@ -579,31 +584,47 @@ def render(job, row: dict, extras: dict, *, palette: Palette, verbose: bool) -> 
 
 # ── Reading ───────────────────────────────────────────────────────────────────
 
-def open_readonly(db_path: str) -> sqlite3.Connection:
+def open_readonly(dsn: str) -> psycopg.Connection:
     """Open the telemetry database read-only.
 
-    Read-only is deliberate rather than defensive: the database has exactly one
-    writer by design, and an inspection tool that opens a writable handle is one
-    `commit` away from being the second.
+    Read-only is deliberate rather than defensive: an inspection tool that holds a
+    writable handle is one `commit` away from being a writer. The session is marked
+    `READ ONLY` server-side, and autocommit is on so a missing satellite table (an
+    older database) fails one query rather than poisoning the transaction for the
+    queries after it.
 
     Args:
-        db_path: Path to the SQLite file.
+        dsn: PostgreSQL connection URL.
 
     Returns:
-        A connection with `sqlite3.Row` rows.
+        A connection with dict rows.
 
     Raises:
-        FileNotFoundError: If the database file does not exist.
+        psycopg.OperationalError: If the database cannot be reached.
     """
-    if not Path(db_path).exists():
-        raise FileNotFoundError(db_path)
-    uri = f"file:{Path(db_path).resolve()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=10.0)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg.connect(
+        dsn,
+        row_factory=dict_row,
+        autocommit=True,
+        prepare_threshold=None,
+        connect_timeout=10,
+        application_name="ds-mvp-trace",
+    )
+    conn.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+    conn.execute("SET TIME ZONE 'UTC'")
     return conn
 
 
-def read_extras(conn: sqlite3.Connection, job_id: str) -> dict:
+def _fmt_ts(value) -> str:
+    """A timestamp column as text for the listing, whatever type it arrived as."""
+    if value is None:
+        return "—"
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def read_extras(conn: psycopg.Connection, job_id: str) -> dict:
     """Collect the satellite-table rows for a job.
 
     Each table is queried defensively: an older database may predate `job_event`
@@ -619,12 +640,12 @@ def read_extras(conn: sqlite3.Connection, job_id: str) -> dict:
     def query(sql: str, params: tuple = ()) -> list:
         try:
             return conn.execute(sql, params).fetchall()
-        except sqlite3.OperationalError:
+        except pg_errors.UndefinedTable:
             return []
 
     sample_row = query(
         "SELECT COUNT(*) AS n, MIN(sampled_at) AS first, MAX(sampled_at) AS last "
-        "FROM telemetry_sample WHERE job_id = ?",
+        "FROM telemetry_sample WHERE job_id = %s",
         (job_id,),
     )
     samples = {"count": 0, "first": None, "last": None}
@@ -637,17 +658,17 @@ def read_extras(conn: sqlite3.Connection, job_id: str) -> dict:
 
     claim_rows = query(
         "SELECT owner, claimed_at, heartbeat_at FROM telemetry_collector_claim "
-        "WHERE job_id = ?",
+        "WHERE job_id = %s",
         (job_id,),
     )
     failures = query(
         "SELECT failure_type, source, detected_at, notes FROM failure_event "
-        "WHERE job_id = ? ORDER BY detected_at",
+        "WHERE job_id = %s ORDER BY detected_at",
         (job_id,),
     )
     events = query(
         "SELECT kind, occurred_at, detail FROM job_event "
-        "WHERE job_id = ? ORDER BY occurred_at",
+        "WHERE job_id = %s ORDER BY occurred_at",
         (job_id,),
     )
 
@@ -659,7 +680,7 @@ def read_extras(conn: sqlite3.Connection, job_id: str) -> dict:
     }
 
 
-def list_jobs(conn: sqlite3.Connection, limit: int, palette: Palette) -> str:
+def list_jobs(conn: psycopg.Connection, limit: int, palette: Palette) -> str:
     """Render a compact index of recent jobs and how complete each row is.
 
     Args:
@@ -673,7 +694,7 @@ def list_jobs(conn: sqlite3.Connection, limit: int, palette: Palette) -> str:
     c = palette
     rows = conn.execute(
         "SELECT * FROM print_job "
-        "ORDER BY COALESCE(started_at, '') DESC, job_id DESC LIMIT ?",
+        "ORDER BY started_at DESC NULLS LAST, job_id DESC LIMIT %s",
         (limit,),
     ).fetchall()
     if not rows:
@@ -693,7 +714,7 @@ def list_jobs(conn: sqlite3.Connection, limit: int, palette: Palette) -> str:
             for name in stage.columns
             if _is_populated(name, data.get(name))
         )
-        started = (data.get("started_at") or "—")[:19]
+        started = _fmt_ts(data.get("started_at"))[:19]
         out.append(
             f"{data['job_id']:<38}{started:<21}"
             f"{str(data.get('outcome')):<18}{populated}/{total_columns}"
@@ -762,7 +783,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--db",
         default=None,
-        help="Database file. Defaults to the standard path; a backup snapshot works too.",
+        help="PostgreSQL URL. Defaults to $DS_DATABASE_URL.",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Expand JSON payloads and full hashes."
@@ -771,12 +792,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     palette = Palette(colour_enabled(sys.stdout) and not args.json)
-    db_path = args.db or get_default_db_path()
+    try:
+        dsn = args.db or get_database_url()
+    except DatabaseConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    shown = redact_dsn(dsn)
 
     try:
-        conn = open_readonly(db_path)
-    except FileNotFoundError:
-        print(f"No telemetry database at {db_path}", file=sys.stderr)
+        conn = open_readonly(dsn)
+    except psycopg.OperationalError as exc:
+        print(f"Cannot reach the telemetry database at {shown}: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -787,12 +813,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.latest:
             row = conn.execute(
                 "SELECT * FROM print_job "
-                "ORDER BY COALESCE(started_at, '') DESC, job_id DESC LIMIT 1"
+                "ORDER BY started_at DESC NULLS LAST, job_id DESC LIMIT 1"
             ).fetchone()
         else:
             # A prefix is enough: job ids are UUIDs and nobody types them in full.
             matches = conn.execute(
-                "SELECT * FROM print_job WHERE job_id LIKE ?", (args.job_id + "%",)
+                "SELECT * FROM print_job WHERE job_id LIKE %s", (args.job_id + "%",)
             ).fetchall()
             if len(matches) > 1:
                 print(
@@ -803,7 +829,7 @@ def main(argv: list[str] | None = None) -> int:
             row = matches[0] if matches else None
 
         if row is None:
-            print(f"Job not found in {db_path}. Try --list.", file=sys.stderr)
+            print(f"Job not found in {shown}. Try --list.", file=sys.stderr)
             return 1
 
         job = _row_to_job(row)
