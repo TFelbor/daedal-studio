@@ -44,8 +44,17 @@ jobs:
           SUITE_PRS: ${{ toJSON(github.event.check_suite.pull_requests) }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           # The logins the Claude GitHub App commits and opens pull requests under.
-          # Same set the action's own agent-approval-check example names.
-          CLAUDE_LOGINS: "claude[bot] claude-code[bot]"
+          #
+          # The bare slugs are load-bearing. `.author.login` below comes from
+          # `gh pr view --json`, which reads GraphQL, and GraphQL returns a GitHub
+          # App's login *without* the suffix — `claude`, where REST says `claude[bot]`.
+          # Verified against this repository: the same comment reads `claude` through
+          # `gh pr view --json comments` and `claude[bot]` through the REST endpoint.
+          # Listing only the suffixed forms — as this did — means the case below never
+          # matches, and every Claude pull request is declined with "author is claude,
+          # not the Claude app". Invisible so far only because AUTO_MERGE is `off`.
+          # Both forms are kept, and claude-review.yml carries the same set.
+          CLAUDE_LOGINS: "claude claude[bot] claude-code claude-code[bot]"
         run: |
           set -euo pipefail
 
