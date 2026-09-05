@@ -46,11 +46,14 @@ jobs:
           fetch-depth: 1
 
       - name: Plan with Fable
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.216
         with:
-          # Either credential the setup guide names works; whichever secret
-          # exists is the one used. `/install-github-app` stores one of them.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
+          # `/install-github-app` created it. `anthropic_api_key` is deliberately not
+          # passed: an unset secret renders as the empty string, and the action maps
+          # that straight onto `ANTHROPIC_API_KEY` in the model's environment, so
+          # naming a secret that does not exist sets an empty credential rather than
+          # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}

@@ -79,10 +79,59 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          existing=$(gh pr list --state all --limit 100 \
-            --json number,headRefName,body \
-            --jq "[.[] | select(.headRefName == \"claude/issue-${ISSUE_NUMBER}\"
-                    or (.body // \"\" | test(\"(^|[^0-9])#${ISSUE_NUMBER}([^0-9]|\$)\")))] | length")
+
+          # Two questions, and only the first one is authoritative.
+          #
+          # `claude/issue-<n>` is the branch the implementer below is told to create, so
+          # a pull request from that head is the definitive "already done". GitHub
+          # filters it server-side and returns one small node.
+          #
+          # The body scan is a courtesy for a pull request a human opened by hand with
+          # "#<n>" in the body — and it is the query that broke. Selecting `body` with
+          # `--limit 100` asks GitHub's GraphQL API for a hundred full pull-request
+          # bodies in a single request, and it answered
+          #
+          #   GraphQL: Something went wrong while executing your query ...
+          #   (repository.pullRequests.nodes.10)
+          #
+          # on run after run. Under `set -e` that killed the step at exit 1, and the job
+          # never reached the model: every claude-implement failure so far is this line,
+          # not a missing permission, a missing tool allowance or the label filter. So
+          # it retries, asks for fewer bodies, and treats a persistent failure as a
+          # warning rather than the end of the run — the branch query already covers the
+          # duplicate this guard exists to prevent, and losing a heuristic to a
+          # transient API error must not cost a labelled issue its implementation.
+          gh_retry() {
+            local out attempt
+            for attempt in 1 2 3; do
+              if out=$("$@" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              echo "attempt ${attempt} failed: ${out}" >&2
+              sleep $((attempt * 3))
+            done
+            return 1
+          }
+
+          existing=$(gh_retry gh pr list --state all --limit 5 \
+            --head "claude/issue-${ISSUE_NUMBER}" --json number --jq 'length') || {
+            echo "Could not ask GitHub whether a pull request already exists for #${ISSUE_NUMBER}." >&2
+            echo "Refusing to implement blind: a duplicate costs eighty turns of Opus." >&2
+            exit 1
+          }
+
+          if [ "$existing" -eq 0 ]; then
+            by_body=$(gh_retry gh pr list --state all --limit 50 --json body \
+              --jq "[.[] | select((.body // \"\") | test(\"(^|[^0-9])#${ISSUE_NUMBER}([^0-9]|\$)\"))] | length") \
+              || by_body=""
+            if [ -z "$by_body" ]; then
+              echo "::warning::The body scan for '#${ISSUE_NUMBER}' failed three times; relying on the branch check alone."
+            else
+              existing="$by_body"
+            fi
+          fi
+
           if [ "$existing" -gt 0 ]; then
             echo "A pull request already references issue #${ISSUE_NUMBER}; not implementing again."
             echo "should_run=false" >> "$GITHUB_OUTPUT"
@@ -125,11 +174,14 @@ jobs:
 
       - name: Implement with Opus
         if: steps.guard.outputs.should_run == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.216
         with:
-          # Either credential the setup guide names works; whichever secret
-          # exists is the one used. `/install-github-app` stores one of them.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
+          # `/install-github-app` created it. `anthropic_api_key` is deliberately not
+          # passed: an unset secret renders as the empty string, and the action maps
+          # that straight onto `ANTHROPIC_API_KEY` in the model's environment, so
+          # naming a secret that does not exist sets an empty credential rather than
+          # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The action creates and checks out the branch the prompt names, so Claude
           # does not have to guess whether it is already on it.
@@ -149,9 +201,18 @@ jobs:
     # The fix loop. `issue_comment` also fires on plain issues, so the pull_request
     # clause is what keeps this to PRs. No `prompt` input below: that is what selects
     # the action's interactive mode, which reads the @claude comment as the request.
+    #
+    # The state clauses are the second half of claude-review.yml's fix-loop guard, held
+    # here as well because this job answers *any* @claude comment, not only the
+    # reviewer's. A merged pull request has nowhere to push a fix to, and this job
+    # carries a sixty-minute timeout, a PostgreSQL service and a full dependency
+    # install before it reaches the model — the cost of answering is paid whether or
+    # not the answer can land. Merged PR #52 was asked, and this job ran on it.
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      github.event.issue.pull_request.merged_at == null &&
       contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -207,11 +268,14 @@ jobs:
           npm --prefix web ci
 
       - name: Address the review with Opus
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.216
         with:
-          # Either credential the setup guide names works; whichever secret
-          # exists is the one used. `/install-github-app` stores one of them.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
+          # `/install-github-app` created it. `anthropic_api_key` is deliberately not
+          # passed: an unset secret renders as the empty string, and the action maps
+          # that straight onto `ANTHROPIC_API_KEY` in the model's environment, so
+          # naming a secret that does not exist sets an empty credential rather than
+          # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # claude-review.yml posts its fix request with the workflow token, so the
           # comment's author is github-actions[bot]. The action refuses bot authors

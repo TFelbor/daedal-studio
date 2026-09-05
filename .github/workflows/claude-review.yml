@@ -39,11 +39,14 @@ jobs:
 
       - name: Review with Fable
         id: review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.216
         with:
-          # Either credential the setup guide names works; whichever secret
-          # exists is the one used. `/install-github-app` stores one of them.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
+          # `/install-github-app` created it. `anthropic_api_key` is deliberately not
+          # passed: an unset secret renders as the empty string, and the action maps
+          # that straight onto `ANTHROPIC_API_KEY` in the model's environment, so
+          # naming a secret that does not exist sets an empty credential rather than
+          # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
@@ -84,6 +87,11 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REVIEW_OUTPUT: ${{ steps.review.outputs.structured_output }}
           MAX_ROUNDS: "3"
+          # The logins the Claude GitHub App opens pull requests under. `gh --json`
+          # reads GraphQL, where a GitHub App's login is the bare slug (`claude`);
+          # only REST spells it `claude[bot]`. Both forms are listed because this set
+          # is duplicated in claude-automerge.yml and the two must not drift.
+          CLAUDE_LOGINS: "claude claude[bot] claude-code claude-code[bot]"
         run: |
           set -euo pipefail
 
@@ -121,7 +129,52 @@ jobs:
           # Dispatcher because the loop closes here — a fix pushes, `synchronize` fires,
           # this workflow runs again — and a cap that lives only in a process outside
           # the repository does not stop a runaway that starts inside it.
+          #
+          # Two preconditions guard the comment itself, both learned from a live misfire
+          # on merged PR #52:
+          #
+          #   The pull request must still be open. A review is queued at `opened` and
+          #   lands minutes later; when a human merges inside that window, the fix
+          #   request has nowhere to push — it summons Opus to spend a 60-minute job
+          #   budget editing a branch already in main. #52 got exactly that comment
+          #   two seconds after the review, and the `fix` job ran on it.
+          #
+          #   The pull request must be the Claude app's own. This loop exists so the
+          #   implementer can answer its reviewer. On a human's pull request it is not
+          #   a loop, it is an unsolicited @-mention that would have Opus push to a
+          #   contributor's branch uninvited.
+          #
+          # Neither precondition changes the check's colour. The verdict is what gates
+          # the merge, and "request_changes, and nobody was asked to fix it" is still
+          # request_changes — a red check a human then reads.
           marker='<!-- claude-fix-request -->'
+
+          pr_meta=$(gh pr view "$PR_NUMBER" --json state,author)
+          pr_state=$(printf '%s' "$pr_meta" | jq -r '.state')
+          pr_author=$(printf '%s' "$pr_meta" | jq -r '.author.login')
+
+          ask=true
+          if [ "$pr_state" != "OPEN" ]; then
+            reason="the pull request is ${pr_state}"
+            ask=false
+          else
+            case " $CLAUDE_LOGINS " in
+              *" $pr_author "*) : ;;
+              *) reason="the author is ${pr_author}, not the Claude app"; ask=false ;;
+            esac
+          fi
+
+          if [ "$ask" = "false" ]; then
+            echo "Not asking for a fix: ${reason}."
+            {
+              echo "claude-review requested changes, and did not ask for a fix:"
+              echo "${reason}."
+              echo ""
+              echo "${summary}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
           rounds=$(gh pr view "$PR_NUMBER" --json comments \
             --jq "[.comments[] | select(.body | contains(\"${marker}\"))] | length")
           echo "fix rounds so far: ${rounds}"

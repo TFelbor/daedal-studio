@@ -69,7 +69,11 @@ and read the part that covers what you are touching.
     `.env.template`, `pythonsrc/operators/` (printer API keys),
     `supabase/README.md`'s security posture. There is no end-user authentication in
     this repository yet; these are the paths that hold secrets, and they are what
-    "auth" means here.
+    "auth" means here. In CI, **`CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret**
+    and every `.github/workflows/claude-*.yml` uses it; `ANTHROPIC_API_KEY` does not
+    exist here and must not be named in a workflow, because the action renders an
+    unset secret as an empty credential rather than as no credential. See
+    `docs/PIPELINE.md` § Secrets.
   - **Anything that spends money** — `pythonsrc/sculptors/pixazo.py` is the only code
     that incurs a charge (EUR 0,32 per generation) and `generation_cost_eur` is where
     it is booked. There is no payments or billing code in this repository yet; when
