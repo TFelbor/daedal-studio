@@ -63,11 +63,28 @@ part of the pipeline that can cost money per job.
 
 ### The geometry kernel (PRD §9.1, answered)
 
-**`manifold3d` now; `build123d`/OCCT only when an archetype needs true fillets or
-chamfers.** `manifold3d` 3.5.2 is already a hard Apache-2.0 dependency (it does the CSG
-union in `engineer.repair_mesh` and backs `printability.self_intersections`), every v1
-archetype is axis-aligned box CSG inside its envelope, and choosing it costs no new
-dependency and no new licence review. build123d is Apache-2.0 but wraps **OCCT**
+**`manifold3d` now; `build123d`/OCCT only when an archetype needs a fillet on a
+*horizontal* edge.** `manifold3d` 3.5.2 is already a hard Apache-2.0 dependency (it does
+the CSG union in `engineer.repair_mesh` and backs `printability.self_intersections`),
+every v1 archetype is axis-aligned box CSG inside its envelope, and choosing it costs no
+new dependency and no new licence review.
+
+**The trigger above is narrower than it first read, and the correction matters because
+it unblocks work.** This note used to defer *all* fillets and chamfers, which put three
+features the insert design standards call mandatory (a 45° base chamfer against warping,
+external rounds against elephant-foot flare, internal rounds so small bits can be scooped
+out of a bin) behind a licence review they do not need. Measured on `manifold3d` 3.5.2,
+2026-09-05:
+
+- `CrossSection.offset(-r, JoinType.Round)` followed by `offset(+r, Round)` produces
+  internal and external **vertical** corner fillets — watertight, genus 0, `Error.NoError`.
+- `Manifold.hull` of two thin slabs, the lower inset by *c*, produces an **exact constant
+  45° chamfer**: cross-section 5232,989 mm² at z≈0 against 5232,960 designed, 5676,030 mm²
+  at z≈c against 5676,060 — four orders inside N1's ±0,05 mm.
+
+What still wants OCCT is a fillet swept along a horizontal edge (a floor-to-wall radius,
+a rounded top rim); a hull chamfer covers the scooping ergonomics adequately meanwhile.
+Roadmap §0.5 records the audit; the Phase 2 primitives task is where it lands. build123d is Apache-2.0 but wraps **OCCT**
 (LGPL-2.1 with an additional exception — commercial use permitted, prominent notice
 required): adopting it requires recording OCCT in
 `licence_policy.REVIEWED_WEAK_COPYLEFT`, adding a "Built with Open CASCADE Technology"

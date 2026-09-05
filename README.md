@@ -289,6 +289,10 @@ same commit):
 - [ ] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint)
 - [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
 - [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
+- [ ] Chamfer + vertical-fillet primitives in `compiler.py` — 45° base chamfer (anti-warp) and internal/external corner rounds (anti-elephant-foot, token-bin scooping) via `Manifold.hull` and `CrossSection.offset(Round)`; no new dependency, no OCCT review (§0.5)
+- [ ] `Process.fit_intent` (`snug` | `easy`) driving cavity clearance — one hardcoded 1,5 mm serves a snug deck box and a lift-out tray today; the +1,5–2 / +4–6 mm split is already sourced in `docs/dimension-kb-research.md` §3
+- [ ] Justify or retire `Process.wall_mm = 2.8` — seven perimeters at a 0,4 nozzle, unsourced; derive the floor from the profile's nozzle and let the archetype set the rest
+- [ ] `constraints.max_external_mm` gains the −2 mm safety buffer (research §7, BIT's leave-3/3/2 rule) — today it is a hard limit against dimensions that vary ±1–2 mm between copies of the same box
 
 ### 📱 Phase 3 — Closed preview, friendly-user alpha (PRD M2 · 11–31 October 2026)
 
@@ -304,6 +308,11 @@ same commit):
 - [ ] N3 measured end to end on a real phone (≤20 s); the per-job `docker compose run` replaced if it blows the budget
 - [ ] IP screen re-scoped for functional articles — "deck box for Pokémon cards" must pass before any external user sees the app
 - [ ] Friendly-user alpha — 5–10 known users, form-driven deck box, we print and send a photo, scripted usability sessions
+- [ ] Finger cutouts + non-structural lightweighting cutouts on tray archetypes — dual-purpose (cards pushed up from below, filament cut); makes the mass `gcode_stats` already computes actionable
+- [x] ~~Decide: multi-compartment box-insert archetype before launch, or board gamers post-launch?~~ **Decided 2026-09-05: board gamers are a December launch segment.** The three boxes below are what that decision costs (§0.5)
+- [ ] **Multi-compartment box-insert archetype** — `Compartment.contents` grows beyond `CardStack` (tokens, dice), `compartments` becomes plural in fact, one enclosure composed from several fitted pockets. This is the composition wedge PRD §1 claims and PRD F5's `box-insert grid`, promoted from "follows" to launch scope
+- [ ] **Locking tabs / anti-slide geometry** — mandatory per §0.5 for transport; in scope now that inserts are, and pointless before the archetype above
+- [ ] **Game-box internals: seed the KB with the launch set** — the "Interior-First" input the insert segment is founded on, moved out of Phase 6. Curated per game with the −2 mm safety default; BGG carries external dimensions only and is now registration-gated, so this is curation, not a scrape
 
 ### 🧪 Phase 4 — Closed beta on our own printers (1–30 November 2026)
 
@@ -338,7 +347,7 @@ same commit):
 - [ ] Native apps — iOS App Store + Google Play as a Capacitor wrapper of the PWA; phone-as-LAN-bridge to the printer; store economics reviewed first
 - [ ] Generative personalization premium tier — text emboss and image relief on the parametric kernel first; sculptural lids (F14) as the niche add-on
 - [ ] Print-aware conditioning research (Bet 1) — only if the F14 tier is pursued
-- [ ] KB depth: game-box internals curation, archetypes prioritized by prompt volume; adjacent categories (inserts, dice trays, desk organizers) before phone cases
+- [ ] KB depth: game-box internals **beyond the launch set** (the seed moved to Phase 3 with the Dec-2026 board-gamer decision, §0.5), archetypes prioritized by prompt volume; adjacent categories (dice trays, desk organizers) before phone cases
 - [ ] Self-host / scale economics recomputed on real beta volume
 
 ---
