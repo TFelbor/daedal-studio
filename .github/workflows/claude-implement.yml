@@ -127,7 +127,10 @@ jobs:
         if: steps.guard.outputs.should_run == 'true'
         uses: anthropics/claude-code-action@v1
         with:
+          # Either credential the setup guide names works; whichever secret
+          # exists is the one used. `/install-github-app` stores one of them.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The action creates and checks out the branch the prompt names, so Claude
           # does not have to guess whether it is already on it.
           branch_name_template: "{{prefix}}issue-{{entityNumber}}"
@@ -206,7 +209,10 @@ jobs:
       - name: Address the review with Opus
         uses: anthropics/claude-code-action@v1
         with:
+          # Either credential the setup guide names works; whichever secret
+          # exists is the one used. `/install-github-app` stores one of them.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # claude-review.yml posts its fix request with the workflow token, so the
           # comment's author is github-actions[bot]. The action refuses bot authors
           # unless they are named here, and `*` is the form the security docs warn

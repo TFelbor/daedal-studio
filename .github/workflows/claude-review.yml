@@ -18,6 +18,9 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  # The action exchanges a GitHub OIDC token for the Claude App token. Without
+  # this it fails with "Could not fetch an OIDC token" before reaching the model.
+  id-token: write
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -38,7 +41,10 @@ jobs:
         id: review
         uses: anthropics/claude-code-action@v1
         with:
+          # Either credential the setup guide names works; whichever secret
+          # exists is the one used. `/install-github-app` stores one of them.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
