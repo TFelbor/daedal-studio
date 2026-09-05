@@ -309,7 +309,10 @@ same commit):
 - [ ] IP screen re-scoped for functional articles — "deck box for Pokémon cards" must pass before any external user sees the app
 - [ ] Friendly-user alpha — 5–10 known users, form-driven deck box, we print and send a photo, scripted usability sessions
 - [ ] Finger cutouts + non-structural lightweighting cutouts on tray archetypes — dual-purpose (cards pushed up from below, filament cut); makes the mass `gcode_stats` already computes actionable
-- [ ] **Decide: multi-compartment box-insert archetype before launch, or board gamers explicitly post-launch?** `deck_box` refuses a second compartment and `Compartment` holds card stacks only, so the composition wedge PRD §1 claims is unbuilt; locking tabs (anti-slide) ride with this decision (§0.5)
+- [x] ~~Decide: multi-compartment box-insert archetype before launch, or board gamers post-launch?~~ **Decided 2026-09-05: board gamers are a December launch segment.** The three boxes below are what that decision costs (§0.5)
+- [ ] **Multi-compartment box-insert archetype** — `Compartment.contents` grows beyond `CardStack` (tokens, dice), `compartments` becomes plural in fact, one enclosure composed from several fitted pockets. This is the composition wedge PRD §1 claims and PRD F5's `box-insert grid`, promoted from "follows" to launch scope
+- [ ] **Locking tabs / anti-slide geometry** — mandatory per §0.5 for transport; in scope now that inserts are, and pointless before the archetype above
+- [ ] **Game-box internals: seed the KB with the launch set** — the "Interior-First" input the insert segment is founded on, moved out of Phase 6. Curated per game with the −2 mm safety default; BGG carries external dimensions only and is now registration-gated, so this is curation, not a scrape
 
 ### 🧪 Phase 4 — Closed beta on our own printers (1–30 November 2026)
 
@@ -344,7 +347,7 @@ same commit):
 - [ ] Native apps — iOS App Store + Google Play as a Capacitor wrapper of the PWA; phone-as-LAN-bridge to the printer; store economics reviewed first
 - [ ] Generative personalization premium tier — text emboss and image relief on the parametric kernel first; sculptural lids (F14) as the niche add-on
 - [ ] Print-aware conditioning research (Bet 1) — only if the F14 tier is pursued
-- [ ] KB depth: game-box internals curation, archetypes prioritized by prompt volume; adjacent categories (inserts, dice trays, desk organizers) before phone cases
+- [ ] KB depth: game-box internals **beyond the launch set** (the seed moved to Phase 3 with the Dec-2026 board-gamer decision, §0.5), archetypes prioritized by prompt volume; adjacent categories (dice trays, desk organizers) before phone cases
 - [ ] Self-host / scale economics recomputed on real beta volume
 
 ---
