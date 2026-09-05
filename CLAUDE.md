@@ -2,6 +2,89 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ds-mvp — Claude Code guide
+
+The pipeline's contract with this repository. `docs/PIPELINE.md` explains how an issue
+becomes a pull request; this section is what an agent must know before it changes a
+file. Everything below it in this document is the system as built — read that too,
+and read the part that covers what you are touching.
+
+### Build and test
+
+- **Install:**
+  `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-mac.txt`
+  (`requirements-linux.txt` on Linux; CI installs `torch` from PyTorch's CPU index
+  first, then `requirements-base.txt`), then
+  `cp pythonsrc/config.template.py pythonsrc/config.py`, `cp .env.template .env`,
+  `mkdir -p data/inputs data/outputs data/logs`, `npm --prefix web ci`.
+- **Test:** `pytest tests/` — must pass before opening a PR. `pytest.ini` deselects the
+  `slow` markers, so this is the selection CI runs. It needs a PostgreSQL: either
+  Docker running, in which case `tests/conftest.py` starts a throwaway
+  `postgres:17-alpine`, or `DS_TEST_DATABASE_URL` pointing at a database the suite may
+  administer. Frontend: `npm --prefix web run build`, which is `tsc -b && vite build`
+  and therefore the type check as well.
+- **Lint:** `npm --prefix web run lint` (ESLint). It currently **fails on 27
+  pre-existing errors** unrelated to any new change, and CI runs it
+  `continue-on-error`. Do not treat a red lint as a reason to stop; do leave it no
+  redder than you found it.
+  <!-- TODO: no Python linter or formatter is configured — no ruff, flake8, black or
+  pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
+  replace this note with the command. -->
+  <!-- TODO: no coverage measurement exists anywhere — pytest.ini, requirements-base.txt,
+  the Makefile and ci.yml all lack it. The only figure available today is 949 test
+  functions across 65 files. Add pytest-cov and a floor before anyone quotes a
+  percentage. -->
+
+### Layout
+
+- `pythonsrc/` — the five-phase pipeline (`pipeline.py`), the parametric organizer
+  engine (`organizer/`), sculptor backends (`sculptors/`), printer operators
+  (`operators/`), telemetry (`telemetry/`), printability, IP screening, licence policy.
+- `server/` — FastAPI app (`app.py`), WebSocket broadcaster, encrypted config store,
+  OctoPrint simulator manager. Serves the built SPA.
+- `web/` — React 19 + Vite + TypeScript SPA. `npm run build` writes `web/dist/`, which
+  the API server image copies and serves.
+- `services/trellis2_worker/` — the GPU sculptor worker; runs only on a CUDA host.
+- `supabase/migrations/` — the telemetry DDL, **generated** from
+  `python -m pythonsrc.telemetry.db --ddl`. `infra/` — Dockerfiles, compose, CI helpers.
+- `tests/` — 65 files, 949 test functions. `docs/` — PRD, roadmap, `PIPELINE.md`,
+  `deferred-legal-tasks.md`. `licenses/` — the committed dependency tree.
+
+### Conventions
+
+- One task = one PR, referencing the issue; acceptance criteria copied into the PR body
+  as a checklist.
+- Tests for every behaviour change.
+- Never modify files containing `LEGAL-DEFERRED` unless the issue explicitly says so.
+  (No file carries the marker today. When one does, it is legal work parked
+  deliberately — see `docs/deferred-legal-tasks.md` — and moving it is a legal
+  decision, not a code one.)
+- Never add dependencies without stating why in the PR. A dependency here is also a
+  licence decision: read **Licensing Constraints** below before adding one, check the
+  weights any package downloads at runtime as well as the package, and update
+  `THIRD-PARTY-NOTICES.md`. `tests/test_licensing_guards.py` is a required part of the
+  suite, not an optional one.
+- Never touch these unless the issue explicitly says so:
+  - **Credentials and secrets** — `server/config_store.py` (the Fernet-encrypted store),
+    `.env.template`, `pythonsrc/operators/` (printer API keys),
+    `supabase/README.md`'s security posture. There is no end-user authentication in
+    this repository yet; these are the paths that hold secrets, and they are what
+    "auth" means here.
+  - **Anything that spends money** — `pythonsrc/sculptors/pixazo.py` is the only code
+    that incurs a charge (EUR 0,32 per generation) and `generation_cost_eur` is where
+    it is booked. There is no payments or billing code in this repository yet; when
+    there is, list it here.
+  - **Migrations** — `supabase/migrations/` and `pythonsrc/telemetry/db.py`. The
+    migration file is generated from the code, and `tests/test_supabase_migration.py`
+    fails when they disagree; never hand-edit the SQL.
+- Units are metric, currency is EUR — in code, in the UI and in prose.
+
+### Definition of done
+
+Tests pass, lint passes, checklist complete, no out-of-scope changes.
+
+---
+
 ## Project Overview
 
 **Direction (committed 2026-08-31): Daedal Studio builds custom-fit tabletop/TCG organizers

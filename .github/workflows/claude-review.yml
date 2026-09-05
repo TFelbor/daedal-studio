@@ -1,0 +1,112 @@
+# Tier 3 of the Claude Code pipeline: the required check.
+#
+# The job is named `claude-review` because that string is what you select in
+# Settings → Branches → require status checks. Renaming the job silently detaches
+# branch protection from this workflow.
+#
+# The check is red when Fable asks for changes. That is the whole point: a review
+# that only ever posts a comment is advice, and advice does not gate a merge. The
+# verdict travels out of the model as structured output (`--json-schema`) rather than
+# as prose the workflow would have to parse.
+name: claude-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    name: claude-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Review with Fable
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR against the linked issue's acceptance criteria and CLAUDE.md. Check: criteria met; tests present and meaningful; no changes outside scope; no file containing LEGAL-DEFERRED touched unless the issue says so; no secrets; no new dependencies without a stated reason. Post one review. Approve only if everything passes; otherwise request changes with specific, actionable items.
+
+            Post the review as one top-level PR comment, and use inline comments for
+            findings tied to a specific line. Then return your verdict as structured
+            output: `verdict` is "approve" or "request_changes", and `summary` is one
+            sentence. The verdict decides whether this required check passes, so
+            return "request_changes" whenever any check above fails.
+          claude_args: |
+            --model claude-fable-5-1
+            --max-turns 20
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
+
+      - name: Ask for a fix, then fail the check
+        # Section 4e's fix loop. The comment is what re-enters claude-implement.yml's
+        # interactive `fix` job. The round cap is in the repository as well as in the
+        # Dispatcher because the loop closes here — a fix pushes, `synchronize` fires,
+        # this workflow runs again — and a cap that lives only in a process outside
+        # the repository does not stop a runaway that starts inside it.
+        #
+        # A missing `structured_output` means the review step itself failed rather
+        # than returning a verdict; that is also a red check, and it is reported as
+        # what it is rather than as a request for changes.
+        if: always() && steps.review.outputs.structured_output != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_OUTPUT: ${{ steps.review.outputs.structured_output }}
+          MAX_ROUNDS: "3"
+        run: |
+          set -euo pipefail
+          verdict=$(printf '%s' "$REVIEW_OUTPUT" | jq -r '.verdict')
+          summary=$(printf '%s' "$REVIEW_OUTPUT" | jq -r '.summary')
+          echo "verdict=${verdict}"
+          echo "summary=${summary}"
+
+          if [ "$verdict" = "approve" ]; then
+            echo "claude-review approved this pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          marker='<!-- claude-fix-request -->'
+          rounds=$(gh pr view "$PR_NUMBER" --json comments \
+            --jq "[.comments[] | select(.body | contains(\"${marker}\"))] | length")
+          echo "fix rounds so far: ${rounds}"
+
+          if [ "$rounds" -lt "$MAX_ROUNDS" ]; then
+            body=$(printf '%s\n@claude please address the review.\n\nRound %s of %s. Latest verdict: %s\n' \
+              "$marker" "$((rounds + 1))" "$MAX_ROUNDS" "$summary")
+          else
+            body=$(printf '%s\nReview has requested changes %s times, which is the cap. Not asking again — a human needs to look at this one.\n\nLatest verdict: %s\n' \
+              "$marker" "$rounds" "$summary")
+          fi
+          gh pr comment "$PR_NUMBER" --body "$body"
+
+          {
+            echo "claude-review requested changes."
+            echo ""
+            echo "${summary}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Fail when the review produced no verdict
+        if: always() && steps.review.outputs.structured_output == ''
+        run: |
+          echo "The review step returned no structured output, so there is no verdict to gate on." >&2
+          exit 1
