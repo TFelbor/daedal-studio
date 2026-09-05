@@ -48,6 +48,17 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 20 turns | PR opened / synchronised / reopened | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
 
+### One exemption, and only one
+
+The action validates its own workflow file against the default branch and refuses to
+run when they differ. That is unavoidable on a pull request that edits
+`.github/workflows/` — including a pull request to this pipeline itself. In that one
+case `claude-review` passes and says, in the job summary, that nothing reviewed the
+pull request and a human has to. Every other empty verdict is a red check.
+
+So: **a pull request that changes a workflow is never machine-reviewed. Read it
+yourself.**
+
 ## The labels
 
 | Label | Meaning |
