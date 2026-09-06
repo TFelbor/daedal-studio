@@ -48,6 +48,21 @@ jobs:
           # naming a secret that does not exist sets an empty credential rather than
           # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The pull requests this workflow exists to review are opened by the Claude
+          # app, so `github.actor` on `pull_request` is `claude[bot]` — a Bot, not a
+          # User. The action refuses a non-human actor unless it is named here, and it
+          # refuses *before* it reaches the model: the step dies in about two seconds
+          # with "Workflow initiated by non-human actor: claude (type: Bot)", writes no
+          # structured output, and the verdict gate below then correctly fails on a
+          # review that never happened. Without this input Tier 3 can never review
+          # Tier 2's work, which is the only work it was built to review.
+          #
+          # The names are matched case-insensitively with a trailing `[bot]` stripped,
+          # so these two entries cover all four spellings `CLAUDE_LOGINS` lists.
+          # `*` is the form the action's security documentation warns about and is not
+          # used: allowed bots are exempt from the write-permission check, so `*` would
+          # let any App that can open a pull request choose this job's prompt.
+          allowed_bots: "claude[bot],claude-code[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}

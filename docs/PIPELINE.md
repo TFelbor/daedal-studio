@@ -59,6 +59,36 @@ pull request and a human has to. Every other empty verdict is a red check.
 So: **a pull request that changes a workflow is never machine-reviewed. Read it
 yourself.**
 
+### The reviewer's subject is a bot, and the action refuses bots by default
+
+`claude-implement.yml` opens its pull requests as the Claude app, so on
+`pull_request` the actor `claude-review.yml` runs under is `claude[bot]` — type `Bot`,
+not `User`. The action rejects a non-human actor unless the workflow names it in
+`allowed_bots`, and it rejects it *before* it reaches the model: the step fails in
+about two seconds with
+
+```
+Workflow initiated by non-human actor: claude (type: Bot).
+Add bot to allowed_bots list or use '*' to allow all bots.
+```
+
+which is an empty verdict, which is a red check. That is the gate working — nothing
+reviewed the pull request — but the cause is a missing input, not a review that went
+wrong, and it made Tier 3 unable to review Tier 2's work at all. `claude-review.yml`
+therefore passes `allowed_bots: "claude[bot],claude-code[bot]"`, the way
+`claude-implement.yml`'s `fix` job already passes `github-actions[bot]` for the fix
+request it answers.
+
+**Do not widen either list to `'*'`.** An allowed bot skips the write-permission check
+as well as the human check, so `'*'` lets any GitHub App that can open a pull request
+choose this job's prompt. Names are matched case-insensitively with a trailing `[bot]`
+stripped, so one entry covers both spellings of a login.
+
+A symptom worth recognising: the two-second failure looks identical in the check list
+to a genuine `request_changes`. Read the **Review with Fable** step, not the
+**Decide the check from the verdict** step — the second one only reports that the
+first produced nothing.
+
 ### When the fix loop does not ask
 
 `claude-review.yml` posts `@claude please address the review` only when both hold:
