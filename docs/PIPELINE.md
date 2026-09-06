@@ -45,7 +45,7 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 30 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. |
 | `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 80 turns | issue labelled | Builds the CI environment, implements on `claude/issue-<n>`, runs the tests, opens a PR with the acceptance criteria as a checklist. |
 | `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 80 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. |
-| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 20 turns | PR opened / synchronised / reopened | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
+| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
 
 ### One exemption, and only one
@@ -88,6 +88,30 @@ A symptom worth recognising: the two-second failure looks identical in the check
 to a genuine `request_changes`. Read the **Review with Fable** step, not the
 **Decide the check from the verdict** step — the second one only reports that the
 first produced nothing.
+
+### `--max-turns` is a budget assertion, not a limiter
+
+Set it too low and a **finished** review is thrown away. On PR #55 the reviewer ran to
+completion, returned `subtype: "success"` with `is_error: false`, and posted its comment
+and three inline comments — and the action then failed the step:
+
+```
+Claude reported a successful result after 32 turns, exceeding the configured maximum of 20
+```
+
+The throw is in `base-action/src/run-claude-sdk.ts`, *before* the block that sets
+`structured_output`, so the verdict never reaches the gate and the check goes red for a
+missing verdict. It went red on a pull request its reviewer had just approved.
+
+Two things follow. **The SDK's turn budget and the result message's `num_turns` are not
+the same counter** — the first did not trip at 20, the second reported 32 — so the cap
+must carry slack rather than being set to a measured figure. And **the cap buys no cost
+control**: `timeout-minutes` on the job is the real bound, and those 32 turns took four
+minutes of the twenty. `claude-review` is therefore at 80, the same as
+`claude-implement`, which does far more work and fits inside it.
+
+`claude-plan.yml` is still at 30 and has never completed a run here, so that number is
+unmeasured. If it ever fails this way, the error names both figures.
 
 ### When the fix loop does not ask
 
