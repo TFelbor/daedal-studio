@@ -74,9 +74,29 @@ jobs:
             output: `verdict` is "approve" or "request_changes", and `summary` is one
             sentence. The verdict decides whether this required check passes, so
             return "request_changes" whenever any check above fails.
+          # `--max-turns` is not a limiter here, it is a post-hoc budget assertion,
+          # and 20 was below what a real review costs. The SDK does not stop at the
+          # cap — on PR #55 it ran to completion, returned `subtype: "success"` with
+          # `is_error: false`, posted the review comment and three inline comments —
+          # and the action then compared the result message's `num_turns` (32) against
+          # the cap and threw:
+          #
+          #   Claude reported a successful result after 32 turns, exceeding the
+          #   configured maximum of 20
+          #
+          # That throw happens in `base-action/src/run-claude-sdk.ts` *before* the
+          # block that sets `structured_output`, so a finished, schema-valid review is
+          # discarded and the gate below fails on a missing verdict. The check went red
+          # on a pull request its reviewer had just approved.
+          #
+          # The two counters are not the same counter: the SDK's own turn budget did
+          # not trip, the result message's `num_turns` did. So the cap has to carry
+          # real slack, and it buys no cost control anyway — `timeout-minutes: 20` on
+          # the job is the actual bound, and 32 turns took four minutes of it. 80
+          # matches claude-implement.yml, which does far more work and fits inside it.
           claude_args: |
             --model claude-fable-5-1
-            --max-turns 20
+            --max-turns 80
             --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
             --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
 

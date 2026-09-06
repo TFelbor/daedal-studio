@@ -588,11 +588,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/bsdutils/copyright",
-       "layerID": "sha256:411a86676185cb54d695a805b238194a64e9b77e0c723f3802fbb87d333ea0b3",
-       "path": "/usr/share/doc/bsdutils/copyright"
-      }
-     ],
-     "spdxExpression": "BSD-2-Clause",
+       "layerID": "sha256:41-Clause",
      "type": "declared",
      "urls": [],
      "value": "BSD-2-clause"
@@ -879,7 +875,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/certifi-2026.7.22.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/certifi-2026.7.22.dist-info/METADATA"
       }
      ],
@@ -901,7 +897,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/cffi-2.1.1.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/cffi-2.1.1.dist-info/METADATA"
       }
      ],
@@ -923,7 +919,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/charset_normalizer-3.5.1.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/charset_normalizer-3.5.1.dist-info/METADATA"
       }
      ],
@@ -977,7 +973,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/click-8.5.0.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/click-8.5.0.dist-info/METADATA"
       }
      ],
@@ -1099,7 +1095,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/cryptography-50.0.1.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/cryptography-50.0.1.dist-info/METADATA"
       }
      ],
@@ -1121,7 +1117,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1134,7 +1130,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1147,7 +1143,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1160,7 +1156,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1173,7 +1169,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1186,7 +1182,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1199,7 +1195,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1212,7 +1208,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1225,7 +1221,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1238,7 +1234,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1251,7 +1247,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/curl/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/curl/copyright"
       }
      ],
@@ -1672,7 +1668,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1685,7 +1681,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1698,7 +1694,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1711,7 +1707,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1724,7 +1720,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1737,7 +1733,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1750,7 +1746,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1763,7 +1759,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1776,7 +1772,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1789,7 +1785,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1802,7 +1798,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1815,7 +1811,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1828,7 +1824,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1841,7 +1837,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/dirmngr/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/dirmngr/copyright"
       }
      ],
@@ -1863,7 +1859,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/docker-7.2.0.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/docker-7.2.0.dist-info/METADATA"
       }
      ],
@@ -1957,7 +1953,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/fastapi-0.141.1.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/fastapi-0.141.1.dist-info/METADATA"
       }
      ],
@@ -2248,7 +2244,7 @@
      "locations": [
       {
        "accessPath": "/usr/local/lib/python3.10/site-packages/frozenlist-1.8.0.dist-info/METADATA",
-       "layerID": "sha256:d5d2e0ce2fb98b442e065d7c4d92dbfa5e3952fb199ef9bf14982738d7f7fa75",
+       "layerID": "sha256:244a359cd4502ac77d73082f869c4175b882dbe19a83ede89084aa3c0ea17d2e",
        "path": "/usr/local/lib/python3.10/site-packages/frozenlist-1.8.0.dist-info/METADATA"
       }
      ],
@@ -2975,7 +2971,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -2988,7 +2984,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3001,7 +2997,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3014,7 +3010,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3027,7 +3023,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3040,7 +3036,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3053,7 +3049,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3066,7 +3062,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3079,7 +3075,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3092,7 +3088,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3105,7 +3101,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3118,7 +3114,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3131,7 +3127,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3144,7 +3140,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg/copyright"
       }
      ],
@@ -3166,7 +3162,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3179,7 +3175,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3192,7 +3188,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3205,7 +3201,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3218,7 +3214,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3231,7 +3227,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3244,7 +3240,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3257,7 +3253,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3270,7 +3266,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3283,7 +3279,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3296,7 +3292,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3309,7 +3305,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3322,7 +3318,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3335,7 +3331,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gnupg-l10n/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gnupg-l10n/copyright"
       }
      ],
@@ -3605,7 +3601,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3618,7 +3614,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3631,7 +3627,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3644,7 +3640,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3657,7 +3653,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3670,7 +3666,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3683,7 +3679,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3696,7 +3692,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3709,7 +3705,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3722,7 +3718,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3735,7 +3731,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3748,7 +3744,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3761,7 +3757,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3774,7 +3770,7 @@
      "locations": [
       {
        "accessPath": "/usr/share/doc/gpg/copyright",
-       "layerID": "sha256:ac95d9e8992c619a6a93616e392677a6ba7eea62bbbdf3ed1062baaf02ea4f13",
+       "layerID": "sha256:ce79fdf3cd71addd52981e68b98df9fcd98d855274a9bd32b53f80a5d03e1045",
        "path": "/usr/share/doc/gpg/copyright"
       }
      ],
@@ -3786,6 +3782,13 @@
    ],
    "name": "gpg",
    "purl": "pkg:deb/debian/gpg@2.4.7-21%2Bdeb13u1%2Bb4?arch=amd64&distro=debian-13.6&upstream=gnupg2%402.4.7-21%2Bdeb13u1",
+   "type": "deb",
+   "version": "2.4.7-21+deb13u1+b4"
+  },
+  {
+   "language": "",
+   "licenses": [
+ 64&distro=debian-13.6&upstream=gnupg2%402.4.7-21%2Bdeb13u1",
    "type": "deb",
    "version": "2.4.7-21+deb13u1+b4"
   },
