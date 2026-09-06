@@ -191,10 +191,13 @@ jobs:
             ISSUE NUMBER: ${{ github.event.issue.number }}
 
             Implement this issue on a new branch `claude/issue-${{ github.event.issue.number }}`. If a "Plan" comment exists, follow it. Follow CLAUDE.md. Add or update tests so every acceptance criterion is covered; run the test and lint commands from CLAUDE.md and make them pass. Open a PR that references this issue, copies its acceptance criteria into the PR body as a checklist, ticks each one you verified, and carries the issue's `risk:*` label. Keep the PR to this task only.
+          # `Skill` is on the allowlist so the vendored `.claude/skills/` are reachable;
+          # without it the model sees their descriptions and can invoke none of them.
+          # See docs/PIPELINE.md § Skills are vendored, not installed.
           claude_args: |
             --model claude-opus-5
             --max-turns 80
-            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
 
   fix:
     name: fix
@@ -283,7 +286,10 @@ jobs:
           # about. This repository is private and only the two technical co-founders
           # can push, which is what makes naming one bot acceptable.
           allowed_bots: "github-actions[bot]"
+          # `Skill` is on the allowlist so the vendored `.claude/skills/` are reachable;
+          # without it the model sees their descriptions and can invoke none of them.
+          # See docs/PIPELINE.md § Skills are vendored, not installed.
           claude_args: |
             --model claude-opus-5
             --max-turns 80
-            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"

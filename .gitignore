@@ -83,5 +83,18 @@ start_website.sh
 # (`npx skills add …`). Local, not part of the source.
 .mcp.json
 .agents/
-.claude/skills/
 skills-lock.json
+
+# Skills are per-developer by default, except the ones the CI pipeline depends
+# on, which are tracked by name below. They are vendored rather than installed:
+# `plugin_marketplaces` accepts only a `.git` URL and `claude plugin install`
+# reads `@` as a marketplace, not a version, so a plugin resolves to somebody
+# else's default-branch HEAD on every run. A copy in this tree is the only form
+# of "pinned" the action supports — and it is reviewable in a diff.
+# Adding a name here is a licence decision: see THIRD-PARTY-NOTICES.md §2.
+.claude/skills/*
+!.claude/skills/supabase/
+!.claude/skills/supabase-postgres-best-practices/
+!.claude/skills/test-driven-development/
+!.claude/skills/verification-before-completion/
+!.claude/skills/systematic-debugging/

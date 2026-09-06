@@ -234,7 +234,41 @@ this file.
 
 ### Vendored source
 
-None currently. Phase 2's model source (TRELLIS.2) is **not** vendored: it is
+**Agent skills used by the CI pipeline** (`.claude/skills/`). These are copied into
+this repository rather than installed as plugins, because
+`anthropics/claude-code-action` cannot pin one: `plugin_marketplaces` accepts only a
+`.git` URL with no ref, and `claude plugin install <name>` reads `@` as a marketplace
+selector, not a version — so an installed plugin resolves to a third party's
+default-branch HEAD on every run. A copy in this tree is pinned by the commit and
+readable in a diff. Each directory carries the upstream `LICENSE`; both projects are
+MIT, which permits redistribution and modification provided the notice travels with
+the copy.
+
+| Skill | Upstream | Version | Licence | Used by |
+|---|---|---|---|---|
+| `supabase` | [supabase/agent-skills](https://github.com/supabase/agent-skills) | 0.1.2 | MIT | claude-implement, claude-review |
+| `supabase-postgres-best-practices` | [supabase/agent-skills](https://github.com/supabase/agent-skills) | 1.1.1 | MIT | claude-implement, claude-review |
+| `test-driven-development` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
+| `verification-before-completion` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
+| `systematic-debugging` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
+
+**Modified on vendoring, and the modification is the point of this note.** The three
+superpowers skills cross-reference each other through the plugin namespace
+(`superpowers:test-driven-development`), which does not resolve for a skill loaded
+from a repository rather than from a marketplace. Those references were rewritten to
+the bare skill name, and one reference to `superpowers:writing-skills` — a skill this
+repository deliberately does not vendor — was reworded to name it as an upstream
+document rather than as something invocable. No other content was changed.
+
+**Deliberately not vendored**, and each for a reason rather than by omission: the rest
+of the `superpowers` library, whose `brainstorming` and `using-superpowers` skills
+require interaction with a user who is not present in CI; `code-simplifier` and
+`claude-md-management`, which would produce exactly the out-of-scope changes
+`claude-review` fails a pull request for; and `security-guidance` and `coderabbit`,
+which call their own models and would each add a second credential and a second
+billing path inside a pull-request-triggered job.
+
+Phase 2's model source (TRELLIS.2) is **not** vendored: it is
 cloned at image build time by
 [`infra/docker/trellis2-worker.Dockerfile`](infra/docker/trellis2-worker.Dockerfile),
 or located on a developer machine via `$TRELLIS2_REPO_PATH`. The upstream repo is
