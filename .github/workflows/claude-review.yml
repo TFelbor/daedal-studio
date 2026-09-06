@@ -94,10 +94,16 @@ jobs:
           # real slack, and it buys no cost control anyway — `timeout-minutes: 20` on
           # the job is the actual bound, and 32 turns took four minutes of it. 80
           # matches claude-implement.yml, which does far more work and fits inside it.
+          # `Skill` is what makes `.claude/skills/` reachable. The vendored skills are
+          # discovered automatically — the action leaves `settingSources` at
+          # `["user","project","local"]`, so the checkout's own skills are indexed —
+          # but `--allowedTools` is an allowlist, and without `Skill` on it the model
+          # can see every skill's description and invoke none of them. Inert, and
+          # invisible in a diff.
           claude_args: |
             --model claude-fable-5-1
             --max-turns 80
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
+            --allowedTools "Read,Glob,Grep,Skill,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
             --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
 
       - name: Decide the check from the verdict

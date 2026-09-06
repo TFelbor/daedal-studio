@@ -139,6 +139,64 @@ authored by `claude` through `gh pr view --json comments` and by `claude[bot]` t
 the REST endpoint. Both forms are listed in `CLAUDE_LOGINS`, in `claude-review.yml` and
 `claude-automerge.yml` alike.
 
+## Skills are vendored, not installed
+
+`claude-implement` and `claude-review` both load the skills in `.claude/skills/`. They
+are copied into this repository rather than installed through the action's `plugins`
+and `plugin_marketplaces` inputs, and that is not a preference:
+
+- `plugin_marketplaces` validates against `^https://…\.git$`. There is no ref, tag or
+  sha in that grammar, and `claude plugin marketplace add` has no flag for one.
+- `claude plugin install <name>` reads `@` as a **marketplace** selector, not a version
+  (`use plugin@marketplace for specific marketplace`).
+
+So an installed plugin resolves to somebody else's default-branch HEAD, re-resolved on
+every run — a third party deciding what reviews this repository's code, with no diff
+anywhere. A copy in the tree is pinned by the commit, reviewable, costs no install time
+and needs no network at run time. `THIRD-PARTY-NOTICES.md` § 2 carries the source,
+version and licence of each, and the upstream `LICENSE` sits in each directory.
+
+Two mechanics are load-bearing, and each is silent when wrong:
+
+- **`Skill` must be on `--allowedTools`.** Discovery is automatic — the action leaves
+  `settingSources` at `["user","project","local"]`, so the checkout's own skills are
+  indexed — but the tool allowlist is exhaustive. Without `Skill` the model sees every
+  skill's description and can invoke none of them: the port is inert, the workflows
+  look correct, and nothing in the log says so.
+- **A vendored skill's cross-references must lose the plugin namespace.**
+  `superpowers:test-driven-development` does not resolve for a skill loaded from a
+  repository. Those were rewritten on vendoring; the rewrite is recorded in
+  `THIRD-PARTY-NOTICES.md` because modifying a third party's MIT source is a thing you
+  disclose, not a thing you do quietly.
+
+**Which skills, and which job.** The two Supabase skills serve both jobs — the telemetry
+database is Postgres on Supabase, `pythonsrc/telemetry/db.py` generates the DDL that
+`supabase/migrations/` is rendered from, and a reviewer judging a migration needs the
+same knowledge the implementer needed to write it. The three superpowers skills serve
+`claude-implement` only: they are the disciplines behind "tests for every behaviour
+change" and a definition of done that says the tests were actually run.
+
+**The cost is about 500 tokens per run**, in both jobs, always: each skill contributes
+its name and description to the index whether or not it fires. The two Supabase
+descriptions are 790 and 836 characters and account for roughly 80% of that; the
+superpowers three are 79, 91 and 225. A skill's body loads only when its description
+matches, and the bodies run 0.9–3.2k tokens each.
+
+**What is deliberately absent.** No MCP server is configured for CI. `codegraph` would
+help — call paths grep cannot follow — but CI would have to install the binary and
+build the index (12 MB for this repository), and that build has not been measured;
+proposing it without a number would be guessing. `pixazo` bills EUR 0,32 a call and has
+no business in a job triggered by a pull request. The `supabase` MCP server exposes
+`execute_sql` and `apply_migration` against the live telemetry project — the skills give
+the Postgres knowledge without giving a pull-request-triggered job write access to
+production data. `claude-plan.yml` is untouched: it gets no skills, so it needs no
+`Skill`.
+
+One property to know: `settingSources` includes `project` and `local`, so the action
+loads `.claude/settings.json` **from the pull request's own checkout**. On a private
+repository where only the two technical co-founders can push, that is the same argument
+`allowed_bots` rests on. It stops holding the day this repository becomes public.
+
 ## The labels
 
 | Label | Meaning |
