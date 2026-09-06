@@ -225,16 +225,109 @@ and the outcome-feedback funnel asks the second.
 
 ## Running Tests
 
+### What the suite needs before it will run
+
+Three things beyond the Python packages, and the suite stops with a message naming the
+missing one rather than failing halfway:
+
+- **The local config and the runtime directories.** `pythonsrc/config.py` is gitignored —
+  it holds machine-specific paths — and `pipeline.py`, `slicer.py` and `engineer.py`
+  import from it at module scope, so a fresh checkout cannot even collect without it.
+  `data/` is gitignored too.
+
+  ```bash
+  cp pythonsrc/config.template.py pythonsrc/config.py
+  mkdir -p data/inputs data/outputs data/logs
+  ```
+
+- **A PostgreSQL the suite may administer.** The telemetry database is PostgreSQL
+  (Supabase) in every deployed mode, so the tests run against PostgreSQL too — a SQLite
+  stand-in would pass while the production driver, types and SQL went untested. Either
+  set `DS_TEST_DATABASE_URL` to a database the suite may create and drop schemas in, or
+  have Docker running and `tests/conftest.py` will start a throwaway `postgres:17-alpine`
+  on a random loopback port and remove it at the end (`DS_TEST_POSTGRES_IMAGE` overrides
+  the image). Isolation is a schema per test, carried in the URL as
+  `options=-csearch_path=…`, so `TelemetryDB` needs no test-only knob. See
+  [`tests/testing_postgres.py`](tests/testing_postgres.py).
+
+- **A `CuraEngine` on `PATH`.** `CuraSlicer.__init__` refuses to construct without the
+  binary, including in the tests that stub the call — but nothing in the default
+  selection actually executes it, so a stand-in is enough. CI installs
+  [`infra/ci/curaengine_stub.sh`](infra/ci/curaengine_stub.sh) under that name, which
+  exits 70 if it is ever really invoked rather than faking a successful slice.
+
+### The commands
+
 ```bash
-pytest tests/                                # default: skips anything marked slow
-pytest tests/ -m "slow and real_printer"     # needs a real or simulated printer
-pytest tests/ -m "slow and full_pipeline"    # needs FLUX + a CUDA GPU or sculptor worker
+pytest tests/                                   # the default selection — what CI runs
+pytest tests/test_db.py                         # one file
+pytest tests/test_db.py::test_insert_retrieve_job   # one test
+pytest tests/ -m "slow and real_printer"        # needs a real printer or the OctoPrint simulator
+pytest tests/ -m "slow and full_pipeline"       # needs FLUX weights plus a CUDA GPU or a reachable sculptor worker
+make test                                       # pytest tests/ -v
+make test-slow                                  # pytest tests/ -v -m "slow and real_printer"
 ```
 
-The suite refuses to touch the real telemetry database or spend money: `tests/conftest.py`
-redirects `TELEMETRY_DB_PATH` to a temporary directory and sets `DS_DISABLE_PAID_BACKENDS`
-before collection, and the Pixazo backend refuses to construct when that flag is set.
-`make test` runs the same suite.
+`pytest.ini` carries `-m "not slow"` in its `addopts`, so **`pytest tests/` is already the
+selection CI runs** — it deselects everything that needs weights, a GPU or a printer. That
+is the command that must pass before a PR opens; the two marker-selected runs above are
+opt-in and need hardware this repository cannot assume. Four markers are declared:
+`integration` (a running FastAPI server, no printer), `slow` (over 30 seconds),
+`real_printer` and `full_pipeline`.
+
+### The frontend
+
+```bash
+npm --prefix web ci
+npm --prefix web run build   # tsc -b && vite build — the type check as well as the bundle
+npm --prefix web run lint    # ESLint
+```
+
+There is no JavaScript test runner in this repository: `npm run build` is the check,
+because it is `tsc -b` first and the API server image serves `web/dist/`, so a build that
+only breaks in production is a server that starts and then 404s the whole app. `npm run
+lint` currently **fails on 27 pre-existing errors** unrelated to any new change, which is
+why CI runs it `continue-on-error` — a gate that is red the day it lands teaches everyone
+to ignore the red. Do not treat a red lint as a reason to stop; do leave it no redder than
+you found it.
+
+### What CI runs
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs three Python steps on every
+push and pull request, then the frontend build:
+
+```bash
+pytest tests/test_licensing_guards.py tests/test_licence_data.py                          # licence guards
+pytest tests/test_organizer_dimensional_accuracy.py tests/test_deck_box.py tests/test_engineer_assert.py  # dimensional accuracy (PRD N1)
+pytest tests/                                                                             # the whole default selection
+```
+
+The first two are subsets of the third, named separately so they are legible from the job
+list without opening a log. A licence violation is the one class of defect that cannot be
+fixed after a release, and the ±0,05 mm dimensional claim is the product's promise.
+
+### What the suite refuses to touch
+
+`tests/conftest.py` does its work in `pytest_configure` — the last hook before collection —
+because several modules construct a `TelemetryDB` at *import* time, which no fixture can
+get in front of. Five things are put out of reach for the run:
+
+- **The real telemetry database.** `DS_DATABASE_URL` is rewritten to a schema this run
+  created and will drop. Two test modules run `DELETE FROM print_job`, and the SQLite-era
+  suite once destroyed 312 real job rows exactly that way.
+- **Money.** `DS_DISABLE_PAID_BACKENDS=1` is set and `PIXAZO_API_KEY` removed from the
+  environment; the hosted Phase 2 backend refuses to construct under that flag, and it
+  survives into the pipeline container, which a monkeypatch could not.
+- **The Fernet key.** `DS_CONFIG_KEY_PATH` moves to a temporary directory — the real key
+  decrypts `HF_TOKEN` and `OCTOPRINT_API_KEY`.
+- **The Docker daemon, via the shared `SimulatorManager`.** The server's shutdown hook
+  stops the OctoPrint simulator, and every test entering a `TestClient` context fires it,
+  so a full run used to stop a developer's simulator mid-session.
+- **`data/inputs/blueprint.png`.** A live artifact three tests write to and delete; it is
+  moved aside before collection and moved back afterwards.
+
+A run killed hard enough to skip that teardown leaves the throwaway database behind:
+`docker rm -f $(docker ps -aq -f name=ds-mvp-test-pg-)` clears it.
 
 ---
 
