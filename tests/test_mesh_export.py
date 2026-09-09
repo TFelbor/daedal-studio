@@ -14,6 +14,8 @@ the STL written from the same mesh, and a spec run's 3MF is put through the arch
 own `measure()` at the same ±0,05 mm bound the STL is held to.
 """
 import itertools
+import zipfile
+from xml.etree import ElementTree
 
 import pytest
 import trimesh
@@ -103,6 +105,38 @@ def test_the_3mf_declares_millimetres(tmp_path):
     )
     reloaded = trimesh.load(str(out.with_suffix(".3mf")), force="mesh")
     assert reloaded.units == "millimeter"
+
+
+def test_the_3mf_is_a_conformant_core_package(tmp_path):
+    """Read as an archive rather than through trimesh.
+
+    trimesh reading its own output proves the two halves of trimesh agree. What a
+    slicer needs is the OPC package the core spec describes — the content types, the
+    root relationship, the model part — and the unit declaration on the model element,
+    which is the whole reason this format is here and which no reload can show is
+    absent (trimesh defaults to millimetres either way).
+    """
+    out = Engineer().process(
+        input_path=_raw_mesh(tmp_path), output_path=tmp_path / "engineered_mesh.obj",
+        target_mm=50.0,
+    )
+    with zipfile.ZipFile(out.with_suffix(".3mf")) as archive:
+        assert {"[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"} <= set(
+            archive.namelist()
+        )
+        model = archive.read("3D/3dmodel.model")
+
+    root = ElementTree.fromstring(model)
+    core = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+    assert root.tag == f"{core}model"
+    assert root.attrib["unit"] == "millimeter"
+    assert root.findall(f".//{core}vertex") and root.findall(f".//{core}triangle")
+    # A single-colour part: no material or colour resource at all, rather than one
+    # that happens to be grey.
+    material = "{http://schemas.microsoft.com/3dmanufacturing/material/2015/02}"
+    for element in ("basematerials", "colorgroup"):
+        assert not root.findall(f".//{core}{element}")
+        assert not root.findall(f".//{material}{element}")
 
 
 def test_the_3mf_is_single_colour_and_carries_no_material(tmp_path):
