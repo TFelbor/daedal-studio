@@ -92,9 +92,18 @@ skills-lock.json
 # else's default-branch HEAD on every run. A copy in this tree is the only form
 # of "pinned" the action supports — and it is reviewable in a diff.
 # Adding a name here is a licence decision: see THIRD-PARTY-NOTICES.md §2.
+# The list is short on purpose — every name here costs its description in every
+# run of both jobs, whether it fires or not, and a skill that does not fit this
+# repository does not merely waste that: it hands the implementer instructions
+# this repository forbids. `tests/test_vendored_skills.py` binds this list to
+# the tree, to each directory's LICENSE and to the notices table.
 .claude/skills/*
-!.claude/skills/supabase/
-!.claude/skills/supabase-postgres-best-practices/
 !.claude/skills/test-driven-development/
 !.claude/skills/verification-before-completion/
-!.claude/skills/systematic-debugging/
+
+# The action's `settingSources` defaults to ["user","project","local"], so the
+# model loads `.claude/settings.local.json` from the pull request's own checkout
+# — a committed one would let a pull request grant itself tool permissions and
+# MCP servers. It is ignored here rather than only in a developer's global
+# gitignore, which the next clone does not have.
+.claude/settings.local.json

@@ -64,15 +64,22 @@ and read the part that covers what you are touching.
   weights any package downloads at runtime as well as the package, and update
   `THIRD-PARTY-NOTICES.md`. `tests/test_licensing_guards.py` is a required part of the
   suite, not an optional one.
-- **`.claude/skills/` is mostly ignored and partly tracked, by name.** The five
+- **`.claude/skills/` is mostly ignored and partly tracked, by name.** The two
   directories listed in `.gitignore` are vendored third-party skills that
-  `claude-implement` and `claude-review` load; everything else there is a
-  developer's own. Adding one is a licence decision — it is redistribution, so it
-  needs the upstream `LICENSE` in the directory and an entry in
-  `THIRD-PARTY-NOTICES.md` § 2 — and it needs `Skill` on the workflow's
-  `--allowedTools`, without which the skill is silently inert. Do **not** convert
-  these to the action's `plugins` input: a plugin cannot be pinned to a ref and
-  would resolve to a third party's default branch on every run. See
+  `claude-implement` loads; everything else there is a developer's own. Adding one
+  is a licence decision — it is redistribution, so it needs the upstream `LICENSE`
+  in the directory and an entry in `THIRD-PARTY-NOTICES.md` § 2 — and it needs
+  `Skill` on the workflow's `--allowedTools`, without which the skill is silently
+  inert. `tests/test_vendored_skills.py` binds all four of those facts together
+  and is the only thing that does. Do **not** convert these to the action's
+  `plugins` input: a plugin cannot be pinned to a ref and would resolve to a third
+  party's default branch on every run. Adding one is also **not free and not
+  neutral**: a description is injected into every run whether it fires or not, and
+  a skill written for another stack does not merely waste that — it instructs the
+  implementer to hand-author generated migrations, write `CLAUDE.md`, or install a
+  test framework nobody asked for. Three vendored skills were removed for exactly
+  that, one of them for advice that would have denied the server every write; the
+  reasons are in `THIRD-PARTY-NOTICES.md` § 2 so they do not get rediscovered. See
   `docs/PIPELINE.md` § Skills are vendored, not installed.
 - Never touch these unless the issue explicitly says so:
   - **Credentials and secrets** — `server/config_store.py` (the Fernet-encrypted store),

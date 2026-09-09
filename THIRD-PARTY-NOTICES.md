@@ -246,11 +246,14 @@ the copy.
 
 | Skill | Upstream | Version | Licence | Used by |
 |---|---|---|---|---|
-| `supabase` | [supabase/agent-skills](https://github.com/supabase/agent-skills) | 0.1.2 | MIT | claude-implement, claude-review |
-| `supabase-postgres-best-practices` | [supabase/agent-skills](https://github.com/supabase/agent-skills) | 1.1.1 | MIT | claude-implement, claude-review |
-| `test-driven-development` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
-| `verification-before-completion` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
-| `systematic-debugging` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement |
+| `test-driven-development` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement, claude-review |
+| `verification-before-completion` | [obra/superpowers](https://github.com/obra/superpowers) | 6.3.0 | MIT | claude-implement, claude-review |
+
+`tests/test_vendored_skills.py` binds this table to the tree in both directions —
+a row with no directory attributes something this project does not ship, a
+directory with no row ships something it does not attribute — and to each
+directory's `LICENSE` and to `.gitignore`'s allowlist. The table used to be
+maintained by hand with nothing comparing it to anything.
 
 **Modified on vendoring, and the modification is the point of this note.** The three
 superpowers skills cross-reference each other through the plugin namespace
@@ -267,6 +270,50 @@ require interaction with a user who is not present in CI; `code-simplifier` and
 `claude-review` fails a pull request for; and `security-guidance` and `coderabbit`,
 which call their own models and would each add a second credential and a second
 billing path inside a pull-request-triggered job.
+
+**Removed after assessment**, and recorded here because a deletion with no reason
+gets undone: `supabase` and `supabase-postgres-best-practices` (both
+supabase/agent-skills, MIT) and `systematic-debugging` (obra/superpowers, MIT).
+`supabase` teaches `supabase-js`, `@supabase/ssr`, Edge Functions and end-user
+auth, none of which exist here — Supabase in this project is a hostname in
+`DS_DATABASE_URL` reached by psycopg3 — and its schema workflow (`supabase db
+pull`, `supabase migration new`) authors by hand the migration this repository
+*generates* from `pythonsrc/telemetry/db.py`. `supabase-postgres-best-practices`
+carried three rule files whose advice is a production break in this schema, and
+one of them is severe: `references/security-rls-basics.md` prescribes `alter table
+… force row level security`, while `db.py` enables RLS with **no policies** and the
+server connects as the tables' owner — FORCE RLS subjects the owner to those
+absent policies and denies every read and write from the server, the pipeline and
+the collectors. `systematic-debugging` ships five of its ten files as upstream's
+own authoring artifacts, and its two executables are foreign: `find-polluter.sh`
+needs `bash` (not on either job's allowlist) and calls an `npm test` script `web/`
+does not define, and `condition-based-waiting-example.ts` imports
+`~/threads/thread-manager` from an unrelated project.
+
+**Assessed and rejected wholesale**, so that "add the skills" is not proposed again
+as though it were free:
+
+| Collection | Skills | Description index, per run of *each* job | Verdict |
+|---|---|---|---|
+| [affaan-m/ecc](https://github.com/affaan-m/ecc) 2.2.1 (MIT) | 286 | ~20 100 tokens | none vendored |
+| `~/.orchestra/skills` | 95 | ~6 600 tokens | none — ML research; no LICENSE in the tree |
+| `claude-scientific-skills` | 163 | ~16 400 tokens | none — wet-lab and astronomy |
+| Anthropic Cybersecurity Skills | 817 | ~79 900 tokens | none — SOC/DFIR runbooks needing absent binaries |
+
+Two things decided all four. The **index cost is unconditional**: a skill's name and
+description are injected into every run of both jobs whether or not it fires, so
+vendoring these would add roughly 123 000 tokens per run to a set that currently
+costs about 75 — and would bury the skills that do fit under a thousand that do
+not. The **fit is not there**: of ecc's 286, forty were read in full against this
+repository's actual code and every one failed on stack (Next.js, Express, Django,
+Laravel, Kotlin, Kubernetes, Redis), on a missing dependency (`semgrep`,
+`playwright`, `vitest`, an MCP server, a browser, a second model), or on
+instructing the agent to do something this repository forbids — `database-migrations`
+teaches hand-authored migrations, `codebase-onboarding` writes `CLAUDE.md`,
+`architecture-decision-records` creates a docs tree, `contract-first` deletes
+`web/src/api/client.ts`. Licence blocks the residue independently: the three
+personal collections carry no upstream `LICENSE` beside the skills that would be
+copied, and redistribution into an Apache-2.0 repository needs one.
 
 Phase 2's model source (TRELLIS.2) is **not** vendored: it is
 cloned at image build time by
