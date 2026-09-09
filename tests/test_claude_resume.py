@@ -137,6 +137,7 @@ def test_bot_comments_do_not_count_as_a_person() -> None:
         _comment("claude", "## claude-review …", NOW - timedelta(hours=2)),
         _comment("github-actions", "<!-- claude-fix-request --> @claude please address the review.", NOW - timedelta(hours=2)),
         _comment("claude[bot]", "noted", NOW - timedelta(hours=1)),
+        _comment("app/claude", "the App as gh spells a pull request author", NOW - timedelta(minutes=30)),
     ]
     d = resume.decide(_pr(), comments, NOW)
     assert d.action == "dispatch"

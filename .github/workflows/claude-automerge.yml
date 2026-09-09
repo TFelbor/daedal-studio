@@ -43,18 +43,16 @@ jobs:
           REVIEW_PR: ${{ github.event.pull_request.number }}
           SUITE_PRS: ${{ toJSON(github.event.check_suite.pull_requests) }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          # The logins the Claude GitHub App commits and opens pull requests under.
-          #
-          # The bare slugs are load-bearing. `.author.login` below comes from
-          # `gh pr view --json`, which reads GraphQL, and GraphQL returns a GitHub
-          # App's login *without* the suffix — `claude`, where REST says `claude[bot]`.
-          # Verified against this repository: the same comment reads `claude` through
-          # `gh pr view --json comments` and `claude[bot]` through the REST endpoint.
-          # Listing only the suffixed forms — as this did — means the case below never
-          # matches, and every Claude pull request is declined with "author is claude,
-          # not the Claude app". Invisible so far only because AUTO_MERGE is `off`.
-          # Both forms are kept, and claude-review.yml carries the same set.
-          CLAUDE_LOGINS: "claude claude[bot] claude-code claude-code[bot]"
+          # The logins the Claude GitHub App commits and opens pull requests under, in
+          # every spelling `gh` uses for the same actor: `app/claude` as a pull
+          # request's `author.login` (GraphQL, `is_bot: true`), `claude` on comments
+          # and reviews, `claude[bot]` over REST. This list has been wrong twice: first
+          # it carried only the suffixed form, then only the bare one — and
+          # claude-review.yml declined PR #92 with "author is app/claude, not the
+          # Claude app" because the pull-request form was missing. The comparison
+          # below now normalises the login as well, so a fourth spelling would still
+          # match. claude-review.yml carries the same set; the two must not drift.
+          CLAUDE_LOGINS: "claude claude[bot] app/claude claude-code claude-code[bot] app/claude-code"
         run: |
           set -euo pipefail
 
@@ -78,8 +76,11 @@ jobs:
             [ "$(printf '%s' "$meta" | jq -r '.isDraft')" = "false" ] || { decline "$pr" "draft"; continue; }
 
             author=$(printf '%s' "$meta" | jq -r '.author.login')
+            # Strip the `app/` prefix and the `[bot]` suffix before comparing; neither
+            # character is legal in a human login, so this cannot admit a person.
+            author_norm=$(printf '%s' "$author" | sed -E 's#^app/##; s#\[bot\]$##')
             case " $CLAUDE_LOGINS " in
-              *" $author "*) : ;;
+              *" $author_norm "*) : ;;
               *) decline "$pr" "author is ${author}, not the Claude app"; continue ;;
             esac
 

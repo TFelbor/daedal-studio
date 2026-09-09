@@ -77,7 +77,10 @@ def _when(value: str) -> datetime:
 
 
 def _is_bot(login: str) -> bool:
-    return login.lower().removesuffix("[bot]") in BOT_LOGINS
+    # `gh` spells one App three ways: `app/claude` (a pull request's author), `claude`
+    # (comments, reviews), `claude[bot]` (REST). Neither `/` nor `[` is legal in a human
+    # login, so stripping both admits no person.
+    return login.lower().removeprefix("app/").removesuffix("[bot]") in BOT_LOGINS
 
 
 def decide(
