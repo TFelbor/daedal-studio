@@ -661,6 +661,62 @@ FastAPI application with:
   **Uvicorn's access log is switched off** because it logged every request a second
   time, at INFO, cancelling that demotion out; `$DS_UVICORN_ACCESS_LOG=1` restores it.
 - **SPA serving**: catch-all route serves `web/dist/` — the React app must be pre-built before server start
+- **Every request-controlled path join goes through `contained_path`.** Nothing between
+  the socket and a handler collapses dot segments: uvicorn percent-decodes the request
+  target straight into `scope["path"]`, and Starlette's `{...:path}` converter matches
+  `/` and `..` alike — so `GET /%2e%2e/%2e%2e/%2e%2e/etc/passwd` reached `serve_spa` as
+  `../../../etc/passwd`, `os.path.join` walked out of `web/dist`, and `FileResponse`
+  streamed the file. There is **no end-user authentication in this server**, and the
+  api-server process is the one with `~/.ds-mvp/.config_key` bind-mounted, so that was
+  an unauthenticated read of the Fernet key for the store holding printer API keys —
+  and of `.env` and `pythonsrc/config.py` beside it. `contained_path(base, *parts)`
+  joins and then requires `is_relative_to(base)` **after `resolve()`**: a lexical check
+  passes a path whose every component is innocent and whose symlink target is not, and
+  an *absolute* part needs no `..` at all (`Path("web/dist") / "/etc/passwd"` is
+  `/etc/passwd`, and `//x` reaches a `:path` group as `/x`). Four joins use it —
+  `serve_spa`, `resolve_job_artifact` (both `job_id`, which arrives as `..` from
+  `/jobs/%2e%2e/blueprint`, and `filename`), `resolve_job_profile`, and the two
+  `repo_root / job.profile_name` profile reads, where `profile` is free text from
+  `POST /jobs` that is `json.load`ed and handed to `run_operator.py`. A refused SPA
+  path falls through to `index.html` rather than 403-ing, because client-side routing
+  means an unmatched path is the normal case for a deep link.
+  `tests/test_static_path_traversal.py` holds the line, and it sends every traversal
+  **percent-encoded**: `httpx` normalises a literal `../` away client-side, so a test
+  written the obvious way passes against the vulnerable code.
+- **A printer profile may only be a file in `pythonsrc/profiles`** — `PROFILES_DIR`,
+  `resolve_profile_path`, `profile_path_or_default`. `profile` is free text on
+  `POST /jobs`, and `create_job` reads the file it names twice:
+  `resolve_printer_target` pulls `firmware` / `base_url` / `api_key` out of it, and
+  `_profile_snapshot` `json.load`s it and stores the **whole parsed dict** as
+  `process_params`, which `GET /jobs/{id}/provenance` serves back verbatim. Since
+  `Path(repo_root) / "/any/file.json"` is `/any/file.json`, that was an
+  unauthenticated read of any JSON file the server can open, written into the dataset
+  and handed back — no traversal needed. **`DEFAULT_PROFILE` is the same value, not a
+  more trusted one**: it is set through `PUT /config` and `web/src/pages/NewJob.tsx`
+  forwards it as `request.profile`, so it takes one boundary, at all nine join sites.
+  Confining to the checkout would have stopped the absolute read and left every JSON
+  file under it an accepted profile — `web/package.json`, `licenses/*.json`,
+  `tsconfig.json` — which is an in-repo existence oracle and lets `run_operator.py` be
+  handed `package.json` as a printer. Three consequences, each deliberate:
+  **only an *escaping* path is a 422**; a profile that merely does not exist stays a
+  202 and disables printing, which is what `"default"` and `"test"` do and what
+  `tests/test_server.py` pins — and the distinction falls out of `contained_path`,
+  which returns a path for a contained file that does not exist and None only for an
+  escape. The refusal sits **beside the IP screen**, before `job_id` is minted and
+  before the artifact-cleanup loop, for the reason given there. And
+  `profile_path_or_default` falls back to the bundled Ender 3 at the sites that are
+  not request boundaries, because honouring an escaping path meant reading a printer
+  address and API key out of a file the caller chose.
+  **Behaviour change:** an absolute or out-of-repo profile path no longer resolves
+  anywhere. `printer_status._ceiling` used to end
+  `open(candidate if candidate.exists() else profile_ref)` — deliberate absolute-path
+  support, and the same arbitrary read reachable through
+  `GET /system/printer/status`; that fallback is gone. `PrinterSetup`'s datalist was
+  already entirely `pythonsrc/profiles/*.json`.
+  **Still open, and worse than either:** `PUT /config` has no authentication, so a
+  caller can repoint `OCTOPRINT_URL` at their own host and have the server ship it
+  `OCTOPRINT_API_KEY`. That is a bigger hole than any profile read and wants its own
+  issue.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
 

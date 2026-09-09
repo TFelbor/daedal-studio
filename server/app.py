@@ -139,6 +139,140 @@ active_pipelines: dict[str, asyncio.subprocess.Process] = {}
 cancelled_jobs: set[str] = set()
 
 
+#: The built SPA. Resolved once, at import, so every containment check below compares
+#: against the same absolute directory rather than re-deriving `server/../web/dist` and
+#: hoping the two spellings agree.
+DIST_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+def contained_path(base: Path, *parts: str) -> Path | None:
+    """Join request-controlled `parts` onto `base`, refusing anything that leaves it.
+
+    Three separate mechanisms escape a path join, and each has its own way in here.
+
+    A `..` segment walks up, and **nothing between the socket and the handler collapses
+    dot segments**: uvicorn percent-decodes the request target straight into
+    `scope["path"]`, and Starlette's `{...:path}` converter matches `/` and `..` alike.
+    So `/%2e%2e/%2e%2e/.env` — or a literal `../` from `curl --path-as-is` — arrives at
+    a route as `../../.env`.
+
+    An **absolute** part discards the base outright, with no `..` at all:
+    `os.path.join("web/dist", "/etc/passwd")` and `Path("web/dist") / "/etc/passwd"` are
+    both `/etc/passwd`.
+
+    And a symlink inside `base` can point anywhere, which is why containment is decided
+    after `resolve()` rather than by inspecting the string — a lexical check passes a
+    path whose every component is innocent and whose target is not.
+
+    This matters more here than a generic traversal would: there is no end-user
+    authentication in this server, and the api-server process is the one with
+    `~/.ds-mvp/.config_key` bind-mounted — the Fernet key for the encrypted config store
+    that holds printer API keys. An unauthenticated arbitrary read is a credential
+    disclosure.
+
+    Args:
+        base: The directory the result must stay inside. Need not exist.
+        *parts: Untrusted path components, joined in order.
+
+    Returns:
+        The resolved path, or None when it lands outside `base` — including when a part
+        is absolute, or when the join cannot be resolved at all.
+    """
+    root = base.resolve()
+    try:
+        candidate = root.joinpath(*parts).resolve()
+    except (OSError, ValueError, RuntimeError):
+        # ValueError: an embedded NUL byte. RuntimeError: a symlink loop, on the
+        # resolve() implementations that report one that way. OSError: a component
+        # that cannot be stat'ed. None of them is a path we may serve.
+        return None
+    if not candidate.is_relative_to(root):
+        return None
+    return candidate
+
+
+#: The only directory a printer profile may come from. Confined here rather than to the
+#: checkout because every other JSON file in the repo would otherwise be an accepted
+#: profile: `web/package.json`, `licenses/*.json` and `tsconfig.json` all resolve, parse,
+#: and land in `process_params` — an in-repo existence oracle, and `run_operator.py`
+#: handed `package.json` as a printer.
+PROFILES_DIR = Path(__file__).resolve().parent.parent / "pythonsrc" / "profiles"
+
+#: How the Settings UI writes a profile and how every stored `profile_name` spells one.
+#: Accepted alongside a bare filename so existing rows and the four values in
+#: `PrinterSetup`'s datalist keep working untouched.
+_PROFILES_PREFIX = "pythonsrc/profiles/"
+
+#: The profile used when none was named. Also what an escaping path falls back to at the
+#: call sites that are not request boundaries — see `profile_path_or_default`.
+DEFAULT_PROFILE_NAME = "ender3.json"
+
+
+class ProfileOutsideProfilesDir(ValueError):
+    """A profile path that resolves outside `pythonsrc/profiles`.
+
+    Deliberately distinct from "no such profile", which is an ordinary tolerated
+    condition: a `profile` of `"default"` or `"test"` names nothing, correctly disables
+    printing, and `POST /jobs` answers 202 — `tests/test_server.py` pins that. A path
+    that *leaves* the directory has no legitimate reading, so it is refused rather than
+    quietly disabling the print.
+    """
+
+
+def resolve_profile_path(candidate: str | None) -> Path | None:
+    """The absolute path of a printer profile, or None when none was named.
+
+    Both spellings are accepted: `pythonsrc/profiles/ender3.json`, which is what the
+    Settings UI writes and what `profile_name` rows hold, and a bare `ender3.json`.
+
+    Args:
+        candidate: A profile as submitted or stored. None and "" mean "none named".
+
+    Returns:
+        The absolute path, which **need not exist** — a merely missing profile is
+        tolerated, and each caller's own `exists()` check handles it.
+
+    Raises:
+        ProfileOutsideProfilesDir: The path resolves outside `pythonsrc/profiles`.
+    """
+    if not candidate:
+        return None
+    relative = (
+        candidate[len(_PROFILES_PREFIX):]
+        if candidate.startswith(_PROFILES_PREFIX)
+        else candidate
+    )
+    path = contained_path(PROFILES_DIR, relative)
+    if path is None:
+        raise ProfileOutsideProfilesDir(candidate)
+    return path
+
+
+def profile_path_or_default(candidate: str | None) -> Path:
+    """`candidate`'s profile path, falling back to the bundled Ender 3.
+
+    For the call sites that are not request boundaries and have nowhere to put a 422.
+    An escaping path resolves to the bundled default rather than being honoured, which
+    is strictly safer than the alternative: honouring it meant reading `firmware`,
+    `base_url` and `api_key` out of a file the caller chose, i.e. redirecting a print.
+    `POST /jobs` refuses such a path outright, before any of these run.
+
+    Args:
+        candidate: A profile as submitted or stored.
+
+    Returns:
+        An absolute path, which need not exist.
+    """
+    try:
+        path = resolve_profile_path(candidate)
+    except ProfileOutsideProfilesDir:
+        logger.warning(
+            "Ignoring a printer profile outside %s: %r", PROFILES_DIR, candidate,
+        )
+        path = None
+    return path or PROFILES_DIR / DEFAULT_PROFILE_NAME
+
+
 def resolve_job_artifact(
     job_id: str, filename: str, *, per_job_only: bool = False,
 ) -> Path | None:
@@ -166,24 +300,29 @@ def resolve_job_artifact(
     Returns:
         The path to the artifact, or None if no location has it.
     """
-    outputs = Path(__file__).parent.parent / "data" / "outputs"
-    for directory in (outputs / job_id, outputs / f"dev-{job_id}"):
-        candidate = directory / filename
-        if candidate.exists():
+    # `job_id` comes straight off the URL and `filename` is a parameter, so every join
+    # below goes through `contained_path`. `job_id` reaches here as `..` via
+    # `/jobs/%2e%2e/blueprint`: the route's `[^/]+` group matches a decoded `..` exactly
+    # as it matches a UUID, and `data/outputs/../blueprint.png` is `data/blueprint.png`.
+    data = Path(__file__).resolve().parent.parent / "data"
+    outputs = data / "outputs"
+    for directory in (job_id, f"dev-{job_id}"):
+        candidate = contained_path(outputs, directory, filename)
+        if candidate is not None and candidate.exists():
             return candidate
 
     if per_job_only:
         return None
 
-    legacy = outputs / filename
-    if legacy.exists():
+    legacy = contained_path(outputs, filename)
+    if legacy is not None and legacy.exists():
         return legacy
 
     if filename == "blueprint.png":
-        inputs = Path(__file__).parent.parent / "data" / "inputs"
+        inputs = data / "inputs"
 
-        per_job = inputs / job_id / filename
-        if per_job.exists():
+        per_job = contained_path(inputs, job_id, filename)
+        if per_job is not None and per_job.exists():
             return per_job
 
         # The shared path, for rows written before inputs were per-job and for the
@@ -192,9 +331,10 @@ def resolve_job_artifact(
         # into it, and the shared file demonstrably belongs to some other run. Serving
         # it would be the same mis-attribution the per-job path exists to prevent,
         # committed by the endpoint instead of by the pipeline.
-        if not (inputs / job_id).exists():
-            shared_input = inputs / filename
-            if shared_input.exists():
+        job_inputs = contained_path(inputs, job_id)
+        if job_inputs is not None and not job_inputs.exists():
+            shared_input = contained_path(inputs, filename)
+            if shared_input is not None and shared_input.exists():
                 return shared_input
 
     return None
@@ -214,13 +354,20 @@ def resolve_job_profile(job) -> tuple[str, str | None]:
     Returns:
         A (relative_profile, absolute_path) tuple. The path is None when nothing exists.
     """
-    repo_root = Path(__file__).parent.parent
+    # `profile_name` is free text the client sent to `POST /jobs`, and the resolved path
+    # is `json.load`ed by `dispatch_target` and handed to `run_operator.py` as the
+    # profile to print with. A candidate that leaves `pythonsrc/profiles` is skipped
+    # rather than raising: this is a read path with two more candidates behind the bad
+    # one, and the refusal that matters already happened at `POST /jobs`.
     for candidate in (job.profile_name, config_store.get("DEFAULT_PROFILE"),
-                      "pythonsrc/profiles/ender3.json"):
+                      _PROFILES_PREFIX + DEFAULT_PROFILE_NAME):
         if not candidate or candidate == "default":
             continue
-        path = repo_root / candidate
-        if path.exists():
+        try:
+            path = resolve_profile_path(candidate)
+        except ProfileOutsideProfilesDir:
+            continue
+        if path is not None and path.exists():
             return candidate, str(path)
     return "", None
 
@@ -1436,7 +1583,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             
         # Export printer config to pipeline — resolved in one place so the pipeline
         # and the telemetry collector can never target different printers.
-        profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
+        profile_path = str(profile_path_or_default(request.profile))
         firmware, url, key = resolve_printer_target(profile_path)
         pipeline_env["DS_FIRMWARE"] = firmware
 
@@ -1742,6 +1889,38 @@ async def create_job(request: JobRequest):
     # Every field that reaches the model is passed, not just the prompt:
     # `material_colour` is interpolated into the string sent to FLUX, so a screen
     # reading `prompt` alone leaves the colour box unwatched.
+    # Refused here for the same reason the IP screen is: before `job_id` is minted and
+    # before the artifact-cleanup loop below, which unconditionally deletes the flat mesh
+    # and G-code. A refusal after that point destroys the previous job's output in order
+    # to reject a job that never existed.
+    #
+    # `profile` is free text, and the two joins further down read the named file:
+    # `resolve_printer_target` pulls `firmware`/`base_url`/`api_key` out of it, and
+    # `_profile_snapshot` `json.load`s it and stores the whole parsed dict as
+    # `process_params`, which `GET /jobs/{id}/provenance` serves back verbatim. An
+    # absolute path needs no traversal to escape, so this was an unauthenticated read of
+    # any JSON file the server can open, written into the dataset and handed back.
+    #
+    # Only an *escaping* path is refused. A profile that merely does not exist stays a
+    # 202 and disables printing, which is what `"default"` and `"test"` do today.
+    try:
+        resolve_profile_path(request.profile)
+    except ProfileOutsideProfilesDir:
+        activity.action(
+            "job refused",
+            [("reason", "profile outside pythonsrc/profiles"),
+             ("profile", request.profile)],
+            outcome="refused before the job row was created",
+            status="warn",
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A printer profile must be a file in pythonsrc/profiles; "
+                f"{request.profile!r} resolves outside it."
+            ),
+        )
+
     screen = screen_prompt(request.prompt, request.material_colour)
     if screen.action == "block":
         activity.action(
@@ -1784,7 +1963,7 @@ async def create_job(request: JobRequest):
             except Exception as e:
                 logger.warning(f"Failed to delete old artifact {artifact}: {e}")
 
-    profile_path = str(repo_root / (request.profile or "pythonsrc/profiles/ender3.json"))
+    profile_path = str(profile_path_or_default(request.profile))
     firmware = "octoprint"
     if not os.path.exists(profile_path):
         logger.error(f"Printer profile not found: {profile_path} — disabling print")
@@ -1967,7 +2146,7 @@ async def get_job(job_id: str):
         profile_path_str = job.profile_name
         if profile_path_str and profile_path_str != "default":
             try:
-                profile_full_path = repo_root / profile_path_str
+                profile_full_path = profile_path_or_default(profile_path_str)
                 if profile_full_path.exists():
                     with open(profile_full_path, "r") as pf:
                         profile_data = json.load(pf)
@@ -2036,9 +2215,7 @@ async def get_printer_info(job_id: str):
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    repo_root = Path(__file__).parent.parent
-    
+
     service_labels = {
         "octoprint": "OctoPrint",
         "klipper": "Klipper",
@@ -2052,7 +2229,7 @@ async def get_printer_info(job_id: str):
     
     if profile_path_str and profile_path_str != "default":
         try:
-            profile_full_path = repo_root / profile_path_str
+            profile_full_path = profile_path_or_default(profile_path_str)
             if profile_full_path.exists():
                 with open(profile_full_path, "r") as pf:
                     profile_data = json.load(pf)
@@ -2708,8 +2885,7 @@ async def cancel_job(job_id: str):
         })
             
     # Attempt to cancel printer
-    repo_root = Path(__file__).parent.parent
-    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
+    profile_path = str(profile_path_or_default(config_store.get("DEFAULT_PROFILE")))
     try:
         if os.path.exists(profile_path):
             firmware, base_url, api_key = resolve_printer_target(profile_path)
@@ -2761,9 +2937,8 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    repo_root = Path(__file__).parent.parent
-    profile_path = str(repo_root / (config_store.get("DEFAULT_PROFILE") or "pythonsrc/profiles/ender3.json"))
-    
+    profile_path = str(profile_path_or_default(config_store.get("DEFAULT_PROFILE")))
+
     if not os.path.exists(profile_path):
         raise HTTPException(status_code=400, detail="Printer profile not found")
         
@@ -3985,11 +4160,20 @@ async def printer_status():
     # because "no printer" and "a printer that declares no dimensions" are different
     # answers that happen to imply the same thing: do not clamp.
     def _ceiling(profile_ref: Optional[str]) -> Optional[List[float]]:
-        if not profile_ref:
-            return None
-        candidate = Path(__file__).parent.parent / profile_ref
+        # The `open(profile_ref)` fallback this used to carry was deliberate
+        # absolute-path support, and also an unauthenticated arbitrary-JSON read:
+        # `DEFAULT_PROFILE` is set through `PUT /config`, and `NewJob` forwards its value
+        # as `request.profile`, so it is one value and takes one boundary.
         try:
-            with open(candidate if candidate.exists() else profile_ref, "r") as handle:
+            candidate = resolve_profile_path(profile_ref)
+        except ProfileOutsideProfilesDir:
+            logger.debug("Ignoring a build volume from outside %s: %s",
+                         PROFILES_DIR, profile_ref)
+            return None
+        if candidate is None:
+            return None
+        try:
+            with open(candidate, "r") as handle:
                 return _profile_build_volume(json.load(handle))
         except Exception as exc:  # noqa: BLE001
             logger.debug("Could not read a build volume from %s: %s", profile_ref, exc)
@@ -4015,8 +4199,11 @@ async def printer_status():
         return {"configured": False, "type": "none", "running": False,
                 "detail": "No printer profile selected.", "build_volume_mm": None}
 
-    profile_path = Path(__file__).parent.parent / profile
-    if not profile_path.exists():
+    try:
+        profile_path = resolve_profile_path(profile)
+    except ProfileOutsideProfilesDir:
+        profile_path = None
+    if profile_path is None or not profile_path.exists():
         return {"configured": False, "type": "none", "running": False,
                 "detail": f"Profile file not found: {profile}", "build_volume_mm": None}
 
@@ -4074,8 +4261,21 @@ async def get_mesh(job_id: str):
 async def serve_spa(full_path: str):
     """Catch-all route to serve the React SPA and its static assets.
 
+    `full_path` is the percent-decoded request target and is matched by the `:path`
+    converter, so it arrives with its slashes and its dot segments intact — this is the
+    one route in the app that can be handed `../../../etc/passwd`. It therefore joins
+    through `contained_path` rather than `os.path.join`.
+
+    A refused path is answered with the SPA shell, not a 403: client-side routing means
+    an unmatched path is the normal case for a deep link, and there is nothing useful to
+    tell a caller about a file it may not have. `StaticFiles` does its own containment
+    and was considered for the asset half, but it would cover only this one join —
+    `resolve_job_artifact` and `resolve_job_profile` need the same check — and would
+    still leave this handler to serve the fallback. One shared helper is less machinery
+    than a mount beside it.
+
     Args:
-        full_path: The requested path.
+        full_path: The requested path, request-controlled and unnormalised.
 
     Returns:
         A FileResponse containing the requested asset or index.html.
@@ -4083,17 +4283,15 @@ async def serve_spa(full_path: str):
     Raises:
         HTTPException: If the frontend is not built or found.
     """
-    dist_dir = os.path.join(os.path.dirname(__file__), "..", "web", "dist")
-    file_path = os.path.join(dist_dir, full_path)
-    
-    # If a specific static file is requested and exists, serve it
-    if full_path and os.path.isfile(file_path):
-        return FileResponse(file_path)
-    
-    # Otherwise, fallback to index.html for client-side routing
-    index_path = os.path.join(dist_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-        
+    if full_path:
+        asset = contained_path(DIST_DIR, full_path)
+        if asset is not None and asset.is_file():
+            return FileResponse(str(asset))
+
+    # Fall back to index.html for client-side routing.
+    index_path = DIST_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+
     raise HTTPException(status_code=404, detail="Frontend not built or not found")
 

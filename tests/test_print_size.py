@@ -202,22 +202,24 @@ def test_the_requested_axis_is_recorded_on_the_row(mock_run, printer_configured)
 # reimplementing the `machine_*` read is the point: two readers of one profile is how
 # a clamp ends up disagreeing with `printability.build_volume_fit`.
 
-def test_the_printer_probe_reports_a_build_volume_from_the_profile(monkeypatch, tmp_path):
-    """A profile that declares its machine size must say so before a job exists."""
-    import asyncio
-    import json
+def test_the_printer_probe_reports_a_build_volume_from_the_profile(monkeypatch):
+    """A profile that declares its machine size must say so before a job exists.
 
-    profile = tmp_path / "ender3.json"
-    profile.write_text(json.dumps({
-        "firmware": "octoprint", "base_url": "http://localhost:5001",
-        "machine_width": 220, "machine_depth": 220, "machine_height": 250,
-    }))
+    Points at the bundled `pythonsrc/profiles/ender3.json` rather than writing a
+    profile into `tmp_path`. A profile may only come from `pythonsrc/profiles` — see
+    `resolve_profile_path` — and the bundled file already declares 220/220/250, so this
+    is the same assertion against the profile the Settings UI actually offers instead of
+    against a fixture that happens to reproduce its numbers.
+    """
+    import asyncio
+
+    profile = "pythonsrc/profiles/ender3.json"
 
     monkeypatch.setattr(
         app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
     )
     monkeypatch.setattr(app_module.config_store, "get", lambda key, *a, **k: (
-        str(profile) if key == "DEFAULT_PROFILE" else None
+        profile if key == "DEFAULT_PROFILE" else None
     ))
     monkeypatch.setattr(app_module, "resolve_printer_target",
                         lambda path: ("octoprint", "http://localhost:5001", None))
@@ -231,23 +233,24 @@ def test_the_printer_probe_reports_a_build_volume_from_the_profile(monkeypatch, 
     assert status["build_volume_mm"] == [220.0, 220.0, 250.0]
 
 
-def test_a_profile_without_machine_keys_reports_no_ceiling(monkeypatch, tmp_path):
+def test_a_profile_without_machine_keys_reports_no_ceiling(monkeypatch):
     """"No ceiling known" is a first-class case, not a zero.
 
-    `bambu_test.json` declares no machine dimensions at all. A composer that assumes
-    a number would clamp to 0 or NaN and refuse every size for that printer.
+    `bambu_test.json` declares no machine dimensions at all, so it is used directly
+    rather than reconstructed in `tmp_path`: a copy would keep passing if the bundled
+    profile grew machine keys, which is the one change that should break this.
+    A composer that assumes a number would clamp to 0 or NaN and refuse every size for
+    that printer.
     """
     import asyncio
-    import json
 
-    profile = tmp_path / "bambu.json"
-    profile.write_text(json.dumps({"firmware": "bambu", "base_url": "http://x"}))
+    profile = "pythonsrc/profiles/bambu_test.json"
 
     monkeypatch.setattr(
         app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
     )
     monkeypatch.setattr(app_module.config_store, "get", lambda key, *a, **k: (
-        str(profile) if key == "DEFAULT_PROFILE" else None
+        profile if key == "DEFAULT_PROFILE" else None
     ))
     monkeypatch.setattr(app_module, "resolve_printer_target",
                         lambda path: ("bambu", "http://x", None))
