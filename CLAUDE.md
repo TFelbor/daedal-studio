@@ -1692,6 +1692,23 @@ of every effect, so this fired on every dev page load and read like a dead backe
 
 System config (`.env` template at `.env.template`) is loaded by Docker Compose; `DS_DATABASE_URL` in it is the one required value. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry database (`app_config` table, PostgreSQL on Supabase). The Fernet key file lives at `~/.ds-mvp/.config_key` (`$DS_CONFIG_KEY_PATH`), is gitignored and auto-generated on first use.
 
+**The API is published on loopback, and one variable moves it.** `ports: -
+"8000:8000"` offered an unauthenticated `POST /jobs` (EUR 0,32 a hosted
+generation), `POST /jobs/{id}/print-dispatch` (heats a nozzle) and `PUT /config`
+(rewrites printer credentials) to everything that could route to the host — the
+LAN, a guest network, a shared VPN. The mapping is
+`${DS_API_BIND:-127.0.0.1}:8000:8000` and `make start-native` passes the same
+variable to uvicorn's `--host`, so the container and the native run agree and
+neither is open by default; `load_native_env.sh` lifts it across because a `.env`
+that opens the API deliberately must not be inert natively. **uvicorn's `--host
+0.0.0.0` inside the container and in `server.Dockerfile` is not this setting and
+must stay** — Docker publishes a port by connecting to the container's own
+address, so a loopback bind in there makes the published port dead. The bind
+address is one token whose deletion is invisible in a diff and total at runtime,
+which is what `tests/test_api_bind_address.py` is for. This is a vector removed,
+not authentication: there is still none, and `PUT /config` remains the hole
+described under **Server** above.
+
 Key pipeline paths: `data/inputs/{job_id}/` (blueprint and its provenance sidecar; runs without `--job-id` use flat `data/inputs/`), `data/outputs/{job_id}/` (per-job mesh, G-code and a blueprint snapshot — runs without `--job-id` still use flat `data/outputs/`), `data/logs/` (per-job logs and status files). Server artifact endpoints resolve the per-job path first and fall back to the flat layout for pre-existing rows. These are gitignored runtime directories.
 
 ## Licensing Constraints
