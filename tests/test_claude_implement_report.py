@@ -41,7 +41,7 @@ printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_GH_LOG"
 case "$1 $2" in
   "pr list")   printf '%s' "${FAKE_GH_PR_LIST:-[]}" ;;
   "pr create") echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
-  "pr comment"|"issue comment") : ;;
+  "pr comment"|"issue comment"|"pr ready") : ;;
   *) echo "fake gh: unexpected invocation: $*" >&2; exit 64 ;;
 esac
 """
@@ -122,13 +122,14 @@ def _remote_has_branch(repo: dict, branch: str = "claude/issue-7") -> bool:
     return branch in out
 
 
-def _execution_file(repo: dict, subtype: str = "error_max_turns", turns: int = 81, denials: int = 1) -> str:
+def _execution_file(repo: dict, subtype: str = "error_max_turns", turns: int = 81, denials: int = 1,
+                    errors: list[str] | None = None) -> str:
     path = repo["tmp"] / "claude-execution-output.json"
-    messages = [
-        {"type": "system", "subtype": "init", "session_id": "abc"},
-        {"type": "result", "subtype": subtype, "is_error": subtype != "success",
-         "num_turns": turns, "permission_denials": [{"tool_name": "Bash"}] * denials},
-    ]
+    result = {"type": "result", "subtype": subtype, "is_error": subtype != "success",
+              "num_turns": turns, "permission_denials": [{"tool_name": "Bash"}] * denials}
+    if errors is not None:
+        result["errors"] = errors
+    messages = [{"type": "system", "subtype": "init", "session_id": "abc"}, result]
     path.write_text(json.dumps(messages))
     return str(path)
 
@@ -288,3 +289,80 @@ def test_the_script_exits_zero_even_when_github_is_unreachable(repo: dict) -> No
     result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
     assert result.returncode == 0, result.stderr
     assert "502" in result.stderr or "502" in result.stdout
+
+
+# --- the resume protocol: markers the claude-resume workflow reads -----------------------
+
+SAFETY_NET_DRAFT = json.dumps([{
+    "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
+    "body": "Closes #7\n\n<!-- claude-implement-safety-net subtype=error_during_execution -->\n**Opened by the claude-implement workflow**",
+}])
+HUMAN_DRAFT = json.dumps([{
+    "number": 13, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/13", "isDraft": True,
+    "body": "Closes #7\n\nStill working on the tests.",
+}])
+
+
+def test_the_reason_carries_the_first_error_text(repo: dict) -> None:
+    """A usage-limit or API failure arrives as `error_during_execution` with the error in
+    `errors`; the subtype alone does not say whether waiting would help."""
+    ef = _execution_file(repo, "error_during_execution", 12, 0,
+                         errors=['API Error: 429 {"type":"rate_limit_error","message":"usage limit reached"}'])
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=ef)
+    assert result.returncode == 0, result.stderr
+    (comment,) = [c for c in _calls(repo) if c.startswith("issue comment 7 ")]
+    assert "error_during_execution after 12 turns" in comment
+    assert "429" in comment and "rate_limit_error" in comment
+
+
+def test_draft_body_carries_the_safety_net_marker_with_the_subtype(repo: dict) -> None:
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo, "error_during_execution", 12, 0, errors=["boom"]))
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "<!-- claude-implement-safety-net subtype=error_during_execution -->" in create
+
+
+def test_pr_comment_carries_the_safety_net_marker_with_the_subtype(repo: dict) -> None:
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo), FAKE_GH_PR_LIST=SAFETY_NET_DRAFT)
+    (comment,) = [c for c in _calls(repo) if c.startswith("pr comment 12 ")]
+    assert "<!-- claude-implement-safety-net subtype=error_max_turns -->" in comment
+
+
+def test_a_transient_failure_says_the_resume_workflow_will_retry(repo: dict) -> None:
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo, "error_during_execution", 12, 0, errors=["429"]))
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "claude-resume" in create and "not retried automatically" not in create
+
+
+def test_a_budget_failure_says_it_is_not_retried_automatically(repo: dict) -> None:
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo, "error_max_turns", 201, 0))
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "not retried automatically" in create
+
+
+def test_success_with_a_safety_net_draft_marks_it_ready_and_says_so(repo: dict) -> None:
+    """A resumed run that finishes has done what the draft was waiting for. Marking it
+    ready is what hands it to claude-review; the finished marker is what stops
+    claude-resume from dispatching it again."""
+    _commit(repo, "a.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=SAFETY_NET_DRAFT)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert "pr ready 12" in calls
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "<!-- claude-implement-finished -->" in comment
+    assert not any(c.startswith("pr create") for c in calls)
+
+
+def test_success_with_a_draft_the_model_opened_is_left_alone(repo: dict) -> None:
+    """A draft without the marker is the model's own way of saying "not finished", or a
+    person's work in progress. Neither is the workflow's to promote."""
+    _commit(repo, "a.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=HUMAN_DRAFT)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert not any(c.startswith("pr ready") or c.startswith("pr comment") or c.startswith("pr create") for c in calls), calls
+

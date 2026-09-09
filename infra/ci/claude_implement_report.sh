@@ -71,6 +71,7 @@ reason() {
       | ((.permission_denials // []) | length) as $d
       | "\(.subtype) after \(.num_turns) turns"
         + (if $d > 0 then ", \($d) permission denial" + (if $d > 1 then "s" else "" end) else "" end)
+        + (if ((.errors // []) | length) > 0 then " — " + ((.errors[0] | tostring)[0:240]) else "" end)
     ' "$EXECUTION_FILE" 2>/dev/null) || r=""
     if [ -n "$r" ]; then
       printf '%s' "$r"
@@ -78,6 +79,35 @@ reason() {
     fi
   fi
   printf '%s' "the action step did not report a result"
+}
+
+# The result message's subtype alone — `error_max_turns`, `error_during_execution`, `success`
+# — or `none` when the action left no result. It rides in the marker so claude-resume can
+# tell a budget failure (do not retry) from a transient one (retry) without parsing prose.
+subtype() {
+  if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
+    local t
+    t=$(jq -r '(([.[] | select(.type == "result")] | last) // empty) | .subtype // empty' "$EXECUTION_FILE" 2>/dev/null) || t=""
+    if [ -n "$t" ]; then printf '%s' "$t"; return; fi
+  fi
+  printf 'none'
+}
+
+# The markers are the protocol between this script and .github/workflows/claude-resume.yml:
+#   safety-net  — on every draft body and comment this script writes, with the subtype
+#   finished    — a run succeeded while a safety-net draft existed; the loop stops here
+#   resume      — written by claude-resume when it re-dispatches (counted for the cap)
+marker()   { printf '<!-- claude-implement-safety-net subtype=%s -->' "$(subtype)"; }
+FINISHED_MARKER='<!-- claude-implement-finished -->'
+
+# What happens next, said once and honestly: a budget failure repeats itself on retry; a
+# transient one — the subscription's usage wall above all — is what claude-resume exists for.
+retry_note() {
+  if [ "$(subtype)" = "error_max_turns" ]; then
+    printf 'This is **not retried automatically**: the turn budget is the cap on one attempt, and retrying repeats it. Split the issue, switch it to `tier:fable-plan`, or spend another attempt deliberately with the resume comment above.'
+  else
+    printf 'If this was the subscription'"'"'s usage limit or another transient error, the `claude-resume` workflow re-dispatches this issue within about two hours, up to 3 attempts, unless a person comments on the pull request first.'
+  fi
 }
 
 ensure_identity() {
@@ -153,7 +183,7 @@ implement_mode() {
     if [ "$CONCLUSION" = "success" ]; then
       comment_issue "$(printf '**claude-implement finished without changing any file** (%s), so there is nothing to open a pull request from. Read the transcript before re-running: the issue may already be done, or may not say what to do.\n\n%s' "$why" "$(transcript_hint)")"
     else
-      comment_issue "$(printf '**claude-implement did not open a pull request for this issue.** The run ended with %s, and nothing was committed on `%s`.\n\nTo try again, remove and re-apply the `tier:*` label, or run the `claude-implement` workflow by hand with `issue_number=%s`. If the issue is large — several modules, a decision to make first, a Size L — split it or switch it to `tier:fable-plan`; see docs/PIPELINE.md.\n\n%s' "$why" "$BRANCH" "${ISSUE_NUMBER:-N}" "$(transcript_hint)")"
+      comment_issue "$(printf '**claude-implement did not open a pull request for this issue.** The run ended with %s, and nothing was committed on `%s`.\n\nTo try again, remove and re-apply the `tier:*` label, or run the `claude-implement` workflow by hand with `issue_number=%s`. If the issue is large — several modules, a decision to make first, a Size L — split it or switch it to `tier:fable-plan`; see docs/PIPELINE.md. (With nothing committed there is no draft for `claude-resume` to pick up; re-label or re-run by hand.)\n\n%s' "$why" "$BRANCH" "${ISSUE_NUMBER:-N}" "$(transcript_hint)")"
     fi
     return
   fi
@@ -161,14 +191,23 @@ implement_mode() {
   push_branch || true
 
   local prs pr_number pr_url
-  prs=$(gh pr list --head "$BRANCH" --state open --json number,url,isDraft) || prs="[]"
+  prs=$(gh pr list --head "$BRANCH" --state open --json number,url,isDraft,body) || prs="[]"
   pr_number=$(printf '%s' "$prs" | jq -r '.[0].number // empty' 2>/dev/null) || pr_number=""
   pr_url=$(printf '%s' "$prs" | jq -r '.[0].url // empty' 2>/dev/null) || pr_url=""
+  pr_is_safety_net_draft=$(printf '%s' "$prs" | jq -r '.[0] | if (.isDraft == true and ((.body // "") | contains("<!-- claude-implement-safety-net"))) then "yes" else "no" end' 2>/dev/null) || pr_is_safety_net_draft="no"
 
   if [ -n "$pr_number" ]; then
-    # The model opened a pull request. On success that is the report.
-    [ "$CONCLUSION" = "success" ] && return 0
-    comment_pr "$pr_number" "$(printf '**The claude-implement run behind this pull request ended with %s.** Everything committed when it ended has been pushed here, including a `WIP:` commit of uncommitted changes if there is one. Treat the diff as unfinished.\n\n%s\n%s' "$why" "$(resume_hint)" "$(transcript_hint)")"
+    if [ "$CONCLUSION" = "success" ]; then
+      # A finished run on a draft this script opened: the draft was waiting for exactly
+      # this. Marking it ready hands it to claude-review; the finished marker stops
+      # claude-resume. A draft the model or a person opened is theirs to promote.
+      if [ "$pr_is_safety_net_draft" = "yes" ]; then
+        gh pr ready "$pr_number" >/dev/null || log "could not mark #$pr_number ready"
+        comment_pr "$pr_number" "$(printf '%s\n**The resumed claude-implement run finished** (%s) and this pull request is now ready for review. Read the checklist in the description against the issue before merging.\n\n%s' "$FINISHED_MARKER" "$why" "$(transcript_hint)")"
+      fi
+      return 0
+    fi
+    comment_pr "$pr_number" "$(printf '%s\n**The claude-implement run behind this pull request ended with %s.** Everything committed when it ended has been pushed here, including a `WIP:` commit of uncommitted changes if there is one. Treat the diff as unfinished.\n\n%s\n%s\n\n%s' "$(marker)" "$why" "$(resume_hint)" "$(retry_note)" "$(transcript_hint)")"
     return
   fi
 
@@ -176,10 +215,10 @@ implement_mode() {
   local title body url
   if [ "$CONCLUSION" = "success" ]; then
     title="$ISSUE_TITLE"
-    body=$(printf 'Closes #%s\n\n**Opened by the claude-implement workflow, not by the model.** The run finished (%s) and pushed its work but never opened a pull request, so it is here as a draft. Read the diff against the acceptance criteria, then mark it ready for review or hand it back with a comment.\n\n%s\n%s' "$ISSUE_NUMBER" "$why" "$(resume_hint)" "$(transcript_hint)")
+    body=$(printf 'Closes #%s\n\n%s\n**Opened by the claude-implement workflow, not by the model.** The run finished (%s) and pushed its work but never opened a pull request, so it is here as a draft. Read the diff against the acceptance criteria, then mark it ready for review or hand it back with a comment.\n\n%s\n%s' "$ISSUE_NUMBER" "$(marker)" "$why" "$(resume_hint)" "$(transcript_hint)")
   else
     title="WIP: $ISSUE_TITLE"
-    body=$(printf 'Closes #%s\n\n**Opened by the claude-implement workflow, not by the model.** The implementation run ended with %s. This branch holds everything that was committed when it ended — including a `WIP:` commit of uncommitted changes, if there is one — and none of it has been reviewed or claimed finished.\n\n%s\nTo start over instead, close this pull request, delete the branch, and re-apply the tier label to the issue (or run the `claude-implement` workflow by hand with `issue_number=%s`).\n\n%s' "$ISSUE_NUMBER" "$why" "$(resume_hint)" "$ISSUE_NUMBER" "$(transcript_hint)")
+    body=$(printf 'Closes #%s\n\n%s\n**Opened by the claude-implement workflow, not by the model.** The implementation run ended with %s. This branch holds everything that was committed when it ended — including a `WIP:` commit of uncommitted changes, if there is one — and none of it has been reviewed or claimed finished.\n\n%s\n%s\n\nTo start over instead, close this pull request, delete the branch, and re-apply the tier label to the issue (or run the `claude-implement` workflow by hand with `issue_number=%s`).\n\n%s' "$ISSUE_NUMBER" "$(marker)" "$why" "$(resume_hint)" "$(retry_note)" "$ISSUE_NUMBER" "$(transcript_hint)")
   fi
 
   # `${arr[@]+"${arr[@]}"}` is the empty-array expansion that bash 3.2 accepts under
@@ -210,7 +249,7 @@ fix_mode() {
     log "fix mode without PR_NUMBER; nowhere to report: $why"
     return
   fi
-  comment_pr "$PR_NUMBER" "$(printf '**The claude-implement fix run on this pull request ended with %s.** Everything committed when it ended has been pushed, including a `WIP:` commit of uncommitted changes if there is one; the review comments it was answering may be only partly addressed.\n\n%s\n%s' "$why" "$(resume_hint)" "$(transcript_hint)")"
+  comment_pr "$PR_NUMBER" "$(printf '%s\n**The claude-implement fix run on this pull request ended with %s.** Everything committed when it ended has been pushed, including a `WIP:` commit of uncommitted changes if there is one; the review comments it was answering may be only partly addressed.\n\n%s\n%s' "$(marker)" "$why" "$(resume_hint)" "$(transcript_hint)")"
 }
 
 main() {
