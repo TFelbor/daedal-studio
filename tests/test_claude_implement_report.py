@@ -1,0 +1,290 @@
+"""`infra/ci/claude_implement_report.sh` leaves a failed implementation where a person
+can find it.
+
+The model step of `claude-implement.yml` used to be the last step that did anything.
+When it ran out of turns — as it did on issue #60, after 81 turns and with nothing
+pushed — the job went red in the Actions tab and that was the whole report: no branch,
+no pull request, no comment on the issue, no transcript. The person who labelled the
+issue found out by going to look.
+
+The script runs after the model with `if: always()` and turns whatever state the run
+left into something with a URL: uncommitted edits become a `WIP:` commit, commits are
+pushed, a branch with no pull request gets a draft one, and the issue is told which of
+those happened and why the run ended. A person can then finish it, resume it with one
+`@claude` comment, or throw it away — but never wonder.
+
+These tests run the real script against a real git remote (a bare repository on disk)
+with a fake `gh` on PATH that records every invocation and answers the two queries the
+script makes. Asserting on the recorded argv is asserting on the GitHub calls that would
+have been made; asserting on the bare repository is asserting on what was pushed.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = REPO_ROOT / "infra" / "ci" / "claude_implement_report.sh"
+
+pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="the report script needs jq, as the runner has")
+
+FAKE_GH = r"""#!/usr/bin/env bash
+# Records every call on one line (newlines in a --body flattened to spaces) and
+# answers the two queries the script makes.
+printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_GH_LOG"
+case "$1 $2" in
+  "pr list")   printf '%s' "${FAKE_GH_PR_LIST:-[]}" ;;
+  "pr create") echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
+  "pr comment"|"issue comment") : ;;
+  *) echo "fake gh: unexpected invocation: $*" >&2; exit 64 ;;
+esac
+"""
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> dict:
+    """A bare `origin` with one commit on `main`, a clone on `claude/issue-7`, and a
+    fake `gh` first on PATH."""
+    origin = tmp_path / "origin.git"
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _git(seed, "init", "-q", "-b", "main")
+    _git(seed, "config", "user.name", "Seed")
+    _git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "README.md").write_text("seed\n")
+    _git(seed, "add", "README.md")
+    _git(seed, "commit", "-q", "-m", "seed")
+    _git(seed, "init", "-q", "--bare", str(origin))
+    _git(seed, "push", "-q", str(origin), "main")
+
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", str(origin), str(work))
+    # The action configures the bot identity before the model runs; the script must
+    # not depend on it, so most tests leave it unset (see test_wip_commit_...).
+    _git(work, "checkout", "-q", "-b", "claude/issue-7")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(FAKE_GH)
+    gh.chmod(0o755)
+    log = tmp_path / "gh.log"
+    log.touch()
+    return {"origin": origin, "work": work, "bin": bin_dir, "log": log, "tmp": tmp_path}
+
+
+def _run(repo: dict, **env: str) -> subprocess.CompletedProcess:
+    full_env = {
+        **os.environ,
+        "PATH": f"{repo['bin']}{os.pathsep}{os.environ['PATH']}",
+        "FAKE_GH_LOG": str(repo["log"]),
+        "GH_TOKEN": "fake",
+        "ISSUE_NUMBER": "7",
+        "ISSUE_TITLE": "Bind the API server to loopback by default",
+        "BRANCH": "claude/issue-7",
+        "BASE_BRANCH": "main",
+        "RUN_URL": "https://github.com/Daedal-Studio/ds-mvp/actions/runs/1",
+        "MODE": "implement",
+        **env,
+    }
+    return subprocess.run(
+        ["bash", str(SCRIPT)], cwd=repo["work"], env=full_env, capture_output=True, text=True
+    )
+
+
+def _calls(repo: dict) -> list[str]:
+    return [line for line in repo["log"].read_text().splitlines() if line]
+
+
+def _commit(repo: dict, name: str) -> None:
+    (repo["work"] / name).write_text(f"{name}\n")
+    _git(repo["work"], "add", name)
+    _git(
+        repo["work"], "-c", "user.name=Model", "-c", "user.email=model@example.invalid",
+        "commit", "-q", "-m", f"feat: {name}",
+    )
+
+
+def _remote_has_branch(repo: dict, branch: str = "claude/issue-7") -> bool:
+    out = _git(repo["origin"], "branch", "--list", branch)
+    return branch in out
+
+
+def _execution_file(repo: dict, subtype: str = "error_max_turns", turns: int = 81, denials: int = 1) -> str:
+    path = repo["tmp"] / "claude-execution-output.json"
+    messages = [
+        {"type": "system", "subtype": "init", "session_id": "abc"},
+        {"type": "result", "subtype": subtype, "is_error": subtype != "success",
+         "num_turns": turns, "permission_denials": [{"tool_name": "Bash"}] * denials},
+    ]
+    path.write_text(json.dumps(messages))
+    return str(path)
+
+
+# --- nothing to save ----------------------------------------------------------------
+
+
+def test_failure_with_no_commits_tells_the_issue_and_pushes_nothing(repo: dict) -> None:
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert not _remote_has_branch(repo), "an empty branch was pushed"
+    assert not any(c.startswith("pr create") for c in calls)
+    (comment,) = [c for c in calls if c.startswith("issue comment 7 ")]
+    assert "did not open a pull request" in comment
+    assert "error_max_turns" in comment and "81 turns" in comment
+    assert "1 permission denial" in comment
+    assert "actions/runs/1" in comment
+
+
+def test_the_reason_falls_back_when_there_is_no_execution_file(repo: dict) -> None:
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=str(repo["tmp"] / "missing.json"))
+    assert result.returncode == 0, result.stderr
+    (comment,) = [c for c in _calls(repo) if c.startswith("issue comment 7 ")]
+    assert "did not report a result" in comment
+
+
+# --- commits to save ----------------------------------------------------------------
+
+
+def test_failure_with_commits_pushes_and_opens_a_draft_pull_request(repo: dict) -> None:
+    _commit(repo, "server_bind.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo), RISK_LABEL="risk:review")
+    assert result.returncode == 0, result.stderr
+    assert _remote_has_branch(repo)
+    assert _git(repo["origin"], "rev-parse", "claude/issue-7") == _git(repo["work"], "rev-parse", "HEAD")
+
+    calls = _calls(repo)
+    (create,) = [c for c in calls if c.startswith("pr create ")]
+    assert "--draft" in create
+    assert "--head claude/issue-7" in create and "--base main" in create
+    assert "--label risk:review" in create
+    assert "WIP: Bind the API server to loopback by default" in create
+    assert "Closes #7" in create
+    assert "error_max_turns" in create
+    assert "@claude please continue" in create, "the resume instruction is what makes the draft recoverable"
+
+    (comment,) = [c for c in calls if c.startswith("issue comment 7 ")]
+    assert "pull/99" in comment
+
+
+def test_uncommitted_edits_become_a_wip_commit_before_the_push(repo: dict) -> None:
+    _commit(repo, "server_bind.py")
+    (repo["work"] / "half_done.py").write_text("x = 1\n")
+    (repo["work"] / "README.md").write_text("seed\nedited\n")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
+    assert result.returncode == 0, result.stderr
+    subject = _git(repo["work"], "log", "-1", "--format=%s")
+    assert subject.startswith("WIP:"), subject
+    assert _git(repo["work"], "status", "--porcelain") == ""
+    assert _git(repo["origin"], "rev-parse", "claude/issue-7") == _git(repo["work"], "rev-parse", "HEAD")
+    tracked = _git(repo["work"], "ls-tree", "--name-only", "HEAD")
+    assert "half_done.py" in tracked
+
+
+def test_wip_commit_respects_gitignore(repo: dict) -> None:
+    (repo["work"] / ".gitignore").write_text("secrets.env\n")
+    _git(repo["work"], "add", ".gitignore")
+    _git(repo["work"], "-c", "user.name=Model", "-c", "user.email=model@example.invalid", "commit", "-q", "-m", "chore: ignore")
+    (repo["work"] / "secrets.env").write_text("TOKEN=abc\n")
+    (repo["work"] / "work.py").write_text("y = 2\n")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
+    tracked = _git(repo["work"], "ls-tree", "--name-only", "HEAD")
+    assert "work.py" in tracked
+    assert "secrets.env" not in tracked
+
+
+def test_failure_with_an_existing_pull_request_comments_there_instead(repo: dict) -> None:
+    _commit(repo, "server_bind.py")
+    pr_list = json.dumps([{"number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": False}])
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo), FAKE_GH_PR_LIST=pr_list)
+    assert result.returncode == 0, result.stderr
+    assert _remote_has_branch(repo)
+    calls = _calls(repo)
+    assert not any(c.startswith("pr create") for c in calls), "a second pull request was opened"
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "error_max_turns" in comment and "@claude please continue" in comment
+    assert not any(c.startswith("issue comment") for c in calls), "the pull request is the place to talk"
+
+
+# --- success ------------------------------------------------------------------------
+
+
+def test_success_with_a_pull_request_is_silent(repo: dict) -> None:
+    _commit(repo, "server_bind.py")
+    _git(repo["work"], "push", "-q", "-u", "origin", "claude/issue-7")
+    pr_list = json.dumps([{"number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": False}])
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=pr_list)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert calls == [c for c in calls if c.startswith("pr list ")], f"a successful run with a PR made noise: {calls}"
+
+
+def test_success_without_a_pull_request_opens_a_draft_and_says_so(repo: dict) -> None:
+    """The model can finish and still never run `gh pr create` — a denied tool call, a
+    turn spent elsewhere. Success without a pull request is not done."""
+    _commit(repo, "server_bind.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0))
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    (create,) = [c for c in calls if c.startswith("pr create ")]
+    assert "--draft" in create
+    (comment,) = [c for c in calls if c.startswith("issue comment 7 ")]
+    assert "without opening a pull request" in comment
+
+
+def test_success_with_nothing_committed_tells_the_issue(repo: dict) -> None:
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 12, 0))
+    assert result.returncode == 0, result.stderr
+    (comment,) = [c for c in _calls(repo) if c.startswith("issue comment 7 ")]
+    assert "without changing any file" in comment
+
+
+# --- the fix job --------------------------------------------------------------------
+
+
+def test_fix_mode_pushes_unpushed_commits_and_comments_on_the_pull_request(repo: dict) -> None:
+    _commit(repo, "first.py")
+    _git(repo["work"], "push", "-q", "-u", "origin", "claude/issue-7")
+    _commit(repo, "second.py")
+    result = _run(repo, MODE="fix", PR_NUMBER="12", CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
+    assert result.returncode == 0, result.stderr
+    assert _git(repo["origin"], "rev-parse", "claude/issue-7") == _git(repo["work"], "rev-parse", "HEAD")
+    calls = _calls(repo)
+    assert not any(c.startswith("pr create") or c.startswith("pr list") for c in calls)
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "error_max_turns" in comment
+
+
+def test_fix_mode_success_is_silent(repo: dict) -> None:
+    _commit(repo, "first.py")
+    _git(repo["work"], "push", "-q", "-u", "origin", "claude/issue-7")
+    result = _run(repo, MODE="fix", PR_NUMBER="12", CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 20, 0))
+    assert result.returncode == 0, result.stderr
+    assert _calls(repo) == []
+
+
+# --- it never masks the model step ---------------------------------------------------
+
+
+def test_the_script_exits_zero_even_when_github_is_unreachable(repo: dict) -> None:
+    """The job is already red when the model failed; a reporting error on top of it
+    must not replace the real failure in the job's summary."""
+    _commit(repo, "server_bind.py")
+    broken = repo["bin"] / "gh"
+    broken.write_text("#!/usr/bin/env bash\necho 'HTTP 502' >&2\nexit 1\n")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo))
+    assert result.returncode == 0, result.stderr
+    assert "502" in result.stderr or "502" in result.stdout

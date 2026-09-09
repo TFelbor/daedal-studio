@@ -3,8 +3,9 @@
 # Two jobs, both writing code, entered from opposite directions:
 #
 #   `implement` — an issue gains `plan-ready` (it went through claude-plan) or
-#     `tier:opus-direct` (the Dispatcher judged it unambiguous). Runs in automation
-#     mode, because a `prompt` input is set.
+#     `tier:opus-direct` (the Dispatcher judged it unambiguous), or someone runs the
+#     workflow by hand for one issue. Runs in automation mode, because a `prompt`
+#     input is set.
 #   `fix` — someone, usually claude-review.yml, comments `@claude ...` on a PR. Runs
 #     in interactive mode, because no `prompt` input is set. This is the fix loop of
 #     Section 4e; it lives here rather than in a fifth file because it is the same
@@ -14,6 +15,13 @@
 # `pytest tests/` and that suite needs a PostgreSQL, a CuraEngine on PATH and a
 # `pythonsrc/config.py`. A PR opened without the tests having run is a PR that spends
 # a review round finding out.
+#
+# Both jobs end the same way whatever the model did: the transcript is kept as an
+# artifact, and infra/ci/claude_implement_report.sh pushes what was committed, opens
+# a draft pull request when there is none, and tells the issue what happened. The
+# first real run to hit its turn budget (issue #60: 81 turns, USD 9,44, nothing
+# pushed) left nothing but a red run in the Actions tab; that is the failure this
+# tail exists to make impossible. See docs/PIPELINE.md § When a run fails.
 name: claude-implement
 
 on:
@@ -21,6 +29,15 @@ on:
     types: [labeled]
   issue_comment:
     types: [created]
+  # One issue, by hand: to retry a failed run without the remove-and-re-add label
+  # dance, or to run the implementer on demand. The issue must still carry `claude`
+  # — "without it nothing runs" holds for this trigger too (see the Resolve step).
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue to implement. It must carry the `claude` label."
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -31,21 +48,26 @@ permissions:
 # Applying `claude`, `tier:opus-direct` and `risk:review` is three `labeled` events
 # within a second of each other, and each one satisfies the `if` below once the
 # previous label is already on the issue. Serialising per issue lets the PR-exists
-# guard in the first run be true by the time the second run reaches it.
+# guard in the first run be true by the time the second run reaches it. A dispatched
+# run keys on the same number, so it queues behind a labelled one for the same issue.
 concurrency:
-  group: claude-implement-${{ github.event.issue.number }}
+  group: claude-implement-${{ github.event.issue.number || github.event.inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
   implement:
     name: implement
     if: >-
-      github.event_name == 'issues' &&
-      contains(github.event.issue.labels.*.name, 'claude') &&
-      (contains(github.event.issue.labels.*.name, 'plan-ready') ||
-       contains(github.event.issue.labels.*.name, 'tier:opus-direct'))
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+       contains(github.event.issue.labels.*.name, 'claude') &&
+       (contains(github.event.issue.labels.*.name, 'plan-ready') ||
+        contains(github.event.issue.labels.*.name, 'tier:opus-direct')))
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The real cost bound. 200 turns at the measured pace (81 turns in 12,5 minutes on
+    # #60) is about half an hour of model time after a five-minute install; the rest
+    # is slack for test runs. `--max-turns` below is a runaway guard, not this.
+    timeout-minutes: 90
 
     services:
       postgres:
@@ -72,19 +94,57 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve the issue
+        id: issue
+        # One place that knows which issue this run is about, whichever trigger fired.
+        # It also re-checks the `claude` label: the job-level `if` cannot, on
+        # `workflow_dispatch`, and an issue without that label is one the pipeline has
+        # been told to leave alone.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_ISSUE: ${{ github.event.inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then n="$INPUT_ISSUE"; else n="$EVENT_ISSUE"; fi
+          [[ "$n" =~ ^[0-9]+$ ]] || { echo "::error::'$n' is not an issue number"; exit 1; }
+          meta=$(gh issue view "$n" --json number,title,state,labels)
+          state=$(jq -r '.state' <<<"$meta")
+          labels=$(jq -r '.labels[].name' <<<"$meta")
+          if ! grep -qx 'claude' <<<"$labels"; then
+            echo "::error::Issue #$n does not carry the 'claude' label; nothing runs without it."
+            exit 1
+          fi
+          if [ "$state" != "OPEN" ]; then
+            echo "::error::Issue #$n is $state, not open."
+            exit 1
+          fi
+          risk=$(grep -m1 '^risk:' <<<"$labels" || true)
+          {
+            echo "number=$n"
+            echo "risk=$risk"
+            echo "title<<TITLE_EOF"
+            jq -r '.title' <<<"$meta"
+            echo "TITLE_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Issue #$n (${risk:-no risk label})."
+
       - name: Skip if a pull request already exists for this issue
         id: guard
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
         run: |
           set -euo pipefail
 
           # Two questions, and only the first one is authoritative.
           #
-          # `claude/issue-<n>` is the branch the implementer below is told to create, so
-          # a pull request from that head is the definitive "already done". GitHub
-          # filters it server-side and returns one small node.
+          # `claude/issue-<n>` is the branch the implementer below works on, so an open
+          # or merged pull request from that head is the definitive "already done". A
+          # *closed* one is an abandoned attempt — the draft the safety net opened, say,
+          # closed by a person who wants a fresh start — and must not block that start.
+          # GitHub filters it server-side and returns a few small nodes.
           #
           # The body scan is a courtesy for a pull request a human opened by hand with
           # "#<n>" in the body — and it is the query that broke. Selecting `body` with
@@ -95,11 +155,11 @@ jobs:
           #   (repository.pullRequests.nodes.10)
           #
           # on run after run. Under `set -e` that killed the step at exit 1, and the job
-          # never reached the model: every claude-implement failure so far is this line,
-          # not a missing permission, a missing tool allowance or the label filter. So
-          # it retries, asks for fewer bodies, and treats a persistent failure as a
-          # warning rather than the end of the run — the branch query already covers the
-          # duplicate this guard exists to prevent, and losing a heuristic to a
+          # never reached the model: every claude-implement failure before #60 was this
+          # line, not a missing permission, a missing tool allowance or the label
+          # filter. So it retries, asks for fewer bodies, and treats a persistent failure
+          # as a warning rather than the end of the run — the branch query already covers
+          # the duplicate this guard exists to prevent, and losing a heuristic to a
           # transient API error must not cost a labelled issue its implementation.
           gh_retry() {
             local out attempt
@@ -115,14 +175,15 @@ jobs:
           }
 
           existing=$(gh_retry gh pr list --state all --limit 5 \
-            --head "claude/issue-${ISSUE_NUMBER}" --json number --jq 'length') || {
+            --head "claude/issue-${ISSUE_NUMBER}" --json number,state \
+            --jq '[.[] | select(.state != "CLOSED")] | length') || {
             echo "Could not ask GitHub whether a pull request already exists for #${ISSUE_NUMBER}." >&2
-            echo "Refusing to implement blind: a duplicate costs eighty turns of Opus." >&2
+            echo "Refusing to implement blind: a duplicate costs a full run of Opus." >&2
             exit 1
           }
 
           if [ "$existing" -eq 0 ]; then
-            by_body=$(gh_retry gh pr list --state all --limit 50 --json body \
+            by_body=$(gh_retry gh pr list --state open --limit 50 --json body \
               --jq "[.[] | select((.body // \"\") | test(\"(^|[^0-9])#${ISSUE_NUMBER}([^0-9]|\$)\"))] | length") \
               || by_body=""
             if [ -z "$by_body" ]; then
@@ -172,9 +233,40 @@ jobs:
           mkdir -p data/inputs data/outputs data/logs
           npm --prefix web ci
 
+      - name: Create or resume the working branch
+        id: branch
+        # The action creates a branch only in tag mode. With a `prompt` input it runs
+        # in automation mode, where `branch_name_template` is read by nothing
+        # (src/modes/agent/index.ts at v1.0.216 never calls setupBranch), so the model
+        # used to spend its first turns on git plumbing and the branch was whatever it
+        # chose to call it. A previous attempt's branch is resumed, not replaced: its
+        # commits are the work, and the guard above has already said no open or merged
+        # pull request claims them.
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          BRANCH: claude/issue-${{ steps.issue.outputs.number }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch -q origin "$BRANCH"
+            git checkout -q -B "$BRANCH" "origin/$BRANCH"
+            echo "resumed=true" >> "$GITHUB_OUTPUT"
+            echo "Resumed $BRANCH from origin, $(git rev-list --count origin/main..HEAD) commit(s) ahead of main."
+          else
+            git checkout -q -b "$BRANCH"
+            echo "resumed=false" >> "$GITHUB_OUTPUT"
+            echo "Created $BRANCH from $(git rev-parse --short HEAD)."
+          fi
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
       - name: Implement with Opus
+        id: implement
         if: steps.guard.outputs.should_run == 'true'
         uses: anthropics/claude-code-action@v1.0.216
+        env:
+          # What the action reports as `branch_name` in automation mode; it is what the
+          # step above checked out.
+          CLAUDE_BRANCH: ${{ steps.branch.outputs.name }}
         with:
           # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
           # `/install-github-app` created it. `anthropic_api_key` is deliberately not
@@ -183,21 +275,69 @@ jobs:
           # naming a secret that does not exist sets an empty credential rather than
           # no credential.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # The action creates and checks out the branch the prompt names, so Claude
-          # does not have to guess whether it is already on it.
-          branch_name_template: "{{prefix}}issue-{{entityNumber}}"
+          # `claude-plan` adds `plan-ready` with the Claude App's token, so on the
+          # plan-first tier the `labeled` event that starts this job is sent by
+          # `claude[bot]`, and the action refuses a bot actor it is not told about —
+          # before the model runs, in about two seconds. Same list as claude-review.yml,
+          # for the same bot. Never `*`: an allowed bot skips the write-permission check.
+          allowed_bots: "claude[bot],claude-code[bot]"
           prompt: |
             REPO: ${{ github.repository }}
-            ISSUE NUMBER: ${{ github.event.issue.number }}
+            ISSUE NUMBER: ${{ steps.issue.outputs.number }}
 
-            Implement this issue on a new branch `claude/issue-${{ github.event.issue.number }}`. If a "Plan" comment exists, follow it. Follow CLAUDE.md. Add or update tests so every acceptance criterion is covered; run the test and lint commands from CLAUDE.md and make them pass. Open a PR that references this issue, copies its acceptance criteria into the PR body as a checklist, ticks each one you verified, and carries the issue's `risk:*` label. Keep the PR to this task only.
+            You are on the branch `${{ steps.branch.outputs.name }}`, already created and checked out for you. Do not create another branch. Implement this issue on it. If a "Plan" comment exists on the issue, follow it. Follow CLAUDE.md.
+
+            Work in small commits, and push after every commit (`git push -u origin HEAD` the first time). A run that ends early keeps everything that was pushed and loses everything that was not.
+
+            Add or update tests so every acceptance criterion is covered. While iterating, run only the tests you are touching; run the full `pytest tests/` and `npm --prefix web run build` once, before opening the pull request, and make them pass.
+
+            When done, open a pull request with `gh pr create` that references this issue, copies its acceptance criteria into the body as a checklist, ticks each one you verified, and carries the issue's `risk:*` label. Keep the pull request to this task only. If you cannot finish, push what you have and open the pull request as a draft (`--draft`) whose body says what remains.
           # `Skill` is on the allowlist so the vendored `.claude/skills/` are reachable;
           # without it the model sees their descriptions and can invoke none of them.
           # See docs/PIPELINE.md § Skills are vendored, not installed.
+          #
+          # `--max-turns` is a runaway guard with slack, not a measured figure: a
+          # README-only task (#53) took 32 turns, and a Size L issue (#60) exhausted 80
+          # before a pull request existed. `timeout-minutes` above is the cost bound.
           claude_args: |
             --model claude-opus-5
-            --max-turns 80
-            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+            --max-turns 200
+            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(gh pr ready:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+
+      - name: Keep the transcript
+        # The action hides the model's turns from the log, so the execution file is the
+        # only record of where a turn budget went. Kept on success and failure alike —
+        # a transcript is only useful when nobody expected to need it. Fourteen days:
+        # long enough to read after a failure, short enough that a tool result which
+        # happened to print an environment does not live forever.
+        if: always() && steps.guard.outputs.should_run == 'true' && steps.implement.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: claude-implement-issue-${{ steps.issue.outputs.number }}-transcript
+          path: ${{ steps.implement.outputs.execution_file }}
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Leave the work where a person can find it
+        # See the script's header. `if: always()` is the point: this runs precisely when
+        # the model step failed, which is when nothing else would report.
+        if: always() && steps.guard.outputs.should_run == 'true'
+        env:
+          # The App's token when the action produced one, so a draft this opens is the
+          # Claude app's — which is what lets claude-review's fix loop ask for changes
+          # on it. The workflow token is the fallback; a draft opened with it is still a
+          # draft with a URL.
+          GH_TOKEN: ${{ steps.implement.outputs.github_token || github.token }}
+          MODE: implement
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_TITLE: ${{ steps.issue.outputs.title }}
+          RISK_LABEL: ${{ steps.issue.outputs.risk }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          BASE_BRANCH: main
+          CONCLUSION: ${{ steps.implement.outcome }}
+          EXECUTION_FILE: ${{ steps.implement.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash infra/ci/claude_implement_report.sh
 
   fix:
     name: fix
@@ -208,9 +348,9 @@ jobs:
     # The state clauses are the second half of claude-review.yml's fix-loop guard, held
     # here as well because this job answers *any* @claude comment, not only the
     # reviewer's. A merged pull request has nowhere to push a fix to, and this job
-    # carries a sixty-minute timeout, a PostgreSQL service and a full dependency
-    # install before it reaches the model — the cost of answering is paid whether or
-    # not the answer can land. Merged PR #52 was asked, and this job ran on it.
+    # carries a long timeout, a PostgreSQL service and a full dependency install
+    # before it reaches the model — the cost of answering is paid whether or not the
+    # answer can land. Merged PR #52 was asked, and this job ran on it.
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
@@ -218,7 +358,7 @@ jobs:
       github.event.issue.pull_request.merged_at == null &&
       contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     services:
       postgres:
@@ -271,6 +411,7 @@ jobs:
           npm --prefix web ci
 
       - name: Address the review with Opus
+        id: fix
         uses: anthropics/claude-code-action@v1.0.216
         with:
           # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
@@ -291,5 +432,29 @@ jobs:
           # See docs/PIPELINE.md § Skills are vendored, not installed.
           claude_args: |
             --model claude-opus-5
-            --max-turns 80
-            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+            --max-turns 200
+            --allowedTools "Read,Glob,Grep,Skill,Edit,MultiEdit,Write,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr ready:*),Bash(gh issue view:*),Bash(pytest:*),Bash(python:*),Bash(python3:*),Bash(pip:*),Bash(npm:*),Bash(make:*)"
+
+      - name: Keep the transcript
+        if: always() && steps.fix.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: claude-implement-fix-pr-${{ github.event.issue.number }}-run-${{ github.run_id }}-transcript
+          path: ${{ steps.fix.outputs.execution_file }}
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Leave the work where a person can find it
+        # Same tail as the implement job, in fix mode: push what was committed to the
+        # pull request's branch, and say on the pull request how the run ended. The
+        # branch is whatever the action checked out, which the script reads from HEAD.
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.fix.outputs.github_token || github.token }}
+          MODE: fix
+          PR_NUMBER: ${{ github.event.issue.number }}
+          BASE_BRANCH: main
+          CONCLUSION: ${{ steps.fix.outcome }}
+          EXECUTION_FILE: ${{ steps.fix.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash infra/ci/claude_implement_report.sh

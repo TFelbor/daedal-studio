@@ -17,6 +17,8 @@ issue + labels
                                            ▼
                               claude-implement.yml · job `implement` (Opus 5)
                                 branch claude/issue-<n>, tests run, PR opened
+                                — or, when the run ends early: work pushed,
+                                  draft PR opened, issue told why (§ When a run fails)
                                            │
                                            ▼
                               claude-review.yml (Fable 5.1)
@@ -42,10 +44,10 @@ is created. Phase 1 is: a human reads the PR and merges it.
 
 | File | Model | Trigger | What it does |
 |---|---|---|---|
-| `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 30 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. |
-| `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 80 turns | issue labelled | Builds the CI environment, implements on `claude/issue-<n>`, runs the tests, opens a PR with the acceptance criteria as a checklist. |
-| `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 80 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. |
-| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
+| `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 60 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. On failure, says so on the issue. |
+| `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 200 turns | issue labelled, or `workflow_dispatch` with an issue number | Builds the CI environment, creates `claude/issue-<n>`, implements on it, runs the tests, opens a PR with the acceptance criteria as a checklist. Whatever happens, keeps the transcript and leaves the work findable (§ When a run fails). |
+| `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
+| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
 
 ### One exemption, and only one
@@ -79,6 +81,13 @@ therefore passes `allowed_bots: "claude[bot],claude-code[bot]"`, the way
 `claude-implement.yml`'s `fix` job already passes `github-actions[bot]` for the fix
 request it answers.
 
+The `implement` job passes the same two logins, for the plan-first tier: `claude-plan`
+adds `plan-ready` with the App's token, so the `labeled` event that starts the
+implementer is *sent by* `claude[bot]`. Without the input, the handoff between Tier 1
+and Tier 2 fails in the same two seconds with the same message — and it had never been
+exercised, because no plan run has completed yet. `tests/test_claude_pipeline_workflows.py`
+pins it.
+
 **Do not widen either list to `'*'`.** An allowed bot skips the write-permission check
 as well as the human check, so `'*'` lets any GitHub App that can open a pull request
 choose this job's prompt. Names are matched case-insensitively with a trailing `[bot]`
@@ -110,8 +119,22 @@ control**: `timeout-minutes` on the job is the real bound, and those 32 turns to
 minutes of the twenty. `claude-review` is therefore at 80, the same as
 `claude-implement`, which does far more work and fits inside it.
 
-`claude-plan.yml` is still at 30 and has never completed a run here, so that number is
-unmeasured. If it ever fails this way, the error names both figures.
+The implementer has the measurement the reviewer lacked. Issue #53 — a README section,
+the smallest task the pipeline has run — took **32 turns**, USD 2,99 and 4 permission
+denials. Issue #60 — a Size L security issue naming four sub-decisions in a 3 800-line
+`server/app.py` — hit the 80-turn cap at **81 turns**, USD 9,44, 12,5 minutes, with no
+branch pushed, no pull request and no comment. Both `claude-implement` jobs are
+therefore at **200**, with `timeout-minutes: 90` as the actual cost bound (81 turns took
+12,5 minutes of model time; the install is another five). `claude-plan.yml` is at 60 and
+has still never completed a run here, so that number is unmeasured; if it fails this
+way, the error names both figures.
+
+Two consequences for whoever labels an issue. A budget is not a substitute for tiering:
+an issue that names a decision to make first, or spans several modules, is
+`tier:fable-plan` or several issues, not `tier:opus-direct` with a bigger number. And
+the turns are spent where the model spends them — #60 also carried the whole of
+`CLAUDE.md` (130 KB) into every turn's context, which costs tokens rather than turns,
+but reading a 3 800-line file in 200-line pieces costs turns.
 
 ### When the fix loop does not ask
 
@@ -138,6 +161,66 @@ GraphQL returns a GitHub App's login without the `[bot]` suffix.** The same comm
 authored by `claude` through `gh pr view --json comments` and by `claude[bot]` through
 the REST endpoint. Both forms are listed in `CLAUDE_LOGINS`, in `claude-review.yml` and
 `claude-automerge.yml` alike.
+
+## The action does not create the branch in automation mode
+
+`branch_name_template` is documented as the pattern for the branch the action creates.
+It creates one only in **tag mode**. With a `prompt` input — every job in this pipeline
+— the action runs in automation mode, and `src/modes/agent/index.ts` never calls
+`setupBranch`: the checkout stays on `main`, and the branch is whatever the model
+decides to `git checkout -b`, whenever it gets to it. `claude-implement.yml` therefore
+creates `claude/issue-<n>` itself, in a step before the model runs, and the prompt says
+so. If the branch already exists on origin — a previous attempt that ended early — the
+step resumes it rather than replacing it, because its commits are the work.
+
+## When a run fails
+
+The first real turn-budget failure (issue #60) left exactly one trace: a red run in the
+Actions tab. The model had spent 81 turns and USD 9,44, and had committed nothing,
+pushed nothing, opened nothing and said nothing. Every `claude-implement` job now ends
+with the same two steps, run with `if: always()` so that they run *especially* when the
+model step failed:
+
+1. **The transcript is kept.** The action hides the model's turns from the log for good
+   reason (tool results can print secrets), so the execution file it writes is the only
+   record of where a budget went. It is uploaded as an artifact named
+   `claude-implement-issue-<n>-transcript`, kept 14 days. `gh run download <run-id>`
+   fetches it; the result message at its end says `subtype`, `num_turns` and how many
+   tool calls were denied.
+2. **The work is left where a person can find it** (`infra/ci/claude_implement_report.sh`,
+   tested by `tests/test_claude_implement_report.py`):
+   - uncommitted edits become one `WIP:` commit, marked as the workflow's, not the model's;
+   - commits origin does not have are pushed;
+   - commits with no pull request get a **draft** one, titled `WIP: <issue title>`,
+     whose description says how the run ended and how to resume or restart;
+   - commits with a pull request get a comment on it saying the same;
+   - nothing committed gets a comment on the issue saying so, and why.
+
+   The draft is opened with the App's token when the action produced one, so it is the
+   Claude app's pull request and the fix loop can act on it. A successful run that
+   opened its own pull request gets nothing from this step: the pull request is the
+   report.
+
+**Resuming.** Comment on the draft:
+
+```
+@claude please continue implementing #<n>: read the issue, the Plan comment if there is
+one, and the diff so far, then finish the remaining acceptance criteria and mark the
+pull request ready for review.
+```
+
+That is the `fix` job, in interactive mode, on the same branch. **Restarting** is:
+close the draft, delete the branch, and re-apply the tier label — or run the workflow
+by hand, `gh workflow run claude-implement.yml -f issue_number=<n>`, which is also how
+a failed run is retried without the remove-and-re-add label dance. The dispatched issue
+must still carry `claude`; the Resolve step refuses otherwise. The PR-exists guard
+counts open and merged pull requests from `claude/issue-<n>`, not closed ones, so a
+closed draft does not block the restart.
+
+**Drafts are not reviewed.** `claude-review.yml` skips a pull request while
+`draft == true` and runs on `ready_for_review`. A review of a diff nobody claims is
+finished would request changes on it and start the fix loop against it; the finished
+version gets its review when a person says it is finished.
 
 ## Skills are vendored, not installed
 
@@ -260,7 +343,7 @@ which also turns the vendored skills off.
 |---|---|
 | `claude` | This issue is pipeline work. Without it nothing runs. |
 | `tier:fable-plan` | Plan first. For multi-module, architectural or ambiguous work, or Size L. One extra pass, and it saves a wrong PR. |
-| `tier:opus-direct` | Implement straight away. Single-module, clear approach, Size S/M, unambiguous spec. |
+| `tier:opus-direct` | Implement straight away. Single-module, clear approach, Size S/M, unambiguous spec. A README section took 32 turns; a Size L issue with a decision in it exhausted 80 (§ `--max-turns`). |
 | `plan-ready` | A Plan comment exists. Added by `claude-plan`; it is what starts the implementer. |
 | `risk:review` | A human makes the merge decision. The default. |
 | `risk:auto` | Eligible for auto-merge — **only** when `AUTO_MERGE` is `on`, and only alongside every other gate. |
@@ -286,6 +369,8 @@ cannot loosen its own gate.
 Smallest lever first.
 
 - **One pull request:** add `do-not-merge`. Auto-merge declines immediately.
+- **A draft the safety net opened:** close it. Nothing reviews or resumes a closed
+  draft, and the PR-exists guard ignores it, so the issue can be re-labelled.
 - **One issue:** remove the `claude` label, or remove `plan-ready` / `tier:*`. Nothing
   triggers without them.
 - **A run that is going wrong right now:** cancel it in the Actions tab. Nothing
