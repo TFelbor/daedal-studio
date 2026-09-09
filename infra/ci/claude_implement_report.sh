@@ -84,13 +84,36 @@ reason() {
 # The result message's subtype alone — `error_max_turns`, `error_during_execution`, `success`
 # — or `none` when the action left no result. It rides in the marker so claude-resume can
 # tell a budget failure (do not retry) from a transient one (retry) without parsing prose.
+#
+# A cancelled run is the exception, and it must be: this script runs under `if: always()`,
+# so pressing Cancel in the Actions tab still gets here, with `CONCLUSION=cancelled` and
+# usually no result message at all — which would read as `none`, a transient failure, and
+# be re-dispatched within two hours. Someone stopping a run is a decision, not a fault, so
+# the conclusion overrides the file. `docs/PIPELINE.md` § How to stop it promises exactly
+# this ("Nothing resumes on its own"), and that promise is only kept here.
 subtype() {
+  if [ "$CONCLUSION" = "cancelled" ]; then printf 'cancelled'; return; fi
   if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
     local t
     t=$(jq -r '(([.[] | select(.type == "result")] | last) // empty) | .subtype // empty' "$EXECUTION_FILE" 2>/dev/null) || t=""
     if [ -n "$t" ]; then printf '%s' "$t"; return; fi
   fi
   printf 'none'
+}
+
+# The subtypes claude-resume retries, and the only ones. A positive list rather than a deny
+# list: a subtype nobody anticipated is then left alone by default instead of being repeated
+# on its own. `cancelled` is why — it was added to the protocol after a deny list had already
+# been written, and a deny list would have retried it silently. `RETRYABLE_SUBTYPES` in
+# `infra/ci/claude_resume.py` holds the same set, and `tests/test_claude_resume.py` fails if
+# the two drift: this note and that decision must not be able to disagree.
+RETRYABLE_SUBTYPES="error_during_execution none"
+
+is_retryable() {
+  case " $RETRYABLE_SUBTYPES " in
+    *" $(subtype) "*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # The markers are the protocol between this script and .github/workflows/claude-resume.yml:
@@ -103,10 +126,16 @@ FINISHED_MARKER='<!-- claude-implement-finished -->'
 # What happens next, said once and honestly: a budget failure repeats itself on retry; a
 # transient one — the subscription's usage wall above all — is what claude-resume exists for.
 retry_note() {
-  if [ "$(subtype)" = "error_max_turns" ]; then
+  local t
+  t=$(subtype)
+  if [ "$t" = "error_max_turns" ]; then
     printf 'This is **not retried automatically**: the turn budget is the cap on one attempt, and retrying repeats it. Split the issue, switch it to `tier:fable-plan`, or spend another attempt deliberately with the resume comment above.'
-  else
+  elif [ "$t" = "cancelled" ]; then
+    printf 'This run was **cancelled**, so nothing resumes it: stopping a run is a decision, and re-dispatching it two hours later would undo that. Re-apply the `tier:*` label or run the `claude-implement` workflow by hand to spend another attempt deliberately.'
+  elif is_retryable; then
     printf 'If this was the subscription'"'"'s usage limit or another transient error, the `claude-resume` workflow re-dispatches this issue within about two hours, up to 3 attempts, unless a person comments on the pull request first.'
+  else
+    printf 'This is **not retried automatically**: `claude-resume` retries only a transient failure, and `%s` is not one. Re-apply the `tier:*` label or run the `claude-implement` workflow by hand.' "$t"
   fi
 }
 
@@ -190,10 +219,11 @@ implement_mode() {
 
   push_branch || true
 
-  local prs pr_number pr_url
-  prs=$(gh pr list --head "$BRANCH" --state open --json number,url,isDraft,body) || prs="[]"
+  local prs pr_number pr_url pr_title
+  prs=$(gh pr list --head "$BRANCH" --state open --json number,url,isDraft,body,title) || prs="[]"
   pr_number=$(printf '%s' "$prs" | jq -r '.[0].number // empty' 2>/dev/null) || pr_number=""
   pr_url=$(printf '%s' "$prs" | jq -r '.[0].url // empty' 2>/dev/null) || pr_url=""
+  pr_title=$(printf '%s' "$prs" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""
   pr_is_safety_net_draft=$(printf '%s' "$prs" | jq -r '.[0] | if (.isDraft == true and ((.body // "") | contains("<!-- claude-implement-safety-net"))) then "yes" else "no" end' 2>/dev/null) || pr_is_safety_net_draft="no"
 
   if [ -n "$pr_number" ]; then
@@ -203,6 +233,13 @@ implement_mode() {
       # claude-resume. A draft the model or a person opened is theirs to promote.
       if [ "$pr_is_safety_net_draft" = "yes" ]; then
         gh pr ready "$pr_number" >/dev/null || log "could not mark #$pr_number ready"
+        # The draft was titled `WIP:` because the run that opened it had not finished.
+        # This one has, so the prefix is now false — and a ready pull request that still
+        # calls itself work in progress tells the reviewer the opposite of what the state
+        # says. Only that exact prefix is dropped; a title a person edited is theirs.
+        case "$pr_title" in
+          "WIP: "*) gh pr edit "$pr_number" --title "${pr_title#WIP: }" >/dev/null || log "could not retitle #$pr_number" ;;
+        esac
         comment_pr "$pr_number" "$(printf '%s\n**The resumed claude-implement run finished** (%s) and this pull request is now ready for review. Read the checklist in the description against the issue before merging.\n\n%s' "$FINISHED_MARKER" "$why" "$(transcript_hint)")"
       fi
       return 0

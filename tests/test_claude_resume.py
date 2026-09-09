@@ -9,8 +9,8 @@ not help or where a person is already at work:
 
 - not a draft, or a draft without the marker         -> not the safety net's; leave it
 - a `<!-- claude-implement-finished -->` comment      -> a run already finished; a person decides
-- latest safety-net record says `error_max_turns`    -> a budget, not a limit; retrying repeats it
-- a human commented after the last safety-net record -> a person took over
+- latest safety-net subtype is not retryable         -> only a transient failure is worth another run
+- a human commented since the pipeline last acted    -> a person took over
 - attempts at the cap                                 -> stop, say so once
 - last attempt too recent                             -> that run may still be going
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -81,6 +82,42 @@ def test_a_budget_failure_is_not_retried() -> None:
     assert d.action == "skip" and "error_max_turns" in d.reason
 
 
+def test_a_run_that_finished_without_opening_a_pull_request_is_not_retried() -> None:
+    """The safety net stamps `subtype=success` on the draft it opens when a run finished
+    but never opened a pull request. The work is done; the draft is waiting on a person to
+    read it against the acceptance criteria, not on another Opus run to redo it."""
+    d = resume.decide(_pr(subtype="success"), [], NOW)
+    assert d.action == "skip" and "success" in d.reason
+
+
+def test_a_cancelled_run_is_not_resumed() -> None:
+    """`docs/PIPELINE.md` § How to stop it promises that cancelling a run in the Actions
+    tab stops it. The safety net still runs (`if: always()`) and still opens the draft, so
+    the only thing keeping that promise is this skip."""
+    d = resume.decide(_pr(subtype="cancelled"), [], NOW)
+    assert d.action == "skip" and "cancelled" in d.reason
+
+
+def test_only_the_listed_subtypes_are_retried() -> None:
+    """A positive list, so a subtype nobody anticipated is left alone rather than repeated.
+    `cancelled` is the precedent: it was added to the protocol after the rule was written."""
+    assert resume.RETRYABLE_SUBTYPES == {"error_during_execution", "none"}
+    for unanticipated in ("error_deadline_exceeded", "refusal"):
+        d = resume.decide(_pr(subtype=unanticipated), [], NOW)
+        assert d.action == "skip" and unanticipated in d.reason
+
+
+def test_the_two_scripts_agree_on_which_subtypes_are_retried() -> None:
+    """`claude_implement_report.sh` tells the reader on the draft whether this will be
+    retried; `claude_resume.py` decides whether it is. A copy of the list in each is a copy
+    that disagrees the first time either is edited, and the disagreement is a sentence on a
+    pull request that is the opposite of the truth."""
+    shell = (REPO_ROOT / "infra" / "ci" / "claude_implement_report.sh").read_text()
+    declared = re.search(r'^RETRYABLE_SUBTYPES="([^"]*)"', shell, re.MULTILINE)
+    assert declared, "claude_implement_report.sh no longer declares RETRYABLE_SUBTYPES"
+    assert set(declared.group(1).split()) == set(resume.RETRYABLE_SUBTYPES)
+
+
 def test_the_latest_safety_net_record_decides_the_subtype() -> None:
     """The body says the first run hit the budget; a later resumed run then hit a limit.
     The latest record is the one to act on."""
@@ -113,6 +150,31 @@ def test_a_human_comment_before_the_last_record_does_not_block() -> None:
     assert d.action == "dispatch"
 
 
+def test_a_person_who_comments_while_an_attempt_is_running_is_not_talked_over() -> None:
+    """The gap this closes: a comment made *during* an attempt is older than the
+    safety-net record that attempt writes when it fails, so measuring "has a person spoken
+    since?" from the record would read it as already answered and dispatch over the top of
+    it. The line is the last thing the pipeline did on its own — here, the dispatch."""
+    comments = [
+        _resume_comment(1, NOW - timedelta(hours=4)),
+        _comment("TFelbor", "hold off, I'm taking this one", NOW - timedelta(hours=3, minutes=30)),
+        _comment("claude", MARK.format("error_during_execution") + " ended again", NOW - timedelta(hours=3)),
+    ]
+    d = resume.decide(_pr(), comments, NOW)
+    assert d.action == "skip" and "TFelbor" in d.reason
+
+
+def test_a_resumed_attempt_that_nobody_commented_on_is_followed_by_the_next() -> None:
+    """The other side of the rule above: measuring from the dispatch must not make an
+    ordinary failed attempt look like one a person intervened in."""
+    comments = [
+        _resume_comment(1, NOW - timedelta(hours=4)),
+        _comment("claude", MARK.format("error_during_execution") + " ended again", NOW - timedelta(hours=3)),
+    ]
+    d = resume.decide(_pr(), comments, NOW)
+    assert d.action == "dispatch" and d.attempt == 2
+
+
 # --- the cap and the gap ---------------------------------------------------------------------
 
 
@@ -130,7 +192,7 @@ def test_attempts_at_the_cap_stop() -> None:
 def test_a_recent_attempt_is_given_time_to_finish() -> None:
     comments = [_resume_comment(1, NOW - timedelta(minutes=40))]
     d = resume.decide(_pr(), comments, NOW, min_gap=timedelta(hours=2))
-    assert d.action == "skip" and "minutes" in d.reason or d.action == "skip"
+    assert d.action == "skip" and "40 minutes" in d.reason
 
 
 def test_an_old_attempt_is_followed_by_the_next_one() -> None:
@@ -183,3 +245,19 @@ def test_main_dispatches_the_implementer_and_leaves_a_resume_comment(tmp_path: P
     assert "<!-- claude-implement-resume -->" in comment and "attempt 1 of 3" in comment
     assert not any("pr comment 13" in c for c in calls), "the model's own draft was touched"
     assert "dispatched #7" in result.stdout or "dispatch" in result.stdout
+
+
+def test_a_run_that_cannot_list_the_drafts_goes_red(tmp_path: Path) -> None:
+    """A scheduled run that cannot see the drafts it exists to pick up has done nothing.
+    Green there means the first sign of trouble is somebody wondering why a draft has sat
+    for a day."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text("#!/usr/bin/env bash\necho 'gh: HTTP 503' >&2\nexit 1\n")
+    gh.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+           "GH_TOKEN": "fake", "GH_REPO": "Daedal-Studio/ds-mvp"}
+    result = subprocess.run(["python3", str(SCRIPT)], env=env, capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "could not list pull requests" in result.stderr

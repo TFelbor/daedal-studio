@@ -41,7 +41,7 @@ printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_GH_LOG"
 case "$1 $2" in
   "pr list")   printf '%s' "${FAKE_GH_PR_LIST:-[]}" ;;
   "pr create") echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
-  "pr comment"|"issue comment"|"pr ready") : ;;
+  "pr comment"|"issue comment"|"pr ready"|"pr edit") : ;;
   *) echo "fake gh: unexpected invocation: $*" >&2; exit 64 ;;
 esac
 """
@@ -295,10 +295,12 @@ def test_the_script_exits_zero_even_when_github_is_unreachable(repo: dict) -> No
 
 SAFETY_NET_DRAFT = json.dumps([{
     "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
+    "title": "WIP: Bind the API server to loopback by default",
     "body": "Closes #7\n\n<!-- claude-implement-safety-net subtype=error_during_execution -->\n**Opened by the claude-implement workflow**",
 }])
 HUMAN_DRAFT = json.dumps([{
     "number": 13, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/13", "isDraft": True,
+    "title": "Bind the API server to loopback by default",
     "body": "Closes #7\n\nStill working on the tests.",
 }])
 
@@ -355,6 +357,59 @@ def test_success_with_a_safety_net_draft_marks_it_ready_and_says_so(repo: dict) 
     (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
     assert "<!-- claude-implement-finished -->" in comment
     assert not any(c.startswith("pr create") for c in calls)
+
+
+def test_the_finished_path_drops_the_wip_title_prefix(repo: dict) -> None:
+    """The draft was titled `WIP:` because the run that opened it had not finished. This
+    one has, so the prefix is now false, and a ready pull request that calls itself work in
+    progress tells the reviewer the opposite of what its state says."""
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=SAFETY_NET_DRAFT)
+    (edit,) = [c for c in _calls(repo) if c.startswith("pr edit 12 ")]
+    assert edit == "pr edit 12 --title Bind the API server to loopback by default"
+
+
+def test_a_title_without_the_prefix_is_left_as_it_is(repo: dict) -> None:
+    """Only that exact prefix is dropped. A title a person edited is theirs."""
+    _commit(repo, "a.py")
+    theirs = json.loads(SAFETY_NET_DRAFT)
+    theirs[0]["title"] = "Loopback binding (I renamed this)"
+    _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0),
+         FAKE_GH_PR_LIST=json.dumps(theirs))
+    calls = _calls(repo)
+    assert "pr ready 12" in calls
+    assert not any(c.startswith("pr edit") for c in calls), calls
+
+
+# --- a cancelled run is a decision, not a fault ------------------------------------------
+
+
+def test_a_cancelled_run_is_marked_cancelled_in_the_protocol(repo: dict) -> None:
+    """This script runs under `if: always()`, so cancelling a run in the Actions tab still
+    gets here — with no result message, which would read as `none` and be re-dispatched
+    within two hours. `docs/PIPELINE.md` § How to stop it promises the opposite, and this
+    subtype is the only thing keeping that promise."""
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="cancelled", EXECUTION_FILE="")
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "<!-- claude-implement-safety-net subtype=cancelled -->" in create
+
+
+def test_a_cancelled_run_says_it_will_not_be_resumed(repo: dict) -> None:
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="cancelled", EXECUTION_FILE="")
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "cancelled" in create and "nothing resumes it" in create
+    assert "claude-resume` workflow re-dispatches" not in create
+
+
+def test_an_unanticipated_subtype_is_not_promised_a_retry(repo: dict) -> None:
+    """The retry note reads from the same positive list `claude_resume.py` decides on, so a
+    subtype nobody anticipated cannot be promised a retry it will not get."""
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo, "error_deadline_exceeded", 12, 0))
+    (create,) = [c for c in _calls(repo) if c.startswith("pr create ")]
+    assert "not retried automatically" in create and "error_deadline_exceeded" in create
 
 
 def test_success_with_a_draft_the_model_opened_is_left_alone(repo: dict) -> None:

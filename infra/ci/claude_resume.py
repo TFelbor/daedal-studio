@@ -14,8 +14,8 @@ help, or where a person is already at work:
 
 - not a draft, or a draft without the marker         -> not the safety net's; leave it
 - a `<!-- claude-implement-finished -->` comment      -> a run already finished; a person decides
-- latest safety-net record says `error_max_turns`    -> a budget, not a limit; retrying repeats it
-- a human commented after the last safety-net record -> a person took over
+- latest safety-net subtype is not retryable         -> only a transient failure is worth another run
+- a human commented since the pipeline last acted    -> a person took over
 - attempts at the cap                                 -> stop
 - last attempt too recent                             -> that run may still be going
 
@@ -45,6 +45,23 @@ BOT_LOGINS = {"claude", "claude-code", "github-actions"}
 
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_MIN_GAP = timedelta(hours=2)
+
+#: The result subtypes another run would help with, and the only ones. A positive list, not
+#: a deny list: a subtype nobody anticipated is left alone rather than retried by default,
+#: and every subtype the safety net can stamp today is one it would have been wrong to
+#: retry — `success` (the work is done, the draft is waiting on a person), `error_max_turns`
+#: (a budget, and another 200 turns on the same scope repeats it), `cancelled` (someone
+#: stopped it on purpose). `RETRYABLE_SUBTYPES` in `infra/ci/claude_implement_report.sh`
+#: holds the same set for its own retry note; a test binds the two so they cannot drift.
+RETRYABLE_SUBTYPES = frozenset({"error_during_execution", "none"})
+
+#: Why a non-retryable subtype is not retried, in the words the log and the reason use.
+#: A subtype missing from here still skips; it just says less.
+WHY_NOT_RETRYABLE = {
+    "error_max_turns": "a budget, not a limit; retrying repeats it",
+    "success": "the run finished; the draft is waiting on a person, not on another run",
+    "cancelled": "a person stopped that run; re-dispatching it would undo that",
+}
 
 
 @dataclass(frozen=True)
@@ -91,14 +108,23 @@ def decide(
         if m:
             records.append((_when(c["createdAt"]), m.group(1)))
     latest_time, latest_subtype = max(records, key=lambda r: r[0])
-    if latest_subtype == "error_max_turns":
-        return Decision("skip", "the latest run ended with error_max_turns — a budget, not a limit; retrying repeats it", issue=issue)
+    if latest_subtype not in RETRYABLE_SUBTYPES:
+        why = WHY_NOT_RETRYABLE.get(latest_subtype, "only a transient failure is retried")
+        return Decision("skip", f"the latest run ended with {latest_subtype} — {why}", issue=issue)
 
-    humans_after = [c for c in ordered if not _is_bot(c["author"]["login"]) and _when(c["createdAt"]) > latest_time]
+    resumes = [c for c in ordered if RESUME_MARKER in (c.get("body") or "")]
+
+    # A person who speaks up has taken over. "Since the last safety-net record" is the
+    # wrong line once the loop is running, though: a comment posted *while* an attempt is
+    # in flight is older than the record that attempt writes when it fails, so it would be
+    # read as already answered and the next tick would dispatch over the top of it. The
+    # line is the last thing the pipeline did of its own accord — the resume dispatch when
+    # there has been one, the safety-net record otherwise.
+    spoke_last = _when(resumes[-1]["createdAt"]) if resumes else latest_time
+    humans_after = [c for c in ordered if not _is_bot(c["author"]["login"]) and _when(c["createdAt"]) > spoke_last]
     if humans_after:
         return Decision("skip", f"a person ({humans_after[-1]['author']['login']}) commented after the last run; leaving it to them", issue=issue)
 
-    resumes = [c for c in ordered if RESUME_MARKER in (c.get("body") or "")]
     if len(resumes) >= max_attempts:
         return Decision("skip", f"{len(resumes)} resume attempts made; the cap is {max_attempts}", issue=issue)
     if resumes:
@@ -123,8 +149,12 @@ def main() -> int:
         prs = json.loads(_gh("pr", "list", "--state", "open", "--limit", "100",
                              "--json", "number,isDraft,body,headRefName,createdAt"))
     except (subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        # Red, not green. A scheduled run that cannot see the drafts it exists to pick up
+        # has done nothing, and a green tick on it means the first sign of trouble is
+        # somebody wondering why a draft has sat for a day. The per-pull-request failure
+        # below is swallowed on purpose: the next tick retries that one.
         print(f"claude-resume: could not list pull requests: {exc}", file=sys.stderr)
-        return 0
+        return 1
 
     candidates = [p for p in prs if p.get("isDraft") and SAFETY_NET_MARKER in (p.get("body") or "")]
     print(f"claude-resume: {len(prs)} open pull request(s), {len(candidates)} safety-net draft(s)")
