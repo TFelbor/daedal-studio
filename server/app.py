@@ -41,7 +41,7 @@ from pythonsrc.ip_screen import screen_prompt
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
-from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec
+from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec, spec_hash
 import httpx
 from server.config_store import ConfigStore, CONFIG_KEYS
 from server.job_broadcaster import broadcaster
@@ -522,6 +522,94 @@ def blueprint_gate_state(job, db: TelemetryDB) -> str:
     return "not_ready"
 
 
+def job_spec_summary(job) -> dict:
+    """The parametric facts about a job, for the polled detail endpoint.
+
+    Four values, all None for a prompt job: the spec itself, the hash Phase 2
+    compiled, the archetype (and the version of it that compiled), and the
+    dimension check Phase 3 measured. Together they are everything the spec panel
+    and the Fits Check need, and nothing they do not — the designed feature table
+    and the full dimension report are on `GET /jobs/{id}/spec`, which nothing polls.
+
+    **The row is authoritative, not the file.** `POST /jobs` normalises the submitted
+    spec to its canonical form on the request model, stores it in `request_params`
+    and *then* writes `data/inputs/{job_id}/spec.json` from it, and Phase 2 copies
+    that into the output directory — so the file cannot disagree with the row, and
+    the row is the copy that survives someone clearing `data/outputs/`. It is also
+    the copy this endpoint already has in hand: `db.get_job` fetched it, so a spec
+    job costs one dict lookup and one sha256 over ~600 bytes rather than a stat, an
+    open and a parse on every tick of a one-second poll.
+
+    The file is consulted only when the row says "spec job" and carries no spec —
+    a row whose `request_params` predates the field, or one a CLI `--spec` run
+    attached itself to. That read is `resolve_job_artifact`'s, so it finds the
+    per-job directory and the `dev-` variant alike.
+
+    `spec_hash` prefers `generation_params["spec_sha256"]`, because that is the hash
+    of the spec the compiler actually received. It falls back to hashing the row's
+    spec, which is the only answer available before Phase 2 has run.
+
+    Args:
+        job: A PrintJob row.
+
+    Returns:
+        `{"spec", "spec_hash", "archetype", "archetype_version", "dimension_check"}`,
+        every value None when the job is not a spec job.
+    """
+    empty = {
+        "spec": None,
+        "spec_hash": None,
+        "archetype": None,
+        "archetype_version": None,
+        "dimension_check": None,
+    }
+
+    request_params = job.request_params or {}
+    generation_params = job.generation_params or {}
+    spec = request_params.get("spec")
+    compiled_hash = generation_params.get("spec_sha256")
+
+    if spec is None and not compiled_hash:
+        return empty
+
+    if spec is None:
+        artifact = resolve_job_artifact(job.job_id, "spec.json")
+        if artifact is not None:
+            try:
+                spec = json.loads(artifact.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001 — a missing spec is not a 500
+                logger.warning("Could not read spec.json for %s: %s", job.job_id, exc)
+        if spec is None:
+            return empty
+
+    if not isinstance(spec, dict):
+        logger.warning("Job %s has a spec that is not an object; ignoring", job.job_id)
+        return empty
+
+    spec_sha = compiled_hash
+    if not spec_sha:
+        try:
+            spec_sha = spec_hash(OrganizerSpec.from_dict(spec))
+        except SpecError as exc:  # noqa: PERF203 — one row, one message
+            logger.warning("Job %s carries a spec the schema refuses: %s", job.job_id, exc)
+
+    # The archetype the *compiler* named wins over the one the spec asked for: they
+    # agree today, and if they ever do not, what ran is the fact worth showing.
+    archetype = generation_params.get("archetype") or spec.get("archetype")
+
+    return {
+        "spec": spec,
+        "spec_hash": spec_sha,
+        "archetype": archetype,
+        # None until Phase 2 has compiled. The panel renders the archetype alone
+        # rather than inventing a version for a job that has not been compiled yet.
+        "archetype_version": generation_params.get("archetype_version"),
+        # Written by Phase 3 onto `repair_report` (the `achieved_extent_mm`
+        # precedent — no new column). None until Phase 3 has measured.
+        "dimension_check": (job.repair_report or {}).get("dimension_check"),
+    }
+
+
 def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | None, str | None]:
     """Resolve which printer a job talks to, from one place.
 
@@ -808,14 +896,23 @@ class JobRequest(BaseModel):
         kernel, which the api-server image does not have, so those refusals arrive
         as a failed Phase 2. What the schema refuses — unknown keys, a bad archetype
         name, a negative millimetre — must not become a job.
+
+        **The canonical form is what is kept**, not the bytes that arrived. A request
+        may omit `process` and `constraints` entirely and mean the schema's defaults
+        by it; storing the submitted dict put a spec in `request_params` that named a
+        wall thickness nowhere while the mesh was compiled with one, so the row and
+        the `spec.json` written from it described the same job differently and
+        `GET /jobs/{id}` served a spec with holes in it. Normalising here — on the
+        model, before the value is used for anything — means the row, the file and
+        the compiler all see one spec, and `spec_hash` over the row equals the
+        `spec_sha256` Phase 2 records.
         """
         if value is None:
             return None
         try:
-            OrganizerSpec.from_dict(value)
+            return OrganizerSpec.from_dict(value).to_dict()
         except SpecError as exc:
             raise ValueError("invalid spec: " + "; ".join(exc.problems)) from None
-        return value
 
     @model_validator(mode="after")
     def _spec_decides_the_size(self) -> "JobRequest":
@@ -942,6 +1039,21 @@ class JobStatusResponse(BaseModel):
     #: The printer this job's Phase 5 would go to, resolved now — the thing a person is
     #: being asked to confirm. See `dispatch_target`.
     dispatch_target: Optional[dict] = None
+    #: The organizer spec this job was compiled from, canonical, or None for a prompt
+    #: job. See `job_spec_summary` — the row is authoritative and the whole group costs
+    #: one dict lookup, because this endpoint is polled.
+    spec: Optional[Dict[str, Any]] = None
+    #: sha256 of the canonical spec — what Phase 2 recorded as `spec_sha256`.
+    spec_hash: Optional[str] = None
+    #: The archetype that compiled it, and the version of that archetype. The version
+    #: is None until Phase 2 has run: nothing has compiled the spec yet.
+    archetype: Optional[str] = None
+    archetype_version: Optional[str] = None
+    #: Phase 3's measurement of the compiled mesh against the spec — the only fit
+    #: verdict on this endpoint, and the only one the UI may show, because it is the
+    #: only one that was measured. None until Phase 3 has run. See
+    #: `pythonsrc/organizer/compiler.py::DimensionReport.to_dict`.
+    dimension_check: Optional[Dict[str, Any]] = None
 
 
 def _profile_build_volume(source: dict) -> Optional[List[float]]:
@@ -2207,6 +2319,7 @@ async def get_job(job_id: str):
         ),
         dispatch_state=job_dispatch_state,
         dispatch_target=job_dispatch_target,
+        **job_spec_summary(job),
     )
 
 @app.get("/jobs/{job_id}/printer-info")
@@ -3522,6 +3635,69 @@ async def get_job_provenance(job_id: str) -> Dict[str, Any]:
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         },
     }
+
+
+#: The artifacts a spec run writes into its job directory, and the key each is served
+#: under by `GET /jobs/{id}/spec`. `spec.json` is deliberately absent: the canonical
+#: spec comes off the row (see `job_spec_summary`), and reading the file as well would
+#: give one response two answers to the same question.
+#:
+#: `view.json` — the annotated preview's projection, from `archetypes.view_for` — will
+#: join this list when it is written. Nothing here needs changing for it: one entry and
+#: the endpoint serves it.
+SPEC_ARTIFACTS = {
+    "compile_features": "compile_features.json",
+    "dimension_report": "dimension_report.json",
+}
+
+
+@app.get("/jobs/{job_id}/spec")
+async def get_job_spec(job_id: str) -> Dict[str, Any]:
+    """Everything the parametric path recorded about one job.
+
+    The un-polled sibling of `GET /jobs/{id}`, on the `/provenance` precedent. The
+    detail endpoint carries the four values the spec panel and the Fits Check render
+    on every tick; this one adds the two documents that are read once and are far
+    larger — `compile_features.json` (every designed dimension the compiler produced)
+    and `dimension_report.json` (every one of them measured back off the exported
+    mesh, with its error). Putting those on the polled endpoint would send a few
+    kilobytes of unchanging JSON every second for the whole of a job's life.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        The summary from `job_spec_summary` plus a `compile_features` and a
+        `dimension_report` key, each None until the phase that writes it has run.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, or if it has no spec — a
+            prompt job has nothing to serve here, and an empty 200 would read as
+            "compiled, and every number is missing".
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    summary = job_spec_summary(job)
+    if summary["spec"] is None:
+        raise HTTPException(status_code=404, detail="Job has no spec")
+
+    documents: Dict[str, Any] = {}
+    for key, filename in SPEC_ARTIFACTS.items():
+        documents[key] = None
+        artifact = resolve_job_artifact(job.job_id, filename)
+        if artifact is None:
+            continue
+        try:
+            documents[key] = json.loads(artifact.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 — an unreadable artifact is not a 500
+            logger.warning("Could not read %s for %s: %s", filename, job.job_id, exc)
+
+    return {"job_id": job.job_id, **summary, **documents}
 
 
 # ── Print outcome feedback ────────────────────────────────────────────────────

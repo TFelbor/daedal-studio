@@ -116,7 +116,12 @@ def test_a_spec_job_records_that_the_spec_decided_the_size(mock_run, printer_con
     assert job.size_source == "spec"
     assert job.requested_size_mm is None
     assert job.requested_scale_axis is None
-    assert job.request_params["spec"] == SPEC
+    # Canonical, not as submitted: the request omitted `process` and `constraints`
+    # and meant the schema's defaults by them, and a row that records the omission
+    # describes a different part than the one the compiler built. See
+    # `JobRequest._spec_is_valid`.
+    assert job.request_params["spec"] == OrganizerSpec.from_dict(SPEC).to_dict()
+    assert job.request_params["spec"]["process"]["wall_mm"] == 2.8
     assert job.request_params["spec_path"] == f"/app/data/inputs/{job_id}/spec.json"
 
 
