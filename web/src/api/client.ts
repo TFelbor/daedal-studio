@@ -114,6 +114,83 @@ export interface JobStatusResponse {
   dispatch_state?: 'not_ready' | 'awaiting_confirmation' | 'dispatched';
   /** The printer a dispatch would go to, resolved when the job was read. */
   dispatch_target?: DispatchTarget | null;
+  /** The canonical organizer spec this job was compiled from, or null for a prompt
+   *  job. See `job_spec_summary` in server/app.py. */
+  spec?: RawSpec | null;
+  /** sha256 of the canonical spec — what Phase 2 recorded as `spec_sha256`. */
+  spec_hash?: string | null;
+  /** The archetype that compiled it, and the version of that archetype. The version
+   *  is null until Phase 2 has run. */
+  archetype?: string | null;
+  archetype_version?: string | null;
+  /** Phase 3's measurement of the compiled mesh against the spec. The only fit
+   *  verdict on this endpoint, because it is the only one that was measured. */
+  dimension_check?: DimensionCheck | null;
+}
+
+/**
+ * The organizer spec as the server stores it: `pythonsrc/organizer/spec.py`, canonical.
+ *
+ * Every field is present, because `POST /jobs` normalises a submitted spec through
+ * the schema before it is stored — a request may omit `process` and mean its defaults
+ * by it, but what lands on the row and in `spec.json` never does.
+ */
+export interface RawSpec {
+  archetype: string;
+  schema_version: number;
+  compartments: { contents: { count: number; card: string; sleeving: string } }[];
+  lid: {
+    kind: string;
+    magnets: boolean;
+    height_mm: number;
+    wall_mm: number;
+    clearance_mm: number;
+    top_mm: number;
+  } | null;
+  constraints: { max_external_mm: [number, number, number] | null };
+  process: {
+    wall_mm: number;
+    floor_mm: number;
+    cavity_clearance_mm: number;
+    stack_slack_mm: number;
+    min_feature_mm: number;
+  };
+}
+
+/**
+ * Phase 3's dimension check — every designed feature measured back off the exported
+ * mesh. `pythonsrc/organizer/compiler.py::DimensionReport.to_dict`.
+ */
+export interface DimensionCheck {
+  tolerance_mm: number;
+  within_tolerance: boolean;
+  features_checked: number;
+  features_within: number;
+  /** Null when nothing could be measured at all. */
+  max_abs_error_mm: number | null;
+  features: Record<string, { designed_mm: number; measured_mm: number; error_mm: number }>;
+  missing: string[];
+  out_of_tolerance: string[];
+}
+
+/** The full parametric record, from the un-polled `GET /jobs/{id}/spec`. */
+export interface JobSpecResponse {
+  job_id: string;
+  spec: RawSpec;
+  spec_hash: string | null;
+  archetype: string | null;
+  archetype_version: string | null;
+  dimension_check: DimensionCheck | null;
+  /** Every designed dimension the compiler produced — `compile_features.json`. */
+  compile_features: {
+    archetype: string;
+    archetype_version: string;
+    spec_sha256: string;
+    parts: string[];
+    features: Record<string, number>;
+  } | null;
+  /** The same document as `dimension_check`, read from the job's own artifact. */
+  dimension_report: DimensionCheck | null;
 }
 
 export interface DispatchTarget {

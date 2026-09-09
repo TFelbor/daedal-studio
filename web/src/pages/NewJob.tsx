@@ -27,7 +27,12 @@ import { reportUi } from '../api/activity';
 import { closeSocket } from '../api/ws';
 import { useActivityFeed } from '../hooks/useActivityFeed';
 import { PIPELINE } from '../pipeline';
-import { NO_SPEC_REASON, specFromJob, type ArchetypeId } from '../organizer/spec';
+import {
+  NO_SPEC_REASON,
+  UNCOMPOSED_SPEC_REASON,
+  specFromJob,
+  type ArchetypeId,
+} from '../organizer/spec';
 import styles from './NewJob.module.css';
 
 interface PhaseStatus {
@@ -981,10 +986,10 @@ export function NewJob() {
                   )}
                 </Blueprint>
 
-                {/* The fit verdict for what is being composed. Nothing computes one
-                    yet, so it states that rather than showing a hopeful tick — see
-                    FitsCheck. */}
-                <FitsCheck fits={null} unavailableReason={NO_SPEC_REASON} variant="badge" />
+                {/* The fit verdict for what is being composed. The composer does not
+                    build a spec yet, so there is nothing to check and it says so
+                    rather than showing a hopeful tick — see FitsCheck. */}
+                <FitsCheck fits={null} unavailableReason={UNCOMPOSED_SPEC_REASON} variant="badge" />
 
                 <PromptNotice className={styles.promptNotice} />
 
@@ -1278,10 +1283,10 @@ export function NewJob() {
               aria-labelledby={`stage-tab-${activeTab}`}
             >
               {activeTab === 'spec' && (
-                // The numbers the part is built from, when there are any. There are
-                // not yet, so the panel says so and shows the phase-1 artifact that
-                // does exist underneath — captioned as the image it is, not as a
-                // spec it is not.
+                // The numbers the part is built from, when there are any: a spec job
+                // renders its own, read-only. A generative job has none, so the panel
+                // says so and shows the phase-1 artifact that does exist underneath —
+                // captioned as the image it is, not as a spec it is not.
                 <SpecPanel spec={specFromJob(currentJob)} unavailableReason={NO_SPEC_REASON}>
                   <BlueprintPreview
                     jobId={jobId}
