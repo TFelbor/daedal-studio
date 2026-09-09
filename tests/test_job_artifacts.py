@@ -11,12 +11,18 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import DOWNLOAD_FORMATS, app, resolve_job_artifact
+from server.app import (
+    DOWNLOAD_FORMATS,
+    app,
+    resolve_job_artifact,
+    stale_flat_artifacts,
+)
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
 
 client = TestClient(app)
-OUTPUTS = Path(__file__).parent.parent / "data" / "outputs"
+REPO_ROOT = Path(__file__).parent.parent
+OUTPUTS = REPO_ROOT / "data" / "outputs"
 
 
 def _make_job(outcome: str = "success") -> str:
@@ -99,6 +105,56 @@ def test_download_refuses_legacy_file_for_unfinished_job():
     finally:
         if not pre_existing:
             legacy.unlink()
+
+
+@pytest.mark.parametrize("fmt", sorted(DOWNLOAD_FORMATS))
+def test_download_refuses_the_legacy_file_in_every_format(fmt):
+    """The flat fallback is per *filename*, so each format has its own legacy file.
+
+    A run without `--job-id` writes all three into flat `data/outputs/`, and a job
+    that never finished has none of its own — so the guard has to hold for the mesh
+    formats exactly as it does for the G-code.
+    """
+    job_id = _make_job(outcome="unknown")
+    filename, _ = DOWNLOAD_FORMATS[fmt]
+    legacy = OUTPUTS / filename
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+    pre_existing = legacy.exists()
+    if not pre_existing:
+        legacy.write_bytes(b"someone else's mesh")
+
+    try:
+        resp = client.get(f"/jobs/{job_id}/download?format={fmt}")
+        assert resp.status_code == 404, (
+            f"?format={fmt} served the flat legacy {filename} to a job that never "
+            "produced one."
+        )
+    finally:
+        if not pre_existing:
+            legacy.unlink()
+
+
+@pytest.mark.parametrize("fmt", sorted(DOWNLOAD_FORMATS))
+def test_creating_a_job_sweeps_the_legacy_file_of_every_served_format(fmt):
+    """A *finished* job with no file of its own is still served the flat fallback.
+
+    What makes that safe is the sweep in `POST /jobs`: the earlier run's file is gone
+    by the time any later job can ask for it. A format that is servable and not swept
+    hands that job an unrelated run's mesh with a 200 — which is what happened when
+    the 3MF was added to `DOWNLOAD_FORMATS` and not to the sweep.
+    """
+    filename, _ = DOWNLOAD_FORMATS[fmt]
+    swept = {p.name for p in stale_flat_artifacts(REPO_ROOT)}
+    assert filename in swept, (
+        f"?format={fmt} serves {filename}, which POST /jobs does not clear from the "
+        "flat layout — see server.app.stale_flat_artifacts."
+    )
+
+
+def test_the_sweep_only_touches_the_flat_layout():
+    """Per-job directories are the job's own output and must survive a new job."""
+    for path in stale_flat_artifacts(REPO_ROOT):
+        assert path.parent == REPO_ROOT / "data" / "outputs", path
 
 
 def test_download_404_for_unknown_job():

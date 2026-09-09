@@ -510,7 +510,6 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | paho-mqtt | EPL-2.0 OR BSD-3-Clause |
 | numba, llvmlite | BSD-2-Clause |
 | Pillow | MIT-CMU |
-| lxml | BSD-3-Clause |
 
 **lxml is there for one exporter, and it is declared rather than inherited.**
 trimesh's 3MF writer streams the model XML through `lxml.etree.xmlfile` and imports

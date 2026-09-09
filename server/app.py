@@ -1955,12 +1955,11 @@ async def create_job(request: JobRequest):
     # the run was about to use, so the pipeline stood a fixture in instead. Jobs now
     # render into `data/inputs/{job_id}/`, which nothing else writes, so there is
     # nothing stale here to clear.
-    for artifact in [
-        repo_root / "data" / "outputs" / "raw_mesh.obj",
-        repo_root / "data" / "outputs" / "engineered_mesh.obj",
-        repo_root / "data" / "outputs" / "engineered_mesh.stl",
-        repo_root / "data" / "outputs" / "engineered_mesh.gcode"
-    ]:
+    #
+    # The list is `stale_flat_artifacts` rather than spelled out here, because it is
+    # half of `/download`'s safety and the two halves drifted apart the moment a third
+    # format was added — see that function.
+    for artifact in stale_flat_artifacts(repo_root):
         if artifact.exists():
             try:
                 artifact.unlink()
@@ -2304,6 +2303,34 @@ DOWNLOAD_FORMATS: dict[str, tuple[str, str]] = {
 }
 
 DEFAULT_DOWNLOAD_FORMAT = "gcode"
+
+
+def stale_flat_artifacts(repo_root: Path) -> list[Path]:
+    """The flat-layout files `POST /jobs` clears before minting a job id.
+
+    A run without `--job-id` — the manual CLI path — writes to flat `data/outputs/`,
+    and `resolve_job_artifact` falls back there for a *finished* job that has no file
+    of its own. So this sweep is the other half of `/download`'s guard: the
+    `is_per_job` check refuses the fallback only for a job that never completed, and
+    what keeps a completed job with no file of its own from being handed an earlier
+    run's output is that the earlier run's output is no longer there.
+
+    Which is why the download formats are read out of `DOWNLOAD_FORMATS` rather than
+    listed again: a format that is servable and not swept mis-attributes a file, and
+    that is exactly what happened when the 3MF was added to one list and not the
+    other. `tests/test_job_artifacts.py` binds the two.
+
+    Args:
+        repo_root: The checkout root; `data/outputs/` hangs off it.
+
+    Returns:
+        Absolute paths, existing or not — the caller unlinks what it finds.
+    """
+    outputs = repo_root / "data" / "outputs"
+    # raw_mesh.obj and engineered_mesh.obj are not download formats: the first is
+    # Phase 2's output and the second is what the mesh viewer renders inline.
+    served = [filename for filename, _ in DOWNLOAD_FORMATS.values()]
+    return [outputs / name for name in ["raw_mesh.obj", "engineered_mesh.obj", *served]]
 
 
 @app.get("/jobs/{job_id}/download")

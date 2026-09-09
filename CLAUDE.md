@@ -669,6 +669,16 @@ FastAPI application with:
   is not a handoff. `tests/test_download_formats.py` binds the three sides that must
   agree — the formats the endpoint serves, the ones `DownloadFormats.tsx` offers, and the
   suffixes `Engineer.EXPORT_SUFFIXES` writes.
+  **A servable format that is not swept mis-attributes a file.** `resolve_job_artifact`
+  falls back to the flat `data/outputs/` layout for a *finished* job with no file of its
+  own, and the `is_per_job` guard in `download_job_output` refuses that fallback only for
+  a job that never completed. What protects the completed ones is `POST /jobs` deleting
+  the flat files — so the sweep list is `server.stale_flat_artifacts`, read out of
+  `DOWNLOAD_FORMATS` rather than spelled out a second time. Adding `?format=3mf` to one
+  list and not the other left a CLI run's flat `engineered_mesh.3mf` surviving every
+  later job, and answered a 200 with it for any finished job whose own export was
+  missing or recorded in `export_errors`. `tests/test_job_artifacts.py` binds the two
+  lists and exercises the flat fallback in every format.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[DS]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
