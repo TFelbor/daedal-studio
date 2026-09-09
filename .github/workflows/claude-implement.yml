@@ -140,7 +140,7 @@ jobs:
 
           # Two questions, and only the first one is authoritative.
           #
-          # `claude/issue-<n>` is the branch the implementer below works on, so an open
+          # `claude/issue-<n>` is the branch the implementer below works on, so a ready
           # or merged pull request from that head is the definitive "already done". A
           # *closed* one is an abandoned attempt — the draft the safety net opened, say,
           # closed by a person who wants a fresh start — and must not block that start.
@@ -174,13 +174,41 @@ jobs:
             return 1
           }
 
-          existing=$(gh_retry gh pr list --state all --limit 5 \
-            --head "claude/issue-${ISSUE_NUMBER}" --json number,state \
-            --jq '[.[] | select(.state != "CLOSED")] | length') || {
+          # The safety net's draft (see infra/ci/claude_implement_report.sh) is the one
+          # pull request that means "not done": an earlier run ended before it finished
+          # and left its commits here. That run is resumed — the branch step checks the
+          # branch out from origin and the note below tells the model — rather than
+          # skipped. A draft *without* the marker is the model's own or a person's, and
+          # is left alone; a ready pull request or a merged one means done.
+          open_prs=$(gh_retry gh pr list --state open --limit 10 \
+            --head "claude/issue-${ISSUE_NUMBER}" --json number,isDraft,body) || {
             echo "Could not ask GitHub whether a pull request already exists for #${ISSUE_NUMBER}." >&2
             echo "Refusing to implement blind: a duplicate costs a full run of Opus." >&2
             exit 1
           }
+          merged=$(gh_retry gh pr list --state merged --limit 5 \
+            --head "claude/issue-${ISSUE_NUMBER}" --json number --jq 'length') || {
+            echo "Could not ask GitHub whether a pull request was already merged for #${ISSUE_NUMBER}." >&2
+            exit 1
+          }
+          ready=$(jq '[.[] | select(.isDraft | not)] | length' <<<"$open_prs")
+          foreign_drafts=$(jq '[.[] | select(.isDraft and (((.body // "") | contains("<!-- claude-implement-safety-net")) | not))] | length' <<<"$open_prs")
+          resume_pr=$(jq -r '[.[] | select(.isDraft and ((.body // "") | contains("<!-- claude-implement-safety-net")))] | .[0].number // empty' <<<"$open_prs")
+
+          if [ "$merged" -gt 0 ] || [ "$ready" -gt 0 ] || [ "$foreign_drafts" -gt 0 ]; then
+            existing=1
+          elif [ -n "$resume_pr" ]; then
+            echo "Draft pull request #${resume_pr} was opened by the safety net; resuming the branch behind it."
+            note="This branch already holds commits from an earlier run that ended before it finished; draft pull request #${resume_pr} describes how that run ended. Read the issue, the Plan comment if there is one, the draft's description and its comments, then \`git log --oneline origin/main..HEAD\` and \`git diff origin/main\` before changing anything, and continue from where it stopped — do not start over. When every acceptance criterion is met, update the pull request body with the ticked checklist and mark it ready with \`gh pr ready ${resume_pr}\`."
+            {
+              echo "resume_note=${note}"
+              echo "resume_pr=${resume_pr}"
+              echo "should_run=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            existing=0
+          fi
 
           if [ "$existing" -eq 0 ]; then
             by_body=$(gh_retry gh pr list --state open --limit 50 --json body \
@@ -195,10 +223,15 @@ jobs:
 
           if [ "$existing" -gt 0 ]; then
             echo "A pull request already references issue #${ISSUE_NUMBER}; not implementing again."
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            should_run=false
           else
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            should_run=true
           fi
+          {
+            echo "resume_note="
+            echo "resume_pr="
+            echo "should_run=${should_run}"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         if: steps.guard.outputs.should_run == 'true'
@@ -279,13 +312,17 @@ jobs:
           # plan-first tier the `labeled` event that starts this job is sent by
           # `claude[bot]`, and the action refuses a bot actor it is not told about —
           # before the model runs, in about two seconds. Same list as claude-review.yml,
-          # for the same bot. Never `*`: an allowed bot skips the write-permission check.
-          allowed_bots: "claude[bot],claude-code[bot]"
+          # for the same bot. `github-actions[bot]` is claude-resume.yml re-dispatching
+          # this workflow with the workflow token — the same trust the `fix` job already
+          # extends to it. Never `*`: an allowed bot skips the write-permission check.
+          allowed_bots: "claude[bot],claude-code[bot],github-actions[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ steps.issue.outputs.number }}
 
             You are on the branch `${{ steps.branch.outputs.name }}`, already created and checked out for you. Do not create another branch. Implement this issue on it. If a "Plan" comment exists on the issue, follow it. Follow CLAUDE.md.
+
+            ${{ steps.guard.outputs.resume_note }}
 
             Work in small commits, and push after every commit (`git push -u origin HEAD` the first time). A run that ends early keeps everything that was pushed and loses everything that was not.
 

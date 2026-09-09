@@ -1,0 +1,57 @@
+# Picks up implementations that a usage limit — or any other transient failure — cut short.
+#
+# The subscription behind CLAUDE_CODE_OAUTH_TOKEN has a usage wall. When a run hits it,
+# the model step fails mid-task; claude-implement.yml's tail then pushes what exists and
+# opens a draft pull request carrying `<!-- claude-implement-safety-net subtype=… -->`.
+# Nothing else would ever pick that draft up until a person noticed it.
+#
+# This workflow runs every two hours and re-dispatches `claude-implement` for exactly
+# those drafts, through `workflow_dispatch` — the one event a workflow token is allowed
+# to trigger — so it depends on no comment-trigger behaviour. The implementer's guard
+# recognises the draft, resumes the branch, and tells the model it is resuming; a
+# finished resumed run marks the draft ready for review and leaves a
+# `<!-- claude-implement-finished -->` comment that stops this loop.
+#
+# What it never does: retry `error_max_turns` (a budget, not a limit — retrying repeats
+# it), touch a draft without the marker (the model's own, or a person's), dispatch after
+# a person has commented (they took over), exceed three attempts, or dispatch while the
+# previous attempt may still be running. infra/ci/claude_resume.py holds those rules and
+# tests/test_claude_resume.py pins them. See docs/PIPELINE.md § When a run fails.
+name: claude-resume
+
+on:
+  schedule:
+    # Every two hours, off the hour so it does not queue behind everyone's :00 crons.
+    - cron: "17 */2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # `gh workflow run` needs this; it is what lets a workflow token dispatch another workflow.
+  actions: write
+  pull-requests: write
+
+# One tick at a time: two overlapping ticks would count the same attempt twice.
+concurrency:
+  group: claude-resume
+  cancel-in-progress: false
+
+jobs:
+  resume:
+    name: resume
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Re-dispatch unfinished implementations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MAX_ATTEMPTS: "3"
+          MIN_GAP_MINUTES: "120"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 infra/ci/claude_resume.py

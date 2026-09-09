@@ -28,7 +28,8 @@ IMPLEMENT = WORKFLOWS / "claude-implement.yml"
 PLAN = WORKFLOWS / "claude-plan.yml"
 REVIEW = WORKFLOWS / "claude-review.yml"
 AUTOMERGE = WORKFLOWS / "claude-automerge.yml"
-PIPELINE_WORKFLOWS = (IMPLEMENT, PLAN, REVIEW, AUTOMERGE)
+RESUME = WORKFLOWS / "claude-resume.yml"
+PIPELINE_WORKFLOWS = (IMPLEMENT, PLAN, REVIEW, AUTOMERGE, RESUME)
 
 #: The one third-party action in the pipeline, and the form it must be pinned in.
 ACTION = "anthropics/claude-code-action"
@@ -49,6 +50,10 @@ MIN_TURNS = {"implement": 200, "fix": 200, "plan": 60, "review": 80}
 #: The safety-net script the implement and fix jobs run after the model, whatever
 #: happened to it.
 REPORT_SCRIPT = "infra/ci/claude_implement_report.sh"
+
+#: The script claude-resume.yml runs on a schedule to re-dispatch implementations that
+#: ended for a transient reason — the subscription's usage limit above all.
+RESUME_SCRIPT = "infra/ci/claude_resume.py"
 
 
 def _load(path: Path) -> dict:
@@ -197,9 +202,16 @@ def test_implement_can_be_started_by_hand_for_one_issue() -> None:
 
 
 def _step_named(workflow: dict, job: str, fragment: str) -> dict:
+    """The step whose `uses` names the fragment, or whose `run` invokes it on a line that
+    is not a comment — a step that merely *mentions* a script in a comment is not the
+    step that runs it."""
     for step in _steps(workflow, job):
-        if fragment in str(step.get("run", "")) or fragment in str(step.get("uses", "")):
+        if fragment in str(step.get("uses", "")):
             return step
+        for line in str(step.get("run", "")).splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and fragment in stripped:
+                return step
     raise AssertionError(f"job {job!r} has no step using {fragment!r}")
 
 
@@ -264,3 +276,43 @@ def test_review_skips_drafts_and_returns_when_they_are_ready() -> None:
     assert "ready_for_review" in types, f"pull_request types are {types}"
     condition = str(workflow["jobs"]["claude-review"].get("if", ""))
     assert "draft == false" in condition, f"claude-review does not skip drafts; if is {condition!r}"
+
+
+# --- resuming after a usage limit ----------------------------------------------------------
+
+
+def test_implement_admits_the_workflow_bot_that_redispatches_it() -> None:
+    """claude-resume re-runs the implementer with `gh workflow run` under the workflow
+    token, so the dispatch actor is `github-actions[bot]`; the action refuses it unless
+    named. Same trust argument as the `fix` job's `allowed_bots`."""
+    (step,) = _action_steps(_load(IMPLEMENT), "implement")
+    bots = {bot.lower() for bot in _allowed_bots(step)}
+    assert "github-actions[bot]" in bots, f"implement allows {sorted(bots)}"
+
+
+def test_implement_prompt_tells_a_resumed_run_that_it_is_resuming() -> None:
+    """The branch already has commits and a draft describes how the last run ended; a
+    model that does not know that starts over. The guard step decides and the prompt
+    carries its note — empty on a fresh run."""
+    workflow = _load(IMPLEMENT)
+    (step,) = _action_steps(workflow, "implement")
+    assert "steps.guard.outputs.resume_note" in step["with"]["prompt"]
+    guard = [s for s in _steps(workflow, "implement") if s.get("id") == "guard"]
+    assert guard, "no step with id guard"
+    assert "resume_note" in guard[0]["run"] and "isDraft" in guard[0]["run"], (
+        "the guard must recognise the safety net's draft and emit a resume note"
+    )
+
+
+def test_resume_workflow_runs_on_a_schedule_and_can_dispatch() -> None:
+    workflow = _load(RESUME)
+    triggers = _triggers(workflow)
+    assert "schedule" in triggers and "workflow_dispatch" in triggers, f"triggers are {sorted(triggers)}"
+    perms = workflow["permissions"]
+    assert perms.get("actions") == "write", "gh workflow run needs actions: write"
+    assert perms.get("pull-requests") == "write", "the resume comment needs pull-requests: write"
+    assert perms.get("contents") == "read"
+    _step_named(workflow, "resume", RESUME_SCRIPT)
+    assert (REPO_ROOT / RESUME_SCRIPT).exists()
+    assert "concurrency" in workflow, "two ticks must not dispatch the same draft twice"
+

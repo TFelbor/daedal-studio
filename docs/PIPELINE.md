@@ -49,6 +49,7 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
 | `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
+| `.github/workflows/claude-resume.yml` | none — `infra/ci/claude_resume.py` | every two hours, or by hand | Re-dispatches `claude-implement` for drafts the safety net left after a transient failure — the subscription's usage limit above all. Retries only a transient failure — never a budget failure, a finished run or a cancelled one — never touches a draft a person or the model opened, and stops after three attempts or the first human comment. |
 
 ### One exemption, and only one
 
@@ -222,6 +223,65 @@ closed draft does not block the restart.
 finished would request changes on it and start the fix loop against it; the finished
 version gets its review when a person says it is finished.
 
+### Resuming on its own after a usage limit
+
+The subscription behind `CLAUDE_CODE_OAUTH_TOKEN` has a usage wall, and a run that hits
+it fails mid-task with `error_during_execution` and the API's error text. The safety net
+leaves the draft and the transcript, as above; **`claude-resume.yml`** then brings the
+run back without anyone watching:
+
+1. Every safety-net draft body and comment carries
+   `<!-- claude-implement-safety-net subtype=<result subtype> -->`. That is the protocol:
+   the subtype says whether waiting would help.
+2. Every two hours `infra/ci/claude_resume.py` lists open drafts with the marker and, for
+   each one whose **latest** safety-net record names a retryable subtype, where **no
+   person has commented since the pipeline last acted**, fewer than **three** attempts
+   have been made and the last one is more than two hours old, runs
+   `gh workflow run claude-implement.yml -f issue_number=<n>` and leaves a
+   `<!-- claude-implement-resume -->` comment saying so. `workflow_dispatch` is the one
+   event a workflow token may trigger, so this depends on no comment-trigger behaviour.
+3. The implementer's guard sees the safety-net draft and **resumes** instead of skipping:
+   the branch step checks the branch out from origin, and the prompt gains a note
+   naming the draft and telling the model to read the diff and continue, not start over.
+4. A resumed run that finishes marks the draft **ready** (which starts `claude-review`)
+   and leaves `<!-- claude-implement-finished -->`, which stops the loop. A run that
+   fails again adds another safety-net comment and the cycle repeats, up to the cap.
+
+**Which subtypes are retried is a positive list, not a deny list** —
+`RETRYABLE_SUBTYPES`, `{error_during_execution, none}`, held in both scripts and bound
+together by a test so the note on the draft cannot promise a retry the scheduler will not
+make. A deny list was written first and it was wrong three times over, each in the same
+direction: it would have spent a full Opus run on `success` (the run *finished* without
+opening a pull request — the draft is waiting on a person to read it, not on another
+run), on `cancelled`, and on any subtype nobody has thought of yet. The list says what is
+worth another attempt; everything else is left where it is, with the reason on the draft.
+
+`cancelled` is in the protocol at all because the safety net runs under `if: always()`:
+pressing Cancel in the Actions tab still reaches it, still pushes the work and still
+opens the draft — and the run leaves no result message, so the subtype would have read
+`none`, which *is* retryable. Someone stopping a run is a decision, and re-dispatching it
+two hours later would quietly undo it, so `subtype()` lets `CONCLUSION=cancelled`
+override the file. **§ How to stop it below says cancelling stops it; that skip is the
+only thing that makes the sentence true.**
+
+Three things it deliberately does not do. It never retries `error_max_turns`: that is a
+budget, not a limit, and another 200 turns on the same scope repeats the failure —
+split the issue or resume it by hand. It never touches a draft without the marker: that
+is the model saying "not finished" on purpose, or a person's work. And it stands down
+the moment a person comments on the draft, because they have taken over — measured from
+**the last thing the pipeline did of its own accord** (the resume dispatch, or the
+safety-net record when there has not been one), not from the last record. A comment
+posted *while* an attempt is in flight is older than the record that attempt writes when
+it fails, so measuring from the record would read it as already answered and dispatch
+over the top of the person who wrote it.
+
+When a resumed run finishes, the draft loses its `WIP:` title along with its draft
+status: the prefix said the run had not finished, and leaving it hands the reviewer a
+ready pull request that calls itself work in progress. Only that exact prefix is dropped;
+a title a person edited is theirs.
+
+`tests/test_claude_resume.py` pins every rule on the pure `decide()` function.
+
 ## Skills are vendored, not installed
 
 `claude-implement` and `claude-review` both load the skills in `.claude/skills/`. They
@@ -370,15 +430,20 @@ Smallest lever first.
 
 - **One pull request:** add `do-not-merge`. Auto-merge declines immediately.
 - **A draft the safety net opened:** close it. Nothing reviews or resumes a closed
-  draft, and the PR-exists guard ignores it, so the issue can be re-labelled.
+  draft, and the PR-exists guard ignores it, so the issue can be re-labelled. To keep
+  the draft but stop the automatic attempts, comment on it — any human comment stands
+  `claude-resume` down.
+- **All automatic resumes:** `gh workflow disable claude-resume.yml`.
 - **One issue:** remove the `claude` label, or remove `plan-ready` / `tier:*`. Nothing
   triggers without them.
 - **A run that is going wrong right now:** cancel it in the Actions tab. Nothing
-  resumes on its own.
+  resumes on its own — the safety net still runs (`if: always()`), so it pushes what
+  the run had committed and opens a draft, but that draft is marked `subtype=cancelled`
+  and `claude-resume` leaves it alone.
 - **All auto-merging, everywhere:** `gh variable set AUTO_MERGE --body off`. This is
   the Phase 2 kill switch and it is the default state.
-- **The whole pipeline:** disable the four `claude-*` workflows in the Actions tab
-  (`gh workflow disable claude-plan.yml`, and the same for the other three). Disabling
+- **The whole pipeline:** disable the five `claude-*` workflows in the Actions tab
+  (`gh workflow disable claude-plan.yml`, and the same for the other four). Disabling
   them does not touch `ci.yml` or `licence-data.yml`.
 - **The fix loop:** capped at 3 rounds per PR inside `claude-review.yml`. After that it
   says so in a comment and stops asking. The Dispatcher counts rounds too. It also
