@@ -35,12 +35,18 @@ RUN apt-get update && \
 # licence audit (`licenses/report.json`); nothing in this project imports either.
 # `[easy]` keeps the runtime extras (rtree, embreex, shapely, …) and drops trimesh's
 # test and viewer dependencies. Do not restore `[all]`.
+#
+# lxml (BSD-3-Clause) is named explicitly because trimesh's 3MF exporter imports it
+# at call time — Phase 3 writes `engineered_mesh.3mf` on every run, and a transitive
+# copy that arrives with something else is one a later pin can remove without any
+# manifest saying so.
 RUN pip install --no-cache-dir \
         "numpy>=1.24.0" \
         "scipy>=1.11.0" \
         "trimesh[easy]>=4.0.0" \
         "manifold3d>=3.0.0" \
         "fast-simplification>=0.1.6" \
+        "lxml>=5.0.0" \
         "Pillow>=10.0.0" \
         "matplotlib>=3.7.0"
 

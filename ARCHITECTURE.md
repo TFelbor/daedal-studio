@@ -183,7 +183,8 @@ and Phases 1–2 above are then not run at all.
 | | |
 |---|---|
 | **Code** | `pythonsrc/engineer.py` |
-| **Libraries** | `trimesh` 4.11.2 pinned, 5.0.0 resolved in the image (MIT) closes the surface; `manifold3d` 3.5.2 (Apache-2.0) guarantees the result and does the boolean union; `fast-simplification` 0.1.13; `scipy` 1.15.3; `numpy` 2.2.6 |
+| **Libraries** | `trimesh` 4.11.2 pinned, 5.0.0 resolved in the image (MIT) closes the surface; `manifold3d` 3.5.2 (Apache-2.0) guarantees the result and does the boolean union; `fast-simplification` 0.1.13; `scipy` 1.15.3; `numpy` 2.2.6; `lxml` 6.1.3 (BSD-3-Clause), which trimesh's 3MF exporter streams the model XML through |
+| **Outputs** | `engineered_mesh.obj` (the viewer), `.stl` (CuraEngine), `.3mf` (the handoff — the only one of the three that records `unit="millimeter"`). All three are served by `GET /jobs/{id}/download?format=` |
 | **Removed** | `pymeshfix` — wraps MeshFix, which requires a negotiated contract for commercial use |
 | **Hardware** | CPU only. Runs anywhere, including in the amd64 images |
 | **Knobs** | `--target-mm` (50.0), `--scale-axis` (`height`), `--faces`, `--hollow`, `VOXEL_REMESH_RESOLUTION=128`, `MAX_CLOSE_ROUNDS=8` |

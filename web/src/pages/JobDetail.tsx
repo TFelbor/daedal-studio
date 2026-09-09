@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
-import { ArrowLeft, Download, Loader2, Printer, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { createJob, dispatchPrint, getJob, getJobTelemetry, reportOutcome } from '../api/client';
 import type { FailureEvent, JobStatusResponse, TelemetrySample } from '../api/client';
 import { BootMark } from '../components/BootMark';
 import { DeadChannel } from '../components/DeadChannel';
+import { DownloadFormats } from '../components/DownloadFormats';
 import { PhaseProgress, derivePhases } from '../components/PhaseProgress';
 import { WaitingStage } from '../components/WaitingStage';
 import { PrintabilityCard } from '../components/PrintabilityCard';
@@ -358,11 +359,10 @@ export function JobDetail() {
           </div>
 
           <div className={styles.actions}>
-            {isCompleted && (
-              <a href={`/jobs/${job.job_id}/download`} className="btn btn-secondary" download>
-                <Download size={14} strokeWidth={1.5} /> G-code
-              </a>
-            )}
+            {/* All three files, not the G-code alone: the engineered mesh was written
+                to disk and had no way out of the app, and a printer this project
+                cannot dispatch to is reached by opening the mesh in its own slicer. */}
+            {isCompleted && <DownloadFormats jobId={job.job_id} />}
             {job.status !== 'running' && (
               // Regenerating is an implicit judgement on this result. Routing it through
               // here rather than the blank new-job form is what makes the lineage

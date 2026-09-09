@@ -152,6 +152,26 @@ def test_a_real_download_is_still_recorded(sliced_job_with_gcode):
     assert count == 1
 
 
+def test_the_download_event_carries_the_format(sliced_job_with_gcode):
+    """Three files come out of one job. An event that says a result was kept without
+    saying which file cannot answer "did anyone use the 3MF" — which is the question
+    that decides whether the hand-it-to-another-slicer route is worth keeping."""
+    job_id = sliced_job_with_gcode
+    directory = OUTPUTS / job_id
+    (directory / "engineered_mesh.stl").write_text("solid x\nendsolid x\n")
+
+    assert client.get(f"/jobs/{job_id}/download").status_code == 200
+    assert client.get(f"/jobs/{job_id}/download?format=stl").status_code == 200
+
+    db = TelemetryDB()
+    events = db.get_job_events(job_id, kind="download")
+    db.close()
+    formats = [(e.detail or {}).get("format") for e in events]
+    artifacts = [(e.detail or {}).get("artifact") for e in events]
+    assert sorted(formats) == ["gcode", "stl"]
+    assert sorted(artifacts) == ["engineered_mesh.gcode", "engineered_mesh.stl"]
+
+
 # ── Manual failure reports ──────────────────────────────────────────────────
 
 def test_manual_failure_for_an_unknown_job_is_refused():

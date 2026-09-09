@@ -379,7 +379,7 @@ same commit):
 - [ ] Token tray + card divider archetypes
 - [ ] Fit-offset determinism decided (printer profile as a recorded compile input), then fit tolerances as `ProcessProfile` fields
 - [ ] Manifold CI sweep across every archetype's parameter envelope
-- [ ] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint)
+- [x] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint) — 2026-09-09. Phase 3 writes `engineered_mesh.3mf` beside the `.stl` on every run (`Engineer.export_mesh`; a spec run's 3MF measures the same as its STL to ±0,05 mm), `GET /jobs/{id}/download?format=gcode|stl|3mf` serves all three with the format on the `download` event, and the finished-job view offers them. **Bambu Studio acceptance is still untested** — nobody has opened a produced 3MF in it
 - [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
 - [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
 - [ ] Chamfer + vertical-fillet primitives in `compiler.py` — 45° base chamfer (anti-warp) and internal/external corner rounds (anti-elephant-foot, token-bin scooping) via `Manifold.hull` and `CrossSection.offset(Round)`; no new dependency, no OCCT review (§0.5)

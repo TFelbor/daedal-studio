@@ -1,0 +1,44 @@
+/* One framed control holding three formats, sized to sit in a row of `.btn`s.
+
+   Drawn as a segmented group rather than three buttons because the choice is a
+   format, not three different actions — which is also how the server records it. The
+   frame matches `.btn-secondary`'s line so the row reads as one band of controls. */
+
+.group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-strong);
+}
+
+.icon {
+  align-self: center;
+  margin: 0 10px 0 12px;
+  color: var(--ink-mute);
+  flex: none;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  padding: 11px 14px;
+  border-left: 1px solid var(--rule);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-strong);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.link:hover {
+  color: var(--accent-ink);
+  background: var(--row-hover);
+}
+
+/* The frame is the control, so focus lands on the segment inside it rather than
+   drawing a second rectangle around the whole group. */
+.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
