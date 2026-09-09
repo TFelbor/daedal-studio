@@ -1180,12 +1180,17 @@ gets a mesh with no consistent inside and printability scores it unprintable.
   spec, where every dimension *is* the deliverable, that guess is the whole risk.
   Single-colour, deliberately: `_strip_appearance` discards appearance for every
   sculptor backend, so a colour written here would be one this pipeline invented.
-  **A sibling that cannot be written is recorded, not raised**: `last_report` gains
-  `exports` (the filenames the job actually has) and `export_errors`, and the
+  **Only the 3MF may fail quietly** (`OPTIONAL_EXPORT_SUFFIXES`): `last_report`
+  gains `exports` (the filenames the job actually has) and `export_errors`, and the
   precedent is the printability gate — the STL is on disk and sliceable, and
   refusing to print a part because a handoff copy failed trades a working print for
-  a missing convenience. The primary path still propagates, because everything
-  downstream is keyed off it. `lxml` is what trimesh's 3MF exporter imports **at
+  a missing convenience. The other two propagate, and the `.stl` is the one that is
+  easy to get wrong: tolerating its loss does not save a print, it moves the failure
+  to Phase 4 — which slices `final_mesh_path.with_suffix(".stl")` and books the
+  `FileNotFoundError` as `slice_status="failed"` for a mesh CuraEngine never
+  received. That is a fabricated row in the one column that answers which meshes
+  fail to slice, with the cause three stages back in an unschematised blob. `lxml`
+  is what trimesh's 3MF exporter imports **at
   call time**, which is why "3MF export is one line" held only inside the Docker
   images, where it arrived transitively; it is declared in `requirements-base.txt`
   and in both images that run Phase 3 now.

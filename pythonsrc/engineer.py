@@ -82,6 +82,17 @@ ESCAPE_HOLE_WALLS = 2.0
 # so writing a colour would be inventing one.
 EXPORT_SUFFIXES = (".stl", ".3mf")
 
+#: The suffixes whose absence must not fail Phase 3. **The `.stl` is not among
+#: them.** It is CuraEngine's input (`pipeline.py` slices
+#: `final_mesh_path.with_suffix(".stl")`), so a Phase 3 that passes without it
+#: does not lose a convenience — it defers the failure to Phase 4, which records
+#: `slice_status="failed"` for a mesh the slicer was never handed. That is a
+#: fabricated row in the one column that answers "which meshes fail to slice",
+#: with the cause three stages back in an unschematised blob. The `.3mf` is a
+#: handoff copy: the STL is on disk and sliceable without it, so its absence is
+#: recorded and the print proceeds.
+OPTIONAL_EXPORT_SUFFIXES = frozenset({".3mf"})
+
 #: The 3MF exporter's soft dependency. trimesh imports `lxml` inside
 #: `export_3MF`, so its absence is an ImportError at export time rather than at
 #: `import trimesh` — which is how "3MF export is one line" held only inside the
@@ -1067,15 +1078,20 @@ class Engineer:
         or Orca to print by hand. The unit is the reason the third exists — see
         `EXPORT_SUFFIXES`.
 
-        **A sibling that cannot be written is recorded, not raised.** The
-        precedent is the printability gate: a deliverable that fails to
-        materialise must leave a trace, and it must not take a print with it. The
-        3MF exporter reaches for `lxml` at call time, so the failure mode is a
-        broken install rather than a broken mesh — and failing Phase 3 there
-        would refuse to print a part whose STL is sitting on disk, ready. The
-        `.obj` is different: it is the path the caller named, everything
-        downstream is keyed off it, and there is nothing to continue with if it
-        did not land, so that one propagates.
+        **An *optional* sibling that cannot be written is recorded, not
+        raised** (`OPTIONAL_EXPORT_SUFFIXES`). The precedent is the printability
+        gate: a deliverable that fails to materialise must leave a trace, and it
+        must not take a print with it. The 3MF exporter reaches for `lxml` at
+        call time, so the failure mode is a broken install rather than a broken
+        mesh — and failing Phase 3 there would refuse to print a part whose STL
+        is sitting on disk, ready.
+
+        The other two propagate. The `.obj` is the path the caller named and
+        everything downstream is keyed off it. The `.stl` is CuraEngine's input,
+        so tolerating its loss does not save a print — it moves the failure to
+        Phase 4, which books it as `slice_status="failed"` for a mesh the slicer
+        never received, and the cause is then three stages back in
+        `last_report["export_errors"]`.
 
         Args:
             mesh: The mesh to write.
@@ -1099,6 +1115,8 @@ class Engineer:
             try:
                 mesh.export(str(sibling))
             except ImportError as exc:
+                if suffix not in OPTIONAL_EXPORT_SUFFIXES:
+                    raise
                 # Named, because "cannot export 3MF" sends someone to the mesh
                 # and the answer is a missing wheel.
                 errors[suffix] = f"{exc} (needs {_THREEMF_DEPENDENCY})"
@@ -1108,6 +1126,8 @@ class Engineer:
                     sibling.name, exc, _THREEMF_DEPENDENCY,
                 )
             except Exception as exc:  # noqa: BLE001
+                if suffix not in OPTIONAL_EXPORT_SUFFIXES:
+                    raise
                 errors[suffix] = str(exc)
                 logger.error("Could not write %s: %s", sibling.name, exc)
             else:

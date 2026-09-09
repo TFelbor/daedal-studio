@@ -11,6 +11,7 @@ not know is a dead button.
 `Engineer.EXPORT_SUFFIXES` is the third side of the same triangle: the endpoint can
 only serve a file Phase 3 wrote.
 """
+import re
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,10 @@ from pythonsrc.engineer import EXPORT_SUFFIXES
 from server.app import DEFAULT_DOWNLOAD_FORMAT, DOWNLOAD_FORMATS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+#: Quote-agnostic on purpose: a formatter switching the TSX from single to double
+#: quotes must not read as the control dropping a format.
+_OFFERED_FORMAT = re.compile(r"""format:\s*['"]([^'"]+)['"]""")
 
 CONTROL = REPO_ROOT / "web" / "src" / "components" / "DownloadFormats.tsx"
 #: The finished-job view. The one page that shows a job after it has stopped moving,
@@ -56,16 +61,14 @@ def test_the_finished_job_view_renders_the_download_control():
 
 @pytest.mark.parametrize("fmt", sorted(DOWNLOAD_FORMATS))
 def test_the_control_offers_every_format_the_endpoint_serves(fmt):
-    assert f"format: '{fmt}'" in CONTROL.read_text(), (
+    assert fmt in set(_OFFERED_FORMAT.findall(CONTROL.read_text())), (
         f"The download control does not offer ?format={fmt}, which the server serves."
     )
 
 
 def test_the_control_offers_nothing_the_endpoint_would_refuse():
     """A dead button is worse than a missing one: it reports a 400 as a broken app."""
-    import re
-
-    offered = set(re.findall(r"format: '([^']+)'", CONTROL.read_text()))
+    offered = set(_OFFERED_FORMAT.findall(CONTROL.read_text()))
     assert offered <= set(DOWNLOAD_FORMATS), (
         f"The control offers {offered - set(DOWNLOAD_FORMATS)}, which the endpoint "
         "answers with a 400."

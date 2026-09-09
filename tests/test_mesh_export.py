@@ -20,7 +20,7 @@ from xml.etree import ElementTree
 import pytest
 import trimesh
 
-from pythonsrc.engineer import EXPORT_SUFFIXES, Engineer
+from pythonsrc.engineer import EXPORT_SUFFIXES, OPTIONAL_EXPORT_SUFFIXES, Engineer
 from pythonsrc.organizer.archetypes import compile_spec, deck_box, verify_spec_mesh
 from pythonsrc.organizer.compiler import export_stl
 from pythonsrc.organizer.spec import CardStack, Compartment, Lid, OrganizerSpec, Process
@@ -182,6 +182,39 @@ def test_a_failed_sibling_export_does_not_take_the_phase_with_it(tmp_path, monke
     assert not out.with_suffix(".3mf").exists()
     assert eng.last_report["exports"] == ["engineered_mesh.obj", "engineered_mesh.stl"]
     assert "lxml" in eng.last_report["export_errors"][".3mf"]
+
+
+def test_a_failed_stl_export_is_raised(tmp_path, monkeypatch):
+    """The `.stl` is a sibling, but it is not an optional one.
+
+    It is CuraEngine's input. A Phase 3 that passed without it would not save a print:
+    Phase 4 slices `final_mesh_path.with_suffix(".stl")`, so the job fails there instead
+    and `_record_slice` books `slice_status="failed"` for a mesh the slicer was never
+    handed — a fabricated row in the one column that answers which meshes fail to slice,
+    with the cause three stages back in `export_errors`. Phase 3 fails here, naming it.
+    """
+    real_export = trimesh.Trimesh.export
+
+    def refuse_stl(self, file_obj=None, *args, **kwargs):
+        if str(file_obj).endswith(".stl"):
+            raise OSError("No space left on device")
+        return real_export(self, file_obj, *args, **kwargs)
+
+    monkeypatch.setattr(trimesh.Trimesh, "export", refuse_stl)
+
+    eng = Engineer()
+    with pytest.raises(OSError, match="No space left on device"):
+        eng.process(
+            input_path=_raw_mesh(tmp_path), output_path=tmp_path / "engineered_mesh.obj",
+            target_mm=50.0,
+        )
+
+
+def test_only_the_3mf_is_optional(tmp_path):
+    """The tolerance is narrow by declaration, not by which exporter happens to fail."""
+    assert OPTIONAL_EXPORT_SUFFIXES == {".3mf"}
+    assert set(OPTIONAL_EXPORT_SUFFIXES) <= set(EXPORT_SUFFIXES)
+    assert ".stl" not in OPTIONAL_EXPORT_SUFFIXES
 
 
 def test_a_failed_primary_export_is_raised(tmp_path, monkeypatch):
