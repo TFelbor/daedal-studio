@@ -134,11 +134,15 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REVIEW_OUTPUT: ${{ steps.review.outputs.structured_output }}
           MAX_ROUNDS: "3"
-          # The logins the Claude GitHub App opens pull requests under. `gh --json`
-          # reads GraphQL, where a GitHub App's login is the bare slug (`claude`);
-          # only REST spells it `claude[bot]`. Both forms are listed because this set
-          # is duplicated in claude-automerge.yml and the two must not drift.
-          CLAUDE_LOGINS: "claude claude[bot] claude-code claude-code[bot]"
+          # The logins the Claude GitHub App opens pull requests under, in every
+          # spelling `gh` uses for the same actor: `app/claude` as a pull request's
+          # `author.login` (GraphQL, `is_bot: true`), `claude` on comments and reviews,
+          # `claude[bot]` over REST. PR #92 was declined with "the author is
+          # app/claude, not the Claude app" because the first form was missing. The
+          # comparison below also normalises the login, so the list is as much a record
+          # of the spellings as a gate. claude-automerge.yml carries the same set; the
+          # two must not drift (tests/test_claude_pipeline_workflows.py pins both).
+          CLAUDE_LOGINS: "claude claude[bot] app/claude claude-code claude-code[bot] app/claude-code"
         run: |
           set -euo pipefail
 
@@ -199,6 +203,10 @@ jobs:
           pr_meta=$(gh pr view "$PR_NUMBER" --json state,author)
           pr_state=$(printf '%s' "$pr_meta" | jq -r '.state')
           pr_author=$(printf '%s' "$pr_meta" | jq -r '.author.login')
+          # One App, three spellings (see CLAUDE_LOGINS). Strip the `app/` prefix and the
+          # `[bot]` suffix before comparing: neither `/` nor `[` is legal in a human
+          # login, so the normalisation cannot let a person through.
+          pr_author_norm=$(printf '%s' "$pr_author" | sed -E 's#^app/##; s#\[bot\]$##')
 
           ask=true
           if [ "$pr_state" != "OPEN" ]; then
@@ -206,7 +214,7 @@ jobs:
             ask=false
           else
             case " $CLAUDE_LOGINS " in
-              *" $pr_author "*) : ;;
+              *" $pr_author_norm "*) : ;;
               *) reason="the author is ${pr_author}, not the Claude app"; ask=false ;;
             esac
           fi

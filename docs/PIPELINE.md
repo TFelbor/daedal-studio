@@ -157,11 +157,18 @@ job summary says which precondition withheld it.
 `claude-implement.yml`'s `fix` job carries the open/unmerged half of the same guard,
 because it answers *any* `@claude` comment on a PR, not only the reviewer's.
 
-One detail worth knowing before editing either guard: **`gh --json` reads GraphQL, and
-GraphQL returns a GitHub App's login without the `[bot]` suffix.** The same comment is
-authored by `claude` through `gh pr view --json comments` and by `claude[bot]` through
-the REST endpoint. Both forms are listed in `CLAUDE_LOGINS`, in `claude-review.yml` and
-`claude-automerge.yml` alike.
+One detail worth knowing before editing either guard: **`gh` spells the same GitHub App
+three ways, by field.** A pull request's `author.login` from `gh pr view --json author`
+is `app/claude` (with `is_bot: true`); the same actor is `claude` on comments and
+reviews through `gh pr view --json comments`, and `claude[bot]` through the REST
+endpoint. `CLAUDE_LOGINS` lists all three, in `claude-review.yml` and
+`claude-automerge.yml` alike, and both comparisons strip the `app/` prefix and the
+`[bot]` suffix first — neither `/` nor `[` is legal in a human login, so that widens
+nothing. It went wrong once already: on PR #92 the reviewer requested changes on two
+real defects and then withheld the fix request with "the author is app/claude, not
+the Claude app", so the loop stalled on a red check until a person posted the
+request by hand. `tests/test_claude_pipeline_workflows.py` pins the list and the
+normalisation in both files.
 
 ## The action does not create the branch in automation mode
 

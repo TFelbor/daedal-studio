@@ -266,6 +266,41 @@ def test_review_carries_the_measured_turn_budget() -> None:
     assert "Skill" in _allowed_tools(step)
 
 
+#: How `gh` spells the Claude GitHub App, by field. The same actor is `app/claude` as a
+#: pull request's `author.login` (GraphQL, with `is_bot: true`), `claude` on comments
+#: and reviews, and `claude[bot]` over REST. A gate that compares one field against a
+#: list written for another silently never matches — which is how claude-review
+#: requested changes on PR #92 and then declined to ask for the fix.
+APP_LOGIN_SPELLINGS = {"app/claude", "claude", "claude[bot]"}
+
+
+def _claude_logins(workflow: dict, job: str) -> set[str]:
+    for step in _steps(workflow, job):
+        env = step.get("env") or {}
+        if "CLAUDE_LOGINS" in env:
+            return set(str(env["CLAUDE_LOGINS"]).split())
+    raise AssertionError(f"job {job!r} has no step with CLAUDE_LOGINS")
+
+
+def test_review_and_automerge_recognise_every_spelling_of_the_app() -> None:
+    """Both gates decide on `gh pr view --json author`, which spells the App `app/claude`.
+    The lists must carry that form, and must not drift from each other."""
+    review = _claude_logins(_load(REVIEW), "claude-review")
+    automerge = _claude_logins(_load(AUTOMERGE), "automerge")
+    assert review == automerge, f"CLAUDE_LOGINS differ: review {sorted(review)} vs automerge {sorted(automerge)}"
+    assert APP_LOGIN_SPELLINGS <= review, f"CLAUDE_LOGINS lacks {sorted(APP_LOGIN_SPELLINGS - review)}"
+
+
+def test_review_and_automerge_normalise_the_login_before_comparing() -> None:
+    """A list of spellings is a list that is wrong the next time `gh` changes one. The
+    comparison strips the `app/` prefix and the `[bot]` suffix — neither can appear in a
+    human login (`/` and `[` are not legal username characters), so stripping them
+    widens nothing."""
+    for path, job in ((REVIEW, "claude-review"), (AUTOMERGE, "automerge")):
+        run = "\n".join(str(s.get("run", "")) for s in _steps(_load(path), job) if "CLAUDE_LOGINS" in (s.get("env") or {}))
+        assert "app/" in run and "[bot]" in run, f"{path.name}: the comparison does not normalise app/ and [bot]"
+
+
 def test_review_skips_drafts_and_returns_when_they_are_ready() -> None:
     """The safety net opens *draft* pull requests holding unfinished work. Reviewing one
     would request changes on a diff nobody claims is done and start the fix loop
