@@ -12,7 +12,7 @@ name: claude-review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -29,6 +29,12 @@ concurrency:
 jobs:
   claude-review:
     name: claude-review
+    # A draft is unfinished by declaration. claude-implement's safety net opens one to
+    # hold the work of a run that ended early; reviewing it would request changes on
+    # a diff nobody claims is done and start the fix loop against it. `ready_for_review`
+    # above is the other half: the finished version gets its review when a person
+    # says it is finished.
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -46,6 +46,7 @@ jobs:
           fetch-depth: 1
 
       - name: Plan with Fable
+        id: plan
         uses: anthropics/claude-code-action@v1.0.216
         with:
           # `CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret this repository has;
@@ -62,7 +63,32 @@ jobs:
             Read this issue and CLAUDE.md. Produce an implementation plan: approach, files to change, tests to add, risks, open questions. Post it as a single issue comment titled "Plan". Do not write code. Then add the label `plan-ready`.
           # Read the repo, comment on the issue, add one label. No write tools: this
           # tier exists precisely because it does not touch the tree.
+          #
+          # 60 turns is unmeasured — no plan run has completed here yet — and carries the
+          # slack docs/PIPELINE.md asks for: CLAUDE.md alone is 130 KB, and a plan that
+          # reads the code it is about to change needs Read and Grep turns to do it.
           claude_args: |
             --model claude-fable-5-1
-            --max-turns 30
+            --max-turns 60
             --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*)"
+
+      - name: Keep the transcript
+        if: always() && steps.plan.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: claude-plan-issue-${{ github.event.issue.number }}-transcript
+          path: ${{ steps.plan.outputs.execution_file }}
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Report a failed plan to the issue
+        # A plan that never posts is an issue that waits for `plan-ready` forever, with
+        # nothing on it saying why. Say so where the person who labelled it will look.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # shellcheck disable=SC2016  # the backticks are Markdown, meant literally
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '**claude-plan failed and posted no Plan**, so `plan-ready` was not added and nothing will implement this issue until it is. The transcript is attached to the run as an artifact.\n\nTo retry, remove and re-apply `tier:fable-plan`. Run: %s' "$RUN_URL")" || true
