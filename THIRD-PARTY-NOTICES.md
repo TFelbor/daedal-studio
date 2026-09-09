@@ -78,7 +78,7 @@ identifier.
 ### Python libraries
 
 **Permissive — Q1 yes, Q2 yes, Q3 no restriction, all [d]:**
-torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
+torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore, lxml (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
 
 **Weak copyleft — permitted, obligations only on distribution:**
 
@@ -496,6 +496,7 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 |---|---|
 | manifold3d | Apache-2.0 |
 | trimesh | MIT |
+| lxml | BSD-3-Clause |
 | fast-simplification | MIT |
 | xatlas | MIT |
 | moderngl | MIT |
@@ -509,6 +510,17 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | paho-mqtt | EPL-2.0 OR BSD-3-Clause |
 | numba, llvmlite | BSD-2-Clause |
 | Pillow | MIT-CMU |
+| lxml | BSD-3-Clause |
+
+**lxml is there for one exporter, and it is declared rather than inherited.**
+trimesh's 3MF writer streams the model XML through `lxml.etree.xmlfile` and imports
+it inside the export call, so Phase 3's `engineered_mesh.3mf` (PRD F9) does not exist
+without it. It had been arriving transitively in the Docker images, which is exactly
+the shape of arrival this file exists to stop being the way a dependency enters — so
+`requirements-base.txt`, `infra/docker/pipeline.Dockerfile` and
+`infra/docker/phase3.Dockerfile` all name it. The package is BSD-3-Clause; its binary
+wheels bundle **libxml2 and libxslt, both MIT**, and it downloads no weights or data
+at runtime.
 
 ### Frontend (`web/`)
 
