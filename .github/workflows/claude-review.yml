@@ -68,7 +68,14 @@ jobs:
           # `*` is the form the action's security documentation warns about and is not
           # used: allowed bots are exempt from the write-permission check, so `*` would
           # let any App that can open a pull request choose this job's prompt.
-          allowed_bots: "claude[bot],claude-code[bot]"
+          # `github-actions[bot]` is the actor of every `synchronize` a fix push fires: the
+          # fix job pushes with the run's own GITHUB_TOKEN (actions/checkout's persisted
+          # credential outranks the App token in the remote URL), so the push is
+          # attributed to the workflow, not to the App. Refusing it meant no fix the
+          # loop pushed was ever reviewed — PR #92 stayed red on a diff that fixed the
+          # review's own finding. The prompt below is fixed by this file, so the actor
+          # cannot choose what the reviewer is told; same trust as the `fix` job's list.
+          allowed_bots: "claude[bot],claude-code[bot],github-actions[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}

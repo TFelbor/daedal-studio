@@ -94,6 +94,16 @@ as well as the human check, so `'*'` lets any GitHub App that can open a pull re
 choose this job's prompt. Names are matched case-insensitively with a trailing `[bot]`
 stripped, so one entry covers both spellings of a login.
 
+The reviewer also admits `github-actions[bot]`, for a reason that took a live cycle to
+find: the `fix` job pushes with the run's own `GITHUB_TOKEN` — `actions/checkout`'s
+persisted credential outranks the App token the action puts in the remote URL — so the
+`synchronize` event a fix push fires has `actor: github-actions[bot]` (and
+`triggering_actor` set to whoever posted the `@claude` comment). Refused, that actor
+meant no fix the loop pushed was ever reviewed: PR #92 sat red on a diff that had fixed
+the reviewer's own finding. The review's prompt is fixed by the workflow file, so the
+actor cannot choose what Fable is told; the trust extended is the same as the `fix`
+job's.
+
 A symptom worth recognising: the two-second failure looks identical in the check list
 to a genuine `request_changes`. Read the **Review with Fable** step, not the
 **Decide the check from the verdict** step — the second one only reports that the
