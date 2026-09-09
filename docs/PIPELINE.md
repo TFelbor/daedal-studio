@@ -156,7 +156,10 @@ anywhere. A copy in the tree is pinned by the commit, reviewable, costs no insta
 and needs no network at run time. `THIRD-PARTY-NOTICES.md` § 2 carries the source,
 version and licence of each, and the upstream `LICENSE` sits in each directory.
 
-Two mechanics are load-bearing, and each is silent when wrong:
+Two mechanics are load-bearing, and each is silent when wrong. Both are asserted by
+`tests/test_vendored_skills.py`, which also binds the tracked directories to
+`.gitignore`'s allowlist, to each directory's `LICENSE` and to the § 2 table in both
+directions — none of which anything checked until three skills had to be removed:
 
 - **`Skill` must be on `--allowedTools`.** Discovery is automatic — the action leaves
   `settingSources` at `["user","project","local"]`, so the checkout's own skills are
@@ -169,33 +172,87 @@ Two mechanics are load-bearing, and each is silent when wrong:
   `THIRD-PARTY-NOTICES.md` because modifying a third party's MIT source is a thing you
   disclose, not a thing you do quietly.
 
-**Which skills, and which job.** The two Supabase skills serve both jobs — the telemetry
-database is Postgres on Supabase, `pythonsrc/telemetry/db.py` generates the DDL that
-`supabase/migrations/` is rendered from, and a reviewer judging a migration needs the
-same knowledge the implementer needed to write it. The three superpowers skills serve
-`claude-implement` only: they are the disciplines behind "tests for every behaviour
-change" and a definition of done that says the tests were actually run.
+**Which skills, and which job.** Two, both from `obra/superpowers`:
+`test-driven-development` and `verification-before-completion`. They are the
+disciplines behind "tests for every behaviour change" and a definition of done that
+says the tests were actually run. Both jobs keep `Skill` on the allowlist and both
+therefore index them, but they use them differently, and that asymmetry is the
+point rather than an oversight. `claude-implement` is the only job that can
+*execute* the loop — it brings up a `postgres:17-alpine` service on
+`DS_TEST_DATABASE_URL`, puts the CuraEngine stub on PATH and allows
+`Bash(pytest:*)`, so a red test can actually be watched go green. `claude-review`
+has `Read,Glob,Grep,Skill` and `gh`; it can run nothing, but its prompt asks
+whether "tests present and meaningful", and a test whose expectation is computed by
+the code under test is visible on the page without running it. That is what
+`writing-good-tests.md` is for, and it is the half of the review the required check
+cannot get from `pytest` in `ci.yml`.
 
-**The cost is about 500 tokens per run**, in both jobs, always: each skill contributes
-its name and description to the index whether or not it fires. The two Supabase
-descriptions are 790 and 836 characters and account for roughly 80% of that; the
-superpowers three are 79, 91 and 225. A skill's body loads only when its description
-matches, and the bodies run 0.9–3.2k tokens each.
+**`verification-before-completion` earns its place on two lines nothing else in the
+tree states** — "Revert fix → Run (MUST FAIL) → Restore". There is no coverage
+tooling anywhere in this repository, so a test that passes but *could not fail* is
+undetectable, and `claude-review` cannot execute a test to find out. That is the
+same failure `tests/test_phase_banners.py` exists to prevent ("a test retyping the
+regex would agree with itself forever"), generalised.
+
+**Where a vendored skill and CLAUDE.md disagree, CLAUDE.md wins.** Both are third
+party text written for other repositories, and two disagreements are known and
+deliberate rather than oversights:
+
+- `verification-before-completion` gates completion on "Linter clean | Linter
+  output: 0 errors". `npm run lint` here fails on 27 pre-existing errors, CI runs
+  it `continue-on-error`, and CLAUDE.md's rule is a **delta** rule: leave it no
+  redder than you found it. An agent reading the skill literally has two exits and
+  both are wrong — clear 27 unrelated errors, which is the out-of-scope diff
+  `claude-review` fails a pull request for, or refuse to report finished work.
+- `test-driven-development`'s Iron Law ("no production code without a failing test
+  first") has no satisfiable form for a `web/` change: `web/package.json` defines
+  only `dev`, `build`, `lint`, `preview` and there is no test framework. Installing
+  one to obey the skill would be a new dependency, which CLAUDE.md makes a licence
+  decision. The frontend gate is `npm run build` (which is `tsc -b`) plus
+  `npm run lint`. Its `npm test …` verify commands and its "ask your human partner"
+  exceptions are likewise written for somewhere else; the command of record is
+  `pytest tests/`, and a `labeled`-triggered job has no partner.
+
+**The cost is about 75 tokens per run**, in both jobs, always: each skill
+contributes its name and description to the index whether or not it fires. The two
+descriptions are 79 and 225 characters. Bodies load only on a description match and
+run 3.3k and 8.9k characters. This is down from about 500 tokens across five
+skills, and the number is the reason the list is short rather than generous — see
+THIRD-PARTY-NOTICES.md § 2 for the three that were removed and the 1 361 that were
+assessed and rejected, ~123 000 tokens of description between them.
 
 **What is deliberately absent.** No MCP server is configured for CI. `codegraph` would
 help — call paths grep cannot follow — but CI would have to install the binary and
 build the index (12 MB for this repository), and that build has not been measured;
 proposing it without a number would be guessing. `pixazo` bills EUR 0,32 a call and has
 no business in a job triggered by a pull request. The `supabase` MCP server exposes
-`execute_sql` and `apply_migration` against the live telemetry project — the skills give
-the Postgres knowledge without giving a pull-request-triggered job write access to
-production data. `claude-plan.yml` is untouched: it gets no skills, so it needs no
-`Skill`.
+`execute_sql` and `apply_migration` against the live telemetry project, which is why no
+Postgres skill is vendored to stand in for it either: the rules pack that used to be
+here pointed the agent at raw DDL and at `supabase/migrations/`, the one file this
+repository generates and forbids editing. `claude-plan.yml` is untouched: it gets no
+skills, so it needs no `Skill`.
 
-One property to know: `settingSources` includes `project` and `local`, so the action
-loads `.claude/settings.json` **from the pull request's own checkout**. On a private
-repository where only the two technical co-founders can push, that is the same argument
-`allowed_bots` rests on. It stops holding the day this repository becomes public.
+One property to know, and it is worth reading in the source rather than taking on
+trust, because the whole vendoring scheme rests on it —
+`base-action/src/parse-sdk-options.ts` in the pinned action:
+
+```ts
+settingSources: extraArgs["setting-sources"]
+  ? (extraArgs["setting-sources"].split(",") as SdkOptions["settingSources"])
+  : ["user", "project", "local"],
+```
+
+`project` is what indexes `.claude/skills/` out of the checkout, so the skills need
+no install step. The same default has a second consequence: the action loads
+`.claude/settings.json` **and `.claude/settings.local.json` from the pull request's
+own checkout**, and a `settings.local.json` carries `permissions.allow` and
+`enabledMcpjsonServers`. A committed one would let a pull request widen its own tool
+allowance. It is in `.gitignore` for that reason — it had been ignored only by one
+developer's global gitignore, which the next clone does not have. On a private
+repository where only the two technical co-founders can push, the residual risk is
+the same argument `allowed_bots` rests on. It stops holding the day this repository
+becomes public, and the lever then is `--setting-sources user` in `claude_args`,
+which also turns the vendored skills off.
 
 ## The labels
 
