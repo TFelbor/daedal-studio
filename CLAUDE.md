@@ -634,11 +634,41 @@ the same STL byte for byte (`tests/test_deck_box.py` pins that).
   no native Phase 1, no blueprint gate — and neither `_pipeline_args` nor the mps_native
   command hands it `--skip-visualizer --blueprint <shared>`. The row records
   `size_source="spec"` with `requested_size_mm` and `requested_scale_axis` NULL.
-- **Not built, and where it is:** the spec on `GET /jobs/{id}` and the UI wiring
-  (`specFromJob` is the seam; `NO_SPEC_REASON` is still true for every job the UI can
-  submit), the envelope sweep across *every* archetype (M1 — there is one), LLM
-  extraction and the KB (M2). `python -m pythonsrc.organizer example|compile|measure
-  [--report]` is the developer loop.
+- **The spec comes back on `GET /jobs/{id}`, off the row** (`job_spec_summary`,
+  2026-09-09): `spec` (canonical), `spec_hash`, `archetype`, `archetype_version` and
+  `dimension_check`, all NULL for a prompt job. **The row is authoritative, not the
+  file.** `JobRequest._spec_is_valid` now returns `OrganizerSpec.from_dict(v).to_dict()`,
+  so the canonical spec is what lands in `request_params` *and* what
+  `data/inputs/{job_id}/spec.json` is written from — they cannot disagree, the row
+  survives a cleared `data/outputs/`, and a request that omitted `process` no longer
+  stores a spec with a hole where the wall thickness is. It is also the copy the
+  handler already has: one dict lookup and one sha256, measured at **+0,02 ms on a
+  7,15 ms request** (`tests/_bench_poll.py`), which matters because this endpoint is
+  polled once a second. `spec_hash` prefers `generation_params["spec_sha256"]` — the
+  hash of the spec the compiler actually received — and falls back to hashing the
+  row's, which is the only answer available before Phase 2. The output directory is
+  read **only** when the row says "spec job" and carries no spec.
+  `GET /jobs/{id}/spec` is the un-polled sibling (`/provenance` precedent), adding
+  `compile_features.json` and `dimension_report.json`; `SPEC_ARTIFACTS` is where
+  `view.json` joins when the annotated preview lands.
+- **The UI's only fit verdict is the measured one.** `specFromJob` projects the four
+  fields onto `web/src/organizer/spec.ts`'s display shape, and every row in it is a
+  field of the spec itself — no stack height, no internal depth. Those are `derive()`'s
+  and the dimension KB's, and a second copy of that arithmetic in TypeScript is a
+  number on screen that nothing computed. The Fits Check renders
+  `measuredFit(dimension_check)` — Phase 3's report, in its own words ("Dimensions
+  verified", not "Fits", which would claim a stack was measured against a cavity) —
+  and `measuredFit` is the *only* constructor of a `FitsResult`, which
+  `tests/test_job_spec_endpoint.py` pins. Three absences, three sentences:
+  `NO_SPEC_REASON` (a generative job), `UNCOMPOSED_SPEC_REASON` (the composer, which
+  still cannot build a spec) and `UNMEASURED_FIT_REASON` (a spec Phase 3 has not
+  measured).
+- **Not built, and where it is:** composing a spec in the UI — every job the app can
+  submit is still a prompt job, so `NO_SPEC_REASON` is what its own panels show — the
+  annotated mm preview (`archetypes.view_for` is written; nothing serves it), the
+  envelope sweep across *every* archetype (M1 — there is one), LLM extraction and the
+  KB (M2). `python -m pythonsrc.organizer example|compile|measure [--report]` is the
+  developer loop.
 
 ### Server (server/app.py)
 
