@@ -266,7 +266,16 @@ services:
       dockerfile: infra/docker/server.Dockerfile
     image: ds-api-server:latest
     ports:
-      - "8000:8000"
+      # Published on loopback, not on every interface. This server has no
+      # authentication at all, so a bare "8000:8000" put POST /jobs (which spends
+      # EUR 0,32 on a hosted generation), POST /jobs/{id}/print-dispatch (which
+      # heats a nozzle) and PUT /config (which rewrites printer credentials) in
+      # reach of anything that can route to this host: the rest of the LAN, a
+      # guest network, a shared VPN. DS_API_BIND moves the published address —
+      # set it to 0.0.0.0 only when the API is deliberately exposed *and*
+      # authenticated. The bind address must stay in this mapping: without one,
+      # Docker publishes on every interface again.
+      - "${DS_API_BIND:-127.0.0.1}:8000:8000"
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
@@ -304,6 +313,11 @@ services:
     # simulator is Operational. pipeline-runner has carried it since it was written.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # `--host 0.0.0.0` is the *container's* interface and must stay as it is.
+    # Docker publishes a port by connecting to the container's own address, so a
+    # loopback bind in here would make the published port dead however DS_API_BIND
+    # is set. Who may reach the server is decided by the bind address in `ports:`
+    # above, not by this line.
     command: uvicorn server.app:app --host 0.0.0.0 --port 8000
 
   # ── Web (build only, for dev) ───────────────────────────────────────────────

@@ -68,6 +68,7 @@ These variables configure the `.env` file at the repository root.
 | `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
 | `TRANSFORMERS_CACHE` | `/models/hf_cache` | No | Alias for HF_HOME |
 | `DS_DATABASE_URL` | — | **Yes** | PostgreSQL URL of the telemetry database (Supabase session pooler or direct connection). Every process uses this one URL |
+| `DS_API_BIND` | `127.0.0.1` | No | Host address the API server is published on — see §7. `0.0.0.0` exposes it to the network, and there is no authentication |
 | `PAUSE_ON_FAILURE` | `false` | No | Automatically pause printer on anomaly |
 
 ---
@@ -174,6 +175,46 @@ docker compose -f infra/docker-compose.yml up -d api-server
 curl http://localhost:8000/health
 ```
 Once healthy, navigate to `http://localhost:8000` to access the Daedal Studio UI.
+
+### Where it is reachable from
+
+**The machine running it, and nowhere else.** The published port is bound to
+loopback (`127.0.0.1:8000:8000`), so `http://127.0.0.1:8000` — equivalently
+`http://localhost:8000` — works on that host and no other machine on the network
+can open it. A browser on your laptop cannot reach an API server running on a
+different box until you say so.
+
+That is deliberate: **this server has no authentication of any kind.** `POST /jobs`
+spends EUR 0,32 on a hosted generation, `POST /jobs/{id}/print-dispatch` heats a
+nozzle for hours, and `PUT /config` rewrites the printer credentials the server then
+ships to whatever address it is given. On every interface, all of that answers
+anything that can route to the host — the rest of the LAN, a guest network, a shared
+VPN.
+
+Binding the *published* port changes nothing about what the server can reach
+outbound: a printer on the LAN, OctoPrint on another host and Supabase are all
+connections the server opens itself, and they work exactly as before.
+
+To expose it on purpose, set one variable in `.env` and recreate the container:
+
+```bash
+echo 'DS_API_BIND=0.0.0.0' >> .env          # or a single LAN address, e.g. 192.168.1.50
+docker compose -f infra/docker-compose.yml up -d --force-recreate api-server
+docker compose -f infra/docker-compose.yml config | grep 8000   # confirm the published address
+```
+
+The same variable sets uvicorn's `--host` for `make start-native`, which binds the
+host interface directly. Until authentication exists, prefer an SSH tunnel
+(`ssh -L 8000:127.0.0.1:8000 user@host`) to opening the port; if you do open it, put
+it behind something that authenticates.
+
+Note that `--host 0.0.0.0` on the `command:` line inside the container is *not* this
+setting and must stay as it is. Docker publishes a port by connecting to the
+container's own address, so a loopback bind in there makes the published port dead
+whatever `DS_API_BIND` says.
+
+> Restarting the api-server also stops the OctoPrint simulator (its shutdown hook);
+> start it again afterwards.
 
 ---
 

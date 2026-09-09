@@ -39,11 +39,18 @@ up:
 # exported by hand. load_native_env.sh lifts those across — and *only* those: .env
 # also holds container paths like FLUX_MODEL_PATH=/models/..., and exporting one of
 # those into a host process points it at a directory that does not exist.
+#
+# The bind address is loopback by default, the same as the container's published
+# port, and moves with the same variable: DS_API_BIND. This server has no
+# authentication, so --host 0.0.0.0 offered POST /jobs, the dispatch gate and
+# PUT /config to the whole LAN. A native run binds the host interface directly —
+# there is no container hop here, so this is the address that decides who can
+# reach it.
 start-native:
 	@echo "Starting API server natively on host to enable MPS acceleration..."
 	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"
 	. infra/scripts/load_native_env.sh; \
-	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=ds-mvp python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+	HOST_PROJECT_ROOT=$(PWD) COMPOSE_PROJECT_NAME=ds-mvp python -m uvicorn server.app:app --host $${DS_API_BIND:-127.0.0.1} --port 8000
 
 # Stop all services
 down:
