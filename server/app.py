@@ -139,6 +139,58 @@ active_pipelines: dict[str, asyncio.subprocess.Process] = {}
 cancelled_jobs: set[str] = set()
 
 
+#: The built SPA. Resolved once, at import, so every containment check below compares
+#: against the same absolute directory rather than re-deriving `server/../web/dist` and
+#: hoping the two spellings agree.
+DIST_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+def contained_path(base: Path, *parts: str) -> Path | None:
+    """Join request-controlled `parts` onto `base`, refusing anything that leaves it.
+
+    Three separate mechanisms escape a path join, and each has its own way in here.
+
+    A `..` segment walks up, and **nothing between the socket and the handler collapses
+    dot segments**: uvicorn percent-decodes the request target straight into
+    `scope["path"]`, and Starlette's `{...:path}` converter matches `/` and `..` alike.
+    So `/%2e%2e/%2e%2e/.env` — or a literal `../` from `curl --path-as-is` — arrives at
+    a route as `../../.env`.
+
+    An **absolute** part discards the base outright, with no `..` at all:
+    `os.path.join("web/dist", "/etc/passwd")` and `Path("web/dist") / "/etc/passwd"` are
+    both `/etc/passwd`.
+
+    And a symlink inside `base` can point anywhere, which is why containment is decided
+    after `resolve()` rather than by inspecting the string — a lexical check passes a
+    path whose every component is innocent and whose target is not.
+
+    This matters more here than a generic traversal would: there is no end-user
+    authentication in this server, and the api-server process is the one with
+    `~/.ds-mvp/.config_key` bind-mounted — the Fernet key for the encrypted config store
+    that holds printer API keys. An unauthenticated arbitrary read is a credential
+    disclosure.
+
+    Args:
+        base: The directory the result must stay inside. Need not exist.
+        *parts: Untrusted path components, joined in order.
+
+    Returns:
+        The resolved path, or None when it lands outside `base` — including when a part
+        is absolute, or when the join cannot be resolved at all.
+    """
+    root = base.resolve()
+    try:
+        candidate = root.joinpath(*parts).resolve()
+    except (OSError, ValueError, RuntimeError):
+        # ValueError: an embedded NUL byte. RuntimeError: a symlink loop, on the
+        # resolve() implementations that report one that way. OSError: a component
+        # that cannot be stat'ed. None of them is a path we may serve.
+        return None
+    if not candidate.is_relative_to(root):
+        return None
+    return candidate
+
+
 def resolve_job_artifact(
     job_id: str, filename: str, *, per_job_only: bool = False,
 ) -> Path | None:
@@ -166,24 +218,29 @@ def resolve_job_artifact(
     Returns:
         The path to the artifact, or None if no location has it.
     """
-    outputs = Path(__file__).parent.parent / "data" / "outputs"
-    for directory in (outputs / job_id, outputs / f"dev-{job_id}"):
-        candidate = directory / filename
-        if candidate.exists():
+    # `job_id` comes straight off the URL and `filename` is a parameter, so every join
+    # below goes through `contained_path`. `job_id` reaches here as `..` via
+    # `/jobs/%2e%2e/blueprint`: the route's `[^/]+` group matches a decoded `..` exactly
+    # as it matches a UUID, and `data/outputs/../blueprint.png` is `data/blueprint.png`.
+    data = Path(__file__).resolve().parent.parent / "data"
+    outputs = data / "outputs"
+    for directory in (job_id, f"dev-{job_id}"):
+        candidate = contained_path(outputs, directory, filename)
+        if candidate is not None and candidate.exists():
             return candidate
 
     if per_job_only:
         return None
 
-    legacy = outputs / filename
-    if legacy.exists():
+    legacy = contained_path(outputs, filename)
+    if legacy is not None and legacy.exists():
         return legacy
 
     if filename == "blueprint.png":
-        inputs = Path(__file__).parent.parent / "data" / "inputs"
+        inputs = data / "inputs"
 
-        per_job = inputs / job_id / filename
-        if per_job.exists():
+        per_job = contained_path(inputs, job_id, filename)
+        if per_job is not None and per_job.exists():
             return per_job
 
         # The shared path, for rows written before inputs were per-job and for the
@@ -192,9 +249,10 @@ def resolve_job_artifact(
         # into it, and the shared file demonstrably belongs to some other run. Serving
         # it would be the same mis-attribution the per-job path exists to prevent,
         # committed by the endpoint instead of by the pipeline.
-        if not (inputs / job_id).exists():
-            shared_input = inputs / filename
-            if shared_input.exists():
+        job_inputs = contained_path(inputs, job_id)
+        if job_inputs is not None and not job_inputs.exists():
+            shared_input = contained_path(inputs, filename)
+            if shared_input is not None and shared_input.exists():
                 return shared_input
 
     return None
@@ -214,13 +272,17 @@ def resolve_job_profile(job) -> tuple[str, str | None]:
     Returns:
         A (relative_profile, absolute_path) tuple. The path is None when nothing exists.
     """
-    repo_root = Path(__file__).parent.parent
+    # `profile_name` is free text the client sent to `POST /jobs`, and the resolved path
+    # is `json.load`ed by `dispatch_target` and handed to `run_operator.py` as the
+    # profile to print with. `Path(repo_root) / "/etc/passwd"` is `/etc/passwd`, so the
+    # join is contained rather than trusted.
+    repo_root = Path(__file__).resolve().parent.parent
     for candidate in (job.profile_name, config_store.get("DEFAULT_PROFILE"),
                       "pythonsrc/profiles/ender3.json"):
         if not candidate or candidate == "default":
             continue
-        path = repo_root / candidate
-        if path.exists():
+        path = contained_path(repo_root, candidate)
+        if path is not None and path.exists():
             return candidate, str(path)
     return "", None
 
@@ -1967,8 +2029,8 @@ async def get_job(job_id: str):
         profile_path_str = job.profile_name
         if profile_path_str and profile_path_str != "default":
             try:
-                profile_full_path = repo_root / profile_path_str
-                if profile_full_path.exists():
+                profile_full_path = contained_path(repo_root, profile_path_str)
+                if profile_full_path is not None and profile_full_path.exists():
                     with open(profile_full_path, "r") as pf:
                         profile_data = json.load(pf)
                         machine_name = profile_data.get("machine_name")
@@ -2052,8 +2114,8 @@ async def get_printer_info(job_id: str):
     
     if profile_path_str and profile_path_str != "default":
         try:
-            profile_full_path = repo_root / profile_path_str
-            if profile_full_path.exists():
+            profile_full_path = contained_path(repo_root, profile_path_str)
+            if profile_full_path is not None and profile_full_path.exists():
                 with open(profile_full_path, "r") as pf:
                     profile_data = json.load(pf)
                     machine_name = profile_data.get("machine_name")
@@ -4074,8 +4136,21 @@ async def get_mesh(job_id: str):
 async def serve_spa(full_path: str):
     """Catch-all route to serve the React SPA and its static assets.
 
+    `full_path` is the percent-decoded request target and is matched by the `:path`
+    converter, so it arrives with its slashes and its dot segments intact — this is the
+    one route in the app that can be handed `../../../etc/passwd`. It therefore joins
+    through `contained_path` rather than `os.path.join`.
+
+    A refused path is answered with the SPA shell, not a 403: client-side routing means
+    an unmatched path is the normal case for a deep link, and there is nothing useful to
+    tell a caller about a file it may not have. `StaticFiles` does its own containment
+    and was considered for the asset half, but it would cover only this one join —
+    `resolve_job_artifact` and `resolve_job_profile` need the same check — and would
+    still leave this handler to serve the fallback. One shared helper is less machinery
+    than a mount beside it.
+
     Args:
-        full_path: The requested path.
+        full_path: The requested path, request-controlled and unnormalised.
 
     Returns:
         A FileResponse containing the requested asset or index.html.
@@ -4083,17 +4158,15 @@ async def serve_spa(full_path: str):
     Raises:
         HTTPException: If the frontend is not built or found.
     """
-    dist_dir = os.path.join(os.path.dirname(__file__), "..", "web", "dist")
-    file_path = os.path.join(dist_dir, full_path)
-    
-    # If a specific static file is requested and exists, serve it
-    if full_path and os.path.isfile(file_path):
-        return FileResponse(file_path)
-    
-    # Otherwise, fallback to index.html for client-side routing
-    index_path = os.path.join(dist_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-        
+    if full_path:
+        asset = contained_path(DIST_DIR, full_path)
+        if asset is not None and asset.is_file():
+            return FileResponse(str(asset))
+
+    # Fall back to index.html for client-side routing.
+    index_path = DIST_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+
     raise HTTPException(status_code=404, detail="Frontend not built or not found")
 

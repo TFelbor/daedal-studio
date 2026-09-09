@@ -661,6 +661,28 @@ FastAPI application with:
   **Uvicorn's access log is switched off** because it logged every request a second
   time, at INFO, cancelling that demotion out; `$DS_UVICORN_ACCESS_LOG=1` restores it.
 - **SPA serving**: catch-all route serves `web/dist/` — the React app must be pre-built before server start
+- **Every request-controlled path join goes through `contained_path`.** Nothing between
+  the socket and a handler collapses dot segments: uvicorn percent-decodes the request
+  target straight into `scope["path"]`, and Starlette's `{...:path}` converter matches
+  `/` and `..` alike — so `GET /%2e%2e/%2e%2e/%2e%2e/etc/passwd` reached `serve_spa` as
+  `../../../etc/passwd`, `os.path.join` walked out of `web/dist`, and `FileResponse`
+  streamed the file. There is **no end-user authentication in this server**, and the
+  api-server process is the one with `~/.ds-mvp/.config_key` bind-mounted, so that was
+  an unauthenticated read of the Fernet key for the store holding printer API keys —
+  and of `.env` and `pythonsrc/config.py` beside it. `contained_path(base, *parts)`
+  joins and then requires `is_relative_to(base)` **after `resolve()`**: a lexical check
+  passes a path whose every component is innocent and whose symlink target is not, and
+  an *absolute* part needs no `..` at all (`Path("web/dist") / "/etc/passwd"` is
+  `/etc/passwd`, and `//x` reaches a `:path` group as `/x`). Four joins use it —
+  `serve_spa`, `resolve_job_artifact` (both `job_id`, which arrives as `..` from
+  `/jobs/%2e%2e/blueprint`, and `filename`), `resolve_job_profile`, and the two
+  `repo_root / job.profile_name` profile reads, where `profile` is free text from
+  `POST /jobs` that is `json.load`ed and handed to `run_operator.py`. A refused SPA
+  path falls through to `index.html` rather than 403-ing, because client-side routing
+  means an unmatched path is the normal case for a deep link.
+  `tests/test_static_path_traversal.py` holds the line, and it sends every traversal
+  **percent-encoded**: `httpx` normalises a literal `../` away client-side, so a test
+  written the obvious way passes against the vulnerable code.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
 
