@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import app, resolve_job_artifact
+from server.app import DOWNLOAD_FORMATS, app, resolve_job_artifact
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
 
@@ -103,3 +103,71 @@ def test_download_refuses_legacy_file_for_unfinished_job():
 
 def test_download_404_for_unknown_job():
     assert client.get(f"/jobs/{uuid.uuid4()}/download").status_code == 404
+
+
+# ── ?format= ─────────────────────────────────────────────────────────────────
+#
+# One endpoint with a parameter, because the download *event* means "a person kept
+# this result" and that fact does not subdivide by extension. `gcode` stays the
+# default so callers written before the parameter are unaffected.
+
+def _write_all_formats(directory: Path) -> None:
+    for filename, _ in DOWNLOAD_FORMATS.values():
+        (directory / filename).write_bytes(f"bytes of {filename}".encode())
+
+
+@pytest.mark.parametrize("fmt,media_type", [
+    ("gcode", "text/plain"),
+    ("stl", "model/stl"),
+    ("3mf", "model/3mf"),
+])
+def test_download_serves_each_format_with_its_type_and_filename(job_dir, fmt, media_type):
+    job_id = _make_job()
+    _write_all_formats(job_dir(job_id))
+
+    resp = client.get(f"/jobs/{job_id}/download?format={fmt}")
+    assert resp.status_code == 200
+    assert resp.content == f"bytes of engineered_mesh.{fmt}".encode()
+    assert resp.headers["content-type"].startswith(media_type)
+    assert resp.headers["content-disposition"] == f'attachment; filename="{job_id}.{fmt}"'
+
+
+def test_the_default_format_is_still_the_gcode(job_dir):
+    """The parameter is additive: an existing caller sends nothing and gets G-code."""
+    job_id = _make_job()
+    _write_all_formats(job_dir(job_id))
+
+    resp = client.get(f"/jobs/{job_id}/download")
+    assert resp.status_code == 200
+    assert resp.content == b"bytes of engineered_mesh.gcode"
+    assert resp.headers["content-type"].startswith("text/plain")
+
+
+@pytest.mark.parametrize("fmt", ["obj", "amf", "", "STL", "gcode.stl"])
+def test_an_unknown_format_is_a_400_naming_the_ones_that_work(job_dir, fmt):
+    """A 404 would send someone looking for a missing file when the spelling is what
+    is wrong, so the format is decided before the job is even looked up."""
+    job_id = _make_job()
+    _write_all_formats(job_dir(job_id))
+
+    resp = client.get(f"/jobs/{job_id}/download?format={fmt}")
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "3mf" in detail and "stl" in detail and "gcode" in detail
+
+
+def test_an_unknown_format_is_refused_for_an_unknown_job_too():
+    resp = client.get(f"/jobs/{uuid.uuid4()}/download?format=nonsense")
+    assert resp.status_code == 400
+
+
+def test_a_missing_file_for_a_known_format_is_a_404(job_dir):
+    """The 3MF predates nothing: jobs engineered before this change have no `.3mf`,
+    and that is a missing file rather than a bad request."""
+    job_id = _make_job()
+    d = job_dir(job_id)
+    (d / "engineered_mesh.gcode").write_text("G28\n")
+
+    assert client.get(f"/jobs/{job_id}/download?format=gcode").status_code == 200
+    assert client.get(f"/jobs/{job_id}/download?format=3mf").status_code == 404
+    assert client.get(f"/jobs/{job_id}/download?format=stl").status_code == 404

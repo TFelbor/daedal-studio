@@ -289,7 +289,11 @@ def resolve_job_artifact(
 
     Args:
         job_id: The job whose artifact is wanted.
-        filename: Artifact filename, e.g. "engineered_mesh.gcode".
+        filename: Artifact filename — `engineered_mesh.gcode`, `engineered_mesh.stl`,
+            `engineered_mesh.3mf` (the three `?format=` serves, see
+            `DOWNLOAD_FORMATS`), `engineered_mesh.obj`, `blueprint.png` or
+            `printability.json`. Any name is accepted and every join is contained,
+            so a new artifact needs nothing here.
         per_job_only: Skip the flat-layout and shared-input fallbacks and answer only
             from this job's own directory. The blueprint gate needs this: the flat
             `data/inputs/blueprint.png` is written by whichever skip-Phase-1 run put it
@@ -2281,9 +2285,32 @@ async def get_printer_info(job_id: str):
         "machine_dimensions": machine_dimensions
     }
 
+#: What `?format=` may name: the artifact it serves and the type it serves it as.
+#:
+#: Three files come out of one job and each has a different consumer, so they are one
+#: endpoint with a parameter rather than three endpoints: the download *event* and
+#: `download_count` mean "a person chose to keep this result", and that fact does not
+#: subdivide by file extension — it is recorded once, in one place, with the format in
+#: the detail. `gcode` is first and is the default, so every caller written before the
+#: parameter existed keeps getting exactly what it got.
+#:
+#: The mesh types are IANA-registered (`model/stl`, `model/3mf`). G-code has no
+#: registered type and stays `text/plain`, which is what the toolpath viewer's
+#: `?preview=1` fetch has always been handed.
+DOWNLOAD_FORMATS: dict[str, tuple[str, str]] = {
+    "gcode": ("engineered_mesh.gcode", "text/plain"),
+    "stl": ("engineered_mesh.stl", "model/stl"),
+    "3mf": ("engineered_mesh.3mf", "model/3mf"),
+}
+
+DEFAULT_DOWNLOAD_FORMAT = "gcode"
+
+
 @app.get("/jobs/{job_id}/download")
-async def download_job_output(job_id: str, preview: bool = False):
-    """Download the final .gcode output file for a completed print job.
+async def download_job_output(
+    job_id: str, preview: bool = False, format: str = DEFAULT_DOWNLOAD_FORMAT,
+):
+    """Download one of a completed job's output files.
 
     Args:
         job_id: The unique identifier of the print job.
@@ -2292,13 +2319,33 @@ async def download_job_output(job_id: str, preview: bool = False):
             A preview serves the same file but records nothing — the download
             event exists to mean "a person chose to keep this", and a component
             mount is not a person.
+        format: Which artifact — `gcode` (default, and what every caller written
+            before this parameter existed receives), `stl` or `3mf`. The two mesh
+            formats are what a person needs when the printer is one this project
+            cannot dispatch to: `GET /jobs/{id}/mesh` exists for the viewer and
+            serves the `.obj` inline, which is not a handoff.
 
     Returns:
-        A FileResponse streaming the generated .gcode file.
+        A StreamingResponse carrying the file, typed and named for the format.
 
     Raises:
-        HTTPException: If the job is not complete, failed, or the file is missing.
+        HTTPException: 400 for an unrecognised format, 404 if the job or the file
+            for that format is missing.
     """
+    # Decided before the job is looked up: an unrecognised format is a malformed
+    # request whatever the job id says, and answering 404 would send someone looking
+    # for a missing file when the spelling is what is wrong. Named, because "invalid
+    # format" does not say which ones are valid.
+    if format not in DOWNLOAD_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown download format {format!r}. "
+                f"Expected one of: {', '.join(DOWNLOAD_FORMATS)}."
+            ),
+        )
+    filename, media_type = DOWNLOAD_FORMATS[format]
+
     db = TelemetryDB()
     job = db.get_job(job_id)
 
@@ -2306,20 +2353,25 @@ async def download_job_output(job_id: str, preview: bool = False):
         db.close()
         raise HTTPException(status_code=404, detail="Job not found")
 
-    gcode_path = resolve_job_artifact(job_id, "engineered_mesh.gcode")
+    artifact_path = resolve_job_artifact(job_id, filename)
 
-    if gcode_path is None:
+    if artifact_path is None:
         db.close()
         raise HTTPException(status_code=404, detail="File not found")
 
-    # A job that never finished has no G-code of its own. Serving the flat legacy file
-    # here would hand the caller some other job's print.
-    is_per_job = gcode_path.parent.name == job_id
+    # A job that never finished has no output of its own. Serving the flat legacy file
+    # here would hand the caller some other job's print — and every format has one, so
+    # the guard covers all three rather than the G-code alone.
+    is_per_job = artifact_path.parent.name == job_id
     if not is_per_job and job.outcome not in ("success", "cancelled", "awaiting_verdict"):
         db.close()
         raise HTTPException(
             status_code=404,
-            detail="No G-code for this job yet (job has not completed slicing).",
+            detail=(
+                f"No {format} for this job yet (job has not completed slicing)."
+                if format == "gcode"
+                else f"No {format} for this job yet."
+            ),
         )
 
     # A download is the clearest signal that a result was worth keeping, and it is
@@ -2327,24 +2379,30 @@ async def download_job_output(job_id: str, preview: bool = False):
     # response is lazy and may be abandoned mid-flight. Preview fetches are served
     # and not counted: the toolpath viewer retries this endpoint every few seconds
     # until it answers, which made download_count a render counter.
+    #
+    # The format rides in the detail. Without it the event says a result was kept and
+    # not which file was worth keeping — and "did anyone actually use the 3MF" is the
+    # question that decides whether the handoff route is worth keeping.
     if not preview:
         try:
-            db.record_job_event(job_id, "download", {"artifact": "engineered_mesh.gcode"})
+            db.record_job_event(
+                job_id, "download", {"artifact": filename, "format": format},
+            )
             db.increment_download_count(job_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record download event for %s: %s", job_id, exc)
     db.close()
 
     def iterfile():
-        with open(gcode_path, mode="rb") as f:
+        with open(artifact_path, mode="rb") as f:
             while chunk := f.read(8192):
                 yield chunk
-                
+
     headers = {
-        "Content-Disposition": f'attachment; filename="{job_id}.gcode"'
+        "Content-Disposition": f'attachment; filename="{job_id}.{format}"'
     }
     from fastapi.responses import StreamingResponse
-    return StreamingResponse(iterfile(), media_type="text/plain", headers=headers)
+    return StreamingResponse(iterfile(), media_type=media_type, headers=headers)
 
 class DispatchRequest(BaseModel):
     """A person's confirmation that this job may go to a machine.
