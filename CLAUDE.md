@@ -656,6 +656,19 @@ FastAPI application with:
   same bytes and records nothing: the toolpath viewer polls this endpoint to *render* the
   G-code, and without the flag `download_count` was a component-mount counter, not the
   "a person chose to keep this" signal it is documented as.
+  **`?format=gcode|stl|3mf` chooses which of the job's three files** (`DOWNLOAD_FORMATS`);
+  `gcode` is the default, so every caller written before the parameter — the viewer, the
+  dispatch gate, a bookmark — is unchanged. One endpoint with a parameter rather than three
+  endpoints, because the event and `download_count` mean "a person kept this result" and
+  that fact does not subdivide by extension; the format rides in the event `detail`
+  instead, which is what makes "did anyone use the 3MF" a query. An unrecognised format is
+  a **400 naming the three that work, decided before the job is looked up** — a 404 sends
+  someone looking for a missing file when the spelling is what is wrong — and a *known*
+  format with no file (a job engineered before the 3MF existed) is still a 404.
+  `GET /jobs/{id}/mesh` stays as it is: it serves the `.obj` inline for the viewer, which
+  is not a handoff. `tests/test_download_formats.py` binds the three sides that must
+  agree — the formats the endpoint serves, the ones `DownloadFormats.tsx` offers, and the
+  suffixes `Engineer.EXPORT_SUFFIXES` writes.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[DS]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
@@ -1147,6 +1160,25 @@ gets a mesh with no consistent inside and printability scores it unprintable.
 - **Repair is not bit-exact even on a clean mesh**: `_to_manifold` hands vertices
   to the kernel as float32, so coordinates round-trip through single precision.
   Sub-micron on a 50mm part, but not zero.
+- **Phase 3 writes three files, and the third one carries the unit**
+  (`Engineer.export_mesh`, `EXPORT_SUFFIXES`). The `.obj` is the path the caller
+  named and what `GET /jobs/{id}/mesh` renders; the `.stl` is CuraEngine's input;
+  the **`.3mf` is the handoff** (PRD F9), because a printer this project cannot
+  dispatch to is reached by opening a file in its own slicer, and 3MF is the only
+  one of the three that records `unit="millimeter"`. An STL is a bag of triangles
+  with no unit, so the receiving program guesses — and for a part compiled from a
+  spec, where every dimension *is* the deliverable, that guess is the whole risk.
+  Single-colour, deliberately: `_strip_appearance` discards appearance for every
+  sculptor backend, so a colour written here would be one this pipeline invented.
+  **A sibling that cannot be written is recorded, not raised**: `last_report` gains
+  `exports` (the filenames the job actually has) and `export_errors`, and the
+  precedent is the printability gate — the STL is on disk and sliceable, and
+  refusing to print a part because a handoff copy failed trades a working print for
+  a missing convenience. The primary path still propagates, because everything
+  downstream is keyed off it. `lxml` is what trimesh's 3MF exporter imports **at
+  call time**, which is why "3MF export is one line" held only inside the Docker
+  images, where it arrived transitively; it is declared in `requirements-base.txt`
+  and in both images that run Phase 3 now.
 
 ### Printability (pythonsrc/printability.py)
 
