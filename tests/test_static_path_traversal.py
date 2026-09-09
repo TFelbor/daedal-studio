@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from server import app as app_module
 from server.app import app, resolve_job_artifact, resolve_job_profile
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
@@ -225,3 +226,142 @@ def test_resolve_job_profile_still_accepts_a_bundled_profile():
     profile, path = resolve_job_profile(_job_with_profile("pythonsrc/profiles/ender3.json"))
     assert profile == "pythonsrc/profiles/ender3.json"
     assert path == str(REPO_ROOT / "pythonsrc" / "profiles" / "ender3.json")
+
+
+# --- POST /jobs, the join that actually reads and stores the file ---
+#
+# `resolve_job_profile` protects the value one step *after* it has already been read.
+# `create_job` joins the incoming `profile` twice before that: once for
+# `resolve_printer_target`, which pulls `firmware` / `base_url` / `api_key` out of the
+# file, and once for `_profile_snapshot`, which `json.load`s it and returns the **whole
+# parsed dict** — stored on the row as `process_params` and served back verbatim by
+# `GET /jobs/{id}/provenance`. `Path(repo_root) / "/any/file.json"` is `/any/file.json`,
+# so `POST /jobs {"profile": "/any/file.json"}` read an arbitrary JSON file, wrote it
+# into the telemetry dataset and handed it back, with no traversal and no
+# authentication.
+#
+# The boundary is `pythonsrc/profiles`, not the repo root. Confining to the checkout
+# stops the absolute read but leaves every JSON file under it an accepted profile —
+# `web/package.json`, `licenses/*.json`, `tsconfig.json` — which is an in-repo existence
+# oracle and lets `run_operator.py` be handed `package.json` as a printer.
+
+def _job_count() -> int:
+    resp = client.get("/jobs?limit=1")
+    assert resp.status_code == 200
+    return resp.json()["total"]
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "/etc/hosts.json",
+        "/tmp/attacker.json",
+        "../../../../etc/passwd",
+        "pythonsrc/profiles/../../../etc/passwd",
+    ],
+)
+def test_post_jobs_refuses_a_profile_outside_the_profiles_dir(printer_configured, profile):
+    """An escaping profile is a 422, and no row is written.
+
+    A refusal has to land before `job_id` is minted, for the same reason the IP screen
+    does: the artifact-cleanup loop below it unconditionally deletes the flat mesh and
+    G-code, so a refusal after that point destroys the previous job's output in order to
+    reject a job that never existed.
+    """
+    before = _job_count()
+
+    resp = client.post("/jobs", json={
+        "prompt": "a vase", "printer_id": "default", "profile": profile,
+    })
+
+    assert resp.status_code == 422, resp.text
+    assert _job_count() == before, "a refused job still wrote a row"
+
+
+def test_post_jobs_does_not_accept_an_in_repo_json_as_a_profile(printer_configured):
+    """`web/package.json` is real, readable and not a printer profile.
+
+    Under a repo-root boundary it resolves, `json.load`s and lands in `process_params`.
+    Under the `pythonsrc/profiles` boundary it simply never resolves, so it takes the
+    existing "profile not found — disabling print" path instead of a 422: the path does
+    not escape, it just is not a profile.
+    """
+    resp = client.post("/jobs", json={
+        "prompt": "a vase", "printer_id": "default", "profile": "web/package.json",
+    })
+    assert resp.status_code == 202, resp.text
+
+    db = TelemetryDB()
+    job = db.get_job(resp.json()["job_id"])
+    db.close()
+
+    assert job.process_params is None or "devDependencies" not in job.process_params
+
+
+def test_post_jobs_still_accepts_a_profile_name_that_does_not_exist(printer_configured):
+    """A missing profile stays a 202 — only an *escaping* one is a 422.
+
+    `tests/test_server.py` posts `"profile": "test"` and asserts 202, and `"default"`
+    is a sentinel that flows the same way. Turning "no such profile" into a 422 is a
+    different product decision from refusing a path that leaves the directory, and the
+    distinction falls out of `contained_path` for free: it returns a path for a
+    contained file that does not exist, and None only for an escape.
+    """
+    for profile in ("test", "default", ""):
+        resp = client.post("/jobs", json={
+            "prompt": "a vase", "printer_id": "default", "profile": profile,
+        })
+        assert resp.status_code == 202, f"{profile!r}: {resp.text}"
+
+
+def test_post_jobs_accepts_a_bundled_profile_and_snapshots_it(printer_configured):
+    """The legitimate case, in the spelling the Settings UI actually writes."""
+    resp = client.post("/jobs", json={
+        "prompt": "a vase", "printer_id": "default",
+        "profile": "pythonsrc/profiles/ender3.json",
+    })
+    assert resp.status_code == 202, resp.text
+
+    db = TelemetryDB()
+    job = db.get_job(resp.json()["job_id"])
+    db.close()
+
+    assert job.process_params is not None
+    assert job.process_params["machine_name"] == "Ender 3"
+
+
+def test_printer_status_ignores_a_default_profile_outside_the_profiles_dir(
+    monkeypatch, tmp_path,
+):
+    """The documented behaviour change: an absolute `DEFAULT_PROFILE` no longer reads.
+
+    `_ceiling` used to fall back to `open(profile_ref)` when the repo-relative join did
+    not exist, which was deliberate absolute-path support — and also an unauthenticated
+    arbitrary-JSON read reachable through `GET /system/printer/status`, since
+    `DEFAULT_PROFILE` is set through `PUT /config` and `NewJob` forwards its value as
+    `request.profile`. One value, one boundary.
+    """
+    import asyncio
+
+    outside = tmp_path / "ender3.json"
+    outside.write_text(
+        '{"firmware": "octoprint", "machine_width": 220,'
+        ' "machine_depth": 220, "machine_height": 250}'
+    )
+
+    monkeypatch.setattr(
+        app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
+    )
+    monkeypatch.setattr(app_module.config_store, "get", lambda key, *a, **k: (
+        str(outside) if key == "DEFAULT_PROFILE" else None
+    ))
+    monkeypatch.setattr(app_module, "resolve_printer_target",
+                        lambda path: ("octoprint", "http://localhost:5001", None))
+
+    async def _probe(_request):
+        return {"success": True, "message": "ok"}
+    monkeypatch.setattr(app_module, "test_connection", _probe)
+
+    status = asyncio.run(app_module.printer_status())
+
+    assert status["build_volume_mm"] is None
