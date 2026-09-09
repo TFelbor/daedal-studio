@@ -48,7 +48,10 @@ export function SpecPanel({ spec, unavailableReason, onRecompile, children }: Sp
   return (
     <Blueprint tone="accent" className={styles.panel}>
       <div className={styles.head}>
-        <span className="label">Spec · editable</span>
+        {/* "editable" is a promise, and only `onRecompile` keeps it. Until the
+            composer can edit a spec and recompile it, this table is a record of
+            what the part was built from — say that rather than the other thing. */}
+        <span className="label">{onRecompile ? 'Spec · editable' : 'Spec · as compiled'}</span>
         <span className={styles.archetype}>
           {/* No version until Phase 2 has compiled it. "v?" would be a version, and
               "v1" would be a guess at which archetype ran. */}
