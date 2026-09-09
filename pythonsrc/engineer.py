@@ -64,6 +64,31 @@ HOLLOW_MAX_VOXELS = 2_000_000
 # a slot through a 0.5 mm one.
 ESCAPE_HOLE_WALLS = 2.0
 
+# ── Export ───────────────────────────────────────────────────────────────────
+# What Phase 3 writes beside the mesh it was asked for, and why each is there.
+#
+# `.stl` is the slicer's input: CuraEngine does not read `.obj` reliably.
+# `.3mf` is the **handoff** copy, and it is a deliverable rather than a
+# convenience — the interim route to a Bambu is "download the file and print it
+# by hand", and 3MF is the format Bambu Studio, PrusaSlicer and Orca open
+# without asking what unit the numbers are in. That last part is the whole
+# point: an STL is a bag of triangles with no unit, so every consumer guesses
+# millimetres, whereas 3MF records `unit="millimeter"` in its model XML. A part
+# whose dimensions are the deliverable — anything compiled from a spec — must
+# not have its size re-guessed by the program that prints it.
+#
+# Single-colour, deliberately: nothing upstream of here carries a material
+# (`SculptorBackend._strip_appearance` discards appearance for every backend),
+# so writing a colour would be inventing one.
+EXPORT_SUFFIXES = (".stl", ".3mf")
+
+#: The 3MF exporter's soft dependency. trimesh imports `lxml` inside
+#: `export_3MF`, so its absence is an ImportError at export time rather than at
+#: `import trimesh` — which is how "3MF export is one line" held only inside the
+#: Docker images, where lxml arrived transitively. It is a declared dependency
+#: now (`requirements-base.txt`); this name exists so the failure can say so.
+_THREEMF_DEPENDENCY = "lxml"
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 logger = logging.getLogger("ds.engineer")
 
@@ -1030,6 +1055,66 @@ class Engineer:
             "euler_number": mesh.euler_number if hasattr(mesh, "euler_number") else None,
         }
 
+    # ── Export ────────────────────────────────────────────────────────────────
+    @staticmethod
+    def export_mesh(mesh: trimesh.Trimesh, output_path: str | Path) -> dict:
+        """Write the mesh at `output_path` and one sibling per `EXPORT_SUFFIXES`.
+
+        One function rather than three `mesh.export` calls in a row, because each
+        format has a consumer that must not be able to lose its copy quietly: the
+        `.obj` is what `GET /jobs/{id}/mesh` renders, the `.stl` is what
+        CuraEngine slices, and the `.3mf` is what a person opens in Bambu Studio
+        or Orca to print by hand. The unit is the reason the third exists — see
+        `EXPORT_SUFFIXES`.
+
+        **A sibling that cannot be written is recorded, not raised.** The
+        precedent is the printability gate: a deliverable that fails to
+        materialise must leave a trace, and it must not take a print with it. The
+        3MF exporter reaches for `lxml` at call time, so the failure mode is a
+        broken install rather than a broken mesh — and failing Phase 3 there
+        would refuse to print a part whose STL is sitting on disk, ready. The
+        `.obj` is different: it is the path the caller named, everything
+        downstream is keyed off it, and there is nothing to continue with if it
+        did not land, so that one propagates.
+
+        Args:
+            mesh: The mesh to write.
+            output_path: The path the caller asked for. Its suffix decides the
+                primary format; the siblings replace it.
+
+        Returns:
+            `{"written": [Path, …], "errors": {suffix: reason, …}}` — the paths
+            that exist afterwards, primary first, and a reason for each format
+            that did not.
+        """
+        output_path = Path(output_path)
+        mesh.export(str(output_path))
+        written = [output_path]
+        errors: dict[str, str] = {}
+
+        for suffix in EXPORT_SUFFIXES:
+            sibling = output_path.with_suffix(suffix)
+            if sibling == output_path:
+                continue
+            try:
+                mesh.export(str(sibling))
+            except ImportError as exc:
+                # Named, because "cannot export 3MF" sends someone to the mesh
+                # and the answer is a missing wheel.
+                errors[suffix] = f"{exc} (needs {_THREEMF_DEPENDENCY})"
+                logger.error(
+                    "Could not write %s — the exporter's dependency is missing "
+                    "(%s). Install %s; see requirements-base.txt.",
+                    sibling.name, exc, _THREEMF_DEPENDENCY,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors[suffix] = str(exc)
+                logger.error("Could not write %s: %s", sibling.name, exc)
+            else:
+                written.append(sibling)
+
+        return {"written": written, "errors": errors}
+
     # ── Main process ──────────────────────────────────────────────────────────
     def process(
         self,
@@ -1070,9 +1155,10 @@ class Engineer:
 
         Args:
             input_path: Mesh to process.
-            output_path: Where to write the repaired mesh. A `.stl` sibling is
-                written alongside it, because CuraEngine does not read `.obj`
-                reliably.
+            output_path: Where to write the repaired mesh. A `.stl` and a `.3mf`
+                sibling are written alongside it — CuraEngine does not read
+                `.obj` reliably, and the 3MF is the copy a person opens in
+                another slicer. See `export_mesh`.
             target_mm: Size of the extent named by `scale_axis`, in millimetres, or
                 **None to preserve the input's own dimensions**. `None` also
                 overrides `self.target_dimensions`: an instance-level default must
@@ -1184,14 +1270,13 @@ class Engineer:
             mesh = self.scale_to_dimensions(mesh, scale_target, scale_axis=scale_axis)
             mesh = self.orient_for_print(mesh)
 
-        mesh.export(str(output_path))
-
-        # Also export as .stl for the Slicer (CuraEngine)
-        stl_output_path = output_path.with_suffix(".stl")
-        mesh.export(str(stl_output_path))
+        exports = self.export_mesh(mesh, output_path)
 
         final_analysis = self.analyze_mesh(mesh)
-        logger.info("Engineering complete → %s (and .stl)", output_path)
+        logger.info(
+            "Engineering complete → %s",
+            ", ".join(str(path) for path in exports["written"]),
+        )
         logger.info("Output analysis: %s", final_analysis)
 
         self.last_report = {
@@ -1216,6 +1301,13 @@ class Engineer:
                 else (self._last_scale_axis or scale_axis)
             ),
             "achieved_extent_mm": final_analysis.get("extent_mm"),
+            # Which files this job actually has, and the reason for any that is
+            # missing. Recorded rather than logged for the same reason as
+            # `scale_applied`: "the 3MF is not there" and "nobody has looked" are
+            # two different facts, and the download endpoint can only report the
+            # first as a 404.
+            "exports": [path.name for path in exports["written"]],
+            **({"export_errors": exports["errors"]} if exports["errors"] else {}),
             "hollowed": bool(hollow),
             "wall_thickness_mm": float(wall_thickness) if hollow else None,
             # What hollowing actually did, which is not always what was asked:
