@@ -313,6 +313,38 @@ def test_review_skips_drafts_and_returns_when_they_are_ready() -> None:
     assert "draft == false" in condition, f"claude-review does not skip drafts; if is {condition!r}"
 
 
+def test_review_keeps_the_transcript() -> None:
+    """A review that returns no structured output fails the check with nothing in the
+    run saying why: the action hides the model's turns and prints only a summary of the
+    final result message. The execution file is the rest of that message. Uploaded with
+    `if: always()`, because the only runs worth reading are the ones that failed."""
+    workflow = _load(REVIEW)
+    step = _step_named(workflow, "claude-review", "actions/upload-artifact")
+    assert "always()" in str(step.get("if", "")), "the transcript upload must run with if: always()"
+    with_ = step.get("with", {})
+    assert "execution_file" in str(with_.get("path", "")), (
+        "the artifact must upload the action's execution_file output"
+    )
+    assert with_.get("retention-days") == 14, (
+        "a transcript that may hold a printed environment must expire; 14 days matches claude-implement"
+    )
+
+
+def test_review_full_output_is_a_lever_and_is_off_by_default() -> None:
+    """`show_full_output` prints every tool result into a run log with no retention
+    limit — upstream's own input description warns it may carry secrets and API keys.
+    So it is gated on a repository variable, the way AUTO_MERGE is, and never written
+    as a literal `true`: a workflow that ships verbose is one nobody remembers to turn
+    back off."""
+    (step,) = _action_steps(_load(REVIEW), "claude-review")
+    value = str(step.get("with", {}).get("show_full_output", ""))
+    assert value, "the review step does not set show_full_output at all"
+    assert "vars." in value, f"show_full_output must read a repository variable; it is {value!r}"
+    assert value.strip().lower() not in {"true", "'true'", '"true"'}, (
+        f"show_full_output must not be hardcoded on; it is {value!r}"
+    )
+
+
 # --- resuming after a usage limit ----------------------------------------------------------
 
 
