@@ -1916,6 +1916,39 @@ described under **Server** above.
 
 Key pipeline paths: `data/inputs/{job_id}/` (blueprint and its provenance sidecar; runs without `--job-id` use flat `data/inputs/`), `data/outputs/{job_id}/` (per-job mesh, G-code and a blueprint snapshot — runs without `--job-id` still use flat `data/outputs/`), `data/logs/` (per-job logs and status files). Server artifact endpoints resolve the per-job path first and fall back to the flat layout for pre-existing rows. These are gitignored runtime directories.
 
+**A job directory is created at its first write, not at the start of the run**
+(`pipeline._ensure_outputs_dir`). Choosing the directory and creating it used to be
+one statement, so every run that died before Phase 2 produced anything — a compose
+mount error, a spec the archetype refuses, a killed container — left one behind, and
+nothing revisits or prunes those: 93 directories on one dev machine, 57 of them empty,
+and no way to tell from a listing which of the other 36 held a mesh. Removing the
+directory on the way out cannot cover it, because a SIGKILLed container runs no
+handler; not creating it can. Most writers already did their own
+`parent.mkdir` — `Engineer.export_mesh`, `SculptorBackend.postprocess`,
+`CuraSlicer.slice`, `_install_dev_asset` — so the helper is for the four writes
+`pipeline.py` performs directly (the blueprint snapshot, the compiled spec's
+artifacts, the printability report and its failure envelope). The blueprint gate's
+deliberate pre-creation is untouched and must stay: it writes a snapshot into
+`data/outputs/{job_id}` before Phase 2, and `_job_outputs_dir`'s snapshot-only branch
+is what stops that from claiming the plain namespace.
+
+**`python -m pythonsrc.outputs` (`make outputs`) is the disk-side index, and
+`--prune` (`make clean-outputs`) is the broom.** It is **stdlib-only and reads no
+database**, which is the point rather than an economy: the directories a person cannot
+account for are the ones left by runs that never wrote a telemetry row, so
+`telemetry/trace.py --list` — which opens a READ ONLY session against PostgreSQL —
+cannot answer for exactly that population. `--prune` removes **empty directories
+only**; `--days N` additionally removes job directories older than N days, prints
+every path before deleting, and **exempts a directory holding only the gate's
+blueprint snapshot**, because a job can sit parked indefinitely and that image is what
+a person is being asked to approve. `remove()` refuses any path that is not a direct,
+non-symlink child of the root — `DS_OUTPUTS_DIR` and `--root` are both caller-supplied,
+and the age mode deletes real meshes. `docs/README-docker.md` §13 is the table of what
+`data/` holds and what is safe to delete; `tests/test_output_directories.py` binds all
+of it, including a source-level guard that no second `outputs_dir.mkdir` reappears in
+`pipeline.py` — re-adding one is invisible in a diff and the only symptom is a
+directory nobody looks at.
+
 ## Licensing Constraints
 
 The project ships under Apache-2.0 (`LICENSE`), and every dependency is tracked in
