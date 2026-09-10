@@ -322,7 +322,7 @@ def test_the_card_count_is_named_as_not_geometric():
 
 
 def test_an_external_constraint_that_fails_names_the_axis_and_the_overshoot():
-    spec = divider(constraints=Constraints(max_external_mm=(67.0, 1.0, 95.0)))
+    spec = divider(constraints=Constraints(max_external_mm=(67.0, 1.0, 95.0), fit_margin_mm=0))
     fits = fits_for(spec)
     assert fits.fits is False
     assert "depth 1.4 mm exceeds 1 mm" in fits.remedy
@@ -331,8 +331,30 @@ def test_an_external_constraint_that_fails_names_the_axis_and_the_overshoot():
 
 
 def test_an_external_constraint_that_holds_passes():
-    spec = divider(constraints=Constraints(max_external_mm=(70.0, 3.0, 110.0)))
+    spec = divider(constraints=Constraints(max_external_mm=(70.0, 4.0, 110.0)))
     assert fits_for(spec).fits is True
+
+
+def test_the_margin_applies_to_the_divider_too_and_names_itself():
+    """The margin is a property of the *measurement*, not of the shape: it is the
+    ±1–2 mm a box internal varies by, so it comes off every axis of every archetype.
+    A plate that presses on the box walls splits them exactly as an insert does."""
+    spec = divider(constraints=Constraints(max_external_mm=(67.0, 4.0, 110.0)))
+    fits = fits_for(spec)
+    assert fits.fits is False
+    assert "width 67 mm exceeds 65 mm (max_external 67 − 2 margin) by 2.0 mm" in fits.remedy
+
+
+def test_a_zero_margin_restores_the_old_comparison_for_the_divider():
+    """Byte for byte: the sentence carries no parenthetical when no subtraction
+    happened, and a plate that filled its stated limit exactly still fits."""
+    spec = divider(constraints=Constraints(max_external_mm=(67.0, 1.4, 102.0), fit_margin_mm=0))
+    assert fits_for(spec).fits is True
+    over = divider(constraints=Constraints(max_external_mm=(66.0, 4.0, 110.0), fit_margin_mm=0))
+    assert fits_for(over).remedy == (
+        "width 67 mm exceeds 66 mm by 1.0 mm. Thin the plate, shorten the tab, "
+        "choose a lighter sleeving, or relax the constraint."
+    )
 
 
 def test_the_view_has_the_shape_the_ui_declares():

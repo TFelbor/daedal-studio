@@ -166,6 +166,58 @@ def test_constraints_need_three_positive_numbers_or_nothing():
         Constraints(max_external_mm=(80, -1, 100))
 
 
+def test_the_fit_margin_defaults_to_two_millimetres():
+    """`docs/dimension-kb-research.md` §7: no public DB of game-box internals exists,
+    the measurements that do are per-copy, and boxes vary ±1–2 mm — so the KB's own
+    consequence is a −2 mm safety default, and the audited insert standard makes the
+    same 2 mm reduction mandatory."""
+    assert Constraints().fit_margin_mm == 2.0
+
+
+def test_the_effective_limit_is_the_stated_one_less_the_margin_on_every_axis():
+    c = Constraints(max_external_mm=(90.0, 80.0, 100.0))
+    assert c.effective_max_external_mm() == (88.0, 78.0, 98.0)
+
+
+def test_a_zero_margin_leaves_the_stated_limit_alone():
+    c = Constraints(max_external_mm=(90.0, 80.0, 100.0), fit_margin_mm=0)
+    assert c.effective_max_external_mm() == (90.0, 80.0, 100.0)
+
+
+def test_the_effective_limit_is_none_without_a_stated_one():
+    """The margin has nothing to subtract from, so there is no limit — not a
+    limit of −2 mm that nothing could ever satisfy."""
+    assert Constraints(fit_margin_mm=2.0).effective_max_external_mm() is None
+
+
+def test_a_margin_larger_than_the_limit_goes_negative_rather_than_clamping():
+    """A limit nothing can satisfy is the honest answer, and the arithmetic is in the
+    remedy; clamping to zero would hide which of the two numbers is wrong."""
+    assert Constraints(max_external_mm=(1.0, 1.0, 1.0)).effective_max_external_mm() == (
+        -1.0, -1.0, -1.0
+    )
+
+
+@pytest.mark.parametrize("bad", [-0.001, -2.0, "wide", float("nan")])
+def test_constraints_refuse_a_bad_fit_margin_by_name(bad):
+    with pytest.raises(SpecError) as exc:
+        Constraints(fit_margin_mm=bad)
+    assert "fit_margin_mm" in str(exc.value)
+
+
+def test_a_zero_fit_margin_is_accepted_because_somebody_measured_the_box():
+    assert Constraints(fit_margin_mm=0).fit_margin_mm == 0.0
+
+
+def test_the_fit_margin_round_trips():
+    a = deck(constraints=Constraints(max_external_mm=(90.0, 80.0, 100.0)))
+    b = deck(constraints=Constraints(max_external_mm=(90.0, 80.0, 100.0), fit_margin_mm=0))
+    assert OrganizerSpec.from_dict(a.to_dict()) == a
+    assert OrganizerSpec.from_dict(b.to_dict()) == b
+    assert a.to_dict()["constraints"]["fit_margin_mm"] == 2.0
+    assert b.to_dict()["constraints"]["fit_margin_mm"] == 0.0
+
+
 def test_spec_refuses_an_unknown_archetype_and_an_empty_compartment_list():
     with pytest.raises(SpecError) as exc:
         OrganizerSpec(archetype="dragon", compartments=())
@@ -300,7 +352,17 @@ def test_an_absent_optional_section_is_omitted_from_the_canonical_form():
 
 def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
-    which is a schema-version bump, not a refactor."""
+    which is a schema-version bump, not a refactor.
+
+    It has moved exactly once, deliberately: `constraints.fit_margin_mm` (issue #70)
+    is a scalar with a default, not an optional *section*, so it is written for every
+    spec the way `process.wall_mm` is. A section is omitted when absent — that is what
+    `_OPTIONAL_SECTIONS` is for — but omitting a scalar at its default would mean the
+    canonical form no longer says what the spec is, and the next default to change
+    would be unreadable in a diff. The alternative, a `SCHEMA_VERSION` bump, refuses
+    every existing spec file for an additive field. Rows already written keep the hash
+    they recorded; nothing re-derives one.
+    """
     spec = OrganizerSpec(
         archetype="deck_box",
         compartments=(Compartment(CardStack(count=100)),),
@@ -308,7 +370,8 @@ def test_the_hash_is_stable_across_processes():
     )
     assert canonical_json(spec) == (
         '{"archetype":"deck_box","compartments":[{"contents":{"card":"standard",'
-        '"count":100,"sleeving":"double"}}],"constraints":{"max_external_mm":null},'
+        '"count":100,"sleeving":"double"}}],'
+        '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"lid":{"clearance_mm":0.2,"height_mm":15.0,"kind":"lift_off","magnets":false,'
         '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
@@ -320,6 +383,14 @@ def test_the_hash_is_stable_across_processes():
 def test_diff_reports_a_changed_path_with_old_and_new():
     a, b = deck(), deck(lid=Lid(height_mm=20.0))
     assert spec_diff(a, b) == {"lid.height_mm": (15.0, 20.0)}
+
+
+def test_diff_reports_the_fit_margin_which_is_what_makes_it_iterable():
+    """F8 iterates a design by spec diff, so "I measured the box myself, use all of
+    it" has to be a path — `constraints.fit_margin_mm` — rather than a hidden default."""
+    a = deck(constraints=Constraints(max_external_mm=(90.0, 80.0, 100.0)))
+    b = deck(constraints=Constraints(max_external_mm=(90.0, 80.0, 100.0), fit_margin_mm=0))
+    assert spec_diff(a, b) == {"constraints.fit_margin_mm": (2.0, 0.0)}
 
 
 def test_diff_reports_added_and_removed_paths_with_none():
@@ -346,7 +417,8 @@ def test_the_fixed_divider_vector_carries_no_lid():
     spec = card_divider()
     assert canonical_json(spec) == (
         '{"archetype":"card_divider","compartments":[{"contents":{"card":"standard",'
-        '"count":100,"sleeving":"double"}}],"constraints":{"max_external_mm":null},'
+        '"count":100,"sleeving":"double"}}],'
+        '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"divider":{"tab_height_mm":10.0,"tab_position":"centre","tab_width_mm":20.0,'
         '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'

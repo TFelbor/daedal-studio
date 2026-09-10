@@ -192,12 +192,28 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
     );
   }
   const limit = spec.constraints?.max_external_mm;
+  const margin = spec.constraints?.fit_margin_mm;
   if (limit) {
     const axes = ['width', 'depth', 'height'] as const;
     axes.forEach((axis, i) => {
       dimensions.push(row(`max_external_${axis}_mm`, `Max external ${axis}`, limit[i], 'mm', true,
-        i === 0 ? 'the finished part must fit inside this' : undefined));
+        i === 0
+          ? margin
+            ? 'the finished part must fit inside this, less the fit margin below'
+            : 'the finished part must fit inside this'
+          : undefined));
     });
+    // The effective limit — stated less margin — is deliberately *not* a row. It is
+    // the archetype's arithmetic, and this table shows fields somebody wrote; the
+    // subtraction is named where it decides something, in the fits remedy. A spec
+    // stored before issue #70 carries no margin and gets no row, because none was
+    // subtracted from it.
+    if (margin !== undefined) {
+      dimensions.push(row('fit_margin_mm', 'Fit margin', margin, 'mm', true,
+        margin
+          ? 'taken off every axis before the fit check; box internals vary ±1–2 mm between copies'
+          : 'zero: the stated limit is used exactly as measured'));
+    }
   }
 
   return {

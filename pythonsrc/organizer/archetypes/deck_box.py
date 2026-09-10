@@ -47,7 +47,12 @@ import manifold3d
 from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Lid, OrganizerSpec, SpecError, spec_hash
-from .common import expect_planes, single_compartment_problem, view_row
+from .common import (
+    expect_planes,
+    external_overshoots,
+    single_compartment_problem,
+    view_row,
+)
 
 ARCHETYPE = "deck_box"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
@@ -331,6 +336,11 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     value: it is what a person checks against their own callipers. With
     `constraints.max_external_mm`, each assembled external dimension is compared and a
     failing remedy names the axis, the overshoot and the card count that would fit.
+
+    **The comparison is against the limit minus `constraints.fit_margin_mm`** (2,0 mm
+    by default — `docs/dimension-kb-research.md` §7), which is also the figure the
+    card count is derived from. A box internal measured off one copy is not a
+    dimension to build to, and an insert that presses outward splits the box.
     """
     validate(spec)
     d = derive(spec)
@@ -342,26 +352,20 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     )
     fits = s.stack_height_mm <= d.cavity_d
     remedy = None
-    limit = spec.constraints.max_external_mm
-    if limit is not None:
-        over = [
-            (axis, extent, maximum)
-            for axis, extent, maximum in zip(
-                ("width", "depth", "height"), (d.external_w, d.external_d, d.external_h), limit
-            )
-            if extent > maximum + 1e-9
-        ]
-        if over:
-            fits = False
-            notes = [
-                f"external {axis} {extent:g} mm exceeds {maximum:g} mm by {extent - maximum:.1f} mm"
-                for axis, extent, maximum in over
-            ]
-            if any(axis == "depth" for axis, _, _ in over):
-                room = limit[1] - 2 * spec.process.wall_mm - spec.process.stack_slack_mm
-                fitting = max(0, int(math.floor(room / s.pitch_mm + 1e-9)))
-                notes.append(f"{fitting} cards would fit the depth limit")
-            remedy = "; ".join(notes) + ". Reduce the card count, the wall or the slack, or relax the constraint."
+    over = external_overshoots(
+        spec, (d.external_w, d.external_d, d.external_h), prefix="external "
+    )
+    if over:
+        fits = False
+        notes = [o.note for o in over]
+        depth = next((o for o in over if o.axis == "depth"), None)
+        if depth is not None:
+            # The count is derived from the *effective* limit, or the remedy would
+            # name a card count that busts the safety margin all over again.
+            room = depth.limit - 2 * spec.process.wall_mm - spec.process.stack_slack_mm
+            fitting = max(0, int(math.floor(room / s.pitch_mm + 1e-9)))
+            notes.append(f"{fitting} cards would fit the depth limit")
+        remedy = "; ".join(notes) + ". Reduce the card count, the wall or the slack, or relax the constraint."
     return FitsResult(fits=fits, line=line, basis=s.basis, remedy=remedy)
 
 

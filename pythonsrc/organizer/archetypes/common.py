@@ -1,11 +1,14 @@
-"""The three things every archetype module has that are not about its own shape.
+"""The four things every archetype module has that are not about its own shape.
 
 Extracted when the second archetype landed (issue #65), because that is the moment a
 habit becomes an API: `deck_box.py` had a compartment-count rule, a plane-count
 assertion and a view-row builder, and a card divider needs all three in the same words.
 Copying them would have given two archetypes two spellings of "holds exactly one
 compartment" — and the pilot's own question, *is the archetype API an API*, is answered
-by what a second module has to duplicate.
+by what a second module has to duplicate. The external-limit comparison (issue #70)
+joined them for the same reason and one more: `constraints.fit_margin_mm` is a rule
+about *specs*, so two archetypes subtracting it in two places is one refactor away from
+two archetypes subtracting it differently.
 
 It lives here rather than in `compiler.py` (the kernel bridge and the measurers) or in
 `archetypes/__init__.py` (which imports the archetype modules, so a helper there is a
@@ -15,10 +18,79 @@ messages a person reads stay the archetype's own sentences.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional
 
 from ..compiler import MeasureError, plane_set
 from ..spec import OrganizerSpec
+
+#: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
+EXTERNAL_AXES: tuple[str, str, str] = ("width", "depth", "height")
+
+
+@dataclass(frozen=True)
+class Overshoot:
+    """One axis whose extent does not fit inside the effective external limit.
+
+    Attributes:
+        axis: `"width"`, `"depth"` or `"height"`.
+        extent: What the part measures on that axis, mm.
+        limit: The limit actually compared against — `stated − margin`, mm.
+        stated: `constraints.max_external_mm` on that axis, mm.
+        margin: `constraints.fit_margin_mm`, mm.
+        note: The sentence a remedy is built from.
+    """
+
+    axis: str
+    extent: float
+    limit: float
+    stated: float
+    margin: float
+    note: str
+
+
+def external_overshoots(
+    spec: OrganizerSpec, extents: Iterable[float], *, prefix: str = ""
+) -> list[Overshoot]:
+    """Every axis on which `extents` exceeds the effective external limit.
+
+    The limit compared against is `constraints.max_external_mm` **minus**
+    `constraints.fit_margin_mm` on every axis — see `Constraints` for why a measured
+    box internal is not the number to build to. The margin is named in the sentence
+    (`"… exceeds 88 mm (max_external 90 − 2 margin)"`) so that a part refused by two
+    millimetres nobody typed is explained where it is refused rather than in a
+    docstring. A **zero** margin prints no parenthetical at all, so a person who
+    measured the box they are filling and set `fit_margin_mm: 0` reads exactly the
+    sentence this project printed before the margin existed.
+
+    Args:
+        spec: The spec whose `constraints` supply the limit.
+        extents: The part's (width, depth, height) in mm, in that order.
+        prefix: What the archetype calls the measurement, e.g. `"external "`.
+
+    Returns:
+        One `Overshoot` per failing axis, in axis order; empty when the spec carries
+        no `max_external_mm` or every axis fits.
+    """
+    limits = spec.constraints.effective_max_external_mm()
+    if limits is None:
+        return []
+    stated = spec.constraints.max_external_mm
+    assert stated is not None  # effective_max_external_mm() returned a tuple
+    margin = spec.constraints.fit_margin_mm
+    out: list[Overshoot] = []
+    for axis, extent, limit, stated_limit in zip(EXTERNAL_AXES, extents, limits, stated):
+        if extent <= limit + 1e-9:
+            continue
+        how = f" (max_external {stated_limit:g} − {margin:g} margin)" if margin else ""
+        out.append(Overshoot(
+            axis=axis, extent=extent, limit=limit, stated=stated_limit, margin=margin,
+            note=(
+                f"{prefix}{axis} {extent:g} mm exceeds {limit:g} mm{how} "
+                f"by {extent - limit:.1f} mm"
+            ),
+        ))
+    return out
 
 
 def single_compartment_problem(

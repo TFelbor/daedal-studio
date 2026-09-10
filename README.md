@@ -385,7 +385,7 @@ same commit):
 - [ ] Chamfer + vertical-fillet primitives in `compiler.py` — 45° base chamfer (anti-warp) and internal/external corner rounds (anti-elephant-foot, token-bin scooping) via `Manifold.hull` and `CrossSection.offset(Round)`; no new dependency, no OCCT review (§0.5)
 - [ ] `Process.fit_intent` (`snug` | `easy`) driving cavity clearance — one hardcoded 1,5 mm serves a snug deck box and a lift-out tray today; the +1,5–2 / +4–6 mm split is already sourced in `docs/dimension-kb-research.md` §3
 - [ ] Justify or retire `Process.wall_mm = 2.8` — seven perimeters at a 0,4 nozzle, unsourced; derive the floor from the profile's nozzle and let the archetype set the rest
-- [ ] `constraints.max_external_mm` gains the −2 mm safety buffer (research §7, BIT's leave-3/3/2 rule) — today it is a hard limit against dimensions that vary ±1–2 mm between copies of the same box
+- [x] `constraints.max_external_mm` gains the −2 mm safety buffer (research §7, BIT's leave-3/3/2 rule) — 2026-09-10: `Constraints.fit_margin_mm`, default 2,0 mm, off every axis before either archetype compares its envelope; the remedy names the arithmetic, and `fit_margin_mm: 0` is for a person who measured the box they are filling
 
 ### 📱 Phase 3 — Closed preview, friendly-user alpha (PRD M2 · 11–31 October 2026)
 

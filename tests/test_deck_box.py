@@ -275,14 +275,53 @@ def test_an_external_constraint_that_fails_names_the_axis_and_a_card_count():
     spec = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0)))
     fits = fits_for(spec)
     assert fits.fits is False
-    assert "depth" in fits.remedy and "76.6" in fits.remedy and "70" in fits.remedy
-    # (70 − 2·2.8 − 1.0) / 0.70 = 90.57 → 90 cards
-    assert "90 cards" in fits.remedy
+    assert "depth" in fits.remedy and "76.6" in fits.remedy and "68" in fits.remedy
+    # (70 − 2 margin − 2·2.8 − 1.0) / 0.70 = 87.71 → 87 cards. Derived from the
+    # *effective* limit, or the remedy names a count that busts the margin again.
+    assert "87 cards" in fits.remedy
 
 
 def test_an_external_constraint_that_holds_passes():
     spec = deck(constraints=Constraints(max_external_mm=(80.0, 80.0, 100.0)))
     assert fits_for(spec).fits is True
+
+
+# ── the −2 mm safety margin (issue #70) ────────────────────────────────────────
+
+def test_the_default_margin_refuses_a_box_that_fitted_the_stated_limit_exactly():
+    """The whole point: a box internal is one person's measurement of one copy, and
+    the same copy next door is 1–2 mm smaller. 76,6 mm of depth "fits" a 76,6 mm
+    limit and splits the box; against the effective 74,6 mm it does not fit, and the
+    remedy says where the two millimetres came from."""
+    exact = (74.1, 76.6, 97.5)  # the example deck box's own external dimensions
+    fits = fits_for(deck(constraints=Constraints(max_external_mm=exact)))
+    assert fits.fits is False
+    assert "external width 74.1 mm exceeds 72.1 mm (max_external 74.1 − 2 margin)" in fits.remedy
+    assert "external depth 76.6 mm exceeds 74.6 mm (max_external 76.6 − 2 margin)" in fits.remedy
+    assert "external height 97.5 mm exceeds 95.5 mm (max_external 97.5 − 2 margin)" in fits.remedy
+
+
+def test_a_zero_margin_restores_the_old_comparison_and_the_old_sentence():
+    """`fit_margin_mm: 0` is for a person who measured the box they are filling. It
+    must read exactly as this project read before the margin existed — no
+    parenthetical explaining an arithmetic that did not happen."""
+    exact = (74.1, 76.6, 97.5)
+    spec = deck(constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
+    assert fits_for(spec).fits is True
+    over = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0), fit_margin_mm=0))
+    fits = fits_for(over)
+    assert fits.fits is False
+    assert fits.remedy == (
+        "external depth 76.6 mm exceeds 70 mm by 6.6 mm; "
+        "90 cards would fit the depth limit. "
+        "Reduce the card count, the wall or the slack, or relax the constraint."
+    )
+
+
+def test_the_margin_does_nothing_without_a_stated_limit():
+    """A spec with no `max_external_mm` has nothing to subtract from, so the margin
+    must not invent a limit — a deck box with no constraint fits by construction."""
+    assert fits_for(deck(constraints=Constraints(fit_margin_mm=2.0))).fits is True
 
 
 def test_the_view_has_the_shape_the_ui_declares():

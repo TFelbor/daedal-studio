@@ -578,6 +578,22 @@ pin that).
   spec file for an additive field.
   The parameters live on the spec rather than as archetype constants because F8 iterates
   a design by spec *diff*: "make the tab wider" has to be `divider.tab_width_mm`.
+- **`constraints.max_external_mm` is never the limit an archetype compares against.**
+  `Constraints.fit_margin_mm` (default **2,0 mm**) comes off every axis first, via
+  `effective_max_external_mm()` — the one place the subtraction happens, so two
+  archetypes cannot disagree about what the limit is, and `archetypes/common.py`'s
+  `external_overshoots` is the one place it is applied. A box internal is measured
+  off one copy, copies of the same game vary ±1–2 mm and no public database exists
+  (`docs/dimension-kb-research.md` §7); the audited insert standard makes the 2 mm
+  reduction mandatory because an insert that presses outward splits the cardboard
+  corners. The remedy names the arithmetic (`exceeds 74.6 mm (max_external 76.6 −
+  2 margin)`), because two millimetres nobody typed must be explained where they
+  refuse something. **`fit_margin_mm: 0` is for a person who measured the box they
+  are filling** and restores the old comparison *and* the old sentence — the
+  parenthetical is omitted when no subtraction happened. This moved every spec
+  hash once: a scalar with a default is written into the canonical form like
+  `process.wall_mm`, and the alternative, a `SCHEMA_VERSION` bump, refuses every
+  existing spec file for an additive field.
 - **Each archetype refuses the other's section by name.** `deck_box` refuses a
   `divider`, `card_divider` refuses a `lid`. Ignoring a section prints a different part
   than the one asked for, silently, which is the same failure as ignoring an unsupported
