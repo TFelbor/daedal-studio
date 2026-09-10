@@ -114,6 +114,15 @@ def test_magnets_are_refused_not_ignored():
     assert "magnet" in str(exc.value)
 
 
+def test_a_divider_section_is_refused_rather_than_ignored():
+    """A section belonging to another archetype is a spec asking for a different part.
+    Ignoring it would print a deck box for someone who asked for a plate."""
+    from pythonsrc.organizer.spec import Divider
+    with pytest.raises(SpecError) as exc:
+        compile_spec(deck(divider=Divider()))
+    assert "divider" in str(exc.value) and "card_divider" in str(exc.value)
+
+
 def test_a_missing_lid_is_refused():
     with pytest.raises(SpecError) as exc:
         compile_spec(deck(lid=None))

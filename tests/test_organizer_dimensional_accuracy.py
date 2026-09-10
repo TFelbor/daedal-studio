@@ -7,6 +7,11 @@ can read back off geometry, across its parameter envelope, and then again throug
 3's assert path. The bound is `DEFAULT_TOLERANCE_MM` (0,05 mm). Nothing here is asserted
 from the spec's own arithmetic; every number is read off planes in the mesh.
 
+Two archetypes now have an envelope here, each with its own parametrize — the deck box
+(counts × sleevings × walls × clearances × lid engagement) and the card divider
+(sleevings × tab positions × thicknesses × tab sizes). The generic sweep across *every*
+archetype is issue #85 and is still open; until it lands, a new archetype adds a block.
+
 Two further tests prove the assertion bites, because a check that cannot fail is not a
 check: a mesh scaled by 0,2 % is caught and the feature named, and a mesh with a face
 missing is refused before anything is exported.
@@ -20,14 +25,21 @@ import json
 import pytest
 import trimesh
 
-from pythonsrc.organizer.archetypes import compile_spec, deck_box, verify_spec_mesh
+from pythonsrc.organizer.archetypes import card_divider, compile_spec, deck_box, verify_spec_mesh
 from pythonsrc.organizer.compiler import (
     DEFAULT_TOLERANCE_MM,
     DimensionReport,
     check_dimensions,
     export_stl,
 )
-from pythonsrc.organizer.spec import CardStack, Compartment, Lid, OrganizerSpec, Process
+from pythonsrc.organizer.spec import (
+    CardStack,
+    Compartment,
+    Divider,
+    Lid,
+    OrganizerSpec,
+    Process,
+)
 
 TOL_MM = DEFAULT_TOLERANCE_MM
 
@@ -169,3 +181,96 @@ def test_the_default_deck_box_has_sub_micron_error_on_the_exported_mesh(tmp_path
     result, mesh = exported_and_reloaded(spec, tmp_path / "deck.stl")
     report = verify_spec_mesh(spec, result.features, mesh)
     assert report.max_abs_error_mm < 1e-4
+
+
+# ── the card divider's envelope ────────────────────────────────────────────────
+#
+# Its own parametrize rather than the generic sweep (#85, still open). Five axes, and
+# the tab position is one of them because it is the only parameter that changes the
+# *shape* of the outline rather than a length: an edge tab shares a side plane with the
+# plate, which is exactly the case a union got wrong and an extruded outline does not.
+
+
+def divider(sleeving="double", thickness=1.4, tab_width=20.0, tab_height=10.0,
+            position="centre", count=100):
+    return OrganizerSpec(
+        archetype="card_divider",
+        compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
+        divider=Divider(thickness_mm=thickness, tab_width_mm=tab_width,
+                        tab_height_mm=tab_height, tab_position=position),
+    )
+
+
+D_SLEEVINGS = ("none", "single", "double")
+D_POSITIONS = ("left", "centre", "right")
+D_THICKNESSES = (1.2, 1.4, 1.6, 2.0)   # the audited 1,2–1,6 mm insert band, plus one over
+D_TAB_WIDTHS = (12.0, 20.0, 30.0)
+D_TAB_HEIGHTS = (6.0, 10.0, 15.0)
+
+DIVIDER_ENVELOPE = list(itertools.product(
+    D_SLEEVINGS, D_POSITIONS, D_THICKNESSES, D_TAB_WIDTHS, D_TAB_HEIGHTS,
+))
+
+
+@pytest.mark.parametrize("sleeving,position,thickness,tab_width,tab_height", DIVIDER_ENVELOPE)
+def test_every_measured_feature_of_an_exported_divider_is_within_tolerance(
+    tmp_path, sleeving, position, thickness, tab_width, tab_height,
+):
+    spec = divider(sleeving, thickness, tab_width, tab_height, position)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "divider.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    assert set(report.features) == set(card_divider.MEASURED_FEATURES)
+
+
+def test_the_divider_envelope_is_wide_enough_to_mean_something():
+    """Guards this sweep against being quietly narrowed to the one example spec, and
+    pins the three tab positions in particular — dropping `left` and `right` would
+    remove the only cases where the tab's plane is the plate's."""
+    assert len(DIVIDER_ENVELOPE) >= 300
+    assert set(D_POSITIONS) == {"left", "centre", "right"}
+    assert set(D_SLEEVINGS) == {"none", "single", "double"}
+    assert min(D_THICKNESSES) <= 1.2 and max(D_THICKNESSES) >= 2.0
+
+
+DIVIDER_CORNERS = list(itertools.product(
+    D_SLEEVINGS, D_POSITIONS,
+    ((1.2, 12.0, 6.0), (1.4, 20.0, 10.0), (2.0, 30.0, 15.0), (1.2, 30.0, 6.0)),
+))
+
+
+@pytest.mark.parametrize("sleeving,position,divider_params", DIVIDER_CORNERS)
+def test_phase_3_assert_path_hands_the_slicer_the_designed_divider(
+    tmp_path, sleeving, position, divider_params,
+):
+    thickness, tab_width, tab_height = divider_params
+    spec = divider(sleeving, thickness, tab_width, tab_height, position)
+    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(
+        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
+        target_mm=None, repair_mode="assert",
+    )
+    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
+    assert report.within_tolerance, report.problems()
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+
+
+def test_a_divider_scaled_by_a_fifth_of_a_percent_is_caught_and_the_feature_named(tmp_path):
+    """The check bites on the second archetype too: a plate 0,2 % wide is 0,134 mm out
+    on a 67 mm envelope, and the report names which feature moved."""
+    spec = divider()
+    result, mesh = exported_and_reloaded(spec, tmp_path / "divider.stl")
+    drifted = mesh.copy()
+    drifted.apply_scale(1.002)
+    report = verify_spec_mesh(spec, result.features, drifted)
+    assert report.within_tolerance is False
+    assert "plate_width_mm" in report.out_of_tolerance
+    assert report.max_abs_error_mm > TOL_MM
+
+
+def test_the_default_divider_has_sub_micron_error_on_the_exported_mesh(tmp_path):
+    spec = divider()
+    result, mesh = exported_and_reloaded(spec, tmp_path / "divider.stl")
+    assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4

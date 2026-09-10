@@ -77,8 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_example = sub.add_parser("example", help="print an example spec for an archetype")
-    p_example.add_argument("archetype", nargs="?", choices=list(ARCHETYPES), help="which archetype")
-    p_example.add_argument("--archetype", dest="archetype_flag", choices=list(ARCHETYPES),
+    # Deliberately not `choices=ARCHETYPES`: an unknown name must come back as the
+    # registry's own `SpecError` (exit 2, every known archetype listed) rather than as
+    # argparse's usage banner, which is how every other spec problem here is reported.
+    p_example.add_argument("archetype", nargs="?", help="which archetype")
+    p_example.add_argument("--archetype", dest="archetype_flag",
                            help="the same argument, spelled as a flag")
     p_example.set_defaults(func=_cmd_example)
 

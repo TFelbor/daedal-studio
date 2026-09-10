@@ -191,3 +191,112 @@ def test_the_dimension_check_reads_the_spec_phase_2_recorded_not_the_argument(tm
     (outputs / "spec.json").unlink()
     with pytest.raises(FileNotFoundError):
         _assert_spec_dimensions(result, engineered, outputs)
+
+
+# ── The second archetype takes the same path, with no branch for it ──────────────
+#
+# The point of a second archetype is that nothing between the spec file and the printer
+# has to know which one it is. So these tests are the deck box's, run on a divider,
+# through the same three functions: `_compile_spec_phase`, `Engineer.process` in assert
+# mode, `_assert_spec_dimensions`. Then the gate and Phase 4, which is as far as CI can
+# reach — `infra/ci/curaengine_stub.sh` exits 70 if executed, so "Phase 4" here means
+# the engine is reached with the engineered STL and the right settings.
+
+
+def test_a_divider_compiles_into_the_job_directory_as_one_part(tmp_path):
+    spec = example_spec("card_divider")
+    spec_path = dump_spec(spec, tmp_path / "in" / "divider.json")
+    outputs = tmp_path / "out"
+    mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    assert mesh_path == outputs / "compiled_mesh.stl" and mesh_path.stat().st_size > 84
+    written = json.loads((outputs / "spec.json").read_text())
+    assert written["archetype"] == "card_divider" and "lid" not in written
+    features = json.loads((outputs / "compile_features.json").read_text())
+    assert features["spec_sha256"] == spec_hash(spec) == result.spec_hash
+    assert features["parts"] == ["divider"]
+    assert features["features"]["plate_width_mm"] == 67.0
+    assert features["features"]["total_height_mm"] == 102.0
+
+
+def test_the_generation_record_names_the_divider_compiler(tmp_path, monkeypatch):
+    import pythonsrc.pipeline as pipeline
+    recorded = {}
+    monkeypatch.setattr(pipeline, "_record_generation", lambda args, **kw: recorded.update(kw))
+    spec_path = dump_spec(example_spec("card_divider"), tmp_path / "divider.json")
+    _, result = _compile_spec_phase(_ns(spec=str(spec_path)), tmp_path / "out")
+    pipeline._record_spec_generation(_ns(spec=str(spec_path)), result, duration_s=0.01)
+    assert recorded["model"] == "organizer/card_divider"
+    assert recorded["model_version"] == "1"
+    assert recorded["backend"] == "local"
+    assert recorded["cost_eur"] is None
+
+
+def _compiled_and_engineered_divider(tmp_path):
+    from pythonsrc.engineer import Engineer
+    spec_path = dump_spec(example_spec("card_divider"), tmp_path / "in" / "divider.json")
+    outputs = tmp_path / "out"
+    mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    engineered = outputs / "engineered_mesh.obj"
+    eng = Engineer()
+    eng.process(input_path=mesh_path, output_path=engineered, target_mm=None, repair_mode="assert")
+    return outputs, result, engineered, eng
+
+
+def test_a_divider_passes_phase_3s_assert_path_and_reports_seven_features(tmp_path, capsys):
+    outputs, result, engineered, eng = _compiled_and_engineered_divider(tmp_path)
+    report = _assert_spec_dimensions(result, engineered, outputs)
+    assert report["within_tolerance"] is True
+    assert report["features_checked"] == 7 and report["features_within"] == 7
+    assert json.loads((outputs / "dimension_report.json").read_text()) == report
+    assert "[DS] Dimensions: 7/7" in capsys.readouterr().out
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+
+
+def test_the_gate_is_told_the_divider_is_one_component(tmp_path):
+    """`expected_components=len(compile_result.parts)`, which is 1 for a divider and 2
+    for a deck box — the pipeline reads it off the compile result, so no archetype
+    knowledge lives in `pipeline.py`."""
+    from pythonsrc.printability import ProcessProfile, evaluate_printability
+    _, result, engineered, _ = _compiled_and_engineered_divider(tmp_path)
+    assert len(result.parts) == 1
+    report = evaluate_printability(
+        trimesh.load(str(engineered), force="mesh"),
+        ProcessProfile(build_volume_mm=[220.0, 220.0, 250.0]),
+        expected_components=len(result.parts),
+    )
+    assert not any(c.status == "fail" for c in report.checks), [
+        (c.check, c.detail) for c in report.checks if c.status == "fail"
+    ]
+    assert report.verdict == "ready"
+
+
+def test_phase_4_slices_the_engineered_divider_stl(tmp_path, monkeypatch):
+    """As far as CI reaches: the STL Phase 3 exported is what CuraEngine is handed, with
+    the profile's settings ahead of `-l`. The stub captures the command rather than
+    slicing, because the CI `CuraEngine` exits 70 if it is ever executed."""
+    import subprocess
+    from pathlib import Path as _Path
+
+    from pythonsrc.slicer import CuraSlicer
+
+    _, _, engineered, _ = _compiled_and_engineered_divider(tmp_path)
+    stl = engineered.with_suffix(".stl")
+    assert stl.exists(), "Phase 3 writes the slicer's STL beside the .obj"
+
+    captured: dict = {}
+    monkeypatch.setattr(CuraSlicer, "_check_cura_available", lambda self: None)
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        _Path(cmd[cmd.index("-o") + 1]).write_text(";FLAVOR:Marlin\n;TIME:60\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    profile = _Path(__file__).resolve().parents[1] / "pythonsrc" / "profiles" / "ender3.json"
+    slicer = CuraSlicer(cura_engine="CuraEngine", profile=profile)
+    gcode = slicer.slice(stl, tmp_path / "divider.gcode")
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("-l") + 1] == str(stl)
+    assert cmd.index("-s") < cmd.index("-l")  # settings reach slicing, not per-mesh scope
+    assert gcode.exists()

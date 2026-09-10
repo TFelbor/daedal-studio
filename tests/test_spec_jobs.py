@@ -36,6 +36,14 @@ SPEC = {
     "schema_version": 1,
 }
 
+DIVIDER_SPEC = {
+    "archetype": "card_divider",
+    "compartments": [{"contents": {"count": 100, "card": "standard", "sleeving": "double"}}],
+    "divider": {"thickness_mm": 1.4, "tab_width_mm": 20.0, "tab_height_mm": 10.0,
+                "tab_position": "centre"},
+    "schema_version": 1,
+}
+
 
 def _request(**overrides):
     payload = {"prompt": "a 100-card commander deck box", "printer_id": "default"}
@@ -177,6 +185,45 @@ def test_a_spec_the_archetype_refuses_is_a_422_not_a_failed_phase_2(mock_run, pr
     assert resp.status_code == 422
     assert "archetype" in resp.text
     assert _row_count() == before
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_divider_spec_is_accepted_and_stored_canonically(mock_run, printer_configured, clean_inputs):
+    """The api-server image installs neither trimesh nor manifold3d, so the second
+    archetype's section has to validate on the stdlib-only schema like the first's —
+    which is the reason `pythonsrc.organizer` imports nothing heavy."""
+    resp = client.post("/jobs", json={
+        "prompt": "a divider for my commander deck", "printer_id": "default",
+        "spec": DIVIDER_SPEC,
+    })
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["job_id"]
+    clean_inputs.append(job_id)
+
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    assert job.size_source == "spec"
+    stored = job.request_params["spec"]
+    assert stored == OrganizerSpec.from_dict(DIVIDER_SPEC).to_dict()
+    assert stored["divider"]["tab_position"] == "centre"
+    # An absent optional section is omitted from the canonical form, not stored as null.
+    assert "lid" not in stored
+    written = REPO_ROOT / "data" / "inputs" / job_id / "spec.json"
+    assert json.loads(written.read_text()) == stored
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_an_invalid_divider_section_is_refused_with_its_path(mock_run, printer_configured):
+    before = _row_count()
+    bad = dict(DIVIDER_SPEC, divider=dict(DIVIDER_SPEC["divider"], tab_position="middle"))
+    resp = client.post("/jobs", json={
+        "prompt": "a divider", "printer_id": "default", "spec": bad,
+    })
+    assert resp.status_code == 422
+    assert "tab_position" in resp.text
+    assert _row_count() == before
+    mock_run.assert_not_called()
 
 
 def test_a_client_cannot_claim_spec_as_a_size_source():

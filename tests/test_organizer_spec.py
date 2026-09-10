@@ -12,14 +12,27 @@ import pytest
 
 from pythonsrc.organizer.spec import (
     ARCHETYPES,
+    TAB_POSITIONS,
     CardStack,
     Compartment,
     Constraints,
+    Divider,
     Lid,
     OrganizerSpec,
     Process,
     SpecError,
 )
+
+
+def card_divider(**overrides):
+    """A valid card-divider spec — the second archetype's own optional section."""
+    base = dict(
+        archetype="card_divider",
+        compartments=(Compartment(CardStack(count=100)),),
+        divider=Divider(),
+    )
+    base.update(overrides)
+    return OrganizerSpec(**base)
 
 
 def deck(count=100, sleeving="double", **overrides):
@@ -67,6 +80,17 @@ def test_the_deck_box_is_a_known_archetype():
     assert "deck_box" in ARCHETYPES
 
 
+def test_the_card_divider_is_a_known_archetype():
+    assert "card_divider" in ARCHETYPES
+
+
+def test_the_divider_section_round_trips():
+    spec = card_divider(divider=Divider(thickness_mm=1.6, tab_width_mm=25.0,
+                                        tab_height_mm=12.0, tab_position="left"))
+    assert OrganizerSpec.from_dict(spec.to_dict()) == spec
+    assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
 # ── validation: every rule, with the field named ───────────────────────────────
 
 @pytest.mark.parametrize("bad, field", [
@@ -99,6 +123,25 @@ def test_lid_refuses_bad_fields_by_name(bad, field):
 def test_lid_clearance_may_be_zero():
     """Zero clearance is a real (very tight) design; only negatives are nonsense."""
     assert Lid(clearance_mm=0).clearance_mm == 0.0
+
+
+@pytest.mark.parametrize("bad, field", [
+    (dict(thickness_mm=0), "thickness_mm"),
+    (dict(thickness_mm=-1.4), "thickness_mm"),
+    (dict(tab_width_mm="wide"), "tab_width_mm"),
+    (dict(tab_height_mm=float("inf")), "tab_height_mm"),
+    (dict(tab_position="middle"), "tab_position"),
+    (dict(tab_position="Centre"), "tab_position"),
+])
+def test_divider_refuses_bad_fields_by_name(bad, field):
+    with pytest.raises(SpecError) as exc:
+        Divider(**bad)
+    assert field in str(exc.value)
+
+
+@pytest.mark.parametrize("position", TAB_POSITIONS)
+def test_every_tab_position_the_schema_names_is_accepted(position):
+    assert Divider(tab_position=position).tab_position == position
 
 
 @pytest.mark.parametrize("bad, field", [
@@ -186,6 +229,22 @@ def test_from_dict_accepts_a_missing_optional_lid_as_none():
     assert OrganizerSpec.from_dict(d).lid is None
 
 
+def test_from_dict_refuses_an_unknown_key_under_the_divider_with_its_path():
+    d = card_divider().to_dict()
+    d["divider"]["tab_with_mm"] = 25.0
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(d)
+    assert "spec.divider" in str(exc.value) and "tab_with_mm" in str(exc.value)
+
+
+def test_from_dict_names_the_path_of_a_bad_divider_field():
+    d = card_divider().to_dict()
+    d["divider"]["thickness_mm"] = -1
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(d)
+    assert "spec.divider.thickness_mm" in str(exc.value)
+
+
 def test_from_json_refuses_text_that_is_not_json():
     with pytest.raises(SpecError) as exc:
         OrganizerSpec.from_json("{not json")
@@ -224,6 +283,21 @@ def test_any_field_change_changes_the_hash():
     assert spec_hash(deck(process=Process(wall_mm=2.4))) != base
 
 
+def test_an_absent_optional_section_is_omitted_from_the_canonical_form():
+    """The hash of a deck box must not move because another archetype gained a section.
+    `dataclasses.asdict` would have written `"divider":null` into every deck box spec
+    ever stored, for a field those specs do not mention — and the next archetype's
+    section would move them all again. `from_dict` defaults each to None, so nothing is
+    lost: the round-trip test above is the other half of this one."""
+    d = deck().to_dict()
+    assert "divider" not in d and "lid" in d
+    assert "divider" not in canonical_json(deck())
+    div = card_divider().to_dict()
+    assert "lid" not in div and "divider" in div
+    # And a section explicitly set to null on the way in is still absent on the way out.
+    assert "lid" not in OrganizerSpec.from_dict({**div, "lid": None}).to_dict()
+
+
 def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
     which is a schema-version bump, not a refactor."""
@@ -258,6 +332,25 @@ def test_diff_reports_added_and_removed_paths_with_none():
 
 def test_diff_of_identical_specs_is_empty():
     assert spec_diff(deck(), deck()) == {}
+
+
+def test_diff_reports_a_divider_path_which_is_what_makes_f8_mechanical():
+    """"Make the tab wider" has to be a path, which is why the divider's parameters are
+    a spec section rather than constants inside the archetype."""
+    a = card_divider()
+    b = card_divider(divider=Divider(tab_width_mm=30.0))
+    assert spec_diff(a, b) == {"divider.tab_width_mm": (20.0, 30.0)}
+
+
+def test_the_fixed_divider_vector_carries_no_lid():
+    spec = card_divider()
+    assert canonical_json(spec) == (
+        '{"archetype":"card_divider","compartments":[{"contents":{"card":"standard",'
+        '"count":100,"sleeving":"double"}}],"constraints":{"max_external_mm":null},'
+        '"divider":{"tab_height_mm":10.0,"tab_position":"centre","tab_width_mm":20.0,'
+        '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
+        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
+    )
 
 
 def test_diff_indexes_into_lists():
