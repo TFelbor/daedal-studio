@@ -357,6 +357,87 @@ def test_review_full_output_is_a_lever_and_is_off_by_default() -> None:
     )
 
 
+def _decide_script() -> str:
+    """The `Decide the check from the verdict` step's shell, by the name it is known by
+    rather than by its index — the step order has changed twice."""
+    step = _step_named(_load(REVIEW), "claude-review", "STATUS_MARKER")
+    return str(step["run"])
+
+
+def _marker(script: str, name: str) -> str:
+    match = re.search(rf"^\s*{name}='([^']*)'", script, re.MULTILINE)
+    assert match, f"{name} is not assigned a single-quoted literal in the decide script"
+    return match.group(1)
+
+
+def test_review_comments_its_outcome_on_every_terminal_path() -> None:
+    """The outcome used to go only to the step summary, which is three clicks into the
+    Actions tab. The model posts its own review whenever it runs — so the two paths
+    where it does not run (the workflow-validation exemption, and a review that returns
+    no structured output) were the two that reached nobody, and PRs #98 and #99 were
+    merged with no verdict and nothing on either page saying so. Every path that ends
+    this step must write the comment first."""
+    script = _decide_script()
+    assert "upsert_status()" in script, "the decide script defines no upsert_status function"
+    lines = script.splitlines()
+    exits = [i for i, line in enumerate(lines) if re.match(r"\s*exit [01]\s*$", line)]
+    assert len(exits) == 5, f"expected the five documented terminal paths, found {len(exits)}"
+    for i in exits:
+        window = "\n".join(lines[max(0, i - 12) : i])
+        assert "upsert_status" in window, (
+            f"the exit on line {i + 1} ({lines[i].strip()}) is not preceded by an upsert_status call"
+        )
+
+
+def test_review_status_comment_does_not_carry_the_fix_loop_s_marker() -> None:
+    """`rounds` counts comments containing the fix-request marker to enforce the
+    three-round cap. A status comment carrying that string would spend the budget by
+    itself and stop the loop before it ever ran — one comment per run, three runs, cap
+    reached, no fix ever requested."""
+    script = _decide_script()
+    status = _marker(script, "STATUS_MARKER")
+    fix = _marker(script, "marker")
+    assert status != fix, f"both markers are {status!r}"
+    assert fix not in status and status not in fix, (
+        f"one marker contains the other: status={status!r} fix={fix!r}"
+    )
+    assert f'contains(\\"${{marker}}\\")' in script or "${marker}" in script, (
+        "the round counter no longer counts the fix-request marker"
+    )
+
+
+def test_review_status_comment_cannot_change_the_check() -> None:
+    """The verdict decides the check. Turning an approval red because GitHub answered
+    502 to a comment would be the worse bug, and `set -e` is one unguarded `gh` call
+    away from doing exactly that."""
+    lines = _decide_script().splitlines()
+    start = next(i for i, line in enumerate(lines) if "upsert_status()" in line)
+    end = next(i for i, line in enumerate(lines[start:], start) if line.strip() == "}")
+    body = lines[start : end + 1]
+    # A line that merely mentions `gh` in a comment is not a call, the same distinction
+    # `_step_named` makes.
+    calls = [
+        i
+        for i, line in enumerate(body)
+        if re.search(r"\bgh (api|pr) ", line) and not line.strip().startswith("#")
+    ]
+    assert calls, "upsert_status makes no gh call at all"
+    for i in calls:
+        # A gh call may continue over backslash-joined lines; the guard is the `||` that
+        # ends the statement, so read forward to the end of it.
+        statement = []
+        j = i
+        while True:
+            statement.append(body[j])
+            if not body[j].rstrip().endswith("\\"):
+                break
+            j += 1
+        joined = " ".join(statement)
+        assert "||" in joined, (
+            f"unguarded gh call inside upsert_status, which `set -e` turns into a failed check: {joined.strip()}"
+        )
+
+
 # --- resuming after a usage limit ----------------------------------------------------------
 
 

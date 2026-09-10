@@ -56,11 +56,46 @@ is created. Phase 1 is: a human reads the PR and merges it.
 The action validates its own workflow file against the default branch and refuses to
 run when they differ. That is unavoidable on a pull request that edits
 `.github/workflows/` — including a pull request to this pipeline itself. In that one
-case `claude-review` passes and says, in the job summary, that nothing reviewed the
-pull request and a human has to. Every other empty verdict is a red check.
+case `claude-review` passes and says, on the pull request itself, that nothing reviewed
+it and a human has to. Every other empty verdict is a red check.
 
 So: **a pull request that changes a workflow is never machine-reviewed. Read it
 yourself.**
+
+### Every outcome is a comment on the pull request
+
+`claude-review` has four terminal states, and until 2026-09-10 only two of them said
+anything where a reviewer looks:
+
+| Outcome | Check | What appeared on the pull request |
+|---|---|---|
+| `approve` | green | the model's own `## Review: approve` comment |
+| `request_changes` | red | the model's review, plus `<!-- claude-fix-request -->` |
+| no verdict | red | **nothing** |
+| workflow exemption | green | **nothing** |
+
+The comment on the first two rows is the *model's*, written because the prompt asks for
+it — the workflow itself only ever posted the fix request. So the two paths on which the
+model does not run at all were the two that reached nobody: everything else went to
+`$GITHUB_STEP_SUMMARY`, three clicks into the Actions tab. PRs #98 and #99 were merged
+with no verdict and no comment on either page saying so.
+
+All four states now write one **sticky** comment, marked `<!-- claude-review-status -->`
+and edited in place, so a pull request that pushes ten times carries one status line
+rather than ten. It is found by its marker rather than with `gh pr comment --edit-last`,
+which would edit whatever the token last wrote — on a pull request that got a fix
+request, that is the fix request.
+
+Two properties of that comment are load-bearing, and `tests/test_claude_pipeline_workflows.py`
+pins both:
+
+- **Its marker is not the fix loop's.** `rounds` enforces the three-round cap by counting
+  comments containing `<!-- claude-fix-request -->`. A status comment carrying that string
+  would spend the whole budget by itself — one comment per run, three runs, cap reached,
+  no fix ever requested.
+- **Failing to post it cannot change the check.** The verdict gates the merge; a comment
+  lost to a 502 is a reporting failure. Under `set -e` one unguarded `gh` call would turn
+  an approval red, so both calls in `upsert_status` end in `|| echo "::warning::…"`.
 
 ### The reviewer's subject is a bot, and the action refuses bots by default
 
