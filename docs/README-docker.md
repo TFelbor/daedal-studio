@@ -293,7 +293,55 @@ Backups are Supabase's (daily on every plan; point-in-time recovery as an add-on
 schema is created by the server on startup and is also committed as
 `supabase/migrations/*_telemetry_schema.sql` — see `supabase/README.md`.
 
-## 13. Troubleshooting
+## 13. What `data/` holds, and what is safe to delete
+
+`data/` is gitignored runtime state. Nothing in it is an input to a build and nothing in
+it is backed up; the telemetry row, not the directory, is the record of a job.
+
+| Path | Holds | Safe to delete |
+|------|-------|----------------|
+| `data/inputs/{job_id}/blueprint.png` | Phase 1's render for one job, plus its `.provenance.json` sidecar | Yes, once the job has finished — the outputs directory keeps a snapshot |
+| `data/inputs/blueprint.png` | The shared blueprint a skip-Phase-1 run reuses | Only if you are not about to run with `SKIP_VISUALIZER` |
+| `data/outputs/{job_id}/` | That job's mesh, G-code, 3MF, `printability.json`, and for a spec job `spec.json` and `dimension_report.json` | Yes, and it is the only copy — the row records hashes, not files |
+| `data/outputs/dev-{job_id}/` | The same, for a run that stood a bundled fixture in for Phase 1 or Phase 2 | Yes; nothing in it came from a model |
+| `data/outputs/*.{obj,stl,3mf,gcode}` | The flat layout, written by a run with no `--job-id` | Yes; `POST /jobs` sweeps these anyway |
+| `data/logs/{job_id}.log`, `.status` | The pipeline's stdout and its phase records | Yes, once the job is settled |
+| `data/octoprint/` | The simulator's own configuration and uploads, including the API key it boots with | **No** — deleting it re-keys the simulator |
+
+A directory holding only `blueprint.png` is a job **parked at the approval gate**,
+waiting for a person; deleting it discards the image they are being asked to approve.
+
+### Finding a job's artifacts
+
+```bash
+make outputs             # every job directory, newest first, and what each one holds
+make outputs LIMIT=10
+python -m pythonsrc.outputs --json
+```
+
+This reads only the filesystem, so it works with no database configured and no
+virtualenv — which matters, because the directories nobody can account for are usually
+the ones left by a run that died before it wrote a telemetry row.
+`python -m pythonsrc.telemetry.trace --list` is the database-side sibling: it knows the
+prompt and the outcome, and nothing about what is on disk.
+
+### Pruning
+
+```bash
+make clean-outputs                    # remove empty job directories
+make clean-outputs DAYS=30 DRY_RUN=1  # ...also list what is older than 30 days
+make clean-outputs DAYS=30            # ...and remove it
+```
+
+The default removes only empty directories — a run creates one at its first write, so an
+empty one is a run that died before producing anything, and removing it cannot lose
+anything. `DAYS=N` additionally removes job directories not written to in N days: that
+deletes real meshes and G-code, so it is opt-in, it prints every path first, and a job
+parked at the approval gate is exempt from it.
+
+---
+
+## 14. Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'config'`
 **Cause:** `config.py` is gitignored and the container startup script failed to copy from the template.

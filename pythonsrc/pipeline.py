@@ -464,7 +464,7 @@ def _compile_spec_phase(args, outputs_dir: Path):
 
     spec = load_spec(args.spec)
     result = compile_spec(spec)
-    outputs_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_outputs_dir(outputs_dir)
     mesh_path = export_stl(result.mesh, outputs_dir / "compiled_mesh.stl")
     dump_spec(spec, outputs_dir / "spec.json")
     (outputs_dir / "compile_features.json").write_text(
@@ -582,7 +582,7 @@ def _record_printability_failure(args, outputs_dir, exc) -> None:
     }
 
     try:
-        with open(Path(outputs_dir) / "printability.json", "w") as f:
+        with open(_ensure_outputs_dir(Path(outputs_dir)) / "printability.json", "w") as f:
             json.dump(envelope, f, indent=2)
     except Exception as write_exc:  # noqa: BLE001
         logger.warning("Could not write the printability failure artifact: %s", write_exc)
@@ -986,6 +986,33 @@ def _job_outputs_dir(args, outputs_root: Path, blueprint_path: Path) -> Path:
     return dev if _will_use_reference_assets(args, blueprint_path, mesh_candidates) else plain
 
 
+def _ensure_outputs_dir(outputs_dir: Path) -> Path:
+    """Create the job's output directory, at the moment something is about to write.
+
+    Called from the write, never from the setup. Creating it up front left one behind
+    for every run that died before Phase 2 produced anything — a compose mount error, a
+    spec the archetype refuses, a killed container — and nothing ever revisits or prunes
+    those, so `data/outputs` filled with UUID-named directories that hold nothing and
+    say nothing about which of their neighbours do. Removing the directory on the way
+    out cannot cover it: `_phase_fail` exits, but a SIGKILLed container runs no handler
+    at all, and that is one of the three cases.
+
+    Most of the writers do this for themselves already — `Engineer.export_mesh`,
+    `SculptorBackend.postprocess`, `CuraSlicer.slice` and `_install_dev_asset` each
+    create their output's parent — so this is for the four writes `pipeline.py` performs
+    directly: the blueprint snapshot, the compiled spec's artifacts, the printability
+    report and the envelope written when scoring it crashes.
+
+    Args:
+        outputs_dir: The directory chosen by `_job_outputs_dir`, or flat `data/outputs`.
+
+    Returns:
+        `outputs_dir`, so a write can be expressed as one statement.
+    """
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    return outputs_dir
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 def run(args: argparse.Namespace) -> None:
     pipeline_start = time.time()
@@ -1001,9 +1028,11 @@ def run(args: argparse.Namespace) -> None:
     # Per-job output directory. Without this every job overwrites the same
     # engineered_mesh.* files, so downloading job A's G-code can hand you job B's.
     # Runs without a --job-id (manual CLI use) keep the flat layout.
+    # Chosen here, created at the first write (`_ensure_outputs_dir`). Creating it here
+    # left an empty directory behind for every run that died before anything was
+    # produced, and nothing prunes those.
     if args.job_id:
         outputs_dir = _job_outputs_dir(args, Path(OUTPUTS_DIR), blueprint_path)
-        outputs_dir.mkdir(parents=True, exist_ok=True)
     else:
         outputs_dir = Path(OUTPUTS_DIR)
 
@@ -1121,7 +1150,7 @@ def run(args: argparse.Namespace) -> None:
     if args.job_id and blueprint_path.exists() and not _blueprint_is_placeholder(blueprint_path):
         try:
             import shutil
-            shutil.copy2(blueprint_path, outputs_dir / "blueprint.png")
+            shutil.copy2(blueprint_path, _ensure_outputs_dir(outputs_dir) / "blueprint.png")
         except Exception as exc:
             logger.warning("Could not snapshot blueprint for job %s: %s", args.job_id, exc)
 
@@ -1420,7 +1449,7 @@ def run(args: argparse.Namespace) -> None:
         )
         printability_report = report
 
-        report_path = outputs_dir / "printability.json"
+        report_path = _ensure_outputs_dir(outputs_dir) / "printability.json"
         with open(report_path, "w") as f:
             json.dump(report.to_dict(), f, indent=2)
 

@@ -15,12 +15,14 @@
 #   make worker-build                   # Build the Phase 2 GPU worker (NVIDIA host)
 #   make worker-up                      # Start the Phase 2 GPU worker
 #   make worker-health                  # Check the worker is loaded and ready
+#   make outputs                        # What each data/outputs job directory holds
+#   make clean-outputs                  # Remove the empty ones (DAYS=30 to prune by age)
 # ────────────────────────────────────────────────────────────────────────────
 
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit outputs clean-outputs
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -111,6 +113,22 @@ pipeline-gpu:
 	docker compose -f $(COMPOSE_FILE) -f $(COMPOSE_GPU) \
 		run --rm pipeline-runner \
 		python pythonsrc/pipeline.py "$(PROMPT)" --print --start-print
+
+# ── Runtime output directories ────────────────────────────────────────────────
+# data/ is gitignored runtime state. `outputs` says which of the UUID-named job
+# directories actually hold anything; `clean-outputs` removes the ones that hold
+# nothing. Both read only the filesystem, so neither needs a database or a virtualenv.
+
+# List job output directories, newest first, with the artifacts each one holds
+outputs:
+	python3 -m pythonsrc.outputs $(if $(LIMIT),--limit $(LIMIT),)
+
+# Remove empty job output directories. Nothing is lost: an empty directory is one a run
+# created and then died before writing to. DAYS=N additionally removes job directories
+# not written to in N days — that one deletes real meshes and G-code, so it is opt-in
+# and prints every path first; add DRY_RUN=1 to see the list and delete nothing.
+clean-outputs:
+	python3 -m pythonsrc.outputs --prune $(if $(DAYS),--days $(DAYS),) $(if $(DRY_RUN),--dry-run,)
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 
