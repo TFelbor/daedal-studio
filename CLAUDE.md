@@ -921,23 +921,6 @@ FastAPI application with:
   caller can repoint `OCTOPRINT_URL` at their own host and have the server ship it
   `OCTOPRINT_API_KEY`. That is a bigger hole than any profile read and wants its own
   issue.
-- **A profile is a *name* here and a *path* to the pipeline** (`profile_pipeline_argument`).
-  `POST /jobs` accepts `ender3.json` and `pythonsrc/profiles/ender3.json` alike, but
-  `pipeline.py` resolves `--profile` against its own working directory — `/app` in the
-  container — so forwarding the name verbatim killed Phase 4 on every job submitted the
-  documented way (`Printer definition not found: ender3.json`), after the compile, the
-  dimension assert and the printability score had all succeeded. The repository-relative
-  spelling is what means the same thing on both sides. A profile that names no file
-  forwards **nothing**, leaving the pipeline's own default in force: `"default"` and
-  `"test"` are submitted by name in the suite, and a path that cannot be opened is a
-  certain Phase 4 crash. `tests/test_profile_argument.py`.
-- **`run_operator.py` puts the repository root on `sys.path` itself**, exactly as
-  `pipeline.py` does. Both are launched by absolute path, and Python puts the *script's*
-  directory on the path, never the working directory — so `/app/pythonsrc` was importable
-  and `/app` was not, and every confirmed dispatch died on `ModuleNotFoundError: No module
-  named 'pythonsrc'` before opening a connection. The image's own
-  `PYTHONPATH=/app/pythonsrc` cannot help: that is the path for `import operators`.
-  `tests/test_operator_entry_point.py` runs it from three working directories.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
 - **A stored value reaches a subprocess through one allowlist, and never through
   `os.environ`.** `POST /config` wrote the store *and* `os.environ[key]`, the startup
@@ -1122,28 +1105,7 @@ FastAPI application with:
   default: the previous storage had one, and it split native runs and container runs
   across two databases without anything saying so. The Fernet key for the encrypted
   config store stays on the host at `~/.ds-mvp/.config_key`, which is what the
-  `${HOST_HOME:-~}/.ds-mvp:/root/.ds-mvp` bind mount is still for.
-
-  **How it reaches a container, and the two ways it did not.** `env_file: ../.env` is the
-  only thing that reaches the repository's `.env`: compose looks for its *interpolation*
-  `.env` beside the compose file — `infra/`, which has none — so `${DS_DATABASE_URL:-}`
-  under `environment` resolved to the empty string, and `environment` overrides
-  `env_file`. Both writers were handed `DS_DATABASE_URL=""` and raised
-  `DatabaseConfigError` naming the variable `.env` did set, while `PIXAZO_API_KEY` from
-  the same file arrived intact because nothing shadowed it; `api-server` had no
-  `env_file` at all despite a comment claiming one. The pass-through spelling
-  (`DS_DATABASE_URL:` with no value) erases it identically when the shell is silent, so
-  the key must not appear under `environment` — a caller that must override passes `-e`,
-  which is what `server/app.py` does. Second: a bind mount's source is a path on the
-  **host**, and `pipeline-runner` is started by `docker compose run` from *inside* the
-  api-server container, where `~` is that container's `/root` — `mounts denied: The path
-  /root/.ds-mvp is not shared from the host`, on every job submitted through `make up`.
-  `$HOST_HOME` carries the real one, as `$HOST_PROJECT_ROOT` does for the checkout. Both
-  are `make up`-only, which is why neither the suite nor the `mps_native` path had seen
-  them; `tests/test_single_database.py` now asserts the mechanism rather than the
-  variable's name appearing somewhere in the service block, which is what let both
-  through. Note that **`infra/` is copied into the api-server image, not mounted**, so a
-  compose change needs `docker compose build api-server` before the server executes it.
+  `~/.ds-mvp:/root/.ds-mvp` bind mount is still for.
 
   **Why it moved.** It was one SQLite file, `~/.ds-mvp/telemetry.db`, bind-mounted into
   the containers — and it corrupted once: `telemetry_sample`'s b-tree ended up with pages
@@ -1204,6 +1166,63 @@ FastAPI application with:
   other routes. Tests that need a legacy orphan drop the named constraint for one insert
   and re-add it `NOT VALID`.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`DS_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **`DS_API_URL` is one value with a translation, not one value per strategy.**
+  `NATIVE_API_URL` (`http://127.0.0.1:8000`) is this server's address to a process
+  running *beside* it — the native Phase 1 subprocess, and `run_operator.py`, which
+  runs in this container — and `_container_api_url` rewrites the loopback host to
+  `host.docker.internal` at the one boundary that needs it, the `-e DS_API_URL=` on
+  `docker compose run`. It used to be chosen by execution strategy, and
+  `mps_native` set the loopback for *both* processes: the pipeline runs in a
+  container on **every** strategy, so on a Mac it was handed the address of itself
+  and the collector's `send_internal_telemetry` POSTed into the void, taking the
+  WebSocket fan-out of live print telemetry with it. Silent three times over — the
+  relay falls back to a local broadcaster the container does not have, the pipeline
+  still exits 0, and it only bites once Phase 5 runs *inside* the pipeline
+  (`--print`), which the web app never asks for because it stops at the dispatch
+  gate. `container_reachable_url` is deliberately *not* reused: it asks whether
+  *this* process is containerised, which is the wrong question when the process
+  that opens the connection is the pipeline container, and it prefers the OctoPrint
+  simulator's compose route. `tests/test_api_url_routing.py` asserts the forwarded
+  argument names no loopback host on any strategy.
+- **`host.docker.internal` is the fallback, not the answer, when the server is a
+  container too.** It resolves to the host's gateway address, while `ports:`
+  publishes the api-server on `${DS_API_BIND:-127.0.0.1}` — and a socket bound to
+  loopback does not accept a connection arriving on another interface. So under
+  `docker compose up api-server` on the default bind the name resolves and the
+  connect fails, which is the same silent dead relay by a second route.
+  `_container_api_url` therefore prefers the compose network, via
+  `SimulatorManager.own_internal_url` — the mirror of `internal_url`: the container
+  being addressed is the one the server runs in, and the caller is the pipeline
+  container it is about to start. It lives on that class because the server's one
+  Docker client and its "which container am I" lookup are already there, and
+  because `tests/conftest.py` cuts *that object* off from the daemon; a second
+  client built elsewhere would reach a developer's real Docker during a test run.
+  **The project it is asked about is the caller's, not its own**
+  (`_compose_project_name`, read from `COMPOSE_PROJECT_NAME` with `COMPOSE_FILE`'s
+  directory as the fallback compose itself would use): compose names a project
+  after the directory of the first `-f` file, so an api-server brought up from
+  `infra/` is in project `infra` while the pipeline it launches — carrying
+  `COMPOSE_PROJECT_NAME=ds-mvp` from the compose file — is in `ds-mvp`, and a
+  service name does not resolve across two default networks. Every decline (not a
+  container, another project, no published port, no network, Docker unreachable)
+  falls back to the host gateway rather than to an address that fails at connect
+  time, and a native server does not ask Docker at all.
+  **The route therefore fires only where the two project names agree, and in the
+  documented `make up` they do not yet.** `docker compose -f
+  infra/docker-compose.yml up api-server` from the repo root labels the api-server's
+  project `infra` — compose takes the directory of the first `-f` file and the
+  compose file carries no top-level `name:` — while that container's own
+  environment sets `COMPOSE_PROJECT_NAME=ds-mvp`, which is what the pipeline it
+  launches will use. Two projects are two default networks, so `own_internal_url`
+  correctly declines and the pipeline gets the host gateway, which on the default
+  `DS_API_BIND` is the dead route this bullet describes: that configuration still
+  has no live relay. Exporting `COMPOSE_PROJECT_NAME` to match is the workaround
+  (`make start-native` already sets it). Aligning the two for good is a compose
+  change — a top-level `name: ds-mvp`, which would also end the
+  `infra-*`/`ds-mvp-*` duplicate container records `SimulatorManager._prefer_running`
+  works around — and it renames every existing container and volume on a
+  developer's machine, so it is its own change rather than one smuggled into a
+  telemetry-routing fix.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
