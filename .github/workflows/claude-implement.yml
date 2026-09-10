@@ -365,6 +365,11 @@ jobs:
           # on it. The workflow token is the fallback; a draft opened with it is still a
           # draft with a URL.
           GH_TOKEN: ${{ steps.implement.outputs.github_token || github.token }}
+          # The `||` above can only notice an *absent* token, and the App's is present
+          # and revoked by the time this step runs — see select_token in the script. On
+          # issue #65 that cost the run its draft pull request and its issue comment,
+          # both to `HTTP 401`, with nothing red to show for it.
+          GH_TOKEN_FALLBACK: ${{ github.token }}
           MODE: implement
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           ISSUE_TITLE: ${{ steps.issue.outputs.title }}
@@ -488,6 +493,8 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ steps.fix.outputs.github_token || github.token }}
+          # Same revoked-token hazard as the `implement` job's report step above.
+          GH_TOKEN_FALLBACK: ${{ github.token }}
           MODE: fix
           PR_NUMBER: ${{ github.event.issue.number }}
           BASE_BRANCH: main

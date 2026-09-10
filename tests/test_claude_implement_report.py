@@ -36,11 +36,26 @@ pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="the report s
 
 FAKE_GH = r"""#!/usr/bin/env bash
 # Records every call on one line (newlines in a --body flattened to spaces) and
-# answers the two queries the script makes.
+# answers the queries the script makes.
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_GH_LOG"
+# A token the App has already revoked is refused on every route, which is exactly what
+# issue #65's run saw. Recorded before the refusal, because the attempt is the thing a
+# test needs to see.
+if [ "${GH_TOKEN:-}" = "revoked" ]; then
+  echo 'HTTP 401: Bad credentials (https://api.github.com/graphql)' >&2
+  exit 1
+fi
 case "$1 $2" in
+  "api rate_limit") printf '{"rate":{"remaining":4999}}' ;;
   "pr list")   printf '%s' "${FAKE_GH_PR_LIST:-[]}" ;;
-  "pr create") echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
+  "pr create")
+    # GITHUB_TOKEN may not open a pull request unless the repository allows Actions to;
+    # it is off here, so the fallback token pushes and comments and still fails at this.
+    if [ -n "${FAKE_GH_PR_CREATE_FAILS:-}" ]; then
+      echo 'pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests' >&2
+      exit 1
+    fi
+    echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
   "pr comment"|"issue comment"|"pr ready"|"pr edit") : ;;
   *) echo "fake gh: unexpected invocation: $*" >&2; exit 64 ;;
 esac
@@ -106,6 +121,12 @@ def _run(repo: dict, **env: str) -> subprocess.CompletedProcess:
 
 def _calls(repo: dict) -> list[str]:
     return [line for line in repo["log"].read_text().splitlines() if line]
+
+
+def _reports(repo: dict) -> list[str]:
+    """Every `gh` call except `select_token`'s probe. "Silent" means the script wrote
+    nothing to GitHub, not that it never asked whether it could."""
+    return [c for c in _calls(repo) if not c.startswith("api rate_limit")]
 
 
 def _commit(repo: dict, name: str) -> None:
@@ -229,7 +250,7 @@ def test_success_with_a_pull_request_is_silent(repo: dict) -> None:
     pr_list = json.dumps([{"number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": False}])
     result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=pr_list)
     assert result.returncode == 0, result.stderr
-    calls = _calls(repo)
+    calls = _reports(repo)
     assert calls == [c for c in calls if c.startswith("pr list ")], f"a successful run with a PR made noise: {calls}"
 
 
@@ -274,7 +295,7 @@ def test_fix_mode_success_is_silent(repo: dict) -> None:
     _git(repo["work"], "push", "-q", "-u", "origin", "claude/issue-7")
     result = _run(repo, MODE="fix", PR_NUMBER="12", CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 20, 0))
     assert result.returncode == 0, result.stderr
-    assert _calls(repo) == []
+    assert _reports(repo) == []
 
 
 # --- it never masks the model step ---------------------------------------------------
@@ -421,3 +442,92 @@ def test_success_with_a_draft_the_model_opened_is_left_alone(repo: dict) -> None
     calls = _calls(repo)
     assert not any(c.startswith("pr ready") or c.startswith("pr comment") or c.startswith("pr create") for c in calls), calls
 
+
+# --- the token the App revokes before this script runs (issue #65) -------------------
+
+
+def test_a_revoked_app_token_still_opens_the_draft(repo: dict) -> None:
+    """The whole safety net authenticated with a token the action had already revoked.
+    Issue #65's run pushed its branch — git uses actions/checkout's persisted credential,
+    not this token — and then lost the draft pull request and the issue comment to
+    `HTTP 401`, with a green tail and nothing for `claude-resume` to find. The work sat
+    on a branch nobody knew existed."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GH_TOKEN="revoked", GH_TOKEN_FALLBACK="workflow")
+    assert result.returncode == 0, result.stderr
+    assert "the App's token was refused; reporting as the workflow instead" in result.stderr
+    assert any(c.startswith("pr create ") for c in _reports(repo)), (
+        f"no draft was opened: {_reports(repo)}"
+    )
+    assert _remote_has_branch(repo)
+
+
+def test_a_live_app_token_is_left_alone(repo: dict) -> None:
+    """The App's token is preferred while it works: a draft it opens is the app's, which
+    is what lets claude-review's fix loop ask for changes on it."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GH_TOKEN_FALLBACK="workflow")
+    assert result.returncode == 0, result.stderr
+    assert "refused" not in result.stderr, result.stderr
+    assert any(c.startswith("pr create ") for c in _reports(repo))
+
+
+def test_a_refused_token_with_no_fallback_says_so_and_still_exits_zero(repo: dict) -> None:
+    """Locally, and on any run where the workflow token is the one being refused, there
+    is nothing to swap to. That is worth one line on stderr and must not turn the tail
+    red on top of the model's own failure."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GH_TOKEN="revoked")
+    assert result.returncode == 0, result.stderr
+    assert "no other one" in result.stderr, result.stderr
+
+
+def test_an_identical_fallback_is_not_treated_as_a_second_chance(repo: dict) -> None:
+    """When the action produced no token the workflow expression already collapses both
+    to `github.token`. Swapping one refused token for the same string and announcing a
+    fallback would be a lie in the log."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GH_TOKEN="revoked", GH_TOKEN_FALLBACK="revoked")
+    assert result.returncode == 0, result.stderr
+    assert "no other one" in result.stderr, result.stderr
+    assert "reporting as the workflow instead" not in result.stderr
+
+
+def test_the_probe_runs_before_anything_is_written(repo: dict) -> None:
+    """`implement_mode` asks `gh pr list` first, and on a refused token that returns
+    "[]" — which sends the script down the open-a-draft path with no way to open one.
+    The probe has to come before it, not after."""
+    _commit(repo, "card_divider.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+         GH_TOKEN="revoked", GH_TOKEN_FALLBACK="workflow")
+    calls = _calls(repo)
+    assert calls[0].startswith("api rate_limit"), f"the first call was {calls[0]!r}"
+    first_write = next(i for i, c in enumerate(calls) if c.startswith(("pr create ", "issue comment ", "pr comment ")))
+    assert calls.index(next(c for c in calls if c.startswith("pr list "))) < first_write
+    assert calls[:2] == [c for c in calls[:2] if c.startswith("api rate_limit")], (
+        f"the probe should run once per token, before the first query: {calls[:4]}"
+    )
+
+
+def test_a_draft_that_could_not_be_opened_is_not_reported_as_one(repo: dict) -> None:
+    """`GITHUB_TOKEN` may not open a pull request unless the repository allows Actions to,
+    and that setting is off here — so the fallback token can push and comment and still
+    fail at `gh pr create`. The old wording then told the issue the work was "on the
+    branch as a draft pull request", which is false in the one place a person is relying
+    on it, and it hid the part that matters: with no draft, `claude-resume` has nothing to
+    pick up."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GITHUB_REPOSITORY="Daedal-Studio/ds-mvp", FAKE_GH_PR_CREATE_FAILS="1")
+    assert result.returncode == 0, result.stderr
+    comment = next(c for c in _reports(repo) if c.startswith("issue comment "))
+    assert "no pull request could be opened" in comment, comment
+    assert "as a draft pull request" not in comment, comment
+    assert "claude-resume` has nothing to pick up" in comment, comment
+    assert "git push origin --delete claude/issue-7" in comment, comment
+    assert "issue_number=7" in comment, comment
+    assert "pull/new/claude/issue-7" in comment, comment

@@ -249,6 +249,37 @@ model step failed:
    - commits with a pull request get a comment on it saying the same;
    - nothing committed gets a comment on the issue saying so, and why.
 
+   **It authenticates twice, because the first token is already dead.** The App's
+   token — `steps.implement.outputs.github_token` — is revoked when the action's own
+   step ends, and this tail runs *after* it, under `if: always()`. On issue #65 every
+   `gh` call in it answered `HTTP 401: Bad credentials`: the branch was pushed, because
+   git uses `actions/checkout`'s persisted credential rather than that token, and then
+   the draft pull request was not opened and the issue was not told. The tail's step
+   went **green**, `claude-resume` found no draft to resume, and a failed
+   implementation sat on `claude/issue-65` with nothing anywhere pointing at it.
+
+   `${{ steps.implement.outputs.github_token || github.token }}` cannot catch that: the
+   action *did* produce a token, so the `||` never fires — a revoked token is a
+   non-empty string. So `select_token` in the script probes `gh api rate_limit` and
+   swaps to `GH_TOKEN_FALLBACK` (the workflow's own token) when the first one is
+   refused, before any query. The App's is still preferred while it works, because a
+   draft it opens is the app's and that is what lets claude-review's fix loop ask for
+   changes on it; a draft opened with the workflow token is authored by
+   `github-actions[bot]`, which the loop declines to answer. Worse than an app-authored
+   draft, incomparably better than none.
+
+   One thing the fallback still cannot do: `GITHUB_TOKEN` may not open a pull request
+   unless **Settings → Actions → General → "Allow GitHub Actions to create and approve
+   pull requests"** is on, and it is off in this repository (`can_approve_pull_request_reviews:
+   false`). So a run whose App token was refused pushes its branch, fails to open the
+   draft, and then says exactly that on the issue — naming the branch, the
+   `pull/new/<branch>` link, the two commands that start over, and the fact that
+   `claude-resume` has nothing to pick up. It deliberately does **not** claim the work is
+   "on the branch as a draft pull request", which is what the old wording did in the one
+   place a person was relying on it. Turning that setting on is a decision about the
+   repository — it also permits workflows to *approve* pull requests — so it is not done
+   here.
+
    The draft is opened with the App's token when the action produced one, so it is the
    Claude app's pull request and the fix loop can act on it. A successful run that
    opened its own pull request gets nothing from this step: the pull request is the
