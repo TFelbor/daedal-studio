@@ -239,6 +239,25 @@ def test_implement_jobs_keep_the_transcript(job: str) -> None:
     )
 
 
+@pytest.mark.parametrize("job", ["implement", "fix"])
+def test_the_report_step_carries_a_second_token(job: str) -> None:
+    """The App's token is revoked when the action's step ends, and the report step runs
+    after it under `if: always()`. `${{ steps.X.outputs.github_token || github.token }}`
+    cannot notice: the action produced a token, so the `||` never fires and a revoked
+    token is a non-empty string. Issue #65 lost its draft pull request and its issue
+    comment to `HTTP 401` that way, with a green tail and nothing for claude-resume to
+    find. `select_token` in the script probes and swaps; it needs something to swap to."""
+    step = _step_named(_load(IMPLEMENT), job, REPORT_SCRIPT)
+    env = step.get("env", {})
+    assert "GH_TOKEN_FALLBACK" in env, f"{job}: the report step passes no fallback token"
+    assert "github.token" in str(env["GH_TOKEN_FALLBACK"]), (
+        f"{job}: the fallback must be the workflow's own token, not {env['GH_TOKEN_FALLBACK']!r}"
+    )
+    assert "github_token" in str(env.get("GH_TOKEN", "")), (
+        f"{job}: the App's token must still be preferred; GH_TOKEN is {env.get('GH_TOKEN')!r}"
+    )
+
+
 # --- the plan job -------------------------------------------------------------------
 
 

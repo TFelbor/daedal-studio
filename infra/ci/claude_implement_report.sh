@@ -36,6 +36,8 @@
 #   GH_TOKEN        what `gh` authenticates with — the Claude App's token when the
 #                   action produced one, so a draft it opens is the app's, which is
 #                   what lets claude-review's fix loop ask for changes on it
+#   GH_TOKEN_FALLBACK  the workflow's own token, used when the one above is refused
+#                   (see select_token: the App's is revoked before this script runs)
 #
 # The exit status is always 0. The model step has already coloured the job; a
 # reporting error on top of a real failure must not replace it in the summary.
@@ -57,8 +59,43 @@ RISK_LABEL="${RISK_LABEL:-}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 ISSUE_TITLE="${ISSUE_TITLE:-}"
 PR_NUMBER="${PR_NUMBER:-}"
+GH_TOKEN_FALLBACK="${GH_TOKEN_FALLBACK:-}"
 
 log() { echo "report: $*" >&2; }
+
+# The Claude App's token is revoked when the action's own step ends, and this script
+# runs after it — under `if: always()`, which is precisely the case that matters. On
+# issue #65 every `gh` call here answered `HTTP 401: Bad credentials`. The branch was
+# pushed, because git authenticates with actions/checkout's persisted credential rather
+# than with this token; then the draft pull request was not opened and the issue was not
+# told. The run's tail reported success, `claude-resume` found no draft to resume, and a
+# failed implementation sat on a branch nobody knew existed. The entire safety net,
+# absent, silently.
+#
+# `${{ steps.implement.outputs.github_token || github.token }}` cannot fix that: the
+# action *did* produce a token, so the `||` never fires. A revoked token is a non-empty
+# string. The choice has to be made here, against the API, rather than in an expression
+# that can only test for emptiness.
+#
+# The App's token stays preferred while it works — a draft it opens is the app's, which
+# is what lets claude-review's fix loop ask for changes on it. A draft opened with the
+# workflow's token is authored by `github-actions[bot]`, which that loop declines to
+# answer: worse than an app-authored draft, and incomparably better than none.
+select_token() {
+  if [ -n "${GH_TOKEN:-}" ] && gh api rate_limit >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -z "$GH_TOKEN_FALLBACK" ] || [ "$GH_TOKEN_FALLBACK" = "${GH_TOKEN:-}" ]; then
+    log "the GitHub token is refused and there is no other one; this report may not land"
+    return 0
+  fi
+  export GH_TOKEN="$GH_TOKEN_FALLBACK"
+  if gh api rate_limit >/dev/null 2>&1; then
+    log "the App's token was refused; reporting as the workflow instead"
+  else
+    log "neither the App's token nor the workflow's is accepted; this report may not land"
+  fi
+}
 
 # One clause describing how the model step ended, read from the result message in the
 # execution file: "error_max_turns after 81 turns, 1 permission denial". The action
@@ -290,6 +327,10 @@ fix_mode() {
 }
 
 main() {
+  # Before anything that talks to GitHub, including implement_mode's `gh pr list` —
+  # which on a refused token returns "[]" and sends the script down the open-a-draft
+  # path with no way to open one.
+  select_token
   case "$MODE" in
     implement) implement_mode ;;
     fix) fix_mode ;;

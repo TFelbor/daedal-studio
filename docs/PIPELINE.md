@@ -240,6 +240,25 @@ model step failed:
    `claude-implement-issue-<n>-transcript`, kept 14 days. `gh run download <run-id>`
    fetches it; the result message at its end says `subtype`, `num_turns` and how many
    tool calls were denied.
+1a. **It authenticates twice, because the first token is already dead.** The App's
+   token — `steps.implement.outputs.github_token` — is revoked when the action's own
+   step ends, and this tail runs *after* it, under `if: always()`. On issue #65 every
+   `gh` call in it answered `HTTP 401: Bad credentials`: the branch was pushed, because
+   git uses `actions/checkout`'s persisted credential rather than that token, and then
+   the draft pull request was not opened and the issue was not told. The tail's step
+   went **green**, `claude-resume` found no draft to resume, and a failed
+   implementation sat on `claude/issue-65` with nothing anywhere pointing at it.
+
+   `${{ steps.implement.outputs.github_token || github.token }}` cannot catch that: the
+   action *did* produce a token, so the `||` never fires — a revoked token is a
+   non-empty string. So `select_token` in the script probes `gh api rate_limit` and
+   swaps to `GH_TOKEN_FALLBACK` (the workflow's own token) when the first one is
+   refused, before any query. The App's is still preferred while it works, because a
+   draft it opens is the app's and that is what lets claude-review's fix loop ask for
+   changes on it; a draft opened with the workflow token is authored by
+   `github-actions[bot]`, which the loop declines to answer. Worse than an app-authored
+   draft, incomparably better than none.
+
 2. **The work is left where a person can find it** (`infra/ci/claude_implement_report.sh`,
    tested by `tests/test_claude_implement_report.py`):
    - uncommitted edits become one `WIP:` commit, marked as the workflow's, not the model's;
