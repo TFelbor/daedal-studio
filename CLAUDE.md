@@ -1166,6 +1166,63 @@ FastAPI application with:
   other routes. Tests that need a legacy orphan drop the named constraint for one insert
   and re-add it `NOT VALID`.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`DS_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **`DS_API_URL` is one value with a translation, not one value per strategy.**
+  `NATIVE_API_URL` (`http://127.0.0.1:8000`) is this server's address to a process
+  running *beside* it — the native Phase 1 subprocess, and `run_operator.py`, which
+  runs in this container — and `_container_api_url` rewrites the loopback host to
+  `host.docker.internal` at the one boundary that needs it, the `-e DS_API_URL=` on
+  `docker compose run`. It used to be chosen by execution strategy, and
+  `mps_native` set the loopback for *both* processes: the pipeline runs in a
+  container on **every** strategy, so on a Mac it was handed the address of itself
+  and the collector's `send_internal_telemetry` POSTed into the void, taking the
+  WebSocket fan-out of live print telemetry with it. Silent three times over — the
+  relay falls back to a local broadcaster the container does not have, the pipeline
+  still exits 0, and it only bites once Phase 5 runs *inside* the pipeline
+  (`--print`), which the web app never asks for because it stops at the dispatch
+  gate. `container_reachable_url` is deliberately *not* reused: it asks whether
+  *this* process is containerised, which is the wrong question when the process
+  that opens the connection is the pipeline container, and it prefers the OctoPrint
+  simulator's compose route. `tests/test_api_url_routing.py` asserts the forwarded
+  argument names no loopback host on any strategy.
+- **`host.docker.internal` is the fallback, not the answer, when the server is a
+  container too.** It resolves to the host's gateway address, while `ports:`
+  publishes the api-server on `${DS_API_BIND:-127.0.0.1}` — and a socket bound to
+  loopback does not accept a connection arriving on another interface. So under
+  `docker compose up api-server` on the default bind the name resolves and the
+  connect fails, which is the same silent dead relay by a second route.
+  `_container_api_url` therefore prefers the compose network, via
+  `SimulatorManager.own_internal_url` — the mirror of `internal_url`: the container
+  being addressed is the one the server runs in, and the caller is the pipeline
+  container it is about to start. It lives on that class because the server's one
+  Docker client and its "which container am I" lookup are already there, and
+  because `tests/conftest.py` cuts *that object* off from the daemon; a second
+  client built elsewhere would reach a developer's real Docker during a test run.
+  **The project it is asked about is the caller's, not its own**
+  (`_compose_project_name`, read from `COMPOSE_PROJECT_NAME` with `COMPOSE_FILE`'s
+  directory as the fallback compose itself would use): compose names a project
+  after the directory of the first `-f` file, so an api-server brought up from
+  `infra/` is in project `infra` while the pipeline it launches — carrying
+  `COMPOSE_PROJECT_NAME=ds-mvp` from the compose file — is in `ds-mvp`, and a
+  service name does not resolve across two default networks. Every decline (not a
+  container, another project, no published port, no network, Docker unreachable)
+  falls back to the host gateway rather than to an address that fails at connect
+  time, and a native server does not ask Docker at all.
+  **The route therefore fires only where the two project names agree, and in the
+  documented `make up` they do not yet.** `docker compose -f
+  infra/docker-compose.yml up api-server` from the repo root labels the api-server's
+  project `infra` — compose takes the directory of the first `-f` file and the
+  compose file carries no top-level `name:` — while that container's own
+  environment sets `COMPOSE_PROJECT_NAME=ds-mvp`, which is what the pipeline it
+  launches will use. Two projects are two default networks, so `own_internal_url`
+  correctly declines and the pipeline gets the host gateway, which on the default
+  `DS_API_BIND` is the dead route this bullet describes: that configuration still
+  has no live relay. Exporting `COMPOSE_PROJECT_NAME` to match is the workaround
+  (`make start-native` already sets it). Aligning the two for good is a compose
+  change — a top-level `name: ds-mvp`, which would also end the
+  `infra-*`/`ds-mvp-*` duplicate container records `SimulatorManager._prefer_running`
+  works around — and it renames every existing container and volume on a
+  developer's machine, so it is its own change rather than one smuggled into a
+  telemetry-routing fix.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under

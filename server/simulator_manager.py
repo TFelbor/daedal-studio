@@ -87,6 +87,21 @@ def _default_client_factory():
     raise RuntimeError("; ".join(errors) or "no Docker socket found")
 
 
+def _published_private_port(settings: Dict[str, Any], host_port: int) -> Optional[str]:
+    """The container-side port published on `host_port`, or None.
+
+    A container's own port is not the number it is published as — the simulator
+    listens on 80 and is published as 5001 — and only the port map knows the pairing.
+    Shared by `internal_url` and `own_internal_url` so one reading of a port map
+    serves both.
+    """
+    for spec, bindings in (settings.get("Ports") or {}).items():
+        for binding in bindings or []:
+            if str(binding.get("HostPort")) == str(host_port):
+                return spec.split("/")[0]
+    return None
+
+
 class SimulatorManager:
     def __init__(self, client_factory: Optional[Callable[[], Any]] = None):
         self._client_factory = client_factory or _default_client_factory
@@ -295,14 +310,7 @@ class SimulatorManager:
 
         settings = (container.attrs or {}).get("NetworkSettings", {})
 
-        private_port = None
-        for spec, bindings in (settings.get("Ports") or {}).items():
-            for binding in bindings or []:
-                if str(binding.get("HostPort")) == str(host_port):
-                    private_port = spec.split("/")[0]
-                    break
-            if private_port:
-                break
+        private_port = _published_private_port(settings, host_port)
         if private_port is None:
             return None
 
@@ -315,24 +323,96 @@ class SimulatorManager:
         port_suffix = "" if private_port in ("80", 80) else f":{private_port}"
         return f"http://{self.service_name}{port_suffix}"
 
+    def own_internal_url(self, host_port: int, project: str) -> Optional[str]:
+        """This process's own container, as a container in `project` reaches it.
+
+        The mirror image of `internal_url`: there the target is a container this
+        class manages, here it is the container this code is *running in*, and the
+        caller is the pipeline container the server is about to start. Same reason
+        for both — a container talking to a container on a shared compose network
+        needs neither the host gateway nor the host's firewall to permit a bridge to
+        reach a published port, which on Fedora firewalld does not.
+
+        It lives on this class because this is where the server's Docker client and
+        its "which container am I" lookup already are, and because the test suite
+        cuts *this* object off from the daemon (`tests/conftest.py`) — a second
+        client built elsewhere would reach a developer's real Docker during a test
+        run.
+
+        The project is the caller's, not this container's, and the two really do
+        differ: compose names a project after the directory of its first `-f` file
+        unless `COMPOSE_PROJECT_NAME` says otherwise, so an api-server brought up
+        from `infra/` lands in project `infra` while the pipeline it launches — with
+        `COMPOSE_PROJECT_NAME=ds-mvp` in its environment — lands in `ds-mvp`. Two
+        projects are two default networks, and the service name would not resolve
+        across them.
+
+        Args:
+            host_port: The published host port the caller's URL names, so the
+                container's own port — which need not be the same number — is what
+                the returned address carries.
+            project: The compose project the container that will read this address
+                belongs to.
+
+        Returns:
+            A URL reachable from that project's network, or None when this process
+            is not a container, is not part of `project`, publishes no matching
+            port, or has no network — in every one of which cases the caller's own
+            fallback is better than an address that fails at connect time.
+        """
+        client = self._client_or_none()
+        if client is None:
+            return None
+
+        container = self._own_container(client)
+        if container is None:
+            return None
+
+        labels = container.labels or {}
+        service = labels.get("com.docker.compose.service")
+        if not service:
+            # Not a compose container, so it has no service name to be reached by.
+            return None
+        if labels.get("com.docker.compose.project") != project:
+            return None
+
+        settings = (container.attrs or {}).get("NetworkSettings", {})
+        private_port = _published_private_port(settings, host_port)
+        if private_port is None:
+            return None
+        if not (settings.get("Networks") or {}):
+            return None
+
+        port_suffix = "" if str(private_port) == "80" else f":{private_port}"
+        return f"http://{service}{port_suffix}"
+
+    def _own_container(self, client):
+        """The container this process is running in, or None if it is not one.
+
+        Docker sets the container's hostname to its id, which is what makes this
+        lookup possible at all. None rather than an exception, because every caller
+        has a fallback and none of them should break on a Docker hiccup.
+        """
+        import socket
+
+        try:
+            return client.containers.get(socket.gethostname())
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not identify this process's own container: %s", exc)
+            return None
+
     def _own_networks(self, client) -> set:
         """The docker networks this process's own container is attached to.
 
         Empty when this process is not containerised, or when its container cannot be
         identified — in which case `internal_url` declines rather than guessing.
         """
-        import socket
-
-        try:
-            return set(
-                (client.containers.get(socket.gethostname()).attrs or {})
-                .get("NetworkSettings", {})
-                .get("Networks", {})
-                .keys()
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Could not identify this container's networks: %s", exc)
+        container = self._own_container(client)
+        if container is None:
             return set()
+        return set(
+            ((container.attrs or {}).get("NetworkSettings", {}).get("Networks") or {}).keys()
+        )
 
     def get_status(self) -> Dict[str, Any]:
         """Report simulator state, distinguishing "stopped" from "cannot tell"."""

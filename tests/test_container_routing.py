@@ -139,6 +139,92 @@ def test_internal_url_declines_when_this_process_is_not_a_container(monkeypatch)
     assert manager.internal_url(5001) is None
 
 
+# ── SimulatorManager.own_internal_url ────────────────────────────────────────
+#
+# The mirror image: the container being addressed is the one this code runs in, and
+# the caller is the pipeline container the server is about to start.
+
+API_LABELS = {
+    "com.docker.compose.project": "ds-mvp",
+    "com.docker.compose.service": "api-server",
+}
+
+
+def _labelled_server(labels=None, ports=None, networks=("ds-mvp_default",)):
+    return FakeContainer(
+        "ds-mvp-api-server-1",
+        labels=API_LABELS if labels is None else labels,
+        ports=ports if ports is not None else {
+            # Published on loopback by `${DS_API_BIND:-127.0.0.1}:8000:8000`.
+            "8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}],
+        },
+        networks=networks,
+    )
+
+
+def _own(container, monkeypatch):
+    manager = SimulatorManager(client_factory=lambda: FakeClient([container]))
+    monkeypatch.setattr("socket.gethostname", lambda: container.name)
+    return manager
+
+
+def test_own_internal_url_names_this_service_and_its_own_port(monkeypatch):
+    manager = _own(_labelled_server(), monkeypatch)
+    assert manager.own_internal_url(8000, "ds-mvp") == "http://api-server:8000"
+
+
+def test_own_internal_url_carries_the_container_side_port(monkeypatch):
+    """The published number is not the number the container listens on."""
+    server = _labelled_server(
+        ports={"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18000"}]},
+    )
+    manager = _own(server, monkeypatch)
+    assert manager.own_internal_url(18000, "ds-mvp") == "http://api-server:8000"
+
+
+def test_own_internal_url_declines_across_compose_projects(monkeypatch):
+    """Two projects are two default networks, and this really happens.
+
+    Compose names a project after the directory of its first `-f` file, so an
+    api-server brought up from `infra/` is in project `infra` while the pipeline it
+    launches — carrying `COMPOSE_PROJECT_NAME=ds-mvp` — is in `ds-mvp`. The service
+    name does not resolve across them, so the caller must fall back rather than be
+    handed an address that fails at connect time.
+    """
+    manager = _own(
+        _labelled_server(
+            labels={**API_LABELS, "com.docker.compose.project": "infra"},
+            networks=("infra_default",),
+        ),
+        monkeypatch,
+    )
+    assert manager.own_internal_url(8000, "ds-mvp") is None
+
+
+def test_own_internal_url_declines_without_a_compose_service_name(monkeypatch):
+    """A container started by hand has no service name to be reached by."""
+    manager = _own(_labelled_server(labels={}), monkeypatch)
+    assert manager.own_internal_url(8000, "ds-mvp") is None
+
+
+def test_own_internal_url_declines_when_the_port_is_not_published(monkeypatch):
+    """Without a binding there is no pairing, and the container port is a guess."""
+    manager = _own(_labelled_server(ports={}), monkeypatch)
+    assert manager.own_internal_url(8000, "ds-mvp") is None
+
+
+def test_own_internal_url_declines_with_no_network(monkeypatch):
+    manager = _own(_labelled_server(networks=()), monkeypatch)
+    assert manager.own_internal_url(8000, "ds-mvp") is None
+
+
+def test_own_internal_url_declines_when_this_process_is_not_a_container(monkeypatch):
+    """`gethostname` names no container, so there is nothing to describe."""
+    manager = SimulatorManager(client_factory=lambda: FakeClient([_labelled_server()]))
+    monkeypatch.setattr("socket.gethostname", lambda: "some-laptop")
+    assert manager.own_internal_url(8000, "ds-mvp") is None
+
+
 # ── container_reachable_url ──────────────────────────────────────────────────
 
 @pytest.fixture
