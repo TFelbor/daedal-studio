@@ -10,7 +10,8 @@ import { GCodeViewer } from '../components/GCodeViewer';
 import { ProcessLog } from '../components/ProcessLog';
 import { PromptComposer } from '../components/PromptComposer';
 import { PromptNotice } from '../components/PromptNotice';
-import { WaitingStage } from '../components/WaitingStage';
+import { StageState } from '../components/StageState';
+import { stageStatus } from '../components/stageStatus';
 import { JobControlPanel } from '../components/JobControlPanel';
 import { DispatchGate } from '../components/DispatchGate';
 import { BlueprintGate } from '../components/BlueprintGate';
@@ -19,7 +20,12 @@ import { PromptZoom } from '../components/PromptZoom';
 import { ArchetypeStrip } from '../components/ArchetypeStrip';
 import { FitsCheck } from '../components/FitsCheck';
 import { SpecPanel } from '../components/SpecPanel';
-import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
+import {
+  COUNTER_REVEAL,
+  MAX_PROMPT_CHARS,
+  PROMPT_SUBMIT_BUSY_LABEL,
+  PROMPT_SUBMIT_LABEL,
+} from '../components/promptLimits';
 import {
   createJob,
   fetchSizeHint,
@@ -817,7 +823,7 @@ export function NewJob() {
                   <span>
                     No printer or simulator is running.{' '}
                     <Link to="/setup" className={styles.noticeLink}>Configure one in Settings</Link>{' '}
-                    before you generate.
+                    before you compile.
                   </span>
                 </div>
               )}
@@ -843,7 +849,7 @@ export function NewJob() {
                     id="job-prompt"
                     className={styles.promptInput}
                     placeholder="A Commander deck box for 100 double-sleeved cards (Dragon Shield Perfect Fit + Matte), removable tray for 12 dice, magnetic snap lid."
-                    aria-label="Describe the object to print"
+                    aria-label="Describe the organizer to build"
                     value={prompt}
                     maxLength={MAX_PROMPT_CHARS}
                     onChange={(e) => setPrompt(e.target.value)}
@@ -1049,7 +1055,7 @@ export function NewJob() {
                     disabled={!prompt.trim() || loading || !printerReady}
                   >
                     <Marks />
-                    {loading ? 'Starting…' : 'Compile & preview'}
+                    {loading ? PROMPT_SUBMIT_BUSY_LABEL : PROMPT_SUBMIT_LABEL}
                     {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                   </button>
                   <span className={styles.submitHint}>Enter to send · Shift + Enter for a new line</span>
@@ -1338,6 +1344,7 @@ export function NewJob() {
                     jobId={jobId}
                     status={phases[0]?.status ?? 'pending'}
                     logLines={currentJob?.log_tail}
+                    usedFixtures={usedFixtures}
                   />
                 </SpecPanel>
               )}
@@ -1371,11 +1378,10 @@ export function NewJob() {
                     Slicing failed. The mesh reached the slicer but produced no G-code.
                   </div>
                 ) : (
-                  <WaitingStage
-                    kind="slice"
-                    running={phases.find(p => p.phase === 4)?.status === 'running'}
+                  <StageState
+                    phase={4}
+                    status={stageStatus(phases.find(p => p.phase === 4)?.status)}
                     logLines={currentJob?.log_tail}
-                    note="awaiting phase 04"
                     fill
                   />
                 )

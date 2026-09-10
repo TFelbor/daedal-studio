@@ -91,7 +91,7 @@ export function PromptComposer({ open, busy, error, onSubmit, onCancel }: Prompt
             value={value}
             maxLength={MAX_PROMPT_CHARS}
             placeholder="Describe the next part the way you would describe it to someone…"
-            aria-label="Describe the object to print"
+            aria-label="Describe the organizer to build"
             disabled={busy}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => {

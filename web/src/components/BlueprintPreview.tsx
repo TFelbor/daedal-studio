@@ -1,12 +1,23 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { WaitingStage } from './WaitingStage';
+import { StageState } from './StageState';
 
 interface BlueprintPreviewProps {
   jobId: string | null;
   status: string;
-  /** Live pipeline output, newest last. Passed through to the waiting stage. */
+  /** Live pipeline output, newest last. Passed through to the stage state. */
   logLines?: string[];
+  /**
+   * `used_reference_assets` — a bundled fixture stood in for Phase 1.
+   *
+   * It reaches the alt text and nothing else. The visible caption beside this frame
+   * already says "a fixture, not a render of this prompt"; without the flag here the
+   * alt text said the opposite of it, so the caption a screen reader got was the one
+   * the fixture badge exists to prevent (CLAUDE.md § The fixture flag is carried out
+   * to the UI). Defaults to false because that is what an unknown flag means for
+   * every job the pipeline actually renders.
+   */
+  usedFixtures?: boolean;
 }
 
 /* The artifact layer only. The frame, its registration marks and the ruled ground
@@ -35,7 +46,12 @@ const IMAGE: CSSProperties = {
 
 const PLACEHOLDER: CSSProperties = { height: '100%' };
 
-export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewProps) {
+export function BlueprintPreview({
+  jobId,
+  status,
+  logLines,
+  usedFixtures,
+}: BlueprintPreviewProps) {
   const [loaded, setLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -45,13 +61,12 @@ export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewPr
 
   const imgSrc = jobId ? `/jobs/${jobId}/blueprint${retryCount > 0 ? `?t=${retryCount}` : ''}` : '';
 
-  // Nothing has been drawn yet — so draw the drawing. The head lays the same
-  // isometric outline the blueprint will arrive as, and answers to the same drag.
+  // Nothing has arrived yet, and phase 1 has not started — so the frame says that.
   if (!jobId || status === 'queued' || status === 'pending') {
-    return <WaitingStage kind="blueprint" note="awaiting phase 01" fill />;
+    return <StageState phase={1} status="pending" fill />;
   }
 
-  // A failed phase is the one case that must not animate hopefully.
+  // A failed phase is the one case that must not read as work in progress.
   if (status === 'error') {
     return (
       <div className="empty" style={PLACEHOLDER}>
@@ -63,17 +78,19 @@ export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewPr
 
   return (
     <div style={VIEWPORT}>
-      {/* The waiting stage stays underneath while phase 1 runs, so the frame is never
-          blank and the sweep is what the wait looks like. It is unmounted the moment
+      {/* The phase state stays underneath while phase 1 runs, so the frame is never
+          blank and the pipeline's own output is what fills it. Unmounted the moment
           the real image loads. */}
-      {isRunning && (
-        <WaitingStage kind="blueprint" running logLines={logLines} fill />
-      )}
+      {isRunning && <StageState phase={1} status="running" logLines={logLines} fill />}
 
       {showImage && (
         <img
           src={imgSrc}
-          alt="Blueprint drawn from the prompt"
+          alt={
+            usedFixtures
+              ? 'Reference blueprint — a fixture, not a render of this prompt'
+              : 'Blueprint drawn from the prompt'
+          }
           style={{ ...IMAGE, opacity: loaded ? 1 : 0 }}
           onLoad={() => setLoaded(true)}
           onError={() => {

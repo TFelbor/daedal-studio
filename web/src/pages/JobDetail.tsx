@@ -8,7 +8,8 @@ import { BootMark } from '../components/BootMark';
 import { DeadChannel } from '../components/DeadChannel';
 import { DownloadFormats } from '../components/DownloadFormats';
 import { PhaseProgress, derivePhases } from '../components/PhaseProgress';
-import { WaitingStage } from '../components/WaitingStage';
+import { StageState } from '../components/StageState';
+import { stageStatus } from '../components/stageStatus';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { FailureButton } from '../components/FailureButton';
 import { MeshViewer } from '../components/MeshViewer';
@@ -427,16 +428,20 @@ export function JobDetail() {
                       onError={() => setBlueprintOk(false)}
                     />
                   ) : (
-                    // On a running job the sheet is genuinely still being drawn, so the
-                    // frame draws it. On a settled job nothing is coming, and the drawn
-                    // stage stands still with the phase named rather than pulsing.
+                    // On a running job phase 1 is genuinely still working, so the
+                    // frame reports that and carries its output. On a settled job
+                    // nothing is coming, and the note says so — the derived line
+                    // would read "phase 01 · done" over an empty frame.
                     <div className={styles.frameSlot}>
-                      <WaitingStage
-                        kind="blueprint"
-                        running={phases[0]?.status === 'running'}
+                      <StageState
+                        phase={1}
+                        status={stageStatus(phases[0]?.status)}
                         logLines={job.log_tail}
-                        note="no blueprint on file for this job"
-                        showHint={false}
+                        note={
+                          phases[0]?.status === 'running'
+                            ? undefined
+                            : 'No blueprint on file for this job'
+                        }
                       />
                     </div>
                   )}
