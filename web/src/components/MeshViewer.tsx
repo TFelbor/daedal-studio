@@ -3,7 +3,8 @@ import { useTheme } from '../hooks/useTheme';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { cssToken, prefersReducedMotion } from '../theme';
-import { WaitingStage } from './WaitingStage';
+import { StageState } from './StageState';
+import { stageStatus } from './stageStatus';
 import styles from './MeshViewer.module.css';
 
 interface PhaseLike {
@@ -15,7 +16,7 @@ interface MeshViewerProps {
   jobId: string | null;
   status: string;
   phases: PhaseLike[];
-  /** Live pipeline output, newest last. Passed through to the waiting stage. */
+  /** Live pipeline output, newest last. Passed through to the stage state. */
   logLines?: string[];
 }
 
@@ -219,8 +220,8 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
     materialRef.current?.color.set(token('--ink', '#dbdbdb'));
   }, [theme]);
 
-  // A failed fetch is the one case that must not animate hopefully — the waiting
-  // stage promises the mesh is on its way, and here it is not.
+  // A failed fetch is the one case the stage state cannot describe: the phase is
+  // done and the artifact still is not coming.
   if (error) {
     return (
       <div className={styles.placeholder}>
@@ -229,17 +230,16 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
     );
   }
 
-  // Before phase 3 lands there is nothing to render, so the stand-in solid assembles
-  // itself instead — orbitable by the same drag the real viewer answers to, which is
-  // what makes the wait a rehearsal rather than a block.
+  // Before phase 3 lands there is nothing to render, so the frame states where phase
+  // 3 is instead. Phase 3's own status and no other: while phase 2 compiles, phase 3
+  // has not started, and a frame reporting itself as running would be inventing the
+  // one thing this component is not allowed to invent.
   if (!jobId || !isPhase3Complete) {
-    const running = phases.some(p => (p.phase === 2 || p.phase === 3) && p.status === 'running');
     return (
-      <WaitingStage
-        kind="mesh"
-        running={running}
+      <StageState
+        phase={3}
+        status={stageStatus(phases.find(p => p.phase === 3)?.status)}
         logLines={logLines}
-        note="awaiting phase 03"
         fill
       />
     );
@@ -249,9 +249,10 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
     <div className={styles.viewport}>
       <div className={styles.grid} aria-hidden="true" />
       <div ref={mountRef} className={styles.canvas} />
-      {/* The mesh is on the wire but not yet parsed: keep the assembling stand-in
-          under it so the frame is never a flat empty rectangle. */}
-      {loading && <WaitingStage kind="mesh" running logLines={logLines} fill showHint={false} />}
+      {/* The mesh is on the wire but not yet parsed. The phase is genuinely done, so
+          the note says what is actually happening rather than letting the derived
+          line report a finished phase over an empty frame. */}
+      {loading && <StageState phase={3} status="done" note="Loading the mesh" fill />}
     </div>
   );
 }

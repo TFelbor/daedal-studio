@@ -10,7 +10,8 @@ import { GCodeViewer } from '../components/GCodeViewer';
 import { ProcessLog } from '../components/ProcessLog';
 import { PromptComposer } from '../components/PromptComposer';
 import { PromptNotice } from '../components/PromptNotice';
-import { WaitingStage } from '../components/WaitingStage';
+import { StageState } from '../components/StageState';
+import { stageStatus } from '../components/stageStatus';
 import { JobControlPanel } from '../components/JobControlPanel';
 import { DispatchGate } from '../components/DispatchGate';
 import { BlueprintGate } from '../components/BlueprintGate';
@@ -1371,11 +1372,10 @@ export function NewJob() {
                     Slicing failed. The mesh reached the slicer but produced no G-code.
                   </div>
                 ) : (
-                  <WaitingStage
-                    kind="slice"
-                    running={phases.find(p => p.phase === 4)?.status === 'running'}
+                  <StageState
+                    phase={4}
+                    status={stageStatus(phases.find(p => p.phase === 4)?.status)}
                     logLines={currentJob?.log_tail}
-                    note="awaiting phase 04"
                     fill
                   />
                 )

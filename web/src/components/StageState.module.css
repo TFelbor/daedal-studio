@@ -1,0 +1,86 @@
+/* Fills whatever frame hosts it. The host owns the border, the registration marks
+   and the ruled ground — this is only the three lines, so the same component can sit
+   in the live stage, in a figure on the job record, or over a viewer that is still
+   fetching. */
+.stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  padding: 26px;
+  overflow: hidden;
+}
+
+/* Overlay mode: fills the host frame exactly. `width`/`height` are reset to auto
+   because an absolutely positioned box given both `width` and `left`/`right` is
+   over-constrained — CSS keeps `left` and `width` and throws `right` away. No
+   background: the host's frame already paints the ground, and covering it would hide
+   the artifact this is drawn on top of. */
+.fill {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  /* The blurb is a sentence, and a sentence set across a 900px stage is unreadable. */
+  max-width: 42ch;
+  text-align: center;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+}
+
+.headLive,
+.headIdle {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headLive {
+  color: var(--accent-ink);
+}
+
+.headIdle {
+  color: var(--ink-ghost);
+}
+
+/* Prose, so `--ink-mute` at least — the two bottom ladder steps are the orientation
+   tier and nothing that is a sentence may use them. */
+.blurb {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+/* The pipeline's own last line, verbatim and therefore in mono. Not uppercased:
+   this is output, and shouting someone else's text at them changes it. */
+.live {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-trace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
