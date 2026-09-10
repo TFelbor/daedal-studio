@@ -58,6 +58,26 @@ LID_KINDS: tuple[str, ...] = ("lift_off",)
 #: Where a divider's label tab sits along the plate's top edge.
 TAB_POSITIONS: tuple[str, ...] = ("left", "centre", "right")
 
+#: How much room the contents get, in mm of clearance *total per axis* over the sleeve
+#: envelope, per fit intent. `docs/dimension-kb-research.md` §3's working convention:
+#: "+1,5–2 mm over the sleeve envelope for a snug commercial-style fit; +4–6 mm for
+#: easy-in/out printed boxes." One number cannot serve both — a deck box you close and a
+#: tray you lift cards out of are different objects, and the roadmap's own finding
+#: (§"Numbers refused") is that applying the tray figure universally makes every deck box
+#: larger than every commercial reference in the KB, while applying the box figure
+#: universally builds a tray nobody can get cards out of.
+#:
+#: The **low end** of each band is the default, for two different reasons that agree:
+#: `snug` at 1,5 mm is what this project has built since the deck box was written and
+#: what its measured boxes were checked against, and `easy` at 4,0 mm is the least
+#: material a "+4–6 mm" convention can ask for — a clearance is cheap to increase by
+#: hand and expensive to discover as an oversized part. An explicit
+#: `Process.cavity_clearance_mm` overrides either.
+FIT_INTENT_CLEARANCE_MM: dict[str, float] = {"snug": 1.5, "easy": 4.0}
+
+#: The fit intents a spec may name, in the order they widen the cavity.
+FIT_INTENTS: tuple[str, ...] = tuple(FIT_INTENT_CLEARANCE_MM)
+
 #: Decimal places kept on every millimetre value: 3 → 1 µm.
 MM_DECIMALS = 3
 
@@ -263,11 +283,30 @@ class Constraints:
 @dataclass(frozen=True)
 class Process:
     """Printing-process parameters the archetype applies. Fit offsets per printer
-    profile (roadmap M1) will join these; today they are spec-level."""
+    profile (roadmap M1) will join these; today they are spec-level.
+
+    `fit_intent` is how much room the contents get, and it exists because
+    `cavity_clearance_mm` was one number serving two objects — see
+    `FIT_INTENT_CLEARANCE_MM`. It is a *word* rather than a number because it is the
+    thing a person actually decides ("a box I close" / "a tray I lift cards out of");
+    the millimetres are the KB's, and the KB is what will refine them.
+
+    **`cavity_clearance_mm` is resolved on construction, never at compile time.**
+    Passing None (or omitting it) means "take the intent's figure"; passing a number
+    means that number, whatever the intent says. Either way the field holds a float
+    once the object exists, so the canonical form always carries the clearance the
+    geometry is built from and `from_dict(to_dict(s))` compiles to the same mesh as
+    `s`. Deriving it later — or remembering *how* it was arrived at — would make two
+    specs with identical canonical forms compile differently, which is the one
+    property this schema exists to guarantee.
+    """
 
     wall_mm: float = 2.8
     floor_mm: float = 2.0
-    cavity_clearance_mm: float = 1.5
+    #: `snug` (a box you close) or `easy` (a tray you lift cards out of).
+    fit_intent: str = "snug"
+    #: None means "derive from `fit_intent`"; it is never None after construction.
+    cavity_clearance_mm: Optional[float] = None
     stack_slack_mm: float = 1.0
     min_feature_mm: float = 1.0
 
@@ -275,8 +314,18 @@ class Process:
         problems: list[str] = []
         _set(self, "wall_mm", _mm(self.wall_mm, "wall_mm", problems))
         _set(self, "floor_mm", _mm(self.floor_mm, "floor_mm", problems))
-        _set(self, "cavity_clearance_mm",
-             _mm(self.cavity_clearance_mm, "cavity_clearance_mm", problems, inclusive=True))
+        if self.fit_intent not in FIT_INTENTS:
+            problems.append(
+                f"fit_intent must be one of {list(FIT_INTENTS)}, got {self.fit_intent!r}"
+            )
+        if self.cavity_clearance_mm is None:
+            # A bad intent has already been collected above; fall back to the snug
+            # figure so the frozen object holds a float until the error is raised.
+            _set(self, "cavity_clearance_mm",
+                 FIT_INTENT_CLEARANCE_MM.get(self.fit_intent, FIT_INTENT_CLEARANCE_MM["snug"]))
+        else:
+            _set(self, "cavity_clearance_mm",
+                 _mm(self.cavity_clearance_mm, "cavity_clearance_mm", problems, inclusive=True))
         _set(self, "stack_slack_mm",
              _mm(self.stack_slack_mm, "stack_slack_mm", problems, inclusive=True))
         _set(self, "min_feature_mm", _mm(self.min_feature_mm, "min_feature_mm", problems))
