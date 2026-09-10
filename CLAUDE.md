@@ -1736,6 +1736,35 @@ accents, spacing, hyphens and case are folded and a bounded edit distance covers
 interpolates into the prompt, so a screen reading `prompt` alone leaves the colour box
 as a second, unwatched prompt channel.
 
+**A functional article is not a reproduction, and the grammar is what says which**
+(`_classify_usage`, 2026-09-10, issue #79). This screen was written for the figurine
+product, where every curated name meant "print me Pikachu". The parametric product's
+users name a franchise as the *contents*: "deck box for Pokémon cards" is the primary
+persona's literal prompt, and it was refused with score 1,0 while MTG, Yu-Gi-Oh!,
+Lorcana and One Piece passed by omission from the list — inconsistent, and worse than
+either consistent answer. So a match carries a second axis, and **only for strong
+hits**: a **depiction** cue near the name (`emblem`, `figurine`, `shaped`, `on the
+lid`, within ±4 tokens) **blocks** — the name is what the part is meant to look like;
+a **purpose** cue before it (`for`, `fits`, `holds`, and `my`/`our` completed by a
+contents noun, within 6 tokens) **flags** — the name is what the part is *for*; and
+with neither, **the category decides**, a `character` blocked as the prompt's subject
+("a Pikachu deck box") and a `franchise` or `brand` flagged as its contents ("a
+Pokémon deck box"). Depiction wins when both fire and the most severe verdict across
+every match wins, so "deck box for Pokémon cards with a Charizard emblem on the lid"
+is still refused; the best near-match is weighed **alongside** the exact hits rather
+than only in their absence, because an exact functional hit no longer refuses the
+prompt by itself and an evasion has to be caught on the fuzzy path. The cues are
+English grammar the matcher reads, so they are module constants — the blocklist
+promises to be descriptive data about marks only, and the TCG franchises are on it
+**for the flag**, so every franchise is treated alike rather than passing unlisted.
+The accepted false negative is stated rather than discovered: a character named only
+as contents, with no depiction cue ("a stand for Pikachu"), is flagged. Both classes
+reach the human gate, which remains the last word; where the line sits is a **product
+decision pending counsel**, recorded in `docs/deferred-legal-tasks.md` § L6 and not
+legal advice. `ip_screen_flagged` carries the `usage`, which makes "how often does the
+functional rule fire" a query. F13's embossing field is the *third* prompt channel and
+is deliberately out of scope until it exists (roadmap §4A, part (b)).
+
 **Tier 2 — the image screen** (`pythonsrc/ip_screen_image.py`). Prompt filtering leaks:
 "a chunky yellow lightning-mouse figurine, anime style" names nothing on the blocklist
 and still renders something recognisable. So the render itself is scored, **before Phase
