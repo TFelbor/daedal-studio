@@ -397,7 +397,7 @@ same commit):
 - [ ] Installable PWA — manifest, service worker, home-screen install, web push, camera capture for the fit photo
 - [ ] mm-annotated preview — spec-driven; fix the viewer's 80-unit normalisation first, carry the spec on `GET /jobs/{id}`
 - [ ] Spec-diff iteration ("make the lid deeper") on existing lineage columns
-- [ ] `preview_reached` job event (activation metric)
+- [x] `preview_reached` job event (activation metric) — 2026-09-10 (PR #106). One event kind, no migration: `POST /jobs/{id}/events/preview-reached`, written once per job by the running view when the mesh or the toolpath is the *rendered* tab and has something behind it, deduplicated server-side the way `outcome_prompt_shown` is. `GET /feedback/stats` reports `jobs_submitted` / `previews_reached` / `activation_rate` over jobs, `dev` jobs excluded from both halves
 - [ ] N3 measured end to end on a real phone (≤20 s); the per-job `docker compose run` replaced if it blows the budget
 - [ ] IP screen re-scoped for functional articles — "deck box for Pokémon cards" must pass before any external user sees the app
 - [ ] Friendly-user alpha — 5–10 known users, form-driven deck box, we print and send a photo, scripted usability sessions

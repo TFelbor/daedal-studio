@@ -765,6 +765,31 @@ FastAPI application with:
   `.../dismiss` record that someone was asked and that they declined; `GET /feedback/stats`
   reports the response rate. The outcome endpoint takes an optional signed token from the outset
   so email or webhook delivery is a config change rather than a refactor.
+- **`POST /jobs/{id}/events/preview-reached` is the activation metric's numerator**, and
+  `GET /feedback/stats` carries the rate beside the response rate. "≥ 60 % of prompt
+  submitters reach a preview" (PRD §7, roadmap §6A) had a denominator all along — `prompt`
+  is required on `POST /jobs`, so a job row *is* one prompt submission — and nothing
+  recorded that a person ever saw the geometry they asked for. One event kind
+  (`preview_reached`), no migration, and the same shape and server-side dedup as
+  `outcome_prompt_shown`: **once per job**, so a reload, a switch between the mesh and
+  toolpath tabs or a second visit next week cannot each count again. Deduplicated on the
+  server and not only in the client because a reloaded page has a fresh memory of what it
+  has already sent, and the running view is the surface people refresh.
+  `TelemetryDB.activation_funnel()` counts `COUNT(DISTINCT job_id)` against the job count,
+  which is the same "over jobs, not raw events" rule `feedback_funnel` was fixed to
+  follow — either guard alone would let the ratio exceed 1. **`dev` jobs are excluded from
+  both halves**, for the reason `dev` is excluded from `answered`: a cube printed to verify
+  a pipeline change is not a pilot user. The key is `jobs_submitted`, not
+  `prompts_submitted`, because `prompts_shown` beside it counts *outcome* prompts.
+  **It is fired from the stage, not from a phase banner** (`NewJob.tsx`): an artifact
+  appearing on disk is a fact about the pipeline, and this metric is about someone looking,
+  so the condition is that the mesh or the toolpath is the *rendered* tab **and** has
+  something behind it — `MeshViewer` draws a waiting animation until Phase 3 lands, and
+  counting that would report activation for a job whose preview never arrived. `meshReady`
+  and `sliceReady` are one definition each for that reason, read by the stage advance, the
+  event and the stage itself. The `≥ 30 % export` half of the same metric needed no new
+  instrument: `download` plus `?preview=1` already separates keeping a result from looking
+  at one.
 - `GET /jobs/{id}/download` logs a `download` event and increments `download_count` before
   streaming — the response is lazy and may be abandoned mid-flight. `?preview=1` serves the
   same bytes and records nothing: the toolpath viewer polls this endpoint to *render* the
@@ -970,9 +995,15 @@ FastAPI application with:
   the profile file at response time instead means editing a profile retroactively rewrites what
   finished jobs claim to have used.
 - **Engagement** (`job_event` table + `JobEvent`): `download`, `regenerate`,
-  `outcome_prompt_shown`, `outcome_prompt_dismissed`, `outcome_reported`. One table rather than a
-  column per signal, so the pilot's response-rate query needs no migration. `download_count` and
+  `outcome_prompt_shown`, `outcome_prompt_dismissed`, `outcome_reported`, `preview_reached`.
+  One table rather than a
+  column per signal, so the pilot's response-rate query needs no migration — and the
+  activation metric's instrument was in fact one line in `JOB_EVENT_KINDS` (see
+  `preview-reached` under **Server**). `download_count` and
   `parent_job_id` are denormalised onto `print_job` for the common query.
+  Adding a kind needs no DDL (`job_event.kind` is TEXT, deliberately not a CHECK
+  constraint — `JobEvent.__post_init__` is the validation, in one place) and no
+  `telemetry/trace.py` change either, since that map covers `print_job`'s columns.
 - **Generation provenance + pre-print quality on `PrintJob`**: `generation_model`,
   `generation_model_version`, `generation_backend` (see below), `generation_params`,
   `generation_cost_eur`, `generation_duration_s`, `mesh_features`, `printability_score`,

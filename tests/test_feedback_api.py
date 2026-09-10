@@ -103,6 +103,48 @@ def test_prompt_shown_404s_for_an_unknown_job():
     assert client.post(f"/jobs/{uuid.uuid4()}/outcome/prompt-shown").status_code == 404
 
 
+# ── Preview reached ───────────────────────────────────────────────────────────
+#
+# The activation metric's numerator (PRD §7). Its denominator was always there — every
+# job carries a prompt — and nothing recorded that anyone ever saw the geometry.
+
+
+def test_preview_reached_is_recorded_once():
+    """A reload of the running view must not count as a second activation."""
+    job_id = make_job()
+    first = client.post(f"/jobs/{job_id}/events/preview-reached").json()
+    second = client.post(f"/jobs/{job_id}/events/preview-reached").json()
+    assert first["recorded"] is True
+    assert second["recorded"] is False
+    assert len(read_events(job_id, "preview_reached")) == 1
+
+
+def test_preview_reached_404s_for_an_unknown_job():
+    """No preview without a job — foreign keys are enforced, so the row could not be
+    written anyway, and a 404 says which half is wrong."""
+    assert client.post(f"/jobs/{uuid.uuid4()}/events/preview-reached").status_code == 404
+
+
+def test_preview_reached_is_a_recognised_event_kind():
+    """An unknown kind is still refused; this one is no longer unknown."""
+    from pythonsrc.telemetry.schema import JOB_EVENT_KINDS, JobEvent
+
+    assert "preview_reached" in JOB_EVENT_KINDS
+    JobEvent(
+        event_id="e-preview",
+        job_id="j",
+        occurred_at=datetime.now(timezone.utc),
+        kind="preview_reached",
+    )
+    with pytest.raises(ValueError):
+        JobEvent(
+            event_id="e-nope",
+            job_id="j",
+            occurred_at=datetime.now(timezone.utc),
+            kind="preview_looked_at",
+        )
+
+
 # ── Verdicts ──────────────────────────────────────────────────────────────────
 
 
@@ -261,6 +303,65 @@ def test_stats_response_rate_is_null_when_nothing_was_asked():
     body = client.get("/feedback/stats").json()
     if body["prompts_shown"] == 0:
         assert body["response_rate"] is None
+
+
+# ── Activation rate ───────────────────────────────────────────────────────────
+
+
+def test_stats_report_the_activation_rate_over_jobs(isolated_db_env):
+    """Previews reached over prompts submitted — PRD §7's activation metric."""
+    previewed = make_job(outcome="unknown")
+    make_job(outcome="unknown")
+    make_job(outcome="unknown")
+    client.post(f"/jobs/{previewed}/events/preview-reached")
+
+    body = client.get("/feedback/stats").json()
+    assert body["jobs_submitted"] == 3
+    assert body["previews_reached"] == 1
+    assert body["activation_rate"] == pytest.approx(1 / 3, abs=1e-4)
+
+
+def test_activation_rate_counts_jobs_not_events(isolated_db_env):
+    """Looking at the mesh and then the toolpath is one activation, not two.
+
+    Guarded twice on purpose: the endpoint deduplicates, and the query counts
+    `DISTINCT job_id`. Either alone would let a raw event total push the ratio above 1
+    — the same defect `response_rate` was fixed for.
+    """
+    job_id = make_job(outcome="unknown")
+    for _ in range(4):
+        client.post(f"/jobs/{job_id}/events/preview-reached")
+
+    body = client.get("/feedback/stats").json()
+    assert body["jobs_submitted"] == 1
+    assert body["previews_reached"] == 1
+    assert body["activation_rate"] == pytest.approx(1.0)
+
+
+def test_activation_rate_excludes_developer_runs(isolated_db_env):
+    """A cube printed to verify a pipeline change is not a pilot user.
+
+    `dev` is kept out of `feedback_funnel`'s answers for the same reason; leaving it in
+    here would let a developer's own session move the number the pilot is measured by.
+    """
+    make_job(outcome="dev")
+    dev_previewed = make_job(outcome="dev")
+    real = make_job(outcome="unknown")
+    client.post(f"/jobs/{dev_previewed}/events/preview-reached")
+    client.post(f"/jobs/{real}/events/preview-reached")
+
+    body = client.get("/feedback/stats").json()
+    assert body["jobs_submitted"] == 1
+    assert body["previews_reached"] == 1
+    assert body["activation_rate"] == pytest.approx(1.0)
+
+
+def test_activation_rate_is_null_when_nothing_was_submitted(isolated_db_env):
+    """A rate over zero jobs is undefined, not zero."""
+    body = client.get("/feedback/stats").json()
+    assert body["jobs_submitted"] == 0
+    assert body["previews_reached"] == 0
+    assert body["activation_rate"] is None
 
 
 # ── Download and lineage capture ──────────────────────────────────────────────

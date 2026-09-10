@@ -391,6 +391,10 @@ export interface JobProvenance {
 }
 
 export interface FeedbackStats {
+  /** Activation (PRD §7): previews reached over prompts submitted, both over jobs. */
+  jobs_submitted: number;
+  previews_reached: number;
+  activation_rate: number | null;
   prompts_shown: number;
   outcomes_reported: number;
   prompts_dismissed: number;
@@ -617,6 +621,18 @@ export async function listPendingFeedback(): Promise<{ count: number; jobs: Pend
  */
 export async function markOutcomePromptShown(jobId: string): Promise<void> {
   await fetch(`/jobs/${jobId}/outcome/prompt-shown`, { method: 'POST' });
+}
+
+/**
+ * Record that the mesh or the toolpath was actually put on screen for this job.
+ *
+ * The activation metric's numerator (PRD §7). The server deduplicates per job, so a
+ * reload, a tab switch between the two previews, or a second visit later cannot each
+ * count again — which is also why this is fire-and-forget: a failed post loses one
+ * data point and must never disturb the view it was measuring.
+ */
+export async function markPreviewReached(jobId: string): Promise<void> {
+  await fetch(`/jobs/${jobId}/events/preview-reached`, { method: 'POST' });
 }
 
 /** Record a skip. A declined prompt is data; only a prompt never shown is silence. */
