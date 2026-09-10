@@ -29,21 +29,38 @@ literal prompt — and refusing that refuses the customer for describing their o
 case, with no appeal path. So a match is classified on a second axis, *how* the name
 is used (`_classify_usage`), and only for strong hits:
 
-- **depiction** — a depiction cue near the name ("emblem", "figurine", "on the lid").
-  The name is what the part is meant to *look like*. Blocked, as before.
-- **functional** — a purpose cue before the name ("for", "fits", "holds my … cards").
-  The name is what the part is *for*. Flagged, so the human gate still sees it.
+- **depiction** — a depiction cue in the construction the name belongs to ("charizard
+  emblem", "in the shape of pikachu", "a groot-shaped pot"). The name is what the part
+  is meant to *look like*. Blocked, as before.
+- **functional** — a purpose cue governing the name ("for pokemon cards", "fits 60
+  double sleeved lorcana cards", "holds my … deck"). The name is what the part is
+  *for*. Flagged, so the human gate still sees it.
 - **attributive** — neither. A `character` is blocked ("a Pikachu deck box" names the
-  subject); a `franchise` or `brand` is flagged, because "a Pokémon deck box" names
-  the cards going in it.
+  subject). A `franchise` or `brand` is blocked too *unless* one of the parts this
+  product makes follows it: "a Pokémon deck box" names the cards going in it and is
+  flagged, "a star wars x-wing" names the object itself and is refused.
+
+**A cue is scoped to its construction, never to a window**, and both loosenings were
+reachable in one afternoon's review: a depiction cue that only had to be *nearby* read
+"deck box for pokemon cards, lid on top" as a likeness and refused the primary persona
+again by a second route; a purpose cue that only had to be nearby read "for my son, a
+pikachu" as a purpose, which meant any prompt could be prefixed past this screen. So a
+purpose cue has to reach the name across bridge tokens only (`BRIDGE_TOKENS` — articles,
+possessives, numerals, sleeving words), a depiction *noun* is read in the window either
+side, "in the shape of" only before the name, and "shaped"/"themed" only immediately
+after it. There is no bare locational cue: "on the lid" locates a depiction noun, it is
+not evidence of one, and the nouns already carry "charizard emblem on the lid" unaided.
 
 Depiction wins when both fire, and across several matches the most severe verdict
 wins, so "deck box for Pokémon cards with a Charizard emblem on the lid" is still
 refused. The accepted false negative is stated rather than discovered: a character
 named only as contents, with no depiction cue ("a stand for Pikachu"), is flagged
 rather than blocked, and reaches the blueprint gate with the term named in the event.
-This is a product decision about where the line sits, not legal advice — see
-`docs/deferred-legal-tasks.md`, and note that the human gate remains the last word.
+The boundary the other way is a brand naming an accessory's subject — "a nintendo
+switch dock" is refused and "a dock for a nintendo switch" is flagged, which is also
+the appeal path the refusal's own wording asks for. This is a product decision about
+where the line sits, not legal advice — see `docs/deferred-legal-tasks.md`, and note
+that the human gate remains the last word.
 
 The cues are English grammar the matcher reads, so they live here as module constants
 rather than in the blocklist, which promises to be descriptive data about marks only.
@@ -93,14 +110,36 @@ FUZZY_THRESHOLD = 0.86
 #: "hulk"/"bulk", "elsa"/"else".
 MIN_FUZZY_LENGTH = 6
 
-#: Cues that the matched name is what the part is meant to *look like*. Each is matched
-#: as whole tokens (so "on the lid" cannot fire on a prompt that merely mentions a lid)
-#: within `DEPICTION_WINDOW` tokens either side of the name.
-DEPICTION_CUES: Tuple[str, ...] = (
+#: Nouns that make the matched name a *likeness* — the thing the part is meant to look
+#: like. Matched as whole tokens within `DEPICTION_WINDOW` either side of the name, so
+#: "charizard emblem", "an elsa figurine" and "eevee embossed on the front" all read as
+#: depiction wherever in the phrase the name sits.
+DEPICTION_NOUNS: Tuple[str, ...] = (
     "emblem", "logo", "engraved", "embossed", "relief", "silhouette", "figure",
     "figurine", "statue", "bust", "portrait", "decal", "sticker", "motif", "mascot",
-    "shaped", "themed", "in the shape of", "looks like", "modelled on", "modeled on",
-    "on the lid", "on the front", "on the side", "on the top", "on top",
+    "likeness", "effigy",
+)
+
+#: Depiction phrases that only mean depiction **before** the name: "in the shape of
+#: pikachu". Read anywhere in the preceding `DEPICTION_WINDOW`, and deliberately not
+#: after it — "a box for pokemon cards shaped like a cube" describes the *box's* shape,
+#: and reading that as a likeness refused the primary persona's prompt by a second
+#: route.
+DEPICTION_LEADING: Tuple[str, ...] = (
+    "in the shape of", "shaped like", "looks like", "modelled on", "modeled on",
+)
+
+#: Depiction words that only mean depiction **immediately after** the name:
+#: "a groot-shaped pot", "a pokemon themed deck box". One token, not a window, for the
+#: same reason — the word has to be modifying the name rather than merely nearby.
+DEPICTION_TRAILING: Tuple[str, ...] = ("shaped", "themed", "styled")
+
+#: Every depiction cue, in one tuple, for the guard that asserts each is already
+#: normalised. There is deliberately no bare locational cue here ("on the lid",
+#: "on top"): those phrases locate a depiction *noun*, they are not evidence of one on
+#: their own, and the nouns above already carry "charizard emblem on the lid" unaided.
+DEPICTION_CUES: Tuple[str, ...] = (
+    DEPICTION_NOUNS + DEPICTION_LEADING + DEPICTION_TRAILING
 )
 
 #: How far from the name a depiction cue may sit. Four tokens reaches
@@ -126,17 +165,42 @@ PURPOSE_WINDOW = 6
 #: just as easily as of a card collection.
 POSSESSIVE_CUES: Tuple[str, ...] = ("my", "our")
 
-#: What a functional article holds. Used only to complete a possessive purpose cue —
-#: never on its own, because "a pikachu deck box" names its subject and would otherwise
-#: read as functional on the strength of the word "deck".
+#: What a functional article holds. Used to complete a possessive purpose cue and, with
+#: `ARTICLE_NOUNS`, to decide whether an attributive franchise names contents — never
+#: on its own before the name, because "a pikachu deck box" names its subject and would
+#: otherwise read as functional on the strength of the word "deck".
 CONTENTS_NOUNS: Tuple[str, ...] = (
     "card", "cards", "deck", "decks", "collection", "commander", "token", "tokens",
     "dice", "sleeve", "sleeves", "booster", "boosters", "pack", "packs", "binder",
     "set", "tcg", "ccg", "game", "minis", "miniatures",
 )
 
-#: How far after the name the contents noun may sit for the possessive cue to count.
+#: The parts this product makes. A franchise in front of one of these names what goes
+#: *in* it ("a pokemon deck box"); a franchise in front of anything else names the
+#: subject ("a star wars x-wing"), which is a depiction by another route and stays
+#: refused.
+ARTICLE_NOUNS: Tuple[str, ...] = (
+    "box", "boxes", "case", "cases", "tray", "trays", "divider", "dividers", "insert",
+    "inserts", "holder", "holders", "organiser", "organizer", "rack", "racks",
+    "storage", "stand", "stands", "bin", "caddy", "compartment", "compartments",
+    "drawer", "drawers", "shelf", "tuckbox",
+)
+
+#: How far after the name the contents noun may sit for the possessive cue to count,
+#: and for an attributive franchise to be reading as contents.
 CONTENTS_WINDOW = 3
+
+#: Tokens a purpose cue may reach the name *across*. "for pokemon cards" and "fits 60
+#: double sleeved lorcana cards" are the same construction; "for my son, a pikachu" is
+#: not, and proximity alone could not tell them apart — a bare "for" six tokens back
+#: demoted every character block to a flag, so any prompt could be prefixed past this
+#: screen. Digits are bridges too (`str.isdigit`), which is what carries "60".
+BRIDGE_TOKENS: Tuple[str, ...] = (
+    "a", "an", "the", "my", "our", "your", "their", "his", "her", "its", "of", "up",
+    "to", "some", "one", "two", "three", "four", "six", "ten", "twelve", "twenty",
+    "double", "single", "triple", "sleeved", "unsleeved", "standard", "japanese",
+    "mini", "small", "large", "full", "loose", "each",
+)
 
 #: Severity order, so "the most severe verdict across every match wins" is one lookup.
 _SEVERITY = {"allow": 0, "flag": 1, "block": 2}
@@ -342,6 +406,38 @@ def _fuzzy_hit(
     return best, best_span
 
 
+def _is_bridge(token: str) -> bool:
+    """Whether a purpose cue may reach across *token* to the name beyond it."""
+    return token.isdigit() or token in BRIDGE_TOKENS or token in CONTENTS_NOUNS
+
+
+def _cue_reaches_name(window: List[str], cue: str) -> bool:
+    """Whether *cue* appears in *window* and governs whatever follows the window.
+
+    *window* is the tokens immediately before the name, so "reaches the name" is
+    "every token between the end of the cue and the end of the window is a bridge".
+    That is the difference between "for pokemon cards" and "for my son, a pikachu":
+    the second has "son" in the way, so the "for" is governing the son, not the name.
+    `_normalise` has already deleted the comma that would otherwise have separated
+    the clauses, which is why punctuation cannot be relied on here.
+    """
+    return any(
+        all(_is_bridge(token) for token in window[end:])
+        for _, end in _find_phrases(window, cue)
+    )
+
+
+def _names_contents(tokens: List[str], span: Tuple[int, int]) -> bool:
+    """Whether the name at *span* is followed by the part it goes in.
+
+    "a pokemon deck box" and "a lorcana card divider" name their contents; "a star
+    wars x-wing" and "the mandalorian helmet" name the subject. The head noun is the
+    only thing that distinguishes them, since neither carries a cue.
+    """
+    after = tokens[span[1]:span[1] + CONTENTS_WINDOW]
+    return any(token in CONTENTS_NOUNS or token in ARTICLE_NOUNS for token in after)
+
+
 def _classify_usage(tokens: List[str], span: Tuple[int, int]) -> str:
     """How the name occupying *span* is being used.
 
@@ -353,19 +449,31 @@ def _classify_usage(tokens: List[str], span: Tuple[int, int]) -> str:
         "depiction", "functional" or "attributive". Depiction is checked first, so a
         prompt that both names its contents and asks for a likeness is read as asking
         for the likeness.
+
+    Each cue is scoped to the construction it belongs to rather than to a window,
+    because both loosenings were reachable: a depiction cue that is merely *nearby*
+    read "deck box for pokemon cards, lid on top" as a likeness, and a purpose cue
+    that is merely nearby read "for my son, a pikachu" as a purpose.
     """
     start, end = span
 
     around = tokens[max(0, start - DEPICTION_WINDOW):end + DEPICTION_WINDOW]
-    if any(_contains_phrase(around, cue) for cue in DEPICTION_CUES):
+    if any(noun in around for noun in DEPICTION_NOUNS):
+        return "depiction"
+
+    leading = tokens[max(0, start - DEPICTION_WINDOW):start]
+    if any(_contains_phrase(leading, cue) for cue in DEPICTION_LEADING):
+        return "depiction"
+
+    if end < len(tokens) and tokens[end] in DEPICTION_TRAILING:
         return "depiction"
 
     before = tokens[max(0, start - PURPOSE_WINDOW):start]
-    if any(_contains_phrase(before, cue) for cue in PURPOSE_CUES):
+    if any(_cue_reaches_name(before, cue) for cue in PURPOSE_CUES):
         return "functional"
 
     after = tokens[end:end + CONTENTS_WINDOW]
-    if (any(cue in before for cue in POSSESSIVE_CUES)
+    if (any(_cue_reaches_name(before, cue) for cue in POSSESSIVE_CUES)
             and any(noun in after for noun in CONTENTS_NOUNS)):
         return "functional"
 
@@ -381,6 +489,10 @@ class _Hit:
     strength: str
     score: float
     usage: str
+    names_contents: bool = False
+    """Whether the part the name goes in follows it. Only read for an attributive
+    `franchise` or `brand`, where it is the whole difference between "a pokemon deck
+    box" and "a star wars x-wing"."""
 
 
 def _hit_action(hit: _Hit) -> str:
@@ -390,6 +502,12 @@ def _hit_action(hit: _Hit) -> str:
     inference is not, which no amount of grammar fixes — "a joker figurine" is a
     jester as readily as the DC character. Usage only discriminates among strong
     matches, which is where this screen's refusals come from.
+
+    An attributive `franchise` or `brand` is flagged only when it names the contents
+    of an article ("a pokemon deck box"). Naming a franchise in front of anything
+    else is naming the subject — "a star wars x-wing", "a hogwarts castle" — and that
+    is a reproduction of someone else's design however the sentence is arranged, so
+    it stays refused exactly as it was before the functional rule existed.
     """
     if hit.strength != "strong":
         return "flag"
@@ -397,7 +515,9 @@ def _hit_action(hit: _Hit) -> str:
         return "block"
     if hit.usage == "functional":
         return "flag"
-    return "block" if hit.category == "character" else "flag"
+    if hit.category == "character":
+        return "block"
+    return "flag" if hit.names_contents else "block"
 
 
 def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
@@ -429,19 +549,28 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
         spans = _find_phrases(tokens, spelling)
         if spans:
             exact.extend(
-                _Hit(term, category, strength, 1.0, _classify_usage(tokens, span))
+                _Hit(
+                    term, category, strength, 1.0,
+                    _classify_usage(tokens, span), _names_contents(tokens, span),
+                )
                 for span in spans
             )
             continue
         ratio, span = _fuzzy_hit(tokens, spelling)
         if ratio > best_score and span is not None:
             best_score = ratio
-            fuzzy = _Hit(term, category, strength, ratio, _classify_usage(tokens, span))
+            fuzzy = _Hit(
+                term, category, strength, ratio,
+                _classify_usage(tokens, span), _names_contents(tokens, span),
+            )
 
     # An ambiguous word standing next to an unambiguous one is not ambiguous: "the
     # joker from batman" is not a playing card, and "a space marine from warhammer
-    # 40k" is not a spaceman.
-    if any(hit.strength == "strong" for hit in exact):
+    # 40k" is not a spaceman. The trigger is a strong hit that is itself a refusal,
+    # not merely a strong hit: a *functional* franchise is the one construction this
+    # screen now accepts, and promoting on it turned "a deck box for pokemon cards
+    # with a creeper vine engraved on the lid" into a refusal over a plant.
+    if any(_hit_action(hit) == "block" for hit in exact if hit.strength == "strong"):
         exact = [dataclasses.replace(hit, strength="strong") for hit in exact]
 
     # The best near-match is considered alongside the exact ones rather than only when

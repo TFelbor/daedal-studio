@@ -337,6 +337,15 @@ than either consistent answer because it looks like a policy and is not one.
   today prints or publishes it.
 - The accepted false negative: a **character** named as contents with no depiction cue
   ("a stand for Pikachu") is flagged rather than refused, and reaches a human.
+- The boundary in the other direction, which is where the rule is **stricter** than the
+  functional reading: a franchise or brand in front of anything that is not one of the
+  parts this product makes is treated as naming the *subject* and refused — "a star wars
+  x-wing" and "a nintendo switch dock" are both refused, the second of which is arguably
+  an accessory case Art. 14(1)(c) would cover. The appeal path is the rephrasing the
+  refusal already asks for ("a dock for a Nintendo Switch" is flagged), and the head noun
+  is the only signal available in the sentence. Whether that trade is the right way round
+  is a question for counsel; the code pins both directions in
+  `tests/test_ip_screen.py` so moving the line is one decision in one place.
 - The line moves again for F13 (decorative embossing), which is a third prompt channel and
   where the real reproduction risk goes. Roadmap §4A part (b) holds it; do not ship F13
   before that screen exists.

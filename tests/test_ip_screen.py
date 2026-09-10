@@ -277,10 +277,18 @@ def test_an_ambiguous_word_with_a_franchise_cue_is_still_refused():
 # consistent answer.
 #
 # So a match is classified on a second axis, *how* the name is used, and only for
-# strong hits. A purpose cue before the name ("for", "fits", "holds my … cards") makes
-# it functional and flags; a depiction cue near it ("emblem", "figurine", "on the
-# lid") blocks; neither leaves the category to decide, because "a Pikachu deck box"
-# names its subject and "a Pokémon deck box" names its contents.
+# strong hits. A purpose cue governing the name ("for … cards", "fits 60 sleeved …")
+# makes it functional and flags; a depiction cue in the same construction ("emblem",
+# "figurine", "pokemon themed") blocks; neither leaves the category to decide, because
+# "a Pikachu deck box" names its subject and "a Pokémon deck box" names its contents —
+# and a franchise in front of something we do not make ("a star wars x-wing") names the
+# subject too.
+#
+# A cue is scoped to its construction rather than to a window, and the tables below
+# carry the counterexample for each direction: "for my son, a pikachu" is not a purpose
+# (a bare "for" within six tokens governed the son, not the name) and "deck box for
+# pokemon cards, lid on top" is not a depiction (a locational phrase within four tokens
+# described the box, not a likeness).
 #
 # Both classes reach the human blueprint gate. Only one of them is refused there and
 # then, with no appeal.
@@ -300,6 +308,11 @@ def test_an_ambiguous_word_with_a_franchise_cue_is_still_refused():
     ("a binder page for my magic the gathering collection", "magic the gathering"),
     # A purpose cue five tokens ahead of the name still reaches it.
     ("fits 60 double sleeved standard lorcana cards", "lorcana"),
+    # A depiction cue has to be part of the construction, not merely nearby: both of
+    # these describe the *box's* own geometry, four words from the franchise name.
+    ("deck box for pokemon cards, lid on top", "pokemon"),
+    ("a box for pokemon cards shaped like a cube", "pokemon"),
+    ("a tray for pokemon cards, cutout on the front", "pokemon"),
     # And the normaliser is the same normaliser.
     ("deck box for pokmon cards", "pokemon"),          # one character dropped
     ("deck box for P O K E M O N cards", "pokemon"),    # spaced out
@@ -345,6 +358,15 @@ def test_a_franchise_naming_the_contents_attributively_is_flagged(prompt, term):
     "a pikchu deck box",                                    # one character dropped
     "a P I K A C H U deck box",                             # spaced out
     "a bulbasaur shaped card holder",
+    "a pokemon themed deck box",                            # livery, not contents
+    # A purpose cue governs what follows *it*, not whatever name is within six
+    # tokens. Both of these are a character as the subject with a "for" in front of
+    # something else entirely, and `_normalise` has already deleted the comma that
+    # separated the clauses — so proximity alone would have demoted every character
+    # block to a flag, and any prompt could have been prefixed past this screen.
+    "for my son, a pikachu",
+    "print for me a darth vader",
+    "a stand for my desk, an elsa figurine",
 ])
 def test_a_name_used_for_what_the_part_depicts_is_still_refused(prompt):
     """The functional rule must not blunt the screen's actual purpose.
@@ -357,6 +379,77 @@ def test_a_name_used_for_what_the_part_depicts_is_still_refused(prompt):
     assert verdict.action == "block", f"{prompt!r} was not refused"
     assert verdict.term, "a block must name what it matched"
     assert verdict.usage in {"depiction", "attributive"}
+
+
+@pytest.mark.parametrize("prompt,term", [
+    ("a star wars x-wing", "star wars"),
+    ("the mandalorian helmet", "mandalorian"),
+    ("a hogwarts castle", "hogwarts"),
+    ("a transformers robot", "transformers"),
+    ("a zelda master sword", "zelda"),
+    ("a warhammer 40k tank", "warhammer"),
+    ("a minecraft pickaxe", "minecraft"),
+    ("a nintendo switch dock", "nintendo"),
+])
+def test_a_franchise_naming_the_subject_is_still_refused(prompt, term):
+    """A franchise is flagged for naming *contents*, not for being a franchise.
+
+    "A Pokémon deck box" names what goes in the box. "A star wars x-wing" names the
+    object itself, and that is a reproduction of someone else's design however the
+    sentence is arranged — so the head noun after the name is what decides, and
+    without one of ours the answer is the refusal it was before this rule existed.
+
+    The appeal path is a rephrasing that says what the part is for, which the test
+    below pins: "a dock for a Nintendo Switch" is flagged, not refused.
+    """
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "block", f"{prompt!r} was not refused"
+    assert verdict.term == term
+    assert verdict.usage == "attributive"
+
+
+@pytest.mark.parametrize("prompt", [
+    "a dock for a nintendo switch",
+    "a stand for my star wars minis",
+    "a tray for warhammer miniatures",
+])
+def test_the_same_subject_named_as_a_purpose_is_flagged(prompt):
+    """The counterpart of the test above, and the reason it is not a dead end.
+
+    The refusal text asks for the request in the person's own words; saying what the
+    part is *for* is the rephrasing that gets there, and it reaches the human gate.
+    """
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "flag", f"{prompt!r} was {verdict.action}ed"
+    assert verdict.usage == "functional"
+
+
+@pytest.mark.parametrize("prompt,term", [
+    ("a deck box for pokemon cards with a hulk-green lid", "pokemon"),
+    ("a deck box for pokemon cards with a creeper vine engraved on the lid", "pokemon"),
+])
+def test_an_ambiguous_word_beside_a_functional_hit_is_not_promoted(prompt, term):
+    """The promotion rule exists for "the joker from batman", not for this.
+
+    An ambiguous word next to a strong hit is refused because the strong hit is
+    itself a refusal — that is what makes the surrounding words unambiguous. A
+    *functional* franchise is the one construction this screen accepts, so promoting
+    on it refused a prompt over a colour name and a plant.
+    """
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "flag", f"{prompt!r} was {verdict.action}ed"
+    assert verdict.term == term
+    assert verdict.usage == "functional"
+
+
+def test_promotion_still_fires_on_a_refusing_hit():
+    """The other half: narrowing the trigger must not disarm it."""
+    assert screen_prompt("the joker from batman").action == "block"
+    assert screen_prompt("a space marine from warhammer 40k").action == "block"
+    assert screen_prompt("a hulk figurine beside a pikachu").action == "block"
 
 
 def test_every_franchise_on_the_list_gets_the_same_answer():
@@ -411,9 +504,30 @@ def test_the_cues_are_already_normalised():
     cues = (
         ip_screen.DEPICTION_CUES + ip_screen.PURPOSE_CUES
         + ip_screen.POSSESSIVE_CUES + ip_screen.CONTENTS_NOUNS
+        + ip_screen.ARTICLE_NOUNS + ip_screen.BRIDGE_TOKENS
     )
     for cue in cues:
         assert ip_screen._normalise(cue) == cue, cue
+
+
+def test_the_cues_read_as_single_tokens_are_single_tokens():
+    """Three of the cue sets are compared by token membership, not as phrases.
+
+    A depiction noun is looked for anywhere in the window, a trailing cue is the one
+    token after the name, and a bridge is one token at a time — so a multi-word entry
+    in any of them would never match anything and nothing would report it. The
+    phrase-matched sets (`DEPICTION_LEADING`, `PURPOSE_CUES`) are deliberately not
+    here: those go through `_find_phrases` and may be multi-word.
+    """
+    from pythonsrc import ip_screen
+
+    single = (
+        ip_screen.DEPICTION_NOUNS + ip_screen.DEPICTION_TRAILING
+        + ip_screen.BRIDGE_TOKENS + ip_screen.ARTICLE_NOUNS
+        + ip_screen.CONTENTS_NOUNS + ip_screen.POSSESSIVE_CUES
+    )
+    for cue in single:
+        assert " " not in cue, f"{cue!r} is read as one token and can never match"
 
 
 @patch("server.app._run_pipeline", new_callable=AsyncMock)
