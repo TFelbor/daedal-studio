@@ -376,7 +376,7 @@ same commit):
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
-- [~] Token tray + card divider archetypes — **card divider done** (PR #103, 2026-09-10): `pythonsrc/organizer/archetypes/card_divider.py`, a `Divider` spec section, seven measured features at ±0,05 mm across its own 324-spec envelope, one part, gate 100 / `ready`; the archetype strip in the UI now offers exactly the two the engine has. **Token tray pending**
+- [~] Token tray + card divider archetypes — **card divider done** (PR #104, 2026-09-10): `pythonsrc/organizer/archetypes/card_divider.py`, a `Divider` spec section, seven measured features at ±0,05 mm across its own 324-spec envelope, one part, gate 100 / `ready`; the archetype strip in the UI now offers exactly the two the engine has. **Token tray pending**
 - [ ] Fit-offset determinism decided (printer profile as a recorded compile input), then fit tolerances as `ProcessProfile` fields
 - [ ] Manifold CI sweep across every archetype's parameter envelope
 - [x] 3MF export (+ `lxml` in `requirements-base.txt`, STL/3MF download endpoint) — 2026-09-09. Phase 3 writes `engineered_mesh.3mf` beside the `.stl` on every run (`Engineer.export_mesh`; a spec run's 3MF measures the same as its STL to ±0,05 mm), `GET /jobs/{id}/download?format=gcode|stl|3mf` serves all three with the format on the `download` event, and the finished-job view offers them. **Bambu Studio acceptance is still untested** — nobody has opened a produced 3MF in it
