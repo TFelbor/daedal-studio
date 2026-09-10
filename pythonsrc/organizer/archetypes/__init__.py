@@ -1,10 +1,17 @@
 """The archetype registry and the dispatch functions the pipeline and CLI call.
 
 One module per archetype, each exposing the same verbs (`validate`, `derive`, `build`,
-`compile`, `measure`, `fits_check`, `to_view`, `example`) plus `ARCHETYPE` and
-`ARCHETYPE_VERSION`. The registry maps a spec's `archetype` string to its module;
-adding an archetype is adding a module and a line here, and `spec.ARCHETYPES` must
-name it too or the schema refuses it before this is reached.
+`compile`, `measure`, `fits_check`, `to_view`, `example`) plus `ARCHETYPE`,
+`ARCHETYPE_VERSION` and `MEASURED_FEATURES`. The registry maps a spec's `archetype`
+string to its module; adding an archetype is adding a module and a line here, and
+`spec.ARCHETYPES` must name it too or the schema refuses it before this is reached.
+
+Two archetypes as of issue #65 — the deck box (two bodies, a lip and a lift-off lid)
+and the card divider (one flat plate with a label tab). Nothing outside these modules
+knows the difference: `pipeline.py --spec`, the dispatch through `compile_spec` /
+`verify_spec_mesh` and the CLI took no archetype-specific change to gain the second
+one, which is the property the second archetype existed to test. What a second module
+*did* have to share moved into `common.py` rather than being copied.
 """
 from __future__ import annotations
 
@@ -12,10 +19,11 @@ from types import ModuleType
 
 from ..compiler import DEFAULT_TOLERANCE_MM, CompileResult, DimensionReport, FitsResult, check_dimensions
 from ..spec import ARCHETYPES, OrganizerSpec, SpecError
-from . import deck_box
+from . import card_divider, deck_box
 
 REGISTRY: dict[str, ModuleType] = {
     deck_box.ARCHETYPE: deck_box,
+    card_divider.ARCHETYPE: card_divider,
 }
 
 # The schema's list and the registry must agree, or a spec the schema accepts has

@@ -116,9 +116,10 @@ governing rule: *the LLM interprets words; it never produces geometry.* Phases 1
 (FLUX → TRELLIS.2) are **benched, not deleted** — they leave the critical path and become the
 branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,
 printability gate, slicing, dispatch gate, telemetry) is unchanged and is what the parametric
-path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric engine has its first two pieces (2026-09-03): the spec schema
-(`pythonsrc/organizer/spec.py`) and the deck box archetype
-(`pythonsrc/organizer/archetypes/deck_box.py`), entered through `pipeline.py --spec` —
+path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric engine has its first pieces (2026-09-03): the spec schema
+(`pythonsrc/organizer/spec.py`) and two archetypes — the deck box
+(`archetypes/deck_box.py`) and, since 2026-09-10, the card divider
+(`archetypes/card_divider.py`) — entered through `pipeline.py --spec` —
 see **Organizer — the parametric path** below. Phase 3 asserts a spec run's geometry
 instead of repairing it and measures every designed feature back to ±0,05 mm, and
 `POST /jobs` accepts a spec (2026-09-03). The dimension KB, LLM extraction and the UI's
@@ -548,31 +549,84 @@ mesh bytes with `X-DS-Up-Axis`, `X-DS-Model`, `X-DS-Model-Version`, `X-DS-Mesh-F
 
 ### Organizer — the parametric path (pythonsrc/organizer/)
 
-The pivot's engine, as far as M0 built it: a **spec schema** and one **archetype**,
-entered through `pipeline.py --spec PATH`. *The LLM interprets words; it never produces
+The pivot's engine: a **spec schema** and **two archetypes**, entered through
+`pipeline.py --spec PATH`. *The LLM interprets words; it never produces
 geometry* — and the spec is the boundary that rule describes. Everything left of it may
 be probabilistic; everything right of it is deterministic, and the same spec compiles to
-the same STL byte for byte (`tests/test_deck_box.py` pins that).
+the same STL byte for byte (`tests/test_deck_box.py` and `tests/test_card_divider.py`
+pin that).
 
 - **`spec.py` is stdlib-only, on purpose.** Frozen dataclasses (`OrganizerSpec`,
-  `Compartment`, `CardStack`, `Lid`, `Constraints`, `Process`), millimetres rounded to
-  1 µm on construction so `from_dict(to_dict(s)) == s` holds exactly, `from_dict`
+  `Compartment`, `CardStack`, `Lid`, `Divider`, `Constraints`, `Process`), millimetres
+  rounded to 1 µm on construction so `from_dict(to_dict(s)) == s` holds exactly,
+  `from_dict`
   refusing unknown keys, and one `SpecError` listing *every* problem with its dotted
   path. `canonical_json` / `spec_hash` / `spec_diff` make one spec one string, one
   hash, and two specs a path-by-path diff (F8). `pythonsrc.organizer` exports the schema
   and nothing else, so the api-server image — no trimesh, no manifold3d — can import it
   when the request model grows a spec field. Do not add pydantic here; it is not in the
   pipeline image.
+- **An archetype's parameters are a *section* on the spec, and an absent section is
+  omitted from the canonical form.** `Lid` and `Divider` are `Optional[...] = None` and
+  named in `_OPTIONAL_SECTIONS`, which is what `to_dict` drops when they are None.
+  `dataclasses.asdict` would have written `"divider":null` into every deck box spec ever
+  stored — moving every one of their hashes for a field they do not mention, and moving
+  them all again for the next archetype's section. `from_dict` defaults each to None, so
+  the round trip is unaffected and the fixed hash vector in `tests/test_organizer_spec.py`
+  did not move. `RawSpec` in `web/src/api/client.ts` declares both sections optional for
+  the same reason. The alternative — a `SCHEMA_VERSION` bump — refuses every existing
+  spec file for an additive field.
+  The parameters live on the spec rather than as archetype constants because F8 iterates
+  a design by spec *diff*: "make the tab wider" has to be `divider.tab_width_mm`.
+- **Each archetype refuses the other's section by name.** `deck_box` refuses a
+  `divider`, `card_divider` refuses a `lid`. Ignoring a section prints a different part
+  than the one asked for, silently, which is the same failure as ignoring an unsupported
+  field.
+- **`archetypes/common.py` holds what is not about one shape.** The
+  exactly-one-compartment rule (`single_compartment_problem`), the plane-count assertion
+  (`expect_planes`) and the view-row builder (`view_row`), each taking its own wording as
+  an argument so the sentence a person reads stays the archetype's. It was extracted when
+  the second archetype landed — that is the moment a habit becomes an API — and not into
+  `compiler.py` (the kernel bridge and the measurers) or `archetypes/__init__.py` (which
+  imports the archetype modules, so a helper there is a circular import).
 - **`dimensions.py` is a seed, not the KB.** The standard card footprint, the single and
   double sleeved envelopes and the three design pitches (0.305 / 0.60 / 0.70 mm per
   card), each with its source from `docs/dimension-kb-research.md`. Only `standard` is
   offered: the Japanese size has no sourced sleeve envelope and an invented one is
   exactly the fabricated number the schema exists to refuse. The M2 KB replaces this
   file; `resolve_stack`'s `basis` string is what the UI's fits line shows.
+- **`card_divider` is one flat plate with a label tab, and the second archetype is what
+  proves the API is an API** (issue #65, 2026-09-10). The plate is the sleeved envelope
+  exactly — **no margin**, because no divider margin is sourced anywhere and the one
+  candidate (`cavity_clearance_mm`, 1,5 mm) would make the plate as wide as this
+  project's own deck box cavity, a fit that jams. Seven measured features
+  (`plate_width/height_mm`, `thickness_mm`, `tab_width/height/offset_mm`,
+  `total_height_mm`), all seven on the mesh — unlike the deck box, which designs a stack
+  height no geometry carries. One part, so the gate is told `expected_components=1` and
+  scores it 100 / `ready` (the deck box's `min_wall_thickness` warn does not appear: a
+  1,4 mm plate reads over the floor at the ~0,4 mm pitch a 102 mm part gets).
+  `CardStack.count` does not enter the geometry — a divider labels a group of any size —
+  and the fits line says so rather than the archetype refusing a count.
+  `thickness_mm` defaults to 1,4 mm, the middle of the 1,2–1,6 mm band the audited
+  insert document gives (roadmap §0.5 — **one practitioner's practice, not a standard**);
+  the tab's 20 × 10 mm are **design defaults with no source**, and `to_view` says
+  "unsourced" on the row rather than presenting them as measured.
+  **It is built as one extruded outline, not two boxes unioned.** Boxes were tried
+  first: a `left` or `right` tab has a side face coplanar with the plate's, the kernel
+  keeps vertices from that intersection, and the mesh came back carrying a Y plane at
+  `plate_height − overlap` that no design dimension accounts for and `measure` could not
+  tell from a real one. `manifold3d.CrossSection(...).extrude(t)` has exactly the
+  design's planes — same kernel, no new dependency, and the primitive roadmap §0.5
+  already names for the chamfer work. `measure` reads X **per region** for the same
+  reason: the plate's two planes off its bottom edge, the tab's off the vertices above
+  the plate's top plane, and `tab_offset_mm` as the difference — which is also the only
+  way `left` and `right` are distinguishable (both give three X planes) and the only way
+  the offset survives `orient_for_print`'s re-centring.
 - **Archetype rules live in the archetype.** A lip thinner than `min_feature_mm`, a
   second compartment, magnets, a lid taller than the cavity — `deck_box.validate`
-  refuses each with the remedy named. Ignoring an unsupported field prints a different
-  box than the one asked for, silently.
+  refuses each with the remedy named. A tab as wide as its plate, a missing `divider`
+  section, a sub-`min_feature_mm` tab — `card_divider.validate` likewise. Ignoring an
+  unsupported field prints a different box than the one asked for, silently.
 - **Every designed feature is measured back off the mesh** (`deck_box.measure`, the
   shape of text-to-cad's measure/align checkers): the plate is split into body and lid,
   their distinct axis-aligned planes are read, and each feature is a difference of
@@ -609,20 +663,25 @@ the same STL byte for byte (`tests/test_deck_box.py` pins that).
   (the `achieved_extent_mm` precedent — no new column); and a miss is a `MeasureError`,
   which is a failed Phase 3. A spec run that ships a wrong dimension has failed, however
   watertight it is. `tests/test_organizer_dimensional_accuracy.py` sweeps 405 specs
-  across the deck box's envelope on the exported, reloaded STL and a corner set through
-  the assert path, and runs as its own CI step.
-- **The compiler is the generation model.** `generation_model = "organizer/deck_box"`,
+  across the deck box's envelope and 324 across the divider's (sleevings × tab positions
+  × thicknesses × tab sizes) on the exported, reloaded STL, plus a corner set through
+  the assert path for each, and runs as its own CI step. Per-archetype `parametrize`
+  blocks, because the *generic* sweep across every archetype is issue #85 and still open.
+- **The compiler is the generation model.** `generation_model = "organizer/deck_box"` or
+  `"organizer/card_divider"`,
   `generation_model_version = "1"`, `generation_backend = "local"`, the spec hash and
   features in `generation_params`. No new column — this is exactly what those columns
   record. `blueprint_*` stay NULL, correctly. `size_source="spec"` is written by
   `POST /jobs` when the request carries a spec (below).
-- **The gate is told the part count.** `evaluate_printability(expected_components=)`:
+- **The gate is told the part count**, read off `len(compile_result.parts)` so no
+  archetype knowledge lives in `pipeline.py`. `evaluate_printability(expected_components=)`:
   a body and a lid are two grounded bodies as designed, and used to score every deck
-  box "risky" for a possible unintended split. A mismatch still warns; a floating body
+  box "risky" for a possible unintended split; a divider is one. A mismatch still warns;
+  a floating body
   still fails. The remaining warn on a deck box is `min_wall_thickness`: the measurement
   pitch grows with the plate's width, so a 1.4 mm lip reads as "within tolerance of the
   minimum", and the verdict stays `risky` because that check is critical. That is the
-  check's known quantisation, not a thin lip.
+  check's known quantisation, not a thin lip. A divider scores 100 / `ready`.
 - **`POST /jobs` accepts a spec** (`JobRequest.spec`). Validated on the model with the
   stdlib-only schema — `pythonsrc.organizer` imports nothing heavy for exactly this — so
   a bad spec is a 422 listing every problem and no row is written; the archetype's own
@@ -663,12 +722,21 @@ the same STL byte for byte (`tests/test_deck_box.py` pins that).
   `NO_SPEC_REASON` (a generative job), `UNCOMPOSED_SPEC_REASON` (the composer, which
   still cannot build a spec) and `UNMEASURED_FIT_REASON` (a spec Phase 3 has not
   measured).
+- **`ARCHETYPES` in `web/src/organizer/spec.ts` is exactly `spec.ARCHETYPES`**, and
+  `tests/test_archetype_registry.py` binds the three lists — the schema's, the
+  registry's keys and the `id`s in the TSX (read as text; there is no test runner in
+  `web/`). It offered `dice_tray`, `box_insert` and `dividers` until the divider landed
+  and none of the three existed: a strip cell for a shape the compiler would refuse is
+  the same fabrication as a fits badge with no measurement behind it. A cell appears the
+  day the compiler does. That test also asserts every registry module exposes the whole
+  archetype API, which is what "adding an archetype is a module and a line" means.
 - **Not built, and where it is:** composing a spec in the UI — every job the app can
   submit is still a prompt job, so `NO_SPEC_REASON` is what its own panels show — the
   annotated mm preview (`archetypes.view_for` is written; nothing serves it), the
-  envelope sweep across *every* archetype (M1 — there is one), LLM extraction and the
+  *generic* envelope sweep across every archetype (#85 — there are two, each with its
+  own `parametrize`), the token tray and box-insert archetypes, LLM extraction and the
   KB (M2). `python -m pythonsrc.organizer example|compile|measure [--report]` is the
-  developer loop.
+  developer loop; `example` takes the archetype positionally or as `--archetype`.
 
 ### Server (server/app.py)
 

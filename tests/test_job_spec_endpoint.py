@@ -155,11 +155,20 @@ def test_a_prompt_job_carries_nulls(prompt_job):
 
 def test_the_spec_is_carried_canonically_so_no_field_is_missing(spec_job):
     """The submitted spec named no `process` at all. A row that records the omission
-    describes a part with no wall thickness, and the panel renders undefined."""
+    describes a part with no wall thickness, and the panel renders undefined.
+
+    The two archetype-specific *sections* are the deliberate exception: an absent one is
+    omitted rather than written as null, so that adding an archetype's section does not
+    move the `spec_hash` of every spec that never mentioned it. This is a deck box, so
+    `lid` is there and `divider` is not, and `RawSpec` declares both optional."""
+    from pythonsrc.organizer.spec import _OPTIONAL_SECTIONS
     body = client.get(f"/jobs/{spec_job()}").json()
     assert body["spec"]["process"]["wall_mm"] == 2.8
     assert body["spec"]["constraints"] == {"max_external_mm": None}
-    assert set(body["spec"]) == {f.name for f in fields(OrganizerSpec)}
+    required = {f.name for f in fields(OrganizerSpec)} - set(_OPTIONAL_SECTIONS)
+    assert required <= set(body["spec"])
+    assert "lid" in body["spec"] and "divider" not in body["spec"]
+    assert set(body["spec"]) <= {f.name for f in fields(OrganizerSpec)}
 
 
 def test_before_phase_2_the_hash_is_computed_and_the_version_is_null(spec_job):

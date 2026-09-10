@@ -19,7 +19,8 @@ Three properties follow, and each is enforced here rather than hoped for:
   path and raises one `SpecError`, so a bad spec is rejected once with the full list
   rather than one field per attempt. Field-level rules live in each class's
   `__post_init__`; rules that belong to a *shape* (a lip too thin, a second
-  compartment) live in the archetype, because they are facts about deck boxes.
+  compartment, a tab wider than its plate) live in the archetype, because they are
+  facts about one shape rather than about specs.
 - **It is one thing.** `canonical_json` sorts keys and strips whitespace, `spec_hash`
   is its sha256, `spec_diff` compares two specs path by path. The hash is what the
   UI's `OrganizerSpec.hash` carries and what a future gate approval binds to.
@@ -44,12 +45,18 @@ from .dimensions import CARD_KINDS, SLEEVINGS
 #: refused rather than reinterpreted.
 SCHEMA_VERSION = 1
 
-#: Archetypes a spec may name. The registry in `archetypes/` must cover each.
-ARCHETYPES: tuple[str, ...] = ("deck_box",)
+#: Archetypes a spec may name. The registry in `archetypes/` must cover each, and
+#: `web/src/organizer/spec.ts`'s `ARCHETYPES` must be the same set — a strip offering a
+#: shape the engine cannot compile is the same fabrication as an unmeasured fits badge.
+#: `tests/test_archetype_registry.py` binds the three lists.
+ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider")
 
 #: Lid mechanisms the schema knows. Slide, hinged and magnetic lids are later
 #: archetype variants (roadmap M1/M3) and are not accepted until they exist.
 LID_KINDS: tuple[str, ...] = ("lift_off",)
+
+#: Where a divider's label tab sits along the plate's top edge.
+TAB_POSITIONS: tuple[str, ...] = ("left", "centre", "right")
 
 #: Decimal places kept on every millimetre value: 3 → 1 µm.
 MM_DECIMALS = 3
@@ -160,6 +167,41 @@ class Lid:
 
 
 @dataclass(frozen=True)
+class Divider:
+    """The plate and label tab of a card divider.
+
+    A section on the spec rather than constants inside `card_divider.py` for two
+    reasons that are the same reason: F8 iterates a design by spec *diff*, so "make the
+    tab wider" must be a path (`divider.tab_width_mm`) rather than an archetype's
+    private habit, and the deck box's closure numbers already live in `Lid` for exactly
+    that. Only `card_divider` reads it; every other archetype refuses a spec that
+    carries one, because ignoring a section prints a different part in silence.
+
+    `thickness_mm` defaults to the middle of the 1,2–1,6 mm band the audited insert
+    document gives (roadmap §0.5 — one practitioner's practice, not a standard), which
+    is also seven 0,2 mm layers. **The tab figures are design defaults, not
+    measurements**: nothing in `docs/dimension-kb-research.md` sources a divider tab,
+    and `to_view` says so on the row rather than presenting them as sourced.
+    """
+
+    thickness_mm: float = 1.4
+    tab_width_mm: float = 20.0
+    tab_height_mm: float = 10.0
+    tab_position: str = "centre"
+
+    def __post_init__(self) -> None:
+        problems: list[str] = []
+        _set(self, "thickness_mm", _mm(self.thickness_mm, "thickness_mm", problems))
+        _set(self, "tab_width_mm", _mm(self.tab_width_mm, "tab_width_mm", problems))
+        _set(self, "tab_height_mm", _mm(self.tab_height_mm, "tab_height_mm", problems))
+        if self.tab_position not in TAB_POSITIONS:
+            problems.append(
+                f"tab_position must be one of {list(TAB_POSITIONS)}, got {self.tab_position!r}"
+            )
+        _raise_if(problems)
+
+
+@dataclass(frozen=True)
 class Constraints:
     """External limits the finished part must fit within: (W, D, H) in mm, or None."""
 
@@ -211,6 +253,7 @@ class OrganizerSpec:
     archetype: str
     compartments: Tuple[Compartment, ...]
     lid: Optional[Lid] = None
+    divider: Optional[Divider] = None
     constraints: Constraints = field(default_factory=Constraints)
     process: Process = field(default_factory=Process)
     schema_version: int = SCHEMA_VERSION
@@ -231,6 +274,10 @@ class OrganizerSpec:
                     problems.append(f"compartments[{i}] must be a Compartment, got {type(c).__name__}")
         if self.lid is not None and not isinstance(self.lid, Lid):
             problems.append(f"lid must be a Lid or null, got {type(self.lid).__name__}")
+        if self.divider is not None and not isinstance(self.divider, Divider):
+            problems.append(
+                f"divider must be a Divider or null, got {type(self.divider).__name__}"
+            )
         if not isinstance(self.constraints, Constraints):
             problems.append("constraints must be a Constraints object")
         if not isinstance(self.process, Process):
@@ -244,8 +291,20 @@ class OrganizerSpec:
     # ── serialisation ──────────────────────────────────────────────────────────
 
     def to_dict(self) -> dict[str, Any]:
-        """The spec as plain JSON types (tuples become lists)."""
-        return json.loads(json.dumps(dataclasses.asdict(self)))
+        """The spec as plain JSON types (tuples become lists).
+
+        An absent optional *section* is omitted rather than written as null. That is
+        what keeps `spec_hash` an additive-safe identity: `dataclasses.asdict` would put
+        `"divider":null` into every deck box spec ever written, moving every stored hash
+        for a field those specs do not mention — and the next archetype's section would
+        move them all again. `from_dict` defaults each of them to None, so the round
+        trip is unaffected.
+        """
+        data = json.loads(json.dumps(dataclasses.asdict(self)))
+        for name in _OPTIONAL_SECTIONS:
+            if data.get(name, "keep") is None:
+                del data[name]
+        return data
 
     def to_json(self, indent: Optional[int] = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
@@ -276,9 +335,14 @@ class OrganizerSpec:
 _NESTED: dict[tuple[type, str], Any] = {
     (Compartment, "contents"): CardStack,
     (OrganizerSpec, "lid"): Lid,
+    (OrganizerSpec, "divider"): Divider,
     (OrganizerSpec, "constraints"): Constraints,
     (OrganizerSpec, "process"): Process,
 }
+
+#: Optional sections `to_dict` omits when absent — one per archetype family. Each is
+#: `Optional[...] = None` on `OrganizerSpec` and read by one archetype only.
+_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider")
 _LIST_FIELDS: dict[tuple[type, str], type] = {
     (OrganizerSpec, "compartments"): Compartment,
 }

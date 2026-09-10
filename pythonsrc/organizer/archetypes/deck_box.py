@@ -25,10 +25,12 @@ The one tolerance-critical surface is the lid cavity over the lip: `lid.clearanc
 per side. That is the number a test-fit coupon (F12) will print first.
 
 Rules that belong to this *shape* rather than to specs in general — exactly one
-compartment, a lift-off lid without magnets, a lip no thinner than
+compartment, a lift-off lid without magnets, no `divider` section, a lip no thinner than
 `process.min_feature_mm`, a lid shorter than the cavity — are checked here and refused
 with the remedy named. Ignoring an unsupported field would print a different box than
-the one asked for, silently.
+the one asked for, silently. The rules that are not about deck boxes — the
+compartment count, the plane-count assertion, the view row — come from
+`common.py`, which exists so the second archetype states them in the same words.
 
 Authored in Claude Code against `manifold3d` directly (roadmap §0.2's "authored with
 text-to-cad, source frozen"): text-to-cad drives build123d on OCCT, which the kernel
@@ -42,15 +44,18 @@ from typing import Any
 
 import manifold3d
 
-from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh, plane_set
+from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Lid, OrganizerSpec, SpecError, spec_hash
+from .common import expect_planes, single_compartment_problem, view_row
 
 ARCHETYPE = "deck_box"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
 ARCHETYPE_VERSION = "1"
 #: Clear space between the body and the lid on the plate, mm.
 PLATE_GAP_MM = 10.0
+#: How this archetype names itself in a refusal or a measurement finding.
+_SUBJECT = f"a deck box v{ARCHETYPE_VERSION}"
 
 
 @dataclass(frozen=True)
@@ -107,10 +112,15 @@ def _structural_problems(spec: OrganizerSpec) -> list[str]:
     problems: list[str] = []
     if spec.archetype != ARCHETYPE:
         problems.append(f"archetype {spec.archetype!r} is not {ARCHETYPE!r}")
-    if len(spec.compartments) != 1:
+    one = single_compartment_problem(
+        spec, subject=f"deck_box v{ARCHETYPE_VERSION}", holds="the deck"
+    )
+    if one:
+        problems.append(one)
+    if spec.divider is not None:
         problems.append(
-            f"deck_box v{ARCHETYPE_VERSION} holds exactly one compartment (the deck); "
-            f"got {len(spec.compartments)}"
+            f"deck_box v{ARCHETYPE_VERSION} has no divider plate; the divider section "
+            "belongs to archetype 'card_divider' — remove it or change the archetype"
         )
     if spec.lid is None:
         problems.append(f"deck_box v{ARCHETYPE_VERSION} needs a lid (lid is null)")
@@ -260,13 +270,7 @@ MEASURED_FEATURES: tuple[str, ...] = (
 
 
 def _planes(part: Any, axis: int, expected: int, what: str) -> list[float]:
-    planes = plane_set(part.vertices[:, axis])
-    if len(planes) != expected:
-        raise MeasureError(
-            f"the {what} has {len(planes)} distinct {'XYZ'[axis]} planes where a deck box "
-            f"v{ARCHETYPE_VERSION} has {expected}: {[round(v, 3) for v in planes]}"
-        )
-    return planes
+    return expect_planes(part, axis, expected, what=what, subject=_SUBJECT)
 
 
 def measure(mesh: Any) -> dict[str, float]:
@@ -371,13 +375,7 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
     lid = spec.lid
     assert lid is not None
 
-    def row(key: str, label: str, value: float, unit: str, editable: bool,
-            note: str | None = None) -> dict[str, Any]:
-        out: dict[str, Any] = {"key": key, "label": label, "value": value, "unit": unit, "editable": editable}
-        if note:
-            out["note"] = note
-        return out
-
+    row = view_row
     dimensions = [
         row("card_count", "Cards", s.count, "cards", True),
         row("pitch_mm", "Pitch per card", s.pitch_mm, "mm", False, s.basis),

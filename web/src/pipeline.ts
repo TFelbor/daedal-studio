@@ -10,9 +10,10 @@
  *
  * ── A note the next person needs ──────────────────────────────────────────────
  * These names describe the parametric pipeline (`docs/PRD_daedal_tcg_organizers.md`,
- * roadmap §§0.1–7A). As of 2026-09-03 the engine exists for one archetype:
- * `pythonsrc/organizer/` compiles a deck-box spec and `pipeline.py --spec` runs that
- * compile as phase 2, so "Compiler" is literal on that path. On the generative path
+ * roadmap §§0.1–7A). As of 2026-09-10 the engine exists for two archetypes:
+ * `pythonsrc/organizer/` compiles a deck-box or card-divider spec and
+ * `pipeline.py --spec` runs that compile as phase 2, so "Compiler" is literal on that
+ * path — and `ARCHETYPES` in `organizer/spec.ts` is that pair, no more. On the generative path
  * phase 1 still renders a blueprint with FLUX.2 and phase 2 reconstructs it with
  * TRELLIS.2. `POST /jobs` accepts a spec (`JobRequest.spec`), the pipeline asserts its
  * dimensions after phase 3, and `GET /jobs/{id}` carries the spec, its hash and that
