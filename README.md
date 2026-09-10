@@ -419,7 +419,7 @@ same commit):
 
 - [ ] Hosted environment — API + web + database on one VM, TLS, access gate, admin surface locked down, no Docker socket in the public build
 - [ ] Bounded job queue + rate limits replacing fire-and-forget dispatch
-- [ ] Printer-reachability decision for a hosted server — 3MF download / Bambu Cloud / local agent / phone-as-LAN-bridge
+- [x] ~~Printer-reachability decision for a hosted server — 3MF download / Bambu Cloud / local agent / phone-as-LAN-bridge~~ **Decided 2026-09-10 (§0.6, issue #95): B + A for this beta (3MF download, self-host on LAN for zero-click), C for the December launch ("Daedal Link" local helper), D in Q1 2027 (native app as LAN bridge). Not E.**
 - [ ] ToS (warranty, indemnity, right to refuse, data-use consent) + privacy policy live before the first external tester
 - [ ] Closed beta cohort 1 — external users prompt, we print on KTH/Trento, photo + fit verdict back; every participant interviewed
 - [ ] Bambu operator for real — KTH machine in Developer Mode; port text-to-cad's MIT `bambu-labs` FTPS/MQTT logic (Tytus) — moved from Phase 2 on 4 Sep: the beta prints on our own machine via Bambu Studio by hand
@@ -439,6 +439,7 @@ same commit):
 - [ ] EU AI Act transparency review; GDPR data-subject path (retention window, export/delete, LLM processor terms)
 - [ ] Mobile web QA on real iOS + Android devices — viewer, install flow, push, camera
 - [ ] Pre-launch checklist verified; cybersecurity review
+- [ ] **"Daedal Link" local helper (route C, §0.6)** — signed-in desktop/Pi agent, outbound WebSocket to the hosted server; C(i) hands the sliced 3MF to Bambu Connect via `bambu-connect://import-file` (no Developer Mode, one Send click), C(ii) drives MQTT/FTPS over the LAN (Developer Mode, zero clicks, telemetry). Engine is `BambuOperator` (#73). **If cut, B is the launch route and the copy says "Download and print".**
 - [ ] Public launch — parametric TCG organizers, STL/3MF export, OctoPrint handoff, Bambu handoff where verified
 - [ ] (Could) F13 lid embossing — only after the embossing-field IP screen exists
 
