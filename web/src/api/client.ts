@@ -134,18 +134,30 @@ export interface JobStatusResponse {
  * Every field is present, because `POST /jobs` normalises a submitted spec through
  * the schema before it is stored — a request may omit `process` and mean its defaults
  * by it, but what lands on the row and in `spec.json` never does.
+ *
+ * The two archetype-specific *sections* are the exception, and deliberately: an absent
+ * one is **omitted** from the canonical form rather than written as null, so that
+ * adding an archetype does not move the `spec_hash` of every spec that never mentioned
+ * it. So `lid` is present on a deck box and absent on a divider, and `divider` the
+ * other way round — read them as optional, not as always-there-and-maybe-null.
  */
 export interface RawSpec {
   archetype: string;
   schema_version: number;
   compartments: { contents: { count: number; card: string; sleeving: string } }[];
-  lid: {
+  lid?: {
     kind: string;
     magnets: boolean;
     height_mm: number;
     wall_mm: number;
     clearance_mm: number;
     top_mm: number;
+  } | null;
+  divider?: {
+    thickness_mm: number;
+    tab_width_mm: number;
+    tab_height_mm: number;
+    tab_position: string;
   } | null;
   constraints: { max_external_mm: [number, number, number] | null };
   process: {

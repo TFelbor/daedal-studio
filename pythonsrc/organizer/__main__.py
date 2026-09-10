@@ -1,8 +1,13 @@
 """Command line for the organizer engine — the developer loop before `pipeline.py --spec`.
 
     python -m pythonsrc.organizer example deck_box > deck.json
+    python -m pythonsrc.organizer example card_divider > divider.json
     python -m pythonsrc.organizer compile deck.json --out deck.stl --features features.json
     python -m pythonsrc.organizer measure deck.json deck.stl [--report dimension_report.json]
+
+`example` takes the archetype positionally or as `--archetype`; the two spellings are
+the same argument, because the acceptance criteria and the existing tests reach for
+different ones and a developer loop is not worth a rename.
 
 In the pipeline image (`PYTHONPATH=/app/pythonsrc`) the module is `organizer`. Exit codes:
 0 ok, 1 measurement out of tolerance, 2 a spec or usage problem.
@@ -18,11 +23,14 @@ import trimesh
 
 from .archetypes import compile_spec, example_spec, verify_spec_mesh
 from .compiler import DEFAULT_TOLERANCE_MM, MeasureError, export_stl
-from .spec import SpecError, dump_spec, load_spec
+from .spec import ARCHETYPES, SpecError, dump_spec, load_spec
 
 
 def _cmd_example(args: argparse.Namespace) -> int:
-    print(example_spec(args.archetype).to_json())
+    name = args.archetype_flag or args.archetype
+    if not name:
+        raise SpecError([f"name an archetype: one of {list(ARCHETYPES)}"])
+    print(example_spec(name).to_json())
     return 0
 
 
@@ -69,7 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_example = sub.add_parser("example", help="print an example spec for an archetype")
-    p_example.add_argument("archetype")
+    p_example.add_argument("archetype", nargs="?", choices=list(ARCHETYPES), help="which archetype")
+    p_example.add_argument("--archetype", dest="archetype_flag", choices=list(ARCHETYPES),
+                           help="the same argument, spelled as a flag")
     p_example.set_defaults(func=_cmd_example)
 
     p_compile = sub.add_parser("compile", help="compile a spec file to an STL")

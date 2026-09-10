@@ -9,7 +9,10 @@ interface ArchetypeStripProps {
 }
 
 /**
- * The four archetypes, as a segmented strip above the prompt.
+ * The archetypes the engine can compile, as a segmented strip above the prompt.
+ *
+ * The list comes from `organizer/spec.ts` and is exactly the backend's `ARCHETYPES`,
+ * so a cell never offers a shape the compiler would refuse.
  *
  * Progressive disclosure, in the Hero Forge sense: the broadest choice first, so
  * the prompt underneath has somewhere to start rather than facing an empty box.

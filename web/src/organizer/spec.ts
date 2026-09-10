@@ -30,12 +30,23 @@ import type { DimensionCheck, JobStatusResponse, RawSpec } from '../api/client';
 
 export type { RawSpec };
 
-/** The archetypes the composer offers. Ordered as the strip presents them. */
+/**
+ * The archetypes the composer offers — exactly the ones the engine can compile.
+ *
+ * This list is `spec.ARCHETYPES` in `pythonsrc/organizer/spec.py`, and
+ * `tests/test_archetype_registry.py` reads this file to hold the two to the same set.
+ * It offered `dice_tray`, `box_insert` and `dividers` until the divider landed, none
+ * of which existed: a strip cell for a shape the engine would refuse is the same class
+ * of fabrication as a fits badge with no measurement behind it — the person picks it,
+ * types a prompt, and the product silently gives them something else. The token tray
+ * and the box-insert grid are real roadmap items (§0.3 Phase 2 and Phase 3); a cell
+ * appears here the day the compiler does.
+ *
+ * Ordered as the strip presents them.
+ */
 export const ARCHETYPES = [
   { id: 'deck_box', label: 'Deck box' },
-  { id: 'dice_tray', label: 'Dice tray' },
-  { id: 'box_insert', label: 'Box insert' },
-  { id: 'dividers', label: 'Dividers' },
+  { id: 'card_divider', label: 'Card divider' },
 ] as const;
 
 export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];
@@ -139,6 +150,7 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
   const stack = spec.compartments?.[0]?.contents;
   const p = spec.process;
   const lid = spec.lid;
+  const divider = spec.divider;
   const dimensions: SpecDimension[] = [];
 
   if (stack) {
@@ -164,6 +176,19 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
       row('lid_clearance_mm', 'Lid clearance', lid.clearance_mm, 'mm', true,
         'per side; the fit tolerance a test coupon prints first'),
       row('lid_top_mm', 'Lid top', lid.top_mm, 'mm', true),
+    );
+  }
+  if (divider) {
+    // `tab_position` is a word and `SpecDimension.value` is a number, so it rides as
+    // the tab-width row's note. The tab offset the compiler derives from it is
+    // `derive()`'s figure, not the spec's, and is deliberately not re-computed here.
+    dimensions.push(
+      row('thickness_mm', 'Plate thickness', divider.thickness_mm, 'mm', true,
+        '1,2–1,6 mm insert band; one practitioner’s practice, not a standard'),
+      row('tab_width_mm', 'Tab width', divider.tab_width_mm, 'mm', true,
+        `${divider.tab_position}; design default, unsourced`),
+      row('tab_height_mm', 'Tab height', divider.tab_height_mm, 'mm', true,
+        'how far the tab stands proud of the cards'),
     );
   }
   const limit = spec.constraints?.max_external_mm;
