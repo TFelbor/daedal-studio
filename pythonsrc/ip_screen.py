@@ -19,7 +19,34 @@ either way:
   human blueprint gate decides. Refusing everything half-recognised would refuse
   paying pilot users for asking about fan art, and this is a pilot.
 
-Two design notes worth keeping.
+Three design notes worth keeping.
+
+**A functional article is not a reproduction, and the grammar says which one it is.**
+This screen was written for the figurine product, where every curated name meant
+"print me Pikachu". The parametric product's users name a franchise as the *contents*
+of the part they are ordering — "deck box for Pokémon cards" is the primary persona's
+literal prompt — and refusing that refuses the customer for describing their own use
+case, with no appeal path. So a match is classified on a second axis, *how* the name
+is used (`_classify_usage`), and only for strong hits:
+
+- **depiction** — a depiction cue near the name ("emblem", "figurine", "on the lid").
+  The name is what the part is meant to *look like*. Blocked, as before.
+- **functional** — a purpose cue before the name ("for", "fits", "holds my … cards").
+  The name is what the part is *for*. Flagged, so the human gate still sees it.
+- **attributive** — neither. A `character` is blocked ("a Pikachu deck box" names the
+  subject); a `franchise` or `brand` is flagged, because "a Pokémon deck box" names
+  the cards going in it.
+
+Depiction wins when both fire, and across several matches the most severe verdict
+wins, so "deck box for Pokémon cards with a Charizard emblem on the lid" is still
+refused. The accepted false negative is stated rather than discovered: a character
+named only as contents, with no depiction cue ("a stand for Pikachu"), is flagged
+rather than blocked, and reaches the blueprint gate with the term named in the event.
+This is a product decision about where the line sits, not legal advice — see
+`docs/deferred-legal-tasks.md`, and note that the human gate remains the last word.
+
+The cues are English grammar the matcher reads, so they live here as module constants
+rather than in the blocklist, which promises to be descriptive data about marks only.
 
 **Normalise, then compare.** A raw string comparison has already been defeated once in
 this repo — the licensing guard was beaten by a `repo@sha` revision pin — so accents,
@@ -46,7 +73,7 @@ import logging
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("ds.ip_screen")
 
@@ -65,6 +92,54 @@ FUZZY_THRESHOLD = 0.86
 #: characters an edit distance of one reaches too many unrelated English words —
 #: "hulk"/"bulk", "elsa"/"else".
 MIN_FUZZY_LENGTH = 6
+
+#: Cues that the matched name is what the part is meant to *look like*. Each is matched
+#: as whole tokens (so "on the lid" cannot fire on a prompt that merely mentions a lid)
+#: within `DEPICTION_WINDOW` tokens either side of the name.
+DEPICTION_CUES: Tuple[str, ...] = (
+    "emblem", "logo", "engraved", "embossed", "relief", "silhouette", "figure",
+    "figurine", "statue", "bust", "portrait", "decal", "sticker", "motif", "mascot",
+    "shaped", "themed", "in the shape of", "looks like", "modelled on", "modeled on",
+    "on the lid", "on the front", "on the side", "on the top", "on top",
+)
+
+#: How far from the name a depiction cue may sit. Four tokens reaches
+#: "charizard emblem", "an elsa figurine", "pikachu, embossed on the front".
+DEPICTION_WINDOW = 4
+
+#: Cues that the matched name is what the part is *for*. Only counted **before** the
+#: name: "a deck box for pokemon cards" is purpose, "a pokemon figurine for my desk"
+#: is not, and the difference is which side of the name the preposition sits on.
+PURPOSE_CUES: Tuple[str, ...] = (
+    "for", "fit", "fits", "hold", "holds", "holding", "store", "stores", "storing",
+    "storage", "organise", "organises", "organiser", "organize", "organizes",
+    "organizer", "contains", "holder for", "houses", "carries", "sized for",
+)
+
+#: How far before the name a purpose cue may sit. Six tokens covers the measured
+#: phrasings this product invites — "fits 60 double sleeved standard lorcana cards" is
+#: five tokens from "fits" to the name.
+PURPOSE_WINDOW = 6
+
+#: "my" and "our" are purpose cues **only** with the contents named after the term, per
+#: the issue's "my … deck/cards/collection". Alone they are possession of a figurine
+#: just as easily as of a card collection.
+POSSESSIVE_CUES: Tuple[str, ...] = ("my", "our")
+
+#: What a functional article holds. Used only to complete a possessive purpose cue —
+#: never on its own, because "a pikachu deck box" names its subject and would otherwise
+#: read as functional on the strength of the word "deck".
+CONTENTS_NOUNS: Tuple[str, ...] = (
+    "card", "cards", "deck", "decks", "collection", "commander", "token", "tokens",
+    "dice", "sleeve", "sleeves", "booster", "boosters", "pack", "packs", "binder",
+    "set", "tcg", "ccg", "game", "minis", "miniatures",
+)
+
+#: How far after the name the contents noun may sit for the possessive cue to count.
+CONTENTS_WINDOW = 3
+
+#: Severity order, so "the most severe verdict across every match wins" is one lookup.
+_SEVERITY = {"allow": 0, "flag": 1, "block": 2}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -86,6 +161,12 @@ class ScreenVerdict:
     suggestion: Optional[str]
     """A way forward for a blocked prompt — an original-design rephrasing. None for
     an allow, and None for a flag, which is not a refusal and needs no alternative."""
+
+    usage: Optional[str] = None
+    """How the matched name was used: "depiction", "functional" or "attributive".
+    None when nothing was matched, and None for a weak signal, which is a phrase
+    rather than a name and so has no grammatical role to read. A trailing default so
+    every existing constructor keeps working."""
 
 
 def _normalise(text: str) -> str:
@@ -139,27 +220,34 @@ def load_blocklist() -> List[Dict[str, Any]]:
 
 
 @functools.lru_cache(maxsize=1)
-def _match_table() -> tuple[tuple[str, str, str], ...]:
-    """Every normalised spelling, with the term it belongs to and its strength.
+def _match_table() -> tuple[tuple[str, str, str, str], ...]:
+    """Every normalised spelling, with the term it belongs to, its strength and its
+    category.
+
+    The category is carried because the usage axis reads it: an attributive
+    `character` is the subject of the prompt and is refused, an attributive
+    `franchise` or `brand` names the contents and is flagged.
 
     Returns:
-        Tuples of (normalised spelling, canonical term, "strong" | "ambiguous").
+        Tuples of (normalised spelling, canonical term, "strong" | "ambiguous",
+        category).
     """
-    table: list[tuple[str, str, str]] = []
+    table: list[tuple[str, str, str, str]] = []
     for entry in load_blocklist():
         term = entry.get("term")
         if not term:
             continue
         strength = entry.get("strength", "strong")
+        category = entry.get("category", "character")
         for spelling in [term, *entry.get("aliases", [])]:
             normalised = _normalise(spelling)
             if normalised:
-                table.append((normalised, term, strength))
+                table.append((normalised, term, strength, category))
     return tuple(table)
 
 
-def _contains_phrase(tokens: List[str], phrase: str) -> bool:
-    """Whether *phrase* appears in *tokens* as whole words.
+def _find_phrases(tokens: List[str], phrase: str) -> Tuple[Tuple[int, int], ...]:
+    """Every token span in *tokens* that is *phrase* as whole words.
 
     Two ways a window can match, and both are needed:
 
@@ -175,30 +263,39 @@ def _contains_phrase(tokens: List[str], phrase: str) -> bool:
     marker" for "stitch". Concatenating a window cannot match inside a longer word,
     because "marionette" is one token and its concatenation is "marionette".
 
+    Every span is returned, not just the first: one name can be used two ways in one
+    prompt ("deck box for pokemon cards, pokemon logo on the lid") and the second use
+    is the one that decides.
+
     Args:
         tokens: The normalised prompt, split on spaces.
         phrase: A normalised spelling, possibly multi-word.
 
     Returns:
-        True when some window of whole tokens is that phrase.
+        `(start, end)` token indices, end exclusive, in order. Empty when the phrase
+        does not appear.
     """
     needle = phrase.split()
     if not needle:
-        return False
+        return ()
 
     bare = "".join(needle)
     # Wide enough for a fully spelled-out name; beyond that the window would start
     # spanning unrelated words.
     max_width = max(len(needle), len(bare))
 
+    spans: set[Tuple[int, int]] = set()
     for width in range(1, max_width + 1):
         for i in range(len(tokens) - width + 1):
             window = tokens[i:i + width]
-            if window == needle:
-                return True
-            if "".join(window) == bare:
-                return True
-    return False
+            if window == needle or "".join(window) == bare:
+                spans.add((i, i + width))
+    return tuple(sorted(spans))
+
+
+def _contains_phrase(tokens: List[str], phrase: str) -> bool:
+    """Whether *phrase* appears in *tokens* as whole words. See `_find_phrases`."""
+    return bool(_find_phrases(tokens, phrase))
 
 
 @functools.lru_cache(maxsize=1)
@@ -214,7 +311,9 @@ def _weak_signals() -> tuple[str, ...]:
     )
 
 
-def _fuzzy_hit(haystack_tokens: List[str], needle: str) -> float:
+def _fuzzy_hit(
+    haystack_tokens: List[str], needle: str,
+) -> Tuple[float, Optional[Tuple[int, int]]]:
     """Best similarity between a curated term and any window of the prompt.
 
     Multi-word terms are compared against windows of the same word count, so
@@ -225,19 +324,80 @@ def _fuzzy_hit(haystack_tokens: List[str], needle: str) -> float:
         needle: One normalised curated spelling.
 
     Returns:
-        The best ratio found, or 0.0 when the term is too short to fuzzy-match.
+        `(best ratio, span)`, where the span is the window that scored it — the usage
+        axis needs to know *where* the near-match sits, so that "deck box for pokmon
+        cards" is read as functional rather than blocked. `(0.0, None)` when the term
+        is too short to fuzzy-match or the prompt is shorter than the term.
     """
     width = len(needle.split())
     if len(needle.replace(" ", "")) < MIN_FUZZY_LENGTH:
-        return 0.0
+        return 0.0, None
 
-    best = 0.0
+    best, best_span = 0.0, None
     for i in range(len(haystack_tokens) - width + 1):
         window = " ".join(haystack_tokens[i:i + width])
         ratio = difflib.SequenceMatcher(None, window, needle).ratio()
         if ratio > best:
-            best = ratio
-    return best
+            best, best_span = ratio, (i, i + width)
+    return best, best_span
+
+
+def _classify_usage(tokens: List[str], span: Tuple[int, int]) -> str:
+    """How the name occupying *span* is being used.
+
+    Args:
+        tokens: The normalised prompt, split on spaces.
+        span: `(start, end)` token indices of the matched name, end exclusive.
+
+    Returns:
+        "depiction", "functional" or "attributive". Depiction is checked first, so a
+        prompt that both names its contents and asks for a likeness is read as asking
+        for the likeness.
+    """
+    start, end = span
+
+    around = tokens[max(0, start - DEPICTION_WINDOW):end + DEPICTION_WINDOW]
+    if any(_contains_phrase(around, cue) for cue in DEPICTION_CUES):
+        return "depiction"
+
+    before = tokens[max(0, start - PURPOSE_WINDOW):start]
+    if any(_contains_phrase(before, cue) for cue in PURPOSE_CUES):
+        return "functional"
+
+    after = tokens[end:end + CONTENTS_WINDOW]
+    if (any(cue in before for cue in POSSESSIVE_CUES)
+            and any(noun in after for noun in CONTENTS_NOUNS)):
+        return "functional"
+
+    return "attributive"
+
+
+@dataclasses.dataclass(frozen=True)
+class _Hit:
+    """One matched spelling, with everything the verdict turns on."""
+
+    term: str
+    category: str
+    strength: str
+    score: float
+    usage: str
+
+
+def _hit_action(hit: _Hit) -> str:
+    """What one match, on its own, would decide.
+
+    An ambiguous term is flagged whatever its usage: the match is *correct* and the
+    inference is not, which no amount of grammar fixes — "a joker figurine" is a
+    jester as readily as the DC character. Usage only discriminates among strong
+    matches, which is where this screen's refusals come from.
+    """
+    if hit.strength != "strong":
+        return "flag"
+    if hit.usage == "depiction":
+        return "block"
+    if hit.usage == "functional":
+        return "flag"
+    return "block" if hit.category == "character" else "flag"
 
 
 def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
@@ -261,60 +421,94 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
 
     tokens = normalised.split()
 
-    exact_strong: Optional[str] = None
-    exact_ambiguous: Optional[str] = None
-    best_term, best_score, best_strength = None, 0.0, "strong"
+    exact: list[_Hit] = []
+    fuzzy: Optional[_Hit] = None
+    best_score = 0.0
 
-    for spelling, term, strength in _match_table():
-        if _contains_phrase(tokens, spelling):
-            if strength == "strong":
-                exact_strong = exact_strong or term
-            else:
-                exact_ambiguous = exact_ambiguous or term
+    for spelling, term, strength, category in _match_table():
+        spans = _find_phrases(tokens, spelling)
+        if spans:
+            exact.extend(
+                _Hit(term, category, strength, 1.0, _classify_usage(tokens, span))
+                for span in spans
+            )
             continue
-        ratio = _fuzzy_hit(tokens, spelling)
-        if ratio > best_score:
-            best_term, best_score, best_strength = term, ratio, strength
+        ratio, span = _fuzzy_hit(tokens, spelling)
+        if ratio > best_score and span is not None:
+            best_score = ratio
+            fuzzy = _Hit(term, category, strength, ratio, _classify_usage(tokens, span))
 
     # An ambiguous word standing next to an unambiguous one is not ambiguous: "the
-    # joker from batman" is not a playing card.
-    if exact_strong:
-        best_term, best_score, best_strength = exact_strong, 1.0, "strong"
-    elif exact_ambiguous:
-        best_term, best_score, best_strength = exact_ambiguous, 1.0, "ambiguous"
+    # joker from batman" is not a playing card, and "a space marine from warhammer
+    # 40k" is not a spaceman.
+    if any(hit.strength == "strong" for hit in exact):
+        exact = [dataclasses.replace(hit, strength="strong") for hit in exact]
 
-    # A correct match on a word that is also ordinary English is a question for a
-    # person, not a refusal. The image screen and the blueprint gate are both
-    # downstream; a wrongly refused prompt has nothing downstream at all.
-    if best_score >= FUZZY_THRESHOLD and best_term and best_strength == "ambiguous":
+    # The best near-match is considered alongside the exact ones rather than only when
+    # there are none: with usage in play, an exact functional hit no longer refuses the
+    # whole prompt, so "deck box for pokemon cards with a pikchu emblem" must still be
+    # decided by the near-match on "pikachu".
+    candidates = list(exact)
+    if fuzzy is not None and fuzzy.score >= FUZZY_THRESHOLD:
+        candidates.append(fuzzy)
+
+    if candidates:
+        # The most severe verdict any one match would give, and then the first match
+        # that gives it — blocklist order, so the term a person is shown is stable.
+        action = max((_hit_action(hit) for hit in candidates), key=_SEVERITY.__getitem__)
+        decisive = next(hit for hit in candidates if _hit_action(hit) == action)
+
+        if action == "block":
+            return ScreenVerdict(
+                action="block",
+                term=decisive.term,
+                score=round(decisive.score, 3),
+                detail=(
+                    f"This prompt names \"{decisive.term}\", which belongs to someone "
+                    "else. We only print original designs, so we cannot make this "
+                    "one. Describe the shape and character you want in your own words "
+                    "instead and we will design something original for you."
+                ),
+                suggestion=(
+                    "Try describing the form rather than the name — proportions, pose, "
+                    "silhouette, style. For example: \"a chunky, round-cheeked creature "
+                    "figurine with big ears and a lightning-bolt tail, chibi "
+                    "proportions\"."
+                ),
+                usage=decisive.usage,
+            )
+
+        # A name used for what the part *holds* describes purpose, not depiction. The
+        # part is made; the flag is what the human gate reads.
+        if decisive.usage == "functional":
+            return ScreenVerdict(
+                action="flag",
+                term=decisive.term,
+                score=round(decisive.score, 3),
+                detail=(
+                    f"This prompt mentions \"{decisive.term}\" as what the part is "
+                    "for, not as what it depicts, so it goes ahead as a functional "
+                    "article. It will be reviewed before anything is reconstructed."
+                ),
+                suggestion=None,
+                usage=decisive.usage,
+            )
+
+        # A correct match on a word that is also ordinary English, or on a franchise
+        # naming what goes in the part, is a question for a person rather than a
+        # refusal. The image screen and the blueprint gate are both downstream; a
+        # wrongly refused prompt has nothing downstream at all.
         return ScreenVerdict(
             action="flag",
-            term=best_term,
-            score=round(best_score, 3),
+            term=decisive.term,
+            score=round(decisive.score, 3),
             detail=(
-                f"This prompt uses the word \"{best_term}\", which is also the name of "
-                "a protected character. It will be reviewed before anything is "
-                "reconstructed."
+                f"This prompt uses the word \"{decisive.term}\", which is also the "
+                "name of a protected character or franchise. It will be reviewed "
+                "before anything is reconstructed."
             ),
             suggestion=None,
-        )
-
-    if best_score >= FUZZY_THRESHOLD and best_term:
-        return ScreenVerdict(
-            action="block",
-            term=best_term,
-            score=round(best_score, 3),
-            detail=(
-                f"This prompt names \"{best_term}\", which belongs to someone else. "
-                "We only print original designs, so we cannot make this one. Describe "
-                "the shape and character you want in your own words instead and we "
-                "will design something original for you."
-            ),
-            suggestion=(
-                "Try describing the form rather than the name — proportions, pose, "
-                "silhouette, style. For example: \"a chunky, round-cheeked creature "
-                "figurine with big ears and a lightning-bolt tail, chibi proportions\"."
-            ),
+            usage=decisive.usage,
         )
 
     for signal in _weak_signals():
@@ -334,16 +528,17 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
     # A near miss that did not clear the threshold is still worth surfacing to the
     # person who approves the blueprint — it is exactly the band where the string
     # comparison should not be the one deciding.
-    if best_score >= 0.72 and best_term:
+    if fuzzy is not None and fuzzy.score >= 0.72:
         return ScreenVerdict(
             action="flag",
-            term=best_term,
-            score=round(best_score, 3),
+            term=fuzzy.term,
+            score=round(fuzzy.score, 3),
             detail=(
-                f"This prompt resembles \"{best_term}\". It will be reviewed before "
+                f"This prompt resembles \"{fuzzy.term}\". It will be reviewed before "
                 "anything is reconstructed."
             ),
             suggestion=None,
+            usage=fuzzy.usage,
         )
 
     return ScreenVerdict("allow", None, 0.0, "No protected name recognised.", None)

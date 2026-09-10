@@ -2365,6 +2365,10 @@ async def create_job(request: JobRequest):
                 "term": screen.term,
                 "score": screen.score,
                 "detail": screen.detail,
+                # How the term was used, so "how often does the functional-article
+                # rule fire" is a query rather than a log grep. No schema change:
+                # `job_event.detail` is JSONB.
+                "usage": screen.usage,
             })
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record ip_screen_flagged event: %s", exc)
