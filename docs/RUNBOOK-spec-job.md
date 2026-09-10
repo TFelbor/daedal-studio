@@ -29,6 +29,20 @@ Everything here is `bash` from the repository root.
   The second command must print a path. If it prints nothing the image has no slicer and
   nothing below is a real test of Phase 4.
 
+- **The virtual environment, activated.** Steps 2, 4 and 7 run `python` with this
+  repository's own modules on the path — `server.simulator_manager`, `pythonsrc.organizer`,
+  `pythonsrc.telemetry.trace` — so on a fresh checkout every one of them fails before you
+  reach the slicer. A Mac has no bare `python` at all until a venv is active, and every
+  `python` below is that one:
+
+  ```bash
+  python3 -m venv .venv && source .venv/bin/activate
+  pip install -r requirements-mac.txt                          # requirements-linux.txt on Linux
+  ```
+
+  Keep this shell for the whole runbook. If you open a second one, `source .venv/bin/activate`
+  in it too.
+
 - The local config and the runtime directories, as for the test suite:
 
   ```bash
@@ -58,7 +72,7 @@ make start-native
 Check it:
 
 ```bash
-make health                   # curl -s http://localhost:8000/health | python3 -m json.tool
+make health                   # curl -s http://localhost:8000/health | python -m json.tool
 ```
 
 `database.healthy` must be true. A server whose database is unreachable still starts,
@@ -99,7 +113,7 @@ for pair in "OCTOPRINT_URL=http://localhost:5001" "OCTOPRINT_API_KEY=$KEY" "DEFA
     -d "{\"key\": \"${pair%%=*}\", \"value\": \"${pair#*=}\"}" > /dev/null
 done
 
-curl -s http://localhost:8000/system/printer/status | python3 -m json.tool
+curl -s http://localhost:8000/system/printer/status | python -m json.tool
 ```
 
 `running` must be `true`. `configured: true, running: false` means a target is set and
@@ -160,7 +174,7 @@ failed Phase 2.
 ## 5. Watch it
 
 ```bash
-curl -s "http://localhost:8000/jobs/$JOB" | python3 -m json.tool
+curl -s "http://localhost:8000/jobs/$JOB" | python -m json.tool
 tail -f "data/logs/$JOB.log"
 ```
 
@@ -174,7 +188,7 @@ When it settles, the job's own directory explains itself:
 
 ```bash
 ls "data/outputs/$JOB"
-python3 -m json.tool < "data/outputs/$JOB/dimension_report.json"
+python -m json.tool < "data/outputs/$JOB/dimension_report.json"
 ```
 
 - `spec.json` — the spec in canonical form (one spec, one string, one hash)
@@ -266,3 +280,10 @@ Steps 1–6 without the reading. It drives the ASGI app in-process rather than t
 `uvicorn` — a subprocess server would fire the shutdown hook and stop your simulator — and
 it will only dispatch to `http://localhost:5001`, so it cannot hand a print to a machine
 you have configured in Settings. It cancels the print it starts.
+
+**It does not leave you the row step 7 reads.** `tests/conftest.py` points
+`DS_DATABASE_URL` at a schema it creates before collection and **drops after it**, and the
+pipeline container inherits that URL from the server — so the row this test writes and
+asserts on is gone by the time `pytest` exits, and `python -m pythonsrc.telemetry.trace
+--latest` against your real database then shows some *other* job. This form answers "does
+the path still work"; only steps 1–7 by hand leave a row in the database you keep.

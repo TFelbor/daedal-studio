@@ -218,6 +218,16 @@ def spec_job(printer_pointed_at_the_simulator):
         yield SimpleNamespace(client=client, job_id=job_id, body=body)
 
         _cancel_any_simulator_print()
+        # The input goes and the output stays, and the asymmetry is the point. The spec
+        # is already on the row canonically (`request_params["spec"]`), so
+        # `data/inputs/{job_id}/spec.json` is a duplicate of something durable. The eight
+        # files in `data/outputs/{job_id}` and the log beside them are not on any row —
+        # the compiled mesh, the G-code, `compile_features.json`,
+        # `dimension_report.json`, `printability.json` — and they are the only evidence a
+        # slow run leaves that a person can open afterwards. That matters more here than
+        # anywhere: this test's row is written into the schema `tests/conftest.py` drops
+        # at exit, so the artifacts outlive the row that describes them. `data/` is
+        # gitignored runtime state and is cleared wholesale when it is in the way.
         shutil.rmtree(REPO_ROOT / "data" / "inputs" / job_id, ignore_errors=True)
 
 

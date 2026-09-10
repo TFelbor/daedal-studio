@@ -170,7 +170,10 @@ def test_every_compose_service_and_profile_it_names_is_declared():
         tokens = line.split()[2:]
         expect_value = False
         seen_subcommand = False
-        for token in tokens:
+        # Paired with its predecessor rather than tracked in a variable: the loop body
+        # has five `continue`s, and a `previous = token` at the end of it is one edit away
+        # from being skipped on whichever branch someone adds next.
+        for previous, token in zip([None, *tokens], tokens):
             if expect_value:
                 if previous == "--profile":
                     named_profiles.add(token)
@@ -273,8 +276,15 @@ def test_the_trace_flags_it_documents_are_the_ones_trace_declares():
 
     source = Path(trace.__file__).read_text()
     declared = set(re.findall(r'add_argument\(\s*"(--[\w-]+)"', source))
-    prose = _text()
-    section = prose[prose.index("pythonsrc.telemetry.trace"):]
+    # Every `## ` section that mentions the module, and nothing else. Slicing from the
+    # first mention to the end of the document instead attributed each later section's
+    # flags to `trace`: naming the module once in step 0 pulled step 2's
+    # `--force-recreate` — a compose flag — into the set and failed the assertion below
+    # on a document that was correct. A heading is the natural scope for "which tool is
+    # this flag for", and the module may be named in more than one section.
+    sections = re.split(r"^## ", _text(), flags=re.M)
+    section = "\n".join(s for s in sections if "pythonsrc.telemetry.trace" in s)
+    assert section, "the runbook never names the trace module"
     # Both halves: the flag the reader actually runs, and the ones the prose offers.
     invoked = set(re.findall(r"trace ((?:--[\w-]+\s*)+)", _shell()))
     named = set(re.findall(r"`(--[\w-]+)`", section)) | {
@@ -388,7 +398,6 @@ def test_the_dimension_tolerance_it_quotes_is_the_one_the_check_uses():
 def test_the_dispatch_confirmation_it_shows_is_the_one_the_gate_requires():
     """`confirmed: true` *is* the gate: there is no unconfirmed code path."""
     from server.app import DispatchRequest
-    import dataclasses  # noqa: F401  (DispatchRequest is a pydantic model)
 
     fields = set(DispatchRequest.model_fields)
     shown = set(re.findall(r'"(\w+)": (?:True|true|shown\[)', _shell()))

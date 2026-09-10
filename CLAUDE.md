@@ -31,9 +31,11 @@ and read the part that covers what you are touching.
   pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
   replace this note with the command. -->
   <!-- TODO: no coverage measurement exists anywhere — pytest.ini, requirements-base.txt,
-  the Makefile and ci.yml all lack it. The only figure available today is 949 test
-  functions across 65 files. Add pytest-cov and a floor before anyone quotes a
-  percentage. -->
+  the Makefile and ci.yml all lack it (issue #82). The only figure available is what
+  `pytest tests/ --collect-only` reports, and it is a count of tests, not of covered
+  lines. A number written into this file instead had rotted from 949 to 2 493 without
+  anything noticing, which is the argument for measuring rather than quoting. Add
+  pytest-cov and a floor before anyone states a percentage. -->
 
 ### Layout
 
@@ -47,7 +49,8 @@ and read the part that covers what you are touching.
 - `services/trellis2_worker/` — the GPU sculptor worker; runs only on a CUDA host.
 - `supabase/migrations/` — the telemetry DDL, **generated** from
   `python -m pythonsrc.telemetry.db --ddl`. `infra/` — Dockerfiles, compose, CI helpers.
-- `tests/` — 65 files, 949 test functions. `docs/` — PRD, roadmap, `PIPELINE.md`,
+- `tests/` — the suite; `pytest tests/ --collect-only` is the only honest count.
+  `docs/` — PRD, roadmap, `PIPELINE.md`,
   `deferred-legal-tasks.md`, `RUNBOOK-spec-job.md` (one spec job by hand, from
   `POST /jobs` to the telemetry row — the steps the default selection cannot reach
   because they need a real slicer, a printer and a database).
