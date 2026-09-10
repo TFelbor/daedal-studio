@@ -2,7 +2,12 @@ import { useEffect, useRef } from 'react';
 import { PromptNotice } from './PromptNotice';
 import { ArrowRight, Minimize2 } from 'lucide-react';
 import { Marks } from './Blueprint';
-import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from './promptLimits';
+import {
+  COUNTER_REVEAL,
+  MAX_PROMPT_CHARS,
+  PROMPT_SUBMIT_BUSY_LABEL,
+  PROMPT_SUBMIT_LABEL,
+} from './promptLimits';
 import styles from './PromptZoom.module.css';
 
 interface PromptZoomProps {
@@ -146,7 +151,9 @@ export function PromptZoom({ value, busy, onChange, onSubmit, onClose }: PromptZ
               onClick={() => canSubmit && onSubmit(trimmed)}
               disabled={!canSubmit}
             >
-              {busy ? 'Starting' : 'Generate & print'}
+              {/* The landing field's own label, from the one module both read: this is
+                  that field lifted off the page, not a second way to start a job. */}
+              {busy ? PROMPT_SUBMIT_BUSY_LABEL : PROMPT_SUBMIT_LABEL}
               <ArrowRight size={15} strokeWidth={1.5} aria-hidden="true" />
             </button>
           </span>

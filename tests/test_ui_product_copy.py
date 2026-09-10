@@ -240,6 +240,110 @@ def test_the_example_prompts_describe_something_the_engine_could_compile(source)
         )
 
 
+#: The two fields that compose one prompt. The landing field and `PromptZoom` edit the
+#: same state and submit through the same `startJob`, so the verb on their buttons is
+#: one string in one module — see PROMPT_SUBMIT_LABEL.
+PROMPT_SUBMIT_SITES = [
+    "web/src/pages/NewJob.tsx",
+    "web/src/components/PromptZoom.tsx",
+]
+
+
+#: Retired with the same issue, and the reason is on PROMPT_SUBMIT_LABEL: a job
+#: submitted from the app never starts a print, and *generate* is the benched path.
+RETIRED_STRINGS = ["Generate & print"]
+
+_IMPORT = re.compile(r"(?m)^import\b[\s\S]*?;")
+
+
+def _prompt_submit_labels() -> dict[str, str]:
+    text = (REPO_ROOT / "web/src/components/promptLimits.ts").read_text()
+    return dict(
+        re.findall(r"export const (PROMPT_SUBMIT_[A-Z_]+) = '([^']+)'", text)
+    )
+
+
+def _body(path: Path) -> str:
+    """The file with its imports removed.
+
+    An identifier that is only imported is an identifier nothing renders — which is
+    exactly the state a reintroduced literal beside a surviving import leaves the
+    file in, so the check has to look past the import block.
+    """
+    return _IMPORT.sub("", path.read_text())
+
+
+@pytest.mark.parametrize("retired", RETIRED_STRINGS)
+def test_no_button_offers_the_retired_promise(retired):
+    # Comments stripped, so the constant that replaced it may say what it replaced.
+    offenders = [
+        str(p.relative_to(REPO_ROOT)) for p in _sources() if retired in _visible_text(p)
+    ]
+    assert offenders == [], (
+        f"{retired!r} is back in {offenders}. See PROMPT_SUBMIT_LABEL: the app sends "
+        "`print: false`, so the print is started by a person at the dispatch gate."
+    )
+
+
+def test_the_prompt_submit_label_promises_only_what_the_button_does():
+    """A job submitted from the app sends `print: false, start_print: false`.
+
+    It stops after the slicer and waits for a person at the dispatch gate, so a
+    button offering to print is offering something no code path behind it does —
+    and *generate* is the benched path, named where the product says what it makes.
+    """
+    labels = _prompt_submit_labels()
+    assert set(labels) == {"PROMPT_SUBMIT_LABEL", "PROMPT_SUBMIT_BUSY_LABEL"}, labels
+    for name, label in labels.items():
+        lowered = label.lower()
+        for promised in ("print", "generate"):
+            assert promised not in lowered, (
+                f"{name} is {label!r}. Pressing this button creates a job that stops "
+                "at the slicer; the dispatch gate is where a person starts a print."
+            )
+
+
+@pytest.mark.parametrize("source", PROMPT_SUBMIT_SITES)
+def test_both_prompt_fields_send_under_one_label(source):
+    """One control at two magnifications must not say two things.
+
+    The zoomed field's button read `Generate & print` while the landing field's, an
+    inch behind it, read `Compile & preview`. A constant rather than a literal each
+    side: a text guard can only notice the drift afterwards, and this is the loudest
+    verb on the page.
+    """
+    # Past the imports: an identifier that is only imported is one nothing renders,
+    # which is the state a literal written back in beside a surviving import leaves.
+    rendered = _body(REPO_ROOT / source)
+    assert "PROMPT_SUBMIT_LABEL" in rendered and "PROMPT_SUBMIT_BUSY_LABEL" in rendered, (
+        f"{source} no longer renders its submit label from promptLimits.ts. The two "
+        "prompt fields submit the same prompt through the same call."
+    )
+    for label in _prompt_submit_labels().values():
+        assert label not in rendered, (
+            f"{source} spells {label!r} as a literal beside the constant that holds "
+            "it — which is how the two buttons came to disagree in the first place."
+        )
+
+
+def test_the_fixture_flag_reaches_the_blueprint_alt_text():
+    """The caption and the alt text must not contradict each other.
+
+    `BlueprintPreview` renders the frame whose visible caption says "a fixture, not a
+    render of this prompt" on a fixture run. Without the flag its alt text claimed the
+    blueprint was drawn from the prompt, so the sentence a screen reader got was the
+    one the fixture badge exists to prevent.
+    """
+    preview = (REPO_ROOT / "web/src/components/BlueprintPreview.tsx").read_text()
+    assert "usedFixtures" in preview
+    assert "a fixture, not a render of this prompt" in preview
+    new_job = (REPO_ROOT / "web/src/pages/NewJob.tsx").read_text()
+    assert "usedFixtures={usedFixtures}" in new_job, (
+        "NewJob renders BlueprintPreview without the fixture flag it has in hand "
+        "(`used_reference_assets`), so the alt text cannot tell a fixture from a render."
+    )
+
+
 def test_the_blueprint_gate_still_describes_what_actually_runs():
     """Unchanged by this pass, on purpose.
 

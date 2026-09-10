@@ -7,6 +7,17 @@ interface BlueprintPreviewProps {
   status: string;
   /** Live pipeline output, newest last. Passed through to the stage state. */
   logLines?: string[];
+  /**
+   * `used_reference_assets` — a bundled fixture stood in for Phase 1.
+   *
+   * It reaches the alt text and nothing else. The visible caption beside this frame
+   * already says "a fixture, not a render of this prompt"; without the flag here the
+   * alt text said the opposite of it, so the caption a screen reader got was the one
+   * the fixture badge exists to prevent (CLAUDE.md § The fixture flag is carried out
+   * to the UI). Defaults to false because that is what an unknown flag means for
+   * every job the pipeline actually renders.
+   */
+  usedFixtures?: boolean;
 }
 
 /* The artifact layer only. The frame, its registration marks and the ruled ground
@@ -35,7 +46,12 @@ const IMAGE: CSSProperties = {
 
 const PLACEHOLDER: CSSProperties = { height: '100%' };
 
-export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewProps) {
+export function BlueprintPreview({
+  jobId,
+  status,
+  logLines,
+  usedFixtures,
+}: BlueprintPreviewProps) {
   const [loaded, setLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -70,7 +86,11 @@ export function BlueprintPreview({ jobId, status, logLines }: BlueprintPreviewPr
       {showImage && (
         <img
           src={imgSrc}
-          alt="Blueprint drawn from the prompt"
+          alt={
+            usedFixtures
+              ? 'Reference blueprint — a fixture, not a render of this prompt'
+              : 'Blueprint drawn from the prompt'
+          }
           style={{ ...IMAGE, opacity: loaded ? 1 : 0 }}
           onLoad={() => setLoaded(true)}
           onError={() => {

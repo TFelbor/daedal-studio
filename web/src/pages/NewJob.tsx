@@ -20,7 +20,12 @@ import { PromptZoom } from '../components/PromptZoom';
 import { ArchetypeStrip } from '../components/ArchetypeStrip';
 import { FitsCheck } from '../components/FitsCheck';
 import { SpecPanel } from '../components/SpecPanel';
-import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
+import {
+  COUNTER_REVEAL,
+  MAX_PROMPT_CHARS,
+  PROMPT_SUBMIT_BUSY_LABEL,
+  PROMPT_SUBMIT_LABEL,
+} from '../components/promptLimits';
 import {
   createJob,
   fetchSizeHint,
@@ -1050,7 +1055,7 @@ export function NewJob() {
                     disabled={!prompt.trim() || loading || !printerReady}
                   >
                     <Marks />
-                    {loading ? 'Starting…' : 'Compile & preview'}
+                    {loading ? PROMPT_SUBMIT_BUSY_LABEL : PROMPT_SUBMIT_LABEL}
                     {!loading && <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                   </button>
                   <span className={styles.submitHint}>Enter to send · Shift + Enter for a new line</span>
@@ -1339,6 +1344,7 @@ export function NewJob() {
                     jobId={jobId}
                     status={phases[0]?.status ?? 'pending'}
                     logLines={currentJob?.log_tail}
+                    usedFixtures={usedFixtures}
                   />
                 </SpecPanel>
               )}
