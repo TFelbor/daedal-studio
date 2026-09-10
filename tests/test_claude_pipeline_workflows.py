@@ -301,6 +301,18 @@ def test_review_and_automerge_normalise_the_login_before_comparing() -> None:
         assert "app/" in run and "[bot]" in run, f"{path.name}: the comparison does not normalise app/ and [bot]"
 
 
+def test_review_admits_the_workflow_bot_whose_push_re_triggers_it() -> None:
+    """A fix-job push is authenticated with the run's own GITHUB_TOKEN (actions/checkout's
+    persisted credential outranks the App token in the remote URL), so the `synchronize`
+    it fires carries `actor: github-actions[bot]`. The review refused that actor before
+    Fable ran, so every fix pushed by the loop went unreviewed — PR #92 stayed red on a
+    diff that fixed the review's finding. Same trust as the `fix` job already extends."""
+    (step,) = _action_steps(_load(REVIEW), "claude-review")
+    bots = {bot.lower() for bot in _allowed_bots(step)}
+    assert bots != {"*"}
+    assert "github-actions[bot]" in bots, f"claude-review allows {sorted(bots)}"
+
+
 def test_review_skips_drafts_and_returns_when_they_are_ready() -> None:
     """The safety net opens *draft* pull requests holding unfinished work. Reviewing one
     would request changes on a diff nobody claims is done and start the fix loop
