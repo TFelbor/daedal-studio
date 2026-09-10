@@ -123,7 +123,6 @@ export function PrinterSetup() {
   const [bambuIp, setBambuIp] = useState('');
   const [bambuCode, setBambuCode] = useState('');
   const [profileInput, setProfileInput] = useState('');
-  const [pythonPath, setPythonPath] = useState('');
 
   const [printerTestResult, setPrinterTestResult] = useState<TestResult | null>(null);
   const [printerTesting, setPrinterTesting] = useState(false);
@@ -159,7 +158,6 @@ export function PrinterSetup() {
       // Buffered locally rather than driven straight off the response: these two
       // are typed into, and a refetch mid-sentence would overwrite the caret.
       setProfileInput(data['DEFAULT_PROFILE']?.value || '');
-      setPythonPath(data['PYTHONPATH']?.value || '');
     } catch (e) {
       setOverall('error');
       setOverallMessage(`Settings could not be loaded — ${errorMessage(e, 'the API server did not answer')}.`);
@@ -900,25 +898,12 @@ export function PrinterSetup() {
               <h2 className="heading">{SECTIONS[3].title}</h2>
             </div>
 
+            {/* The PYTHONPATH override that used to sit here is gone, and so is the
+                key behind it. Every value saved on this page is handed to the
+                pipeline container and to the operator, and an import path is one
+                the image sets — not one anyone should be able to set over an
+                unauthenticated HTTP request. */}
             <div className={styles.devGrid}>
-              <div className="field">
-                <div className={styles.fieldHead}>
-                  <label className="field-label" htmlFor="pythonpath">
-                    PYTHONPATH override
-                  </label>
-                  {fieldState('PYTHONPATH')}
-                </div>
-                <input
-                  id="pythonpath"
-                  className="input"
-                  type="text"
-                  value={pythonPath}
-                  placeholder="/path/to/repo"
-                  spellCheck={false}
-                  onChange={(e) => setPythonPath(e.target.value)}
-                  onBlur={(e) => commitValue('PYTHONPATH', e.target.value)}
-                />
-              </div>
               <div className="field">
                 <div className={styles.fieldHead}>
                   <label className="field-label" htmlFor="log-level">

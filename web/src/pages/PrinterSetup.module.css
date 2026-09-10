@@ -340,7 +340,10 @@
 
 .devGrid {
   display: grid;
-  grid-template-columns: 1fr 200px;
+  /* One 200px cell, not a stretched one. The section held two fields until the
+     PYTHONPATH override was removed; a lone `1fr` would run the log-level select
+     the full width of the page. */
+  grid-template-columns: 200px;
   gap: 18px;
 }
 

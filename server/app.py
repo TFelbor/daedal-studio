@@ -17,7 +17,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Any, Dict
+from typing import List, Mapping, Optional, Any, Dict
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
@@ -43,7 +43,7 @@ from pythonsrc.ip_screen import screen_prompt
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
 from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec, spec_hash
 import httpx
-from server.config_store import ConfigStore, CONFIG_KEYS
+from server.config_store import ConfigStore, CONFIG_KEYS, SUBPROCESS_ENV_KEYS
 from server.job_broadcaster import broadcaster
 from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
@@ -1145,6 +1145,40 @@ def health_interval_s(env: dict | None = None) -> Optional[float]:
     return seconds
 
 
+def subprocess_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """The environment for a process this server launches.
+
+    Two sources, and only two: this server's own environment — which came from `.env`
+    and from the image — plus `SUBPROCESS_ENV_KEYS`, the enumerated config-store keys
+    a child actually reads. The store used to reach a subprocess by a third route:
+    `POST /config` wrote `os.environ` and the startup hook copied the whole store into
+    it, so every stored key was inherited by every launch. `PYTHONPATH` was a stored
+    key, which made an unauthenticated request enough to prepend an import path to the
+    pipeline container and to `run_operator.py`. Nothing here is copied wholesale, and
+    the store cannot introduce a variable that is not on the allowlist.
+
+    The store is read **here**, at launch, not cached at import: a printer key saved in
+    Settings must reach the next job without a restart, which is the property the
+    `os.environ` write was there to provide.
+
+    A stored value wins over one of the same name in this process's environment —
+    Settings is the live authority — and a key absent from the store leaves whatever
+    `.env` set, rather than unsetting it.
+
+    Args:
+        base: The environment to start from. Defaults to this process's.
+
+    Returns:
+        A fresh mapping, safe for the caller to add its own `DS_*` variables to.
+    """
+    env = dict(os.environ if base is None else base)
+    for key in SUBPROCESS_ENV_KEYS:
+        value = config_store.get(key)
+        if value is not None:
+            env[key] = value
+    return env
+
+
 def check_database_health(db: TelemetryDB) -> list[str]:
     """Verify the telemetry database is reachable and carries the schema.
 
@@ -1223,6 +1257,11 @@ def startup_event():
     try:
         config_store.init_schema()
         db.init_schema()
+        # A key this store no longer accepts leaves a row nothing can read, edit or
+        # delete. `PYTHONPATH` is the one that has been retired, and leaving its value
+        # encrypted in the table is not the same as removing it.
+        for retired in config_store.purge_retired_keys():
+            logger.info("Removed retired config key %s from the store", retired)
     except Exception as exc:  # noqa: BLE001 — reported by the health check below
         logger.error("Could not initialise the database schema (%s): %s", db.describe, exc)
     check_database_health(db)
@@ -1246,8 +1285,11 @@ def startup_event():
     (repo_root / "data" / "outputs").mkdir(parents=True, exist_ok=True)
     (repo_root / "data" / "logs").mkdir(parents=True, exist_ok=True)
     
-    for k, v in config_store.get_all().items():
-        os.environ[k] = v
+    # The store is deliberately *not* copied into `os.environ` here. It used to be,
+    # and `POST /config` wrote each value there as well, which made every stored key
+    # part of both subprocess launches — `PYTHONPATH` among them. Everything that
+    # needs a stored value reads it from the store at the moment it is used:
+    # `subprocess_env()` for a launch, `config_store.get()` for this process.
 
     # Re-checked on a cadence, not just at startup. $DS_DB_HEALTH_INTERVAL_S=0
     # disables the loop.
@@ -1689,14 +1731,17 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         db_start.update_job_start_time(job_id, datetime.now(timezone.utc))
         db_start.close()
 
-        pipeline_env = os.environ.copy()
+        # This server's environment plus the allowlisted config-store keys, and
+        # nothing else from the store — see `subprocess_env`.
+        pipeline_env = subprocess_env()
         pipeline_env["DS_LOGS_DIR"] = str(log_dir)
-        # Ensure secrets from config store are available to subprocesses
-        hf_token = config_store.get("HF_TOKEN")
-        if hf_token:
-            pipeline_env["HF_TOKEN"] = hf_token
-            pipeline_env["HUGGINGFACE_HUB_TOKEN"] = hf_token
-            
+        # The Hub reads its own variable name for the same secret. It is an alias for
+        # HF_TOKEN rather than a key of its own, so it is derived here instead of
+        # being a second thing anyone can store.
+        if pipeline_env.get("HF_TOKEN"):
+            pipeline_env["HUGGINGFACE_HUB_TOKEN"] = pipeline_env["HF_TOKEN"]
+
+
         # Export printer config to pipeline — resolved in one place so the pipeline
         # and the telemetry collector can never target different printers.
         profile_path = str(profile_path_or_default(request.profile))
@@ -2955,10 +3000,11 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
             "--profile", profile_path,
         ]
 
-        env = os.environ.copy()
-        octoprint_key = config_store.get("OCTOPRINT_API_KEY")
-        if octoprint_key:
-            env["OCTOPRINT_API_KEY"] = octoprint_key
+        # This server's environment plus the allowlisted config-store keys, and
+        # nothing else from the store — see `subprocess_env`. `OCTOPRINT_API_KEY`
+        # arrives that way, which is how the operator authenticates when the printer
+        # profile carries no key of its own.
+        env = subprocess_env()
         # The address the person just confirmed, not the dev default baked into the
         # profile file. `resolve_printer_target` makes the config store authoritative
         # for base_url, and the operator falls back to the profile's own when this is
@@ -4001,8 +4047,12 @@ async def update_config(update: ConfigUpdate):
     # debugging a configuration has, and it is unanswerable after the write.
     previous = config_store.get(update.key)
 
+    # The store only. This handler used to write `os.environ[update.key]` as well, and
+    # both subprocess launches copied that environment wholesale — so an
+    # unauthenticated request set a variable in every pipeline container and every
+    # operator this server spawns. Readers take the value from the store instead:
+    # `config_store.get()` in this process, `subprocess_env()` at a launch.
     config_store.set(update.key, update.value)
-    os.environ[update.key] = update.value
 
     display_val = "••••••••" if secret else update.value
     # A secret's *value* never reaches the log; whether it went from unset to set does,
@@ -4034,14 +4084,15 @@ async def delete_config(key: str):
     if key not in CONFIG_KEYS:
         raise HTTPException(status_code=400, detail="Invalid config key")
     
+    # The store only, matching the write path above: nothing this endpoint set is in
+    # `os.environ` any more, and deleting a key from there would clear a value that
+    # came from `.env` and that the store never owned.
     config_store.delete(key)
-    if key in os.environ:
-        del os.environ[key]
 
     activity.action(
         "config cleared",
         [("key", key)],
-        outcome="removed from the store and the environment",
+        outcome="removed from the store",
         status="warn",
     )
     return {"status": "success", "key": key}

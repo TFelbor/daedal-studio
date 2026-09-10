@@ -44,7 +44,55 @@ CONFIG_KEYS = {
     "BAMBU_IP": {"label": "Bambu Lab IP Address", "secret": False, "required": False, "description": "e.g. 192.168.1.150"},
     "BAMBU_CODE": {"label": "Bambu Lab LAN Access Code", "secret": True, "required": False, "description": "From printer Settings > Network > LAN Mode"},
     "LOG_LEVEL": {"label": "Log Level", "secret": False, "required": False, "description": "INFO | DEBUG"},
-    "PYTHONPATH": {"label": "Python Path", "secret": False, "required": False, "description": "Optional override"}
+}
+
+#: Keys this store used to accept and no longer does. `purge_retired_keys()` deletes
+#: their rows, because `set()` refuses an unknown key and `CONFIG_KEYS` is what the
+#: endpoints iterate — a row left behind is a value someone typed that nobody can
+#: read, edit or delete again.
+#:
+#: `PYTHONPATH` is here because nothing legitimate sets an import path over HTTP. The
+#: pipeline's import path is the container's, set in the image.
+RETIRED_CONFIG_KEYS = ("PYTHONPATH",)
+
+#: The stored keys a launched subprocess may be handed, and the consumer that reads
+#: each one. `server.app.subprocess_env()` builds every launch environment from the
+#: server's own environment plus this allowlist; a stored value reaches a child
+#: process only by being named here.
+#:
+#: An allowlist rather than "the whole store" because `POST /config` has no
+#: authentication and the store used to be copied wholesale into `os.environ` — at
+#: startup and again on every write — with both launches inheriting the result. While
+#: `PYTHONPATH` was a key, one HTTP request prepended an import path to every pipeline
+#: container and every operator this server spawns; with `data/inputs`, `data/outputs`
+#: and `data/logs` bind-mounted writable, that is one file write away from code
+#: execution. Adding a key here is that decision made again, so each one names the
+#: reader that justifies it.
+#:
+#: Deliberately absent, and why:
+#:   * `MOONRAKER_URL`/`MOONRAKER_API_KEY`/`BAMBU_IP`/`BAMBU_CODE`/
+#:     `DEFAULT_PRINTER_FIRMWARE` — `resolve_printer_target` turns them into
+#:     `DS_FIRMWARE`/`DS_PRINTER_URL`/`DS_PRINTER_KEY` at launch, which is also where
+#:     the container's localhost rewrite happens. The raw values have no reader.
+#:   * `DEFAULT_PROFILE`, `SKIP_VISUALIZER`, `SKIP_SCULPTOR`,
+#:     `EXECUTION_STRATEGY_OVERRIDE` — read from the store in *this* process and turned
+#:     into argv or into a strategy. A subprocess never reads them.
+#:   * `LOG_LEVEL` — nothing this server launches reads it. `pipeline.py` takes its
+#:     level from `--verbose` and the server from `$DS_LOG_LEVEL`; the one consumer of
+#:     `$LOG_LEVEL` in this repo is the GPU worker, which is a separate deployment.
+SUBPROCESS_ENV_KEYS = {
+    "HF_TOKEN": (
+        "pythonsrc/visualizer.py — the gated FLUX download. Compose also interpolates "
+        "it into pipeline-runner's HF_TOKEN and HUGGINGFACE_HUB_TOKEN."
+    ),
+    "OCTOPRINT_URL": (
+        "pythonsrc/run_operator.py and pythonsrc/config.py — the printer address. "
+        "Compose also interpolates it into pipeline-runner."
+    ),
+    "OCTOPRINT_API_KEY": (
+        "pythonsrc/run_operator.py and pythonsrc/operators/octoprint_operator.py — "
+        "used when the printer profile carries no key of its own."
+    ),
 }
 
 #: Where the Fernet key lives when nothing overrides it.
@@ -202,3 +250,26 @@ class ConfigStore:
         """Delete a configuration value."""
         with connection(self.dsn) as conn:
             conn.execute(f"DELETE FROM {CONFIG_TABLE} WHERE key = %s", (key,))
+
+    def purge_retired_keys(self) -> list:
+        """Delete the rows of keys this store no longer accepts.
+
+        Removing a key from `CONFIG_KEYS` closes every route that *writes* it —
+        `set()` refuses it and the endpoints iterate `CONFIG_KEYS` — but the row a
+        person saved before the removal stays in the table, encrypted, with nothing
+        able to show it or delete it. Dropping the key without dropping the value
+        would leave `PYTHONPATH` sitting in the database of every deployment that
+        ever set one.
+
+        Returns:
+            The keys whose rows were actually removed, so the caller can say so.
+        """
+        removed = []
+        for key in RETIRED_CONFIG_KEYS:
+            rows = self._read(
+                f"SELECT key FROM {CONFIG_TABLE} WHERE key = %s", (key,)
+            )
+            if rows:
+                self.delete(key)
+                removed.append(key)
+        return removed
