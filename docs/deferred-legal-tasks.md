@@ -299,6 +299,63 @@ Two things to settle before launch:
 
 ---
 
+## Task L6 — Confirm the functional-article line in the prompt screen (not blocking)
+
+**What was decided, and by whom.** As of 2026-09-10 (issue #79) `pythonsrc/ip_screen.py`
+distinguishes a curated name used as a **depiction** from the same name used to say what
+the part is **for**. "Deck box for Pokémon cards" is accepted and flagged for the human
+gate; "a Pikachu figurine", "Charizard emblem on the lid" and "a Pikachu deck box" are
+refused before a job row exists. That is a **product decision taken by the team**, on the
+reasoning below, not advice from counsel and not a legal conclusion.
+
+**The reasoning.** The exposure this project carries is *making and supplying* an object
+that reproduces a protected character (Task L1). A storage box sized for a game's cards
+does not reproduce anything: the geometry is a rectangular enclosure whose dimensions come
+from a card footprint, the pipeline discards appearance and prints in one colour, and the
+franchise name appears only in the request, never on the part. Naming a product's brand to
+say what an accessory fits is the ordinary indication-of-purpose case — Art. 14(1)(c) EUTMR
+permits use of a mark to indicate the intended purpose of an accessory where it is
+necessary and in accordance with honest practices. The counter-consideration is the one
+counsel should weigh: TCG rightsholders police "compatible with" accessory marketing, so
+honest-practice conditions (no implied endorsement, no franchise name or livery on the
+article or in its listing) are doing real work, and none of that is enforced by code.
+
+**Why the alternative was worse.** Refusing the prompt refused the pilot's primary persona
+for describing their own use case, with **no appeal path** — the refusal is a 400 before
+`job_id` exists. And the coverage was inconsistent: Pokémon was refused while Magic: The
+Gathering, Yu-Gi-Oh!, Lorcana and One Piece were not on the list at all, which is worse
+than either consistent answer because it looks like a policy and is not one.
+
+**What counsel is asked to confirm, when L1 is picked up:**
+
+- That flagging functional use, rather than refusing it, is the right posture for a
+  service that manufactures — and if not, whether the answer is a refusal or a term in
+  the ToS.
+- Whether the product must additionally suppress the franchise name **downstream** of the
+  screen: it is stored verbatim on the job row and interpolated into the blueprint prompt,
+  and honest-practice conditions are about what the *listing and the article* say. Nothing
+  today prints or publishes it.
+- The accepted false negative: a **character** named as contents with no depiction cue
+  ("a stand for Pikachu") is flagged rather than refused, and reaches a human.
+- The boundary in the other direction, which is where the rule is **stricter** than the
+  functional reading: a franchise or brand in front of anything that is not one of the
+  parts this product makes is treated as naming the *subject* and refused — "a star wars
+  x-wing" and "a nintendo switch dock" are both refused, the second of which is arguably
+  an accessory case Art. 14(1)(c) would cover. The appeal path is the rephrasing the
+  refusal already asks for ("a dock for a Nintendo Switch" is flagged), and the head noun
+  is the only signal available in the sentence. Whether that trade is the right way round
+  is a question for counsel; the code pins both directions in
+  `tests/test_ip_screen.py` so moving the line is one decision in one place.
+- The line moves again for F13 (decorative embossing), which is a third prompt channel and
+  where the real reproduction risk goes. Roadmap §4A part (b) holds it; do not ship F13
+  before that screen exists.
+
+**Where the code is:** `_classify_usage` in `pythonsrc/ip_screen.py`, the cue constants
+beside it, `category` in `pythonsrc/data/ip_blocklist.json`, and the `ip_screen_flagged`
+job event's `usage` field, which is how often the rule fires.
+
+---
+
 ## Open question for counsel (not blocking)
 
 EU AI Act Art. 50 imposes transparency duties around artificially generated content. The

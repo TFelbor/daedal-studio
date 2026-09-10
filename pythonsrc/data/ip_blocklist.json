@@ -17,7 +17,13 @@
     "is a temperature, a creeper is a vine, stitch is sewing, mario is a common name. For",
     "those the match is *correct* and the inference is not, so they are flagged for a",
     "person rather than refused. Word-boundary matching does not help there; only context",
-    "does, which is why an ambiguous term seen alongside a strong one is refused."
+    "does, which is why an ambiguous term seen alongside a strong one is refused.",
+    "",
+    "`category` is read by the screen's usage rule, not only by a person: a term used",
+    "attributively is the prompt's subject for a 'character' and its contents for a",
+    "'franchise' or a 'brand'. The TCG franchises are on this list *for the flag* — a",
+    "deck box for a game's cards is a functional article, and ip_screen.py's",
+    "_classify_usage is where that distinction is drawn."
   ],
   "entries": [
     {
@@ -105,7 +111,10 @@
     },
     {
       "term": "star wars",
-      "category": "franchise"
+      "category": "franchise",
+      "aliases": [
+        "star wars unlimited"
+      ]
     },
     {
       "term": "mandalorian",
@@ -399,6 +408,64 @@
       "term": "creeper",
       "category": "character",
       "strength": "ambiguous"
+    },
+    {
+      "term": "magic the gathering",
+      "category": "franchise",
+      "aliases": [
+        "magic: the gathering",
+        "mtg"
+      ]
+    },
+    {
+      "term": "magic",
+      "category": "franchise",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "yu-gi-oh",
+      "category": "franchise",
+      "aliases": [
+        "yugioh",
+        "yu gi oh"
+      ]
+    },
+    {
+      "term": "lorcana",
+      "category": "franchise",
+      "aliases": [
+        "disney lorcana"
+      ]
+    },
+    {
+      "term": "one piece",
+      "category": "franchise",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "flesh and blood",
+      "category": "franchise",
+      "strength": "ambiguous"
+    },
+    {
+      "term": "digimon",
+      "category": "franchise"
+    },
+    {
+      "term": "wizards of the coast",
+      "category": "brand"
+    },
+    {
+      "term": "konami",
+      "category": "brand"
+    },
+    {
+      "term": "bandai",
+      "category": "brand"
+    },
+    {
+      "term": "ravensburger",
+      "category": "brand"
     }
   ],
   "weak_signals": [
