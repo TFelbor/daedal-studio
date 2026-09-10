@@ -3769,6 +3769,45 @@ async def record_outcome_prompt_shown(job_id: str) -> Dict[str, Any]:
     return {"recorded": True}
 
 
+# ── Activation capture ───────────────────────────────────────────────────────
+# The other half of the pilot's headline pair. "≥ 60 % of prompt submitters reach a
+# preview" (PRD §7) had a denominator — every job carries a prompt — and no numerator
+# at all: nothing in the system recorded that a person ever saw the geometry they
+# asked for. Same shape as `prompt-shown` deliberately, dedup included.
+
+@app.post("/jobs/{job_id}/events/preview-reached")
+async def record_preview_reached(job_id: str) -> Dict[str, Any]:
+    """Record that the mesh or the toolpath was actually put on screen for this job.
+
+    Called by the running view when it first shows either artifact. Logged once per
+    job: the activation rate counts people who got a preview, so a reload, a tab
+    switch between the mesh and the toolpath, or a second visit two days later must
+    not each count again. Deduplicated here rather than only in the client, because a
+    fresh page has a fresh memory of what it has already sent.
+
+    Args:
+        job_id: The unique identifier of the job.
+
+    Returns:
+        A dictionary reporting whether a new event was recorded.
+
+    Raises:
+        HTTPException: If the job is not found.
+    """
+    db = TelemetryDB()
+    if not db.get_job(job_id):
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if db.get_job_events(job_id, kind="preview_reached"):
+        db.close()
+        return {"recorded": False, "reason": "already reached"}
+
+    db.record_job_event(job_id, "preview_reached")
+    db.close()
+    return {"recorded": True}
+
+
 @app.post("/jobs/{job_id}/outcome/dismiss")
 async def dismiss_outcome_prompt(job_id: str) -> Dict[str, Any]:
     """Record that someone was asked for a verdict and chose not to give one.
@@ -3874,23 +3913,38 @@ async def report_outcome(job_id: str, request: OutcomeRequest) -> Dict[str, Any]
 
 @app.get("/feedback/stats")
 async def feedback_stats() -> Dict[str, Any]:
-    """Report how often outcome prompts are actually answered.
+    """Report how often outcome prompts are actually answered, and the activation rate.
 
-    The pilot's headline number. Counted over jobs that were prompted, so a job nobody
-    has been shown yet neither helps nor hurts the rate, and a verdict volunteered
-    without a prompt cannot push it above 1.
+    The pilot's headline numbers. The response rate is counted over jobs that were
+    prompted, so a job nobody has been shown yet neither helps nor hurts the rate, and
+    a verdict volunteered without a prompt cannot push it above 1. The activation rate
+    is counted the same way, over jobs rather than events: previews reached over
+    prompts submitted (PRD §7).
 
     Returns:
-        Funnel counts, raw event totals and the derived response rate.
+        Funnel counts, raw event totals and the two derived rates.
     """
     db = TelemetryDB()
     funnel = db.feedback_funnel()
+    activation = db.activation_funnel()
     reported_total = db.count_job_events("outcome_reported")
     pending = len(db.get_jobs_awaiting_verdict(limit=1000))
     db.close()
 
+    submitted = activation["submitted"]
     prompted = funnel["prompted"]
     return {
+        # Activation (PRD §7). Both halves over jobs: every job row is one prompt
+        # submission, and `preview_reached` is deduplicated per job at the endpoint,
+        # so the ratio cannot exceed 1 however many times a preview is looked at.
+        # Named `jobs_submitted` rather than `prompts_submitted` because
+        # `prompts_shown` two lines down counts *outcome* prompts, and a metric whose
+        # denominator can be misread for another metric's is worse than a long name.
+        "jobs_submitted": submitted,
+        "previews_reached": activation["previewed"],
+        "activation_rate": (
+            round(activation["previewed"] / submitted, 4) if submitted else None
+        ),
         "prompts_shown": prompted,
         "outcomes_reported": funnel["answered"],
         # An explicit "don't ask me again". A response, but not an answer about a

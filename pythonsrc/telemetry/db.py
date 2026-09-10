@@ -968,6 +968,35 @@ class TelemetryDB:
             "unanswered": len(prompted - answered - declined),
         }
 
+    def activation_funnel(self) -> dict:
+        """Count how many prompt submitters reached a preview.
+
+        The PRD's activation metric (§7: "≥ 60 % of prompt submitters reach a
+        preview"). Counted over *jobs*, exactly like `feedback_funnel`: the numerator
+        is jobs with at least one `preview_reached` row, so a reload, a second look at
+        the same mesh or a tab switch between the mesh and the toolpath cannot move it,
+        and the denominator is every job submitted — `prompt` is required on
+        `POST /jobs`, so a job row *is* a prompt submission.
+
+        A `dev` outcome is excluded from both halves. That is a developer verifying the
+        pipeline by printing a cube, which is the reason `dev` exists at all, and it
+        must not enter the number the pilot is measured by — the same rule that keeps
+        it out of `feedback_funnel`'s `answered`.
+        """
+        real_job = "COALESCE(j.outcome, '') <> 'dev'"
+        submitted = self.query_one(
+            f"SELECT COUNT(*) AS n FROM print_job j WHERE {real_job}"
+        )
+        previewed = self.query_one(
+            "SELECT COUNT(DISTINCT e.job_id) AS n FROM job_event e "
+            "JOIN print_job j ON j.job_id = e.job_id "
+            f"WHERE e.kind = 'preview_reached' AND {real_job}"
+        )
+        return {
+            "submitted": int(submitted["n"]) if submitted else 0,
+            "previewed": int(previewed["n"]) if previewed else 0,
+        }
+
     def increment_download_count(self, job_id: str) -> None:
         """Bump a job's denormalised download counter."""
         self.execute(

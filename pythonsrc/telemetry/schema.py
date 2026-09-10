@@ -608,6 +608,14 @@ JOB_EVENT_KINDS = (
     "print_paused",
     "print_resumed",
     "printer_terminal",
+    # The activation metric's numerator (PRD §7: "≥ 60 % of prompt submitters reach a
+    # preview"). Written once per job, by the UI, when the mesh or the toolpath is
+    # actually on the stage — not when the artifact appears on disk, which is a fact
+    # about the pipeline and not about anyone looking. The denominator is the jobs
+    # themselves, so this is the only half that needed an instrument. `download` and
+    # `?preview=1` already keep the *export* half of the metric separate: a person
+    # rotating a mesh has not kept it.
+    "preview_reached",
 )
 """Recognised `JobEvent.kind` values.
 
