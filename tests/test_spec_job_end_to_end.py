@@ -231,6 +231,42 @@ def spec_job(printer_pointed_at_the_simulator):
         shutil.rmtree(REPO_ROOT / "data" / "inputs" / job_id, ignore_errors=True)
 
 
+def _wait_for_operator(job_id: str, timeout_s: float) -> dict:
+    """Wait for the phase-5 record the dispatch endpoint's background task appends.
+
+    `GET /jobs/{id}` cannot answer "has the operator finished". `dispatch_state` is
+    `dispatched` from the moment the row says `awaiting_verdict`, which is written
+    before the subprocess is even spawned. And `current_phase` is worse than useless
+    here: the endpoint rewrites a `running` phase to `error: "Stopped"` whenever the
+    row's outcome is settled, and `awaiting_verdict` satisfies that test — so phase 5
+    reads as a failure for the whole dispatch window.
+
+    The `.status` file is what `_append_phase_status` actually writes: append-only, one
+    JSON object per line, and the operator's exit appends phase 5 `complete` or `error`
+    to it.
+    """
+    status_file = REPO_ROOT / "data" / "logs" / f"{job_id}.status"
+    deadline = time.monotonic() + timeout_s
+    last: dict = {}
+    while time.monotonic() < deadline:
+        for line in status_file.read_text().splitlines() if status_file.exists() else []:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict) and record.get("phase") == 5:
+                last = record
+                if record.get("status") in ("complete", "error"):
+                    return record
+        time.sleep(2.0)
+    raise AssertionError(
+        f"the operator did not finish within {timeout_s}s; last phase-5 record: {last}"
+    )
+
+
 def _wait_for(client, job_id: str, timeout_s: float, done) -> dict:
     """Poll `GET /jobs/{id}` until `done(body)`, then return that body."""
     deadline = time.monotonic() + timeout_s
@@ -396,8 +432,20 @@ def test_the_confirmed_dispatch_reaches_the_simulator(spec_job):
     )
     assert response.status_code == 200, response.text
 
-    body = _wait_for(spec_job.client, spec_job.job_id, DISPATCH_TIMEOUT_S,
-                     lambda b: b["dispatch_state"] == "dispatched")
+    # Not `dispatch_state == "dispatched"`: the endpoint writes `awaiting_verdict`
+    # and appends phase 5 `running` *before* `asyncio.create_task(_run())`, and
+    # `dispatch_state` reports `dispatched` on that outcome alone — so a wait on it
+    # returns on its first poll with `run_operator.py` still uploading. An operator
+    # that then exits non-zero flips the row to `failure` after this test has gone
+    # green, and the fixture's cancel could land before `start_print` and leave the
+    # virtual print running. So wait for the operator's own exit.
+    record = _wait_for_operator(spec_job.job_id, DISPATCH_TIMEOUT_S)
+    assert record["status"] == "complete", (
+        f"the operator exited non-zero: {record.get('error')}"
+    )
+
+    body = spec_job.client.get(f"/jobs/{spec_job.job_id}").json()
+    assert body["dispatch_state"] == "dispatched"
     assert body["outcome"] == "awaiting_verdict", (
         "dispatched is not printed — only a person closes this out"
     )
