@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = REPO_ROOT / "infra" / "docker-compose.yml"
@@ -79,14 +80,51 @@ def test_the_env_template_names_the_url_and_carries_no_value():
 
 
 @pytest.mark.parametrize("service", ["api-server", "pipeline-runner"])
-def test_every_service_that_writes_telemetry_is_handed_the_url(service: str):
-    """`compose run` passes nothing from the host unless the compose file names it."""
-    text = COMPOSE.read_text()
-    block = re.search(rf"\n  {service}:\n(.*?)(?=\n  \S|\nvolumes:|\Z)", text, re.S)
+def test_every_service_that_writes_telemetry_reads_the_repository_env_file(service: str):
+    """`compose run` passes nothing from the host unless the compose file arranges it.
+
+    Asserted on the *mechanism*, not on the variable's name appearing somewhere in the
+    service block, which is what this test used to check and why it stayed green through
+    the whole outage below.
+
+    `env_file: ../.env` is the only thing that reaches the repository's `.env`. Compose
+    looks for its **interpolation** `.env` beside the compose file — `infra/`, which has
+    none — so `${DS_DATABASE_URL:-}` in a service's `environment` resolved to the empty
+    string on every invocation, and `environment` wins over `env_file`. Both writers were
+    handed `DS_DATABASE_URL=""` and raised `DatabaseConfigError` naming the variable
+    `.env` did set, while `PIXAZO_API_KEY` from the same file arrived intact because
+    nothing shadowed it. `api-server` had no `env_file` at all, so `make up` started a
+    server with no database.
+
+    The pass-through spelling (`DS_DATABASE_URL:` with no value) erases it identically
+    when the shell is silent, so the rule is that the key must not appear under
+    `environment` at all. A caller that must override passes `-e`, which is what
+    `server/app.py` does for the pipeline it launches.
+    """
+    document = yaml.safe_load(COMPOSE.read_text())
+    block = (document.get("services") or {}).get(service)
     assert block, f"{service} not found in docker-compose.yml"
-    assert URL_VARIABLE in block.group(1), (
-        f"{service} is not given {URL_VARIABLE}, so its telemetry writes would fail "
-        "with a configuration error inside the container."
+
+    files = block.get("env_file") or []
+    named = {
+        entry if isinstance(entry, str) else entry.get("path")
+        for entry in files
+    }
+    assert "../.env" in named, (
+        f"{service} does not read the repository's .env, so {URL_VARIABLE} cannot reach "
+        f"it: env_file is {sorted(named)}"
+    )
+
+    environment = block.get("environment") or {}
+    declared = (
+        set(environment)
+        if isinstance(environment, dict)
+        else {entry.split("=", 1)[0] for entry in environment}
+    )
+    assert URL_VARIABLE not in declared, (
+        f"{service} declares {URL_VARIABLE} under `environment`, which overrides the "
+        "`env_file` that actually carries it — in every spelling, including a bare name "
+        "or a null value when the shell has none."
     )
 
 
@@ -96,9 +134,19 @@ def test_every_service_that_needs_the_config_key_mounts_the_host_directory(servi
     text = COMPOSE.read_text()
     block = re.search(rf"\n  {service}:\n(.*?)(?=\n  \S|\nvolumes:|\Z)", text, re.S)
     assert block, f"{service} not found in docker-compose.yml"
-    assert "~/.ds-mvp:/root/.ds-mvp" in block.group(1), (
+    assert ".ds-mvp:/root/.ds-mvp" in block.group(1), (
         f"{service} does not mount ~/.ds-mvp, so the config store would generate a "
         "second key inside the container and decrypt nothing the host wrote."
+    )
+    # And not by a bare `~`. A bind mount's source is a path on the **host**, but
+    # `pipeline-runner` is started by `docker compose run` from inside the api-server
+    # container, where `~` is that container's `/root`. Docker Desktop refuses it —
+    # `mounts denied: The path /root/.ds-mvp is not shared from the host` — and every
+    # job submitted through `make up` died before Phase 1. `$HOST_HOME` carries the real
+    # one, exactly as `$HOST_PROJECT_ROOT` carries the repository root.
+    assert "- ~/.ds-mvp:/root/.ds-mvp" not in block.group(1), (
+        f"{service} mounts the key directory through a bare `~`, which resolves inside "
+        "whichever container runs compose. Use ${HOST_HOME:-~}."
     )
 
 

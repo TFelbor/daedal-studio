@@ -921,6 +921,23 @@ FastAPI application with:
   caller can repoint `OCTOPRINT_URL` at their own host and have the server ship it
   `OCTOPRINT_API_KEY`. That is a bigger hole than any profile read and wants its own
   issue.
+- **A profile is a *name* here and a *path* to the pipeline** (`profile_pipeline_argument`).
+  `POST /jobs` accepts `ender3.json` and `pythonsrc/profiles/ender3.json` alike, but
+  `pipeline.py` resolves `--profile` against its own working directory — `/app` in the
+  container — so forwarding the name verbatim killed Phase 4 on every job submitted the
+  documented way (`Printer definition not found: ender3.json`), after the compile, the
+  dimension assert and the printability score had all succeeded. The repository-relative
+  spelling is what means the same thing on both sides. A profile that names no file
+  forwards **nothing**, leaving the pipeline's own default in force: `"default"` and
+  `"test"` are submitted by name in the suite, and a path that cannot be opened is a
+  certain Phase 4 crash. `tests/test_profile_argument.py`.
+- **`run_operator.py` puts the repository root on `sys.path` itself**, exactly as
+  `pipeline.py` does. Both are launched by absolute path, and Python puts the *script's*
+  directory on the path, never the working directory — so `/app/pythonsrc` was importable
+  and `/app` was not, and every confirmed dispatch died on `ModuleNotFoundError: No module
+  named 'pythonsrc'` before opening a connection. The image's own
+  `PYTHONPATH=/app/pythonsrc` cannot help: that is the path for `import operators`.
+  `tests/test_operator_entry_point.py` runs it from three working directories.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
 - **A stored value reaches a subprocess through one allowlist, and never through
   `os.environ`.** `POST /config` wrote the store *and* `os.environ[key]`, the startup
@@ -1105,7 +1122,28 @@ FastAPI application with:
   default: the previous storage had one, and it split native runs and container runs
   across two databases without anything saying so. The Fernet key for the encrypted
   config store stays on the host at `~/.ds-mvp/.config_key`, which is what the
-  `~/.ds-mvp:/root/.ds-mvp` bind mount is still for.
+  `${HOST_HOME:-~}/.ds-mvp:/root/.ds-mvp` bind mount is still for.
+
+  **How it reaches a container, and the two ways it did not.** `env_file: ../.env` is the
+  only thing that reaches the repository's `.env`: compose looks for its *interpolation*
+  `.env` beside the compose file — `infra/`, which has none — so `${DS_DATABASE_URL:-}`
+  under `environment` resolved to the empty string, and `environment` overrides
+  `env_file`. Both writers were handed `DS_DATABASE_URL=""` and raised
+  `DatabaseConfigError` naming the variable `.env` did set, while `PIXAZO_API_KEY` from
+  the same file arrived intact because nothing shadowed it; `api-server` had no
+  `env_file` at all despite a comment claiming one. The pass-through spelling
+  (`DS_DATABASE_URL:` with no value) erases it identically when the shell is silent, so
+  the key must not appear under `environment` — a caller that must override passes `-e`,
+  which is what `server/app.py` does. Second: a bind mount's source is a path on the
+  **host**, and `pipeline-runner` is started by `docker compose run` from *inside* the
+  api-server container, where `~` is that container's `/root` — `mounts denied: The path
+  /root/.ds-mvp is not shared from the host`, on every job submitted through `make up`.
+  `$HOST_HOME` carries the real one, as `$HOST_PROJECT_ROOT` does for the checkout. Both
+  are `make up`-only, which is why neither the suite nor the `mps_native` path had seen
+  them; `tests/test_single_database.py` now asserts the mechanism rather than the
+  variable's name appearing somewhere in the service block, which is what let both
+  through. Note that **`infra/` is copied into the api-server image, not mounted**, so a
+  compose change needs `docker compose build api-server` before the server executes it.
 
   **Why it moved.** It was one SQLite file, `~/.ds-mvp/telemetry.db`, bind-mounted into
   the containers — and it corrupted once: `telemetry_sample`'s b-tree ended up with pages

@@ -236,11 +236,25 @@ services:
       # On macOS/Windows, OctoPrint on the host is reached via host.docker.internal.
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
-      # The telemetry database: PostgreSQL on Supabase, one URL for every process.
-      # `env_file` above carries it from .env; named here too so `docker compose run`
-      # with a URL exported in the shell also reaches it. See "One database" in
-      # CLAUDE.md.
-      DS_DATABASE_URL: ${DS_DATABASE_URL:-}
+      # The telemetry database: PostgreSQL on Supabase, one URL for every process —
+      # native, container, pipeline subprocess. See "One database" in CLAUDE.md. It
+      # arrives through `env_file` above and is deliberately **not** repeated under
+      # `environment`, which is where it used to be:
+      #
+      #     DS_DATABASE_URL: ${DS_DATABASE_URL:-}
+      #
+      # That silenced the `env_file` it was written to complement. `environment` wins
+      # over `env_file`, and `:-` turns an unset variable into an explicit empty string
+      # rather than into nothing — and it was always unset, because compose looks for its
+      # interpolation `.env` beside the compose file (`infra/`, which has none) and not
+      # at the repository root. So every container was handed `DS_DATABASE_URL=""` and
+      # raised `DatabaseConfigError` naming the variable `.env` did in fact set, while
+      # `PIXAZO_API_KEY` and `OCTOPRINT_API_KEY` — named in `.env` and *not* shadowed
+      # here — arrived from the same file perfectly. The pass-through form
+      # (`DS_DATABASE_URL:` with no value) erases it just the same when the shell is
+      # silent, so the entry has to be gone rather than rewritten. A caller that must
+      # override `.env` passes `-e DS_DATABASE_URL=...`, which is what `server/app.py`
+      # does for the pipeline it launches.
     volumes:
       - ${HOST_PROJECT_ROOT:-..}/data/inputs:/app/data/inputs
       - ${HOST_PROJECT_ROOT:-..}/data/outputs:/app/data/outputs
@@ -249,7 +263,15 @@ services:
       # The config store's Fernet key (~/.ds-mvp/.config_key). HOME is /root in the
       # container, so the default key path resolves through this mount to the same
       # file the host uses — one key for one database.
-      - ~/.ds-mvp:/root/.ds-mvp
+      #
+      # `$HOST_HOME` for the same reason `$HOST_PROJECT_ROOT` is above it: this service
+      # is started by `docker compose run` from *inside* the api-server container, and a
+      # bind mount's source is a path on the **host**. A bare `~` expanded there to that
+      # container's own `/root`, which the host does not share, and every job submitted
+      # through `make up` died before Phase 1 with
+      # `mounts denied: The path /root/.ds-mvp is not shared from the host`. Unset — a
+      # compose run on the host — it falls back to `~`, which is what it always was.
+      - ${HOST_HOME:-~}/.ds-mvp:/root/.ds-mvp
       - ds-models-flux:/models/flux
       - ds-models-trellis2:/models/trellis2
       - ds-models-cache:/models/hf_cache
@@ -293,15 +315,25 @@ services:
       # file the host uses. A bind mount rather than a named volume: a volume is
       # invisible from the host, and that is how a month of job history once went
       # somewhere nobody could see.
-      - ~/.ds-mvp:/root/.ds-mvp
+      - ${HOST_HOME:-~}/.ds-mvp:/root/.ds-mvp
+    env_file:
+      # The repository's own `.env`, resolved relative to this file. This is the only
+      # thing that reaches the root `.env`: compose's *interpolation* `.env` is looked
+      # for beside the compose file, so `${...}` here never saw one. `pipeline-runner`
+      # has carried this since it was written; this service's own comment claimed the
+      # same file and nothing delivered it, so `make up` started a server with no
+      # database at all.
+      - path: ../.env
+        required: false
     environment:
-      # The telemetry database: PostgreSQL on Supabase. One URL, read from .env in
-      # the directory compose is run from, for every process — native, container,
-      # pipeline subprocess. See "One database" in CLAUDE.md.
-      - DS_DATABASE_URL=${DS_DATABASE_URL:-}
       - DS_LOGS_DIR=/app/data/logs
       - DOCKER_HOST=unix:///var/run/docker.sock
       - HOST_PROJECT_ROOT=${PWD}
+      # The host's home directory, for the same reason as HOST_PROJECT_ROOT: this
+      # container runs `docker compose run pipeline-runner`, whose bind mounts are
+      # resolved by the daemon against the host's filesystem, and `~` in here is not a
+      # path the host has.
+      - HOST_HOME=${HOME}
       - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-ds-mvp}
     depends_on:
       - pipeline-runner

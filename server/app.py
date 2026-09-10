@@ -273,6 +273,52 @@ def profile_path_or_default(candidate: str | None) -> Path:
     return path or PROFILES_DIR / DEFAULT_PROFILE_NAME
 
 
+def profile_pipeline_argument(candidate: str | None) -> str | None:
+    """The `--profile` value to hand the pipeline, or None to let it use its own.
+
+    A profile is a **name** at this boundary — `POST /jobs` accepts `ender3.json` and
+    `pythonsrc/profiles/ender3.json` alike, and `DEFAULT_PROFILE` is written in either
+    spelling — but it is a **path** to `pipeline.py`, resolved against that process's
+    working directory (`/app` in the container, the repository root natively). Forwarding
+    the name verbatim handed Phase 4 `ender3.json`, which is nothing relative to `/app`:
+    `CuraSlicer.__init__` raises `FileNotFoundError: Printer definition not found` and the
+    job fails at the slicer having already compiled, asserted and scored its mesh. The
+    repository-relative spelling is the one that means the same thing on both sides of
+    the boundary, and it is what the pipeline's own default (`pythonsrc/profiles/
+    ender3.json`) already uses.
+
+    A profile that is merely absent returns None rather than a path that cannot be
+    opened. `"default"` and `"test"` are submitted by name in the suite and name no file;
+    forwarding them is a certain Phase 4 crash, while omitting the flag leaves the
+    pipeline's own default in force — which is exactly what "no profile was named" has
+    always meant. An escaping path falls back the same way, warned about, as in
+    `profile_path_or_default`; `POST /jobs` refuses one outright, but `DEFAULT_PROFILE`
+    reaches here from the config store without passing that boundary.
+
+    Args:
+        candidate: A profile as submitted or stored.
+
+    Returns:
+        A repository-relative POSIX path, or None.
+    """
+    if not candidate:
+        return None
+    try:
+        path = resolve_profile_path(candidate)
+    except ProfileOutsideProfilesDir:
+        logger.warning(
+            "Ignoring a printer profile outside %s: %r", PROFILES_DIR, candidate,
+        )
+        return None
+    if path is None or not path.exists():
+        logger.warning(
+            "No printer profile named %r in %s — the pipeline's own default applies.",
+            candidate, PROFILES_DIR,
+        )
+        return None
+    return path.relative_to(PROFILES_DIR.parent.parent).as_posix()
+
+
 def resolve_job_artifact(
     job_id: str, filename: str, *, per_job_only: bool = False,
 ) -> Path | None:
@@ -1703,7 +1749,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     )
     blueprint_container_path = "/app/" + blueprint_rel.as_posix()
 
-    profile = request.profile or config_store.get("DEFAULT_PROFILE")
+    # A path, not the name this boundary speaks in — see `profile_pipeline_argument`.
+    profile = profile_pipeline_argument(
+        request.profile or config_store.get("DEFAULT_PROFILE")
+    )
 
     pipeline_args = _pipeline_args(
         request, skip_viz=skip_viz, skip_sculpt=skip_sculpt, profile=profile,

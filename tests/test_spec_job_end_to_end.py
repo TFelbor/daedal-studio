@@ -76,6 +76,10 @@ PROFILE = "ender3.json"
 #: reported as a failure with the log tail, and a flaky one would teach nobody anything.
 PIPELINE_TIMEOUT_S = 1200
 DISPATCH_TIMEOUT_S = 180
+#: From the dispatch being recorded to the printer running the file. The operator writes
+#: `dispatched_printer_url` between `upload_file` and `start_print`, and OctoPrint's
+#: virtual printer takes a moment to move off `Operational`.
+START_PRINT_TIMEOUT_S = 90
 POLL_INTERVAL_S = 2.0
 
 #: Twenty single-sleeved cards rather than a hundred double-sleeved ones: the card's own
@@ -231,39 +235,64 @@ def spec_job(printer_pointed_at_the_simulator):
         shutil.rmtree(REPO_ROOT / "data" / "inputs" / job_id, ignore_errors=True)
 
 
-def _wait_for_operator(job_id: str, timeout_s: float) -> dict:
-    """Wait for the phase-5 record the dispatch endpoint's background task appends.
+def _phase_5_failure(job_id: str) -> dict | None:
+    """The phase-5 `error` record the dispatch endpoint appends, if the operator died.
 
-    `GET /jobs/{id}` cannot answer "has the operator finished". `dispatch_state` is
-    `dispatched` from the moment the row says `awaiting_verdict`, which is written
-    before the subprocess is even spawned. And `current_phase` is worse than useless
-    here: the endpoint rewrites a `running` phase to `error: "Stopped"` whenever the
-    row's outcome is settled, and `awaiting_verdict` satisfies that test — so phase 5
-    reads as a failure for the whole dispatch window.
-
-    The `.status` file is what `_append_phase_status` actually writes: append-only, one
-    JSON object per line, and the operator's exit appends phase 5 `complete` or `error`
-    to it.
+    The `.status` file is what `_append_phase_status` writes: append-only, one JSON
+    object per line. `GET /jobs/{id}` cannot be used for this — the endpoint rewrites a
+    `running` phase to `error: "Stopped"` whenever the row's outcome is settled, and
+    `awaiting_verdict` satisfies that test, so phase 5 reads as a failure for the whole
+    dispatch window.
     """
     status_file = REPO_ROOT / "data" / "logs" / f"{job_id}.status"
+    if not status_file.exists():
+        return None
+    for line in status_file.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (isinstance(record, dict) and record.get("phase") == 5
+                and record.get("status") == "error"):
+            return record
+    return None
+
+
+def _wait_for_dispatch(job_id: str, timeout_s: float) -> str:
+    """Wait until the operator has reached the printer, or died trying.
+
+    Deliberately **not** the operator's exit. `run_operator.py` uploads, starts the
+    print and then stays — polling the printer and streaming telemetry until the print
+    ends — which is what it is for. The deck box here slices to 472 layers and the
+    virtual printer reported `printTimeLeft` of about 11 600 s, so waiting for that
+    process to leave could only pass on a plate nobody would print: the first real run
+    of this module sat at phase 5 `running` with the simulator happily on layer 1 and
+    failed at the 180-second deadline while every part of the dispatch had worked.
+
+    `dispatched_printer_url` is the signal that means what this test needs.
+    `run_operator.py` writes it between `upload_file` and `start_print`, so a non-null
+    value is proof the G-code reached the machine — and it is the column asserted below.
+    It also removes the race the process wait was reaching for: `dispatch_state` says
+    `dispatched` from the moment the row says `awaiting_verdict`, which the endpoint
+    writes before the subprocess is spawned.
+
+    A phase-5 `error` record ends the wait immediately: a dispatch that died has nothing
+    to wait for, and the reason is more use than the timeout.
+    """
     deadline = time.monotonic() + timeout_s
-    last: dict = {}
     while time.monotonic() < deadline:
-        for line in status_file.read_text().splitlines() if status_file.exists() else []:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(record, dict) and record.get("phase") == 5:
-                last = record
-                if record.get("status") in ("complete", "error"):
-                    return record
+        failure = _phase_5_failure(job_id)
+        assert failure is None, f"the operator exited non-zero: {failure.get('error')}"
+        url = _row(job_id).dispatched_printer_url
+        if url:
+            return url
         time.sleep(2.0)
     raise AssertionError(
-        f"the operator did not finish within {timeout_s}s; last phase-5 record: {last}"
+        f"the operator did not record a dispatch within {timeout_s}s; last phase-5 "
+        f"record: {_phase_5_failure(job_id) or 'still running'}"
     )
 
 
@@ -282,6 +311,30 @@ def _wait_for(client, job_id: str, timeout_s: float, done) -> dict:
     pytest.fail(
         f"job {job_id} did not settle within {timeout_s:.0f}s "
         f"(outcome={body.get('outcome')}, phase={body.get('current_phase')}).\n{log}"
+    )
+
+
+def _wait_for_printing(timeout_s: float) -> dict:
+    """The simulator's `/api/job` once it is actually running a file.
+
+    `progress.completion` is None while the printer is idle and a float once it is
+    printing, so it is the one field that separates "the operator uploaded" from "the
+    operator started it".
+    """
+    deadline = time.monotonic() + timeout_s
+    body: dict = {}
+    while time.monotonic() < deadline:
+        body = httpx.get(
+            f"{SIMULATOR_URL}/api/job",
+            headers={"X-Api-Key": simulator_manager.octoprint_api_key()},
+            timeout=10.0,
+        ).json()
+        if body.get("progress", {}).get("completion") is not None:
+            return body
+        time.sleep(2.0)
+    raise AssertionError(
+        f"the simulator never started the file within {timeout_s}s; "
+        f"state={body.get('state')} job={body.get('job', {}).get('file')}"
     )
 
 
@@ -432,17 +485,21 @@ def test_the_confirmed_dispatch_reaches_the_simulator(spec_job):
     )
     assert response.status_code == 200, response.text
 
-    # Not `dispatch_state == "dispatched"`: the endpoint writes `awaiting_verdict`
-    # and appends phase 5 `running` *before* `asyncio.create_task(_run())`, and
+    # Not `dispatch_state == "dispatched"`: the endpoint writes `awaiting_verdict` and
+    # appends phase 5 `running` *before* `asyncio.create_task(_run())`, and
     # `dispatch_state` reports `dispatched` on that outcome alone — so a wait on it
-    # returns on its first poll with `run_operator.py` still uploading. An operator
-    # that then exits non-zero flips the row to `failure` after this test has gone
-    # green, and the fixture's cancel could land before `start_print` and leave the
-    # virtual print running. So wait for the operator's own exit.
-    record = _wait_for_operator(spec_job.job_id, DISPATCH_TIMEOUT_S)
-    assert record["status"] == "complete", (
-        f"the operator exited non-zero: {record.get('error')}"
-    )
+    # returns on its first poll with `run_operator.py` still uploading. Wait for the
+    # operator to record the dispatch instead; see `_wait_for_dispatch` for why its exit
+    # is the wrong event to wait for.
+    _wait_for_dispatch(spec_job.job_id, DISPATCH_TIMEOUT_S)
+
+    # The file really reached the machine and really started: the operator's own
+    # `start_print` is the last thing the gate is responsible for, and the printer is
+    # the only witness to it. Polled rather than sampled — the dispatch URL above is
+    # written *between* `upload_file` and `start_print`, so at that instant the
+    # simulator legitimately holds the file and reports `Operational`.
+    printing = _wait_for_printing(START_PRINT_TIMEOUT_S)
+    assert printing["job"]["file"]["name"] == "engineered_mesh.gcode", printing["job"]
 
     body = spec_job.client.get(f"/jobs/{spec_job.job_id}").json()
     assert body["dispatch_state"] == "dispatched"
