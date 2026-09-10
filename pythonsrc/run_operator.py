@@ -5,6 +5,19 @@ import sys
 import os
 from pathlib import Path
 
+# The repository root, so `pythonsrc` is importable however this file was started.
+# `pipeline.py` has done exactly this since it was written; its sibling entry point
+# never did, and the two are launched the same way — by absolute path, from
+# `server/app.py`'s dispatch gate. Python puts the *script's own* directory on
+# `sys.path`, not the working directory, so `/app/pythonsrc` was on the path and
+# `/app` was not, and every confirmed dispatch died on `ModuleNotFoundError: No
+# module named 'pythonsrc'` before it opened a connection. Reproducible in the
+# api-server image itself — `docker run -w /app ds-api-server:latest python
+# pythonsrc/run_operator.py --help` — so this was never a development-only accident.
+# The image's own `PYTHONPATH=/app/pythonsrc` does not help: that is the path for
+# `import operators`, not for `import pythonsrc.operators`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from pythonsrc.operators import PrinterFactory
 
 logging.basicConfig(level=logging.INFO)

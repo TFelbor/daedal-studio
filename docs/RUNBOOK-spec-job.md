@@ -12,7 +12,15 @@ telemetry database. `tests/test_spec_job_end_to_end.py` automates every step bel
 skips — naming which one is missing — when they are absent. Run that first; run this
 when you need to see it, or when the test skips and you want to know why.
 
-Everything here is `bash` from the repository root.
+Everything here is `bash` from the repository root, on **macOS or Linux alike**.
+Nothing below is Mac-specific: the pipeline runs in the `linux/amd64` images either way,
+and the one thing that is — Apple Silicon's MPS, which only Phase 1 uses — is a phase a
+spec job never runs. See step 1.
+
+**Comments are on their own line, deliberately.** `zsh` does not treat `#` as a comment
+when it is interactive (`interactive_comments` is off by default), so
+`make build  # ds-base first` pasted into a Mac terminal hands `make` a `#` target and
+stops with `No rule to ... '#'`. Copy whole blocks, not lines with trailing prose.
 
 ---
 
@@ -22,32 +30,64 @@ Everything here is `bash` from the repository root.
   this is where the real slicer has to be:
 
   ```bash
-  make build                                                   # ds-base first, then the rest
+  # ds-base first, then the rest
+  make build
   docker run --rm ds-mvp-pipeline:latest sh -c "command -v CuraEngine"
   ```
 
-  The second command must print a path. If it prints nothing the image has no slicer and
-  nothing below is a real test of Phase 4.
+  The second command must print a path — `/usr/bin/CuraEngine`. If it prints nothing the
+  image has no slicer and nothing below is a real test of Phase 4. Its other output is
+  expected: `linux/amd64` does not match an Apple Silicon host (Rosetta emulates it), and
+  the entrypoint writes `config.py` and warns that `OCTOPRINT_API_KEY` is unset, which
+  matters to Phase 5 and not to this probe.
 
-- **The virtual environment, activated.** Steps 2, 4 and 7 run `python` with this
-  repository's own modules on the path — `server.simulator_manager`, `pythonsrc.organizer`,
-  `pythonsrc.telemetry.trace` — so on a fresh checkout every one of them fails before you
-  reach the slicer. A Mac has no bare `python` at all until a venv is active, and every
-  `python` below is that one:
+  **Rebuild when the tree moves.** `pythonsrc/`, `server/` and `tests/` are bind-mounted
+  into the containers, so a `git pull` reaches them live — but a change to
+  `infra/docker/*.Dockerfile` or to `requirements-*.txt` does not, and the container then
+  runs today's code against yesterday's dependencies. Phase 3 writes `engineered_mesh.3mf`
+  on every run through `lxml`, which is exactly such a change: an image built before it
+  fails at the export, not at import.
+
+  **`infra/` is copied into the api-server image, not mounted**, and the server runs
+  every pipeline as `docker compose run` against *that* copy. So a change to
+  `infra/docker-compose.yml` — a volume, an environment key — does not reach a running
+  server at all, and the symptom is a job that fails inside compose with the *old* file's
+  behaviour while `git diff` shows the fix:
 
   ```bash
-  python3 -m venv .venv && source .venv/bin/activate
-  pip install -r requirements-mac.txt                          # requirements-linux.txt on Linux
+  docker compose -f infra/docker-compose.yml build api-server
   ```
 
-  Keep this shell for the whole runbook. If you open a second one, `source .venv/bin/activate`
-  in it too.
+- **A Python environment carrying this repository's dependencies, activated.** Steps 2,
+  4 and 7 run `python` with the repository's own modules on the path —
+  `server.simulator_manager`, `pythonsrc.organizer`, `pythonsrc.telemetry.trace` — so on a
+  bare interpreter every one of them fails before you reach the slicer. Every `python`
+  below means that interpreter, and a Mac has no bare `python` at all until one is active.
+
+  **Which environment manager is not the requirement; the packages are.** Use whichever
+  you already have — the repository owns no environment and prescribes none:
+
+  ```bash
+  # conda, if that is what this machine uses
+  conda activate ds-mvp
+  pip install -r requirements-mac.txt
+  ```
+
+  ```bash
+  # venv, if it is not — no extra tooling, and .venv is gitignored
+  python3 -m venv .venv && source .venv/bin/activate
+  pip install -r requirements-mac.txt
+  ```
+
+  `requirements-linux.txt` in place of `requirements-mac.txt` on Linux. Keep this shell
+  for the whole runbook; activate the same environment in any second shell you open.
 
 - The local config and the runtime directories, as for the test suite:
 
   ```bash
   cp pythonsrc/config.template.py pythonsrc/config.py
-  cp .env.template .env                                        # DS_DATABASE_URL is the one required value
+  # DS_DATABASE_URL is the one required value in .env
+  cp .env.template .env
   mkdir -p data/inputs data/outputs data/logs
   ```
 
@@ -64,15 +104,28 @@ Everything here is `bash` from the repository root.
 ## 1. Start the API server
 
 ```bash
-make up                       # docker compose -f infra/docker-compose.yml up api-server
-# or, natively (the Mac path — Phase 1 needs MPS, which a container cannot reach):
-make start-native
+make up
 ```
+
+That is `docker compose -f infra/docker-compose.yml up api-server`, and it is the path
+this runbook takes on both operating systems.
+
+**Why not `make start-native`, and why both exist.** `start-native` runs the same app
+under `uvicorn` on the host instead of in a container, and the single thing that buys is
+Phase 1: FLUX needs Apple Silicon's MPS, which a container cannot reach, so a *generative*
+job renders in ~30 s natively against ~84 minutes on CPU in Docker. **A spec job never
+runs Phase 1.** `--spec` implies `--skip-visualizer --skip-sculptor`, and `_phase_skips`
+makes the server skip both generative phases for a request carrying a spec — so on this
+path the two entry points launch the identical `docker compose run pipeline-runner`, and
+`make up` is the one that needs no host interpreter, publishes on loopback by the same
+`DS_API_BIND` as a native run, and behaves the same on a Linux machine. Reach for
+`start-native` when you are working on Phase 1 on a Mac, and not otherwise.
 
 Check it:
 
 ```bash
-make health                   # curl -s http://localhost:8000/health | python -m json.tool
+# curl -s http://localhost:8000/health | python -m json.tool
+make health
 ```
 
 `database.healthy` must be true. A server whose database is unreachable still starts,
@@ -272,7 +325,8 @@ job's outcome alone unless you are recording a real verdict.
 ## The same run, automated
 
 ```bash
-make test-slow                                    # pytest tests/ -v -m "slow and real_printer"
+# pytest tests/ -v -m "slow and real_printer"
+make test-slow
 pytest tests/test_spec_job_end_to_end.py -m "slow and real_printer"
 ```
 
