@@ -48,7 +48,14 @@ fi
 case "$1 $2" in
   "api rate_limit") printf '{"rate":{"remaining":4999}}' ;;
   "pr list")   printf '%s' "${FAKE_GH_PR_LIST:-[]}" ;;
-  "pr create") echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
+  "pr create")
+    # GITHUB_TOKEN may not open a pull request unless the repository allows Actions to;
+    # it is off here, so the fallback token pushes and comments and still fails at this.
+    if [ -n "${FAKE_GH_PR_CREATE_FAILS:-}" ]; then
+      echo 'pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests' >&2
+      exit 1
+    fi
+    echo "https://github.com/Daedal-Studio/ds-mvp/pull/${FAKE_GH_NEW_PR:-99}" ;;
   "pr comment"|"issue comment"|"pr ready"|"pr edit") : ;;
   *) echo "fake gh: unexpected invocation: $*" >&2; exit 64 ;;
 esac
@@ -504,3 +511,23 @@ def test_the_probe_runs_before_anything_is_written(repo: dict) -> None:
     assert calls[:2] == [c for c in calls[:2] if c.startswith("api rate_limit")], (
         f"the probe should run once per token, before the first query: {calls[:4]}"
     )
+
+
+def test_a_draft_that_could_not_be_opened_is_not_reported_as_one(repo: dict) -> None:
+    """`GITHUB_TOKEN` may not open a pull request unless the repository allows Actions to,
+    and that setting is off here — so the fallback token can push and comment and still
+    fail at `gh pr create`. The old wording then told the issue the work was "on the
+    branch as a draft pull request", which is false in the one place a person is relying
+    on it, and it hid the part that matters: with no draft, `claude-resume` has nothing to
+    pick up."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GITHUB_REPOSITORY="Daedal-Studio/ds-mvp", FAKE_GH_PR_CREATE_FAILS="1")
+    assert result.returncode == 0, result.stderr
+    comment = next(c for c in _reports(repo) if c.startswith("issue comment "))
+    assert "no pull request could be opened" in comment, comment
+    assert "as a draft pull request" not in comment, comment
+    assert "claude-resume` has nothing to pick up" in comment, comment
+    assert "git push origin --delete claude/issue-7" in comment, comment
+    assert "issue_number=7" in comment, comment
+    assert "pull/new/claude/issue-7" in comment, comment

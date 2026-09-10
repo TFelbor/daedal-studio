@@ -60,6 +60,8 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 ISSUE_TITLE="${ISSUE_TITLE:-}"
 PR_NUMBER="${PR_NUMBER:-}"
 GH_TOKEN_FALLBACK="${GH_TOKEN_FALLBACK:-}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
+REPO_URL="${REPO_URL:-}"
 
 log() { echo "report: $*" >&2; }
 
@@ -299,18 +301,31 @@ implement_mode() {
   # `set -u` — the runner's bash 5 does not need it, a developer's macOS /bin/bash does.
   local -a label_args=()
   [ -n "$RISK_LABEL" ] && label_args=(--label "$RISK_LABEL")
+  local opened=yes
   if url=$(gh pr create --draft --head "$BRANCH" --base "$BASE_BRANCH" --title "$title" --body "$body" ${label_args[@]+"${label_args[@]}"}); then
     log "opened draft pull request $url"
   else
     log "could not open a pull request for $BRANCH"
-    url="the branch \`$BRANCH\`"
+    opened=no
   fi
 
-  if [ "$CONCLUSION" = "success" ]; then
-    comment_issue "$(printf 'claude-implement finished (%s) without opening a pull request; the workflow opened its work as a draft: %s. Review it and mark it ready, or comment on it to hand it back.\n\n%s' "$why" "$url" "$(transcript_hint)")"
-  else
-    comment_issue "$(printf '**claude-implement did not finish this issue.** The run ended with %s. What it committed is on %s as a draft pull request; the resume and restart instructions are in its description.\n\n%s' "$why" "$url" "$(transcript_hint)")"
+  # Two different reports, because a branch is not a pull request. `GITHUB_TOKEN` may
+  # not open one at all — Settings -> Actions -> General -> "Allow GitHub Actions to
+  # create and approve pull requests" is off by default — so the fallback token can
+  # push and comment and still fail here. Saying "your work is on the branch as a draft
+  # pull request" would then be false in the one place a person is relying on it, and it
+  # would hide the part that actually matters: with no draft, `claude-resume` has
+  # nothing to find and this issue will not be picked up again on its own.
+  if [ "$opened" = "yes" ]; then
+    if [ "$CONCLUSION" = "success" ]; then
+      comment_issue "$(printf 'claude-implement finished (%s) without opening a pull request; the workflow opened its work as a draft: %s. Review it and mark it ready, or comment on it to hand it back.\n\n%s' "$why" "$url" "$(transcript_hint)")"
+    else
+      comment_issue "$(printf '**claude-implement did not finish this issue.** The run ended with %s. What it committed is on %s as a draft pull request; the resume and restart instructions are in its description.\n\n%s' "$why" "$url" "$(transcript_hint)")"
+    fi
+    return
   fi
+
+  comment_issue "$(printf '**claude-implement did not finish this issue, and no pull request could be opened for it.** The run ended with %s. Everything it committed is pushed to the branch `%s` and nothing else points at it: with no draft pull request, `claude-resume` has nothing to pick up and this issue will not be retried on its own.\n\nOpen one by hand — %s/pull/new/%s — or discard the attempt and start over:\n\n    git push origin --delete %s\n    gh workflow run claude-implement.yml -f issue_number=%s\n\nIf this keeps happening, the workflow token is probably not allowed to open pull requests: Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests".\n\n%s' "$why" "$BRANCH" "${REPO_URL:-https://github.com/$GITHUB_REPOSITORY}" "$BRANCH" "$BRANCH" "${ISSUE_NUMBER:-N}" "$(transcript_hint)")"
 }
 
 fix_mode() {

@@ -240,7 +240,16 @@ model step failed:
    `claude-implement-issue-<n>-transcript`, kept 14 days. `gh run download <run-id>`
    fetches it; the result message at its end says `subtype`, `num_turns` and how many
    tool calls were denied.
-1a. **It authenticates twice, because the first token is already dead.** The App's
+2. **The work is left where a person can find it** (`infra/ci/claude_implement_report.sh`,
+   tested by `tests/test_claude_implement_report.py`):
+   - uncommitted edits become one `WIP:` commit, marked as the workflow's, not the model's;
+   - commits origin does not have are pushed;
+   - commits with no pull request get a **draft** one, titled `WIP: <issue title>`,
+     whose description says how the run ended and how to resume or restart;
+   - commits with a pull request get a comment on it saying the same;
+   - nothing committed gets a comment on the issue saying so, and why.
+
+   **It authenticates twice, because the first token is already dead.** The App's
    token — `steps.implement.outputs.github_token` — is revoked when the action's own
    step ends, and this tail runs *after* it, under `if: always()`. On issue #65 every
    `gh` call in it answered `HTTP 401: Bad credentials`: the branch was pushed, because
@@ -259,14 +268,17 @@ model step failed:
    `github-actions[bot]`, which the loop declines to answer. Worse than an app-authored
    draft, incomparably better than none.
 
-2. **The work is left where a person can find it** (`infra/ci/claude_implement_report.sh`,
-   tested by `tests/test_claude_implement_report.py`):
-   - uncommitted edits become one `WIP:` commit, marked as the workflow's, not the model's;
-   - commits origin does not have are pushed;
-   - commits with no pull request get a **draft** one, titled `WIP: <issue title>`,
-     whose description says how the run ended and how to resume or restart;
-   - commits with a pull request get a comment on it saying the same;
-   - nothing committed gets a comment on the issue saying so, and why.
+   One thing the fallback still cannot do: `GITHUB_TOKEN` may not open a pull request
+   unless **Settings → Actions → General → "Allow GitHub Actions to create and approve
+   pull requests"** is on, and it is off in this repository (`can_approve_pull_request_reviews:
+   false`). So a run whose App token was refused pushes its branch, fails to open the
+   draft, and then says exactly that on the issue — naming the branch, the
+   `pull/new/<branch>` link, the two commands that start over, and the fact that
+   `claude-resume` has nothing to pick up. It deliberately does **not** claim the work is
+   "on the branch as a draft pull request", which is what the old wording did in the one
+   place a person was relying on it. Turning that setting on is a decision about the
+   repository — it also permits workflows to *approve* pull requests — so it is not done
+   here.
 
    The draft is opened with the App's token when the action produced one, so it is the
    Claude app's pull request and the fix loop can act on it. A successful run that
