@@ -275,6 +275,14 @@ opt-in and need hardware this repository cannot assume. Four markers are declare
 `integration` (a running FastAPI server, no printer), `slow` (over 30 seconds),
 `real_printer` and `full_pipeline`.
 
+The `slow and real_printer` selection is the only place the **real** slicer and a printer
+are exercised; the default selection runs against a CuraEngine stub.
+`tests/test_spec_job_end_to_end.py` takes one parametric spec from `POST /jobs` through
+CuraEngine and the dispatch gate to a telemetry row, and skips — naming which of Docker,
+the built pipeline image, the slicer inside it or the OctoPrint simulator is absent —
+rather than failing. [`docs/RUNBOOK-spec-job.md`](docs/RUNBOOK-spec-job.md) is the same
+run by hand, for when you need to watch it.
+
 ### The frontend
 
 ```bash
@@ -372,7 +380,7 @@ same commit):
 - [x] Repair-assertion path: assert watertight + per-feature dimensions on spec meshes, `size_source="spec"` — `Engineer.process(repair_mode="assert")`, `dimension_report.json` after Phase 3, `JobRequest.spec` (PR #47, 2026-09-03)
 - [x] Dimensional-accuracy CI — spec → exported-mesh error per critical feature — `tests/test_organizer_dimensional_accuracy.py`, 405-spec envelope on the exported STL at ±0,05 mm per feature (`DEFAULT_TOLERANCE_MM`) + Phase 3 assert path, its own CI step (PR #47, 2026-09-03)
 - [x] `feat/ui-redesign-pivot` merged into `main` — PR #48, 2026-09-04. The four boxes above were ticked on `main` before the code was there; they are now true of `main`
-- [ ] One spec job end to end (`POST /jobs` → CuraEngine → OctoPrint simulator → telemetry row) — no spec job has yet run through the real slicer, printer or telemetry DB
+- [~] One spec job end to end (`POST /jobs` → CuraEngine → OctoPrint simulator → telemetry row) — **the harness and the runbook landed 2026-09-10 (PR #NNN); the run itself has not happened.** `tests/test_spec_job_end_to_end.py` (`slow`, `real_printer`) submits a deck-box spec with `print: false`, waits for the pipeline to settle and asserts the row — `size_source="spec"`, `generation_model="organizer/deck_box"`, `slice_status="success"`, `layer_count > 0`, `repair_report["dimension_check"]` within ±0,05 mm, a printability verdict, `dispatch_state="awaiting_confirmation"` — then confirms the gate and checks `dispatched_printer_url`; it skips naming which of Docker, the built pipeline image, the CuraEngine *inside* it or a simulator answering on 5001 is missing, so the default selection is unchanged. `docs/RUNBOOK-spec-job.md` is the same run by hand, and `tests/test_runbook_spec_job.py` re-derives every command, service, endpoint, column and filename it names from the source. **This box is not ticked until a real `print_job` row exists and its `trace` output is pasted into the PR** — no spec job has yet reached the real slicer, printer or telemetry DB, and a tick before then would be the same fabrication as a fits badge with no measurement behind it
 
 ### 📋 Phase 2 — Internal alpha (PRD M1 · 15 September – 10 October 2026)
 
