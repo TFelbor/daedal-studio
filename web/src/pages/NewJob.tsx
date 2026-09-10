@@ -20,7 +20,14 @@ import { ArchetypeStrip } from '../components/ArchetypeStrip';
 import { FitsCheck } from '../components/FitsCheck';
 import { SpecPanel } from '../components/SpecPanel';
 import { COUNTER_REVEAL, MAX_PROMPT_CHARS } from '../components/promptLimits';
-import { createJob, fetchSizeHint, getJob, listJobs, MATERIAL_TYPES } from '../api/client';
+import {
+  createJob,
+  fetchSizeHint,
+  getJob,
+  listJobs,
+  markPreviewReached,
+  MATERIAL_TYPES,
+} from '../api/client';
 import type { JobStatusResponse, SizeHint, TelemetrySample } from '../api/client';
 import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
@@ -224,6 +231,8 @@ export function NewJob() {
   const pollIntervalRef = useRef<number | null>(null);
   /** Once someone picks a tab themselves, the stage stops following the pipeline. */
   const tabPinnedRef = useRef(false);
+  /** The job whose `preview_reached` event this tab has already sent — see below. */
+  const previewReportedRef = useRef<string | null>(null);
   /** Fallback clock for a job whose server-side start time has not arrived yet.
       State rather than a ref because the elapsed figure is rendered from it, and a
       ref read during render is not safe under concurrent rendering. */
@@ -599,6 +608,18 @@ export function NewJob() {
   }, [jobActive]);
 
   /**
+   * Whether each of the two previews has something real behind it.
+   *
+   * One definition, read by the stage advance, the activation event and the stage
+   * itself — they must agree about when a preview exists, or the metric counts a
+   * waiting animation. `meshReady` is `MeshViewer`'s own gate; `sliceReady` accepts
+   * `layer_count` as well because an older row can carry the count without the
+   * status.
+   */
+  const meshReady = phases.find(p => p.phase === 3)?.status === 'complete';
+  const sliceReady = currentJob?.slice_status === 'success' || currentJob?.layer_count != null;
+
+  /**
    * The stage follows the pipeline to the newest artifact until someone picks a tab.
    *
    * The toolpath is the last thing the pipeline makes and the thing worth looking at
@@ -608,12 +629,38 @@ export function NewJob() {
    */
   useEffect(() => {
     if (tabPinnedRef.current) return;
-    if (currentJob?.slice_status === 'success' || currentJob?.layer_count != null) {
+    if (sliceReady) {
       setActiveTab('slice');
-    } else if (phases.find(p => p.phase === 3)?.status === 'complete') {
+    } else if (meshReady) {
       setActiveTab('mesh');
     }
-  }, [phases, currentJob?.slice_status, currentJob?.layer_count]);
+  }, [meshReady, sliceReady]);
+
+  /**
+   * Record that a preview actually reached a person — the activation metric (PRD §7,
+   * roadmap §6A). "≥ 60 % of prompt submitters reach a preview" had a denominator and
+   * no numerator: nothing recorded that anyone ever saw the geometry they asked for.
+   *
+   * Fired from the stage, not from the phase banner. An artifact appearing on disk is
+   * a fact about the pipeline; this metric is about someone looking, so the condition
+   * is that the mesh or the toolpath is the *rendered* tab and has something behind
+   * it — `MeshViewer` draws a waiting animation until Phase 3 lands, and counting that
+   * would report activation for a job whose preview never arrived.
+   *
+   * The ref holds the job id rather than a boolean, so attaching to a second job in
+   * the same tab records that job too. The server deduplicates per job on top of it,
+   * which is what makes a page reload — a fresh ref with no memory — free.
+   */
+  useEffect(() => {
+    if (!jobId || previewReportedRef.current === jobId) return;
+    if (!(activeTab === 'mesh' && meshReady) && !(activeTab === 'slice' && sliceReady)) return;
+    previewReportedRef.current = jobId;
+    markPreviewReached(jobId).catch(() => {
+      // Losing one data point is better than a view that breaks while measuring
+      // itself; let the next render try again.
+      previewReportedRef.current = null;
+    });
+  }, [jobId, activeTab, meshReady, sliceReady]);
 
   /**
    * Start a job for `text`, from either entry point.
@@ -1099,7 +1146,6 @@ export function NewJob() {
 
   const activeTabPhase = STAGE_TABS.find(t => t.id === activeTab)?.phase ?? 1;
   const meshRepaired = phases.find(p => p.phase === 3)?.status === 'complete';
-  const sliceReady = currentJob?.slice_status === 'success' || currentJob?.layer_count != null;
   const sliceFailed = currentJob?.slice_status === 'failed';
 
   const caption: { left: string; right: string } = {
