@@ -203,22 +203,61 @@ class Divider:
 
 @dataclass(frozen=True)
 class Constraints:
-    """External limits the finished part must fit within: (W, D, H) in mm, or None."""
+    """External limits the finished part must fit within: (W, D, H) in mm, or None.
+
+    `max_external_mm` is a number somebody measured off *one* copy of a box, and
+    `docs/dimension-kb-research.md` §7 is why that is not the number to build to:
+    there is no public database of game-box internals, the community measurements
+    that exist are per-game, and boxes flare and vary ±1–2 mm between copies of the
+    same title. The audited insert standard (roadmap §0.5) therefore makes a 2 mm
+    reduction on total dimensions **mandatory** — an insert that presses outward
+    splits the cardboard at the corners and lifts the lid, which is its named
+    catastrophic failure — and BIT's leave-3/3/2 rule says the same.
+
+    So the limit an archetype compares against is never the stated one:
+    `effective_max_external_mm()` takes `fit_margin_mm` off every axis first.
+    """
 
     max_external_mm: Optional[Tuple[float, float, float]] = None
+    #: Taken off `max_external_mm` on **every** axis before any archetype compares its
+    #: envelope against it. The default is `docs/dimension-kb-research.md` §7's "ship
+    #: internal dims as user input with a −2 mm safety default". Set it to **0** when
+    #: you measured the actual box you are filling and want the number you measured
+    #: honoured verbatim; that restores the pre-margin comparison exactly, message and
+    #: all. It has no effect without a `max_external_mm` to subtract it from.
+    fit_margin_mm: float = 2.0
 
     def __post_init__(self) -> None:
-        if self.max_external_mm is None:
-            return
         problems: list[str] = []
-        values = self.max_external_mm
-        if not isinstance(values, (list, tuple)) or len(values) != 3:
-            raise SpecError([f"max_external_mm must be three numbers (W, D, H), got {values!r}"])
-        rounded = tuple(
-            _mm(v, f"max_external_mm[{i}]", problems) for i, v in enumerate(values)
-        )
+        _set(self, "fit_margin_mm",
+             _mm(self.fit_margin_mm, "fit_margin_mm", problems, inclusive=True))
+        if self.max_external_mm is not None:
+            values = self.max_external_mm
+            if not isinstance(values, (list, tuple)) or len(values) != 3:
+                problems.append(
+                    f"max_external_mm must be three numbers (W, D, H), got {values!r}"
+                )
+                _raise_if(problems)
+            rounded = tuple(
+                _mm(v, f"max_external_mm[{i}]", problems) for i, v in enumerate(values)
+            )
+            _raise_if(problems)
+            _set(self, "max_external_mm", rounded)
         _raise_if(problems)
-        _set(self, "max_external_mm", rounded)
+
+    def effective_max_external_mm(self) -> Optional[Tuple[float, float, float]]:
+        """`max_external_mm` with `fit_margin_mm` taken off every axis, or None.
+
+        The one place the subtraction happens, so two archetypes cannot disagree about
+        what the limit is. A margin larger than the limit yields a negative one rather
+        than being clamped: that is a limit nothing can satisfy, and saying so with the
+        arithmetic visible beats silently comparing against zero.
+        """
+        if self.max_external_mm is None:
+            return None
+        return tuple(  # type: ignore[return-value]
+            round(v - self.fit_margin_mm, MM_DECIMALS) for v in self.max_external_mm
+        )
 
 
 @dataclass(frozen=True)

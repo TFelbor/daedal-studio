@@ -57,7 +57,12 @@ import manifold3d
 from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh, plane_set
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Divider, OrganizerSpec, SpecError, spec_hash
-from .common import expect_planes, single_compartment_problem, view_row
+from .common import (
+    expect_planes,
+    external_overshoots,
+    single_compartment_problem,
+    view_row,
+)
 
 ARCHETYPE = "card_divider"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
@@ -315,6 +320,12 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     `constraints.max_external_mm` is `(W, D, H)` of the divider **in use, standing
     upright**: W the plate width, D the plate thickness, H the total height including
     the tab. A failing remedy names the axis and the overshoot.
+
+    **The comparison is against the limit minus `constraints.fit_margin_mm`** (2,0 mm
+    by default — `docs/dimension-kb-research.md` §7), on every axis including the
+    thickness. The margin is a property of the *measurement*, not of the part: it is
+    the ±1–2 mm a box internal varies by between copies, so a divider that presses on
+    the box walls splits them exactly as an insert does.
     """
     validate(spec)
     d = derive(spec)
@@ -334,26 +345,14 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     )
     fits = True
     remedy = None
-    limit = spec.constraints.max_external_mm
-    if limit is not None:
-        over = [
-            (axis, extent, maximum)
-            for axis, extent, maximum in zip(
-                ("width", "depth", "height"), (d.plate_w, d.thickness, d.total_h), limit
-            )
-            if extent > maximum + 1e-9
-        ]
-        if over:
-            fits = False
-            notes = [
-                f"{axis} {extent:g} mm exceeds {maximum:g} mm by {extent - maximum:.1f} mm"
-                for axis, extent, maximum in over
-            ]
-            remedy = (
-                "; ".join(notes)
-                + ". Thin the plate, shorten the tab, choose a lighter sleeving, or "
-                "relax the constraint."
-            )
+    over = external_overshoots(spec, (d.plate_w, d.thickness, d.total_h))
+    if over:
+        fits = False
+        remedy = (
+            "; ".join(o.note for o in over)
+            + ". Thin the plate, shorten the tab, choose a lighter sleeving, or "
+            "relax the constraint."
+        )
     return FitsResult(fits=fits, line=line, basis=s.basis, remedy=remedy)
 
 
