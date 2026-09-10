@@ -170,6 +170,12 @@ jobs:
         # is a check people learn to override. So it passes — loudly, saying it was
         # not reviewed and that a human has to read it. The exemption is conditioned
         # on the PR actually changing a workflow file; nothing else earns it.
+        #
+        # All four outcomes write one sticky comment on the pull request, because
+        # "loudly" used to mean the step summary and nothing else. The model posts its
+        # own review whenever it runs — so the exemption and the missing verdict, the
+        # two paths where it does not run, were the two that reached nobody. See the
+        # note on the marker in the script below.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -185,8 +191,48 @@ jobs:
           # of the spellings as a gate. claude-automerge.yml carries the same set; the
           # two must not drift (tests/test_claude_pipeline_workflows.py pins both).
           CLAUDE_LOGINS: "claude claude[bot] app/claude claude-code claude-code[bot] app/claude-code"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+
+          # One status comment per pull request, edited in place.
+          #
+          # The outcome used to be written only to the step summary, which is three
+          # clicks into the Actions tab. The model posts its own review when it runs at
+          # all — so the two paths where it does not run (the workflow-validation
+          # exemption, and a review that returns no structured output) were the two that
+          # said nothing anywhere a reviewer actually looks. PR #98 and #99 were merged
+          # with no verdict and no comment on either page saying so. Every path below
+          # now writes this comment, and the step summary keeps its copy.
+          #
+          # Its marker must not be the fix loop's. `rounds` further down counts comments
+          # containing `<!-- claude-fix-request -->`, so a status comment carrying that
+          # string would spend the three-round budget by itself and cap the loop before
+          # it ever ran.
+          STATUS_MARKER='<!-- claude-review-status -->'
+
+          upsert_status() {
+            local body id
+            body=$(printf '%s\n%s\n\n[claude-review run](%s)\n' "$STATUS_MARKER" "$1" "$RUN_URL")
+            # Found by marker, not by author. This comment is written with GITHUB_TOKEN,
+            # and `gh pr comment --edit-last` edits whatever that actor last wrote — on a
+            # pull request that got a fix request, that is the fix request.
+            id=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+                   --jq ".[] | select(.body | startswith(\"${STATUS_MARKER}\")) | .id" \
+                 2>/dev/null | head -n 1) || id=""
+            # Neither branch may change this step's exit code. The verdict decides the
+            # check; a comment that failed to post is a reporting failure, and turning
+            # an approval red because GitHub returned 502 would be the worse bug.
+            if [ -n "$id" ]; then
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" \
+                -f body="$body" >/dev/null \
+                || echo "::warning::could not update the claude-review status comment"
+            else
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+                -f body="$body" >/dev/null \
+                || echo "::warning::could not post the claude-review status comment"
+            fi
+          }
 
           if [ -z "$REVIEW_OUTPUT" ]; then
             touched=$(gh pr view "$PR_NUMBER" --json files \
@@ -200,9 +246,17 @@ jobs:
                 echo ""
                 echo "**Nothing reviewed this pull request. A human has to read it.**"
               } >> "$GITHUB_STEP_SUMMARY"
+              upsert_status "$(printf '%s\n\n%s\n\n%s' \
+                '**claude-review did not run. Nothing reviewed this pull request.**' \
+                'It changes `.github/workflows/`, and the action refuses to run a workflow version that differs from the default branch. The check is green deliberately: the alternative is a required check that is permanently red on every pull request touching the pipeline, and a check that is red for a documented reason is one people learn to override.' \
+                '**A human has to read this one.** The workflow starts reviewing normally again once this is merged.')"
               echo "Review skipped: this PR changes workflow files."
               exit 0
             fi
+            upsert_status "$(printf '%s\n\n%s\n\n%s' \
+              '**claude-review returned no verdict. Nothing reviewed this pull request.**' \
+              'The review step ran and produced no structured output, so there was nothing to gate on. This is not a rejection — it is a review that did not happen, and the red check means only that. Two known causes look identical from here and are told apart by the transcript artifact on the run (`gh run download <run-id>`): a review that lost its verdict at the end, and one that never reached the model at all.' \
+              '**Rerun the check (`gh run rerun <run-id> --failed`) or read the diff yourself. Do not read this as an approval.**')"
             echo "The review step returned no structured output, so there is no verdict to gate on." >&2
             exit 1
           fi
@@ -214,6 +268,7 @@ jobs:
 
           if [ "$verdict" = "approve" ]; then
             echo "claude-review approved this pull request." >> "$GITHUB_STEP_SUMMARY"
+            upsert_status "$(printf '%s\n\n%s' '**claude-review approved this pull request.**' "$summary")"
             exit 0
           fi
 
@@ -269,6 +324,10 @@ jobs:
               echo ""
               echo "${summary}"
             } >> "$GITHUB_STEP_SUMMARY"
+            upsert_status "$(printf '%s\n\n%s\n\n%s' \
+              '**claude-review requested changes.**' \
+              "$summary" \
+              "No fix was requested, because ${reason}. Read the review above.")"
             exit 1
           fi
 
@@ -277,9 +336,13 @@ jobs:
           echo "fix rounds so far: ${rounds}"
 
           if [ "$rounds" -lt "$MAX_ROUNDS" ]; then
+            fix_note=$(printf 'Asked the implementer to address it — round %s of %s.' \
+              "$((rounds + 1))" "$MAX_ROUNDS")
             body=$(printf '%s\n@claude please address the review.\n\nRound %s of %s. Latest verdict: %s\n' \
               "$marker" "$((rounds + 1))" "$MAX_ROUNDS" "$summary")
           else
+            fix_note=$(printf 'Changes have been requested %s times, which is the cap. Not asking again — a human needs to look at this one.' \
+              "$rounds")
             body=$(printf '%s\nReview has requested changes %s times, which is the cap. Not asking again — a human needs to look at this one.\n\nLatest verdict: %s\n' \
               "$marker" "$rounds" "$summary")
           fi
@@ -290,4 +353,8 @@ jobs:
             echo ""
             echo "${summary}"
           } >> "$GITHUB_STEP_SUMMARY"
+          upsert_status "$(printf '%s\n\n%s\n\n%s' \
+            '**claude-review requested changes.**' \
+            "$summary" \
+            "$fix_note")"
           exit 1
