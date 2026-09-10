@@ -170,9 +170,17 @@ export interface RawSpec {
     max_external_mm: [number, number, number] | null;
     fit_margin_mm?: number;
   };
+  /**
+   * `fit_intent` is optional here for the same reason `fit_margin_mm` above is: it is
+   * written for every spec composed since issue #71 and absent from every row stored
+   * before it, and the row is authoritative. `cavity_clearance_mm` is always present —
+   * the schema resolves it on construction, so the millimetres the geometry was built
+   * from are in the spec whether or not an intent chose them.
+   */
   process: {
     wall_mm: number;
     floor_mm: number;
+    fit_intent?: string;
     cavity_clearance_mm: number;
     stack_slack_mm: number;
     min_feature_mm: number;

@@ -594,6 +594,23 @@ pin that).
   hash once: a scalar with a default is written into the canonical form like
   `process.wall_mm`, and the alternative, a `SCHEMA_VERSION` bump, refuses every
   existing spec file for an additive field.
+- **`process.fit_intent` chooses the cavity clearance, because one number was
+  serving two objects.** `snug` (the default, and today's 1,5 mm) is a box you
+  close; `easy` is 4,0 mm — a tray you lift cards out of. Both ends are
+  `docs/dimension-kb-research.md` §3's working convention (+1,5–2 / +4–6 mm), the
+  low end of each band is taken, and `FIT_INTENT_CLEARANCE_MM` is the one place
+  either number appears. **The clearance is resolved on construction, never at
+  compile time**: an explicit `cavity_clearance_mm` wins, omitting it takes the
+  intent's figure, and either way the canonical form carries the millimetres the
+  geometry is built from — deriving it later, or remembering *how* it was arrived
+  at, would let two specs with one canonical form compile to two meshes. An `easy`
+  deck box compiles (a loose box is a valid request) and is refused only when those
+  wider millimetres are what push it past a stated `max_external_mm`, with both
+  remedies named; a `snug` overshoot stays a `fits_check` verdict rather than a
+  refusal, because that is what every deck box here was built with and the UI can
+  show it. This moved every spec hash a second time, for `fit_margin_mm`'s reasons;
+  the *mesh* a stored spec compiles to did not move, and
+  `tests/test_deck_box.py` pins the example's STL in bytes.
 - **Each archetype refuses the other's section by name.** `deck_box` refuses a
   `divider`, `card_divider` refuses a `lid`. Ignoring a section prints a different part
   than the one asked for, silently, which is the same failure as ignoring an unsupported

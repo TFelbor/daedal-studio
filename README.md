@@ -383,7 +383,7 @@ same commit):
 - [ ] Dispatch path generalised beyond OctoPrint — operator monitor loop, per-firmware credentials through the gate
 - [ ] Spec submit wired in the UI — archetype strip + spec panel → `POST /jobs` (or the parametric copy softened until it is)
 - [ ] Chamfer + vertical-fillet primitives in `compiler.py` — 45° base chamfer (anti-warp) and internal/external corner rounds (anti-elephant-foot, token-bin scooping) via `Manifold.hull` and `CrossSection.offset(Round)`; no new dependency, no OCCT review (§0.5)
-- [ ] `Process.fit_intent` (`snug` | `easy`) driving cavity clearance — one hardcoded 1,5 mm serves a snug deck box and a lift-out tray today; the +1,5–2 / +4–6 mm split is already sourced in `docs/dimension-kb-research.md` §3
+- [x] `Process.fit_intent` (`snug` | `easy`) driving cavity clearance — 2026-09-10: `snug` is the default and today's 1,5 mm, `easy` is 4,0 mm, both the low end of `docs/dimension-kb-research.md` §3's bands and both in `FIT_INTENT_CLEARANCE_MM` alone. The clearance is resolved on construction, so an explicit `cavity_clearance_mm` still wins and the canonical form always carries the millimetres the geometry was built from; every spec hash moved a second time and no mesh did
 - [ ] Justify or retire `Process.wall_mm = 2.8` — seven perimeters at a 0,4 nozzle, unsourced; derive the floor from the profile's nozzle and let the archetype set the rest
 - [x] `constraints.max_external_mm` gains the −2 mm safety buffer (research §7, BIT's leave-3/3/2 rule) — 2026-09-10: `Constraints.fit_margin_mm`, default 2,0 mm, off every axis before either archetype compares its envelope; the remedy names the arithmetic, and `fit_margin_mm: 0` is for a person who measured the box they are filling
 

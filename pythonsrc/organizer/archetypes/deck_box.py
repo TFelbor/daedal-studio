@@ -24,6 +24,12 @@ Cards stand upright: width along X, stack along Y, height along Z. With `n, pitc
 The one tolerance-critical surface is the lid cavity over the lip: `lid.clearance_mm`
 per side. That is the number a test-fit coupon (F12) will print first.
 
+`cc` is `process.cavity_clearance_mm`, which `process.fit_intent` chooses when the spec
+does not state it: 1,5 mm for `snug` (a box you close) and 4,0 mm for `easy` (a tray you
+lift cards out of), both from `docs/dimension-kb-research.md` §3. An `easy` deck box
+compiles; it is refused only when those wider millimetres are what push it past a stated
+`constraints.max_external_mm` — see `_easy_fit_problems`.
+
 Rules that belong to this *shape* rather than to specs in general — exactly one
 compartment, a lift-off lid without magnets, no `divider` section, a lip no thinner than
 `process.min_feature_mm`, a lid shorter than the cavity — are checked here and refused
@@ -178,6 +184,42 @@ def derive(spec: OrganizerSpec) -> DeckBoxDimensions:
     )
 
 
+def _easy_fit_problems(spec: OrganizerSpec, d: DeckBoxDimensions) -> list[str]:
+    """The refusal for an `easy` fit that will not fit its stated external limit.
+
+    A loose deck box is a valid request — `process.fit_intent = "easy"` compiles, and
+    +4 mm over the sleeve envelope (`docs/dimension-kb-research.md` §3) is a real way
+    to want a box. What it must not do is quietly cost 2,5 mm on every axis of a spec
+    that named a limit, because that clearance is a number **nobody typed**: the
+    requester chose a word and the schema chose the millimetres, exactly as
+    `constraints.fit_margin_mm` chooses two millimetres nobody typed and is spelled out
+    wherever it refuses something.
+
+    A `snug` overshoot is deliberately *not* refused here, and the asymmetry is the
+    point rather than an oversight: `snug` is what every deck box this project has
+    compiled was built with, `fits_check` already reports its overshoot with the axis
+    and the card count that would fit, and turning that report into a refusal would
+    take a spec the UI can show a verdict for and make it uncompilable.
+
+    Keyed on `fit_intent` alone — never on whether the clearance happened to be
+    derived — because two specs with the same canonical form must compile the same,
+    and derivation is not in the canonical form.
+    """
+    if spec.process.fit_intent != "easy":
+        return []
+    over = external_overshoots(
+        spec, (d.external_w, d.external_d, d.external_h), prefix="external "
+    )
+    if not over:
+        return []
+    return [
+        f"process.fit_intent 'easy' puts {spec.process.cavity_clearance_mm:g} mm of "
+        f"clearance over the sleeve envelope, and " + "; ".join(o.note for o in over)
+        + ". Set process.fit_intent to 'snug', give process.cavity_clearance_mm "
+        "explicitly, or relax constraints.max_external_mm"
+    ]
+
+
 def validate(spec: OrganizerSpec) -> None:
     """Refuse a spec this archetype cannot honour, naming every problem and its remedy.
 
@@ -190,6 +232,7 @@ def validate(spec: OrganizerSpec) -> None:
     d = derive(spec)
     lid = spec.lid
     assert lid is not None
+    problems.extend(_easy_fit_problems(spec, d))
     if d.lip_wall < spec.process.min_feature_mm:
         problems.append(
             f"the lip wall would be {d.lip_wall:.3f} mm (process.wall_mm {spec.process.wall_mm:g} − "
@@ -395,8 +438,10 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         row("external_height_mm", "External height", d.external_h, "mm", False, "assembled, lid on"),
         row("wall_mm", "Wall", p.wall_mm, "mm", True),
         row("floor_mm", "Floor", p.floor_mm, "mm", True),
+        # `fit_intent` is a word and `SpecDimension.value` is a number, so — like the
+        # divider's `tab_position` — it rides as the note of the row it decides.
         row("cavity_clearance_mm", "Cavity clearance", p.cavity_clearance_mm, "mm", True,
-            "total per axis over the sleeve envelope"),
+            f"total per axis over the sleeve envelope; {p.fit_intent} fit"),
         row("stack_slack_mm", "Stack slack", p.stack_slack_mm, "mm", True),
         row("lid_clearance_mm", "Lid clearance", lid.clearance_mm, "mm", True,
             "per side; the fit tolerance a test coupon prints first"),

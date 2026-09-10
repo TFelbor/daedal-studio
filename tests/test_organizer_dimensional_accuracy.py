@@ -32,7 +32,10 @@ from pythonsrc.organizer.compiler import (
     check_dimensions,
     export_stl,
 )
+from pythonsrc.organizer.dimensions import resolve_stack
 from pythonsrc.organizer.spec import (
+    FIT_INTENT_CLEARANCE_MM,
+    FIT_INTENTS,
     CardStack,
     Compartment,
     Divider,
@@ -93,12 +96,13 @@ def test_the_report_serialises_to_the_json_written_beside_the_mesh():
 
 # ── the envelope ───────────────────────────────────────────────────────────────
 
-def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0, floor=2.0):
+def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0, floor=2.0,
+         fit_intent="snug"):
     return OrganizerSpec(
         archetype="deck_box",
         compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
         lid=Lid(height_mm=lid_height, clearance_mm=clearance),
-        process=Process(wall_mm=wall, floor_mm=floor),
+        process=Process(wall_mm=wall, floor_mm=floor, fit_intent=fit_intent),
     )
 
 
@@ -136,6 +140,41 @@ def test_the_envelope_is_wide_enough_to_mean_something():
     assert set(SLEEVINGS) == {"none", "single", "double"}
 
 
+# ── the easy fit intent's corner (issue #71) ───────────────────────────────────
+#
+# Its own corner rather than a sixth axis on ENVELOPE: `fit_intent` moves exactly two
+# lengths (the cavity's width and height, by 2,5 mm each) and is orthogonal to the wall,
+# the lid and the clearance, so doubling 405 cases would buy repetition rather than
+# coverage. What it must prove is that the wider cavity is *measured back* off the
+# exported mesh, across the counts and sleevings that change the numbers around it.
+
+INTENT_CORNERS = list(itertools.product(FIT_INTENTS, COUNTS, SLEEVINGS))
+
+
+@pytest.mark.parametrize("fit_intent,count,sleeving", INTENT_CORNERS)
+def test_the_cavity_the_fit_intent_chose_is_on_the_exported_mesh(
+    tmp_path, fit_intent, count, sleeving,
+):
+    spec = deck(count, sleeving, fit_intent=fit_intent)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "deck.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    # Not asserted from the spec's arithmetic: the clearance is read as the difference
+    # between two planes in the mesh and the sleeve envelope the KB sourced.
+    envelope_w = resolve_stack(count, "standard", sleeving).footprint_w_mm
+    measured_w = report.features["cavity_width_mm"][1]
+    assert measured_w - envelope_w == pytest.approx(
+        FIT_INTENT_CLEARANCE_MM[fit_intent], abs=TOL_MM
+    )
+
+
+def test_both_intents_are_swept_and_they_differ(tmp_path):
+    """Guards the corner above against collapsing to one intent, which would leave
+    `easy` unmeasured while the sweep still looked parametrized."""
+    assert {i for i, _, _ in INTENT_CORNERS} == set(FIT_INTENTS)
+    assert len(set(FIT_INTENT_CLEARANCE_MM.values())) == len(FIT_INTENTS)
+
+
 # ── through Phase 3 ────────────────────────────────────────────────────────────
 
 from pythonsrc.engineer import Engineer  # noqa: E402
@@ -159,6 +198,26 @@ def test_phase_3_assert_path_hands_the_slicer_the_designed_dimensions(tmp_path, 
     report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
     assert report.within_tolerance, report.problems()
     assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+
+
+EASY_CORNERS = list(itertools.product((15, 160), SLEEVINGS))
+
+
+@pytest.mark.parametrize("count,sleeving", EASY_CORNERS)
+def test_phase_3_assert_path_hands_the_slicer_an_easy_fit_unchanged(tmp_path, count, sleeving):
+    """The intent's millimetres have to survive the same seam the snug ones do: Phase 3
+    asserts a spec run rather than repairing it, and nothing there may resize a cavity
+    somebody widened on purpose."""
+    spec = deck(count, sleeving, fit_intent="easy")
+    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(
+        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
+        target_mm=None, repair_mode="assert",
+    )
+    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
+    assert report.within_tolerance, report.problems()
     assert eng.last_report["scale_applied"] is False
 
 

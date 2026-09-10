@@ -11,6 +11,8 @@ the request model grows a spec field. The compilers live behind explicit imports
 """
 from .spec import (  # noqa: F401
     ARCHETYPES,
+    FIT_INTENT_CLEARANCE_MM,
+    FIT_INTENTS,
     SCHEMA_VERSION,
     TAB_POSITIONS,
     CardStack,

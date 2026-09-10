@@ -366,6 +366,16 @@ def test_the_panel_shows_the_fit_margin_when_the_spec_carries_one():
     assert "'Fit margin'" in text
 
 
+def test_the_panel_says_which_fit_intent_chose_the_cavity_clearance():
+    """The intent is the decision behind the millimetres, and the millimetres are what
+    the table shows. A clearance row with no hint of the word that chose it is a number
+    on screen nobody can trace back to a request — and a spec stored before issue #71
+    has no intent, so the note must be conditional rather than invented."""
+    text = SPEC_TS.read_text()
+    assert "p.fit_intent" in text, "specFromJob no longer reads process.fit_intent."
+    assert "${p.fit_intent} fit" in text
+
+
 def test_the_dimension_check_interface_matches_the_report_the_pipeline_writes():
     body = _interface(CLIENT_TS.read_text(), "DimensionCheck")
     declared = set(re.findall(r"^  (\w+)\??:", body, re.M))

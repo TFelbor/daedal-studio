@@ -12,6 +12,8 @@ import pytest
 
 from pythonsrc.organizer.spec import (
     ARCHETYPES,
+    FIT_INTENT_CLEARANCE_MM,
+    FIT_INTENTS,
     TAB_POSITIONS,
     CardStack,
     Compartment,
@@ -155,6 +157,81 @@ def test_process_refuses_bad_fields_by_name(bad, field):
     with pytest.raises(SpecError) as exc:
         Process(**bad)
     assert field in str(exc.value)
+
+
+# ── fit intent (issue #71) ─────────────────────────────────────────────────────
+
+def test_the_fit_intent_defaults_to_snug_and_to_todays_clearance():
+    """`snug` is what every deck box this project has compiled was built with, so the
+    default must be it and its millimetres must not move."""
+    p = Process()
+    assert p.fit_intent == "snug"
+    assert p.cavity_clearance_mm == 1.5
+
+
+def test_an_easy_fit_takes_the_sourced_tray_clearance():
+    """`docs/dimension-kb-research.md` §3: +1,5–2 mm snug, +4–6 mm easy-in/out. The
+    low end of each band, so the number is the least the convention can ask for."""
+    assert Process(fit_intent="easy").cavity_clearance_mm == 4.0
+
+
+@pytest.mark.parametrize("intent", FIT_INTENTS)
+def test_every_intent_the_schema_names_resolves_to_a_clearance(intent):
+    assert Process(fit_intent=intent).cavity_clearance_mm == FIT_INTENT_CLEARANCE_MM[intent]
+
+
+@pytest.mark.parametrize("bad", ["loose", "SNUG", "", None, 1])
+def test_an_unknown_fit_intent_is_a_spec_error_naming_the_field(bad):
+    with pytest.raises(SpecError) as exc:
+        Process(fit_intent=bad)
+    assert "fit_intent" in str(exc.value)
+
+
+def test_from_dict_names_the_path_of_an_unknown_fit_intent():
+    d = deck().to_dict()
+    d["process"]["fit_intent"] = "loose"
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(d)
+    assert "spec.process.fit_intent" in str(exc.value)
+
+
+def test_an_explicit_clearance_beats_the_intent():
+    """The intent chooses the millimetres only when nobody typed any; a number in the
+    spec is a decision somebody made and outranks a word."""
+    assert Process(fit_intent="easy", cavity_clearance_mm=1.5).cavity_clearance_mm == 1.5
+    assert Process(fit_intent="snug", cavity_clearance_mm=6.0).cavity_clearance_mm == 6.0
+
+
+def test_a_null_clearance_means_derive_it():
+    """The wire form of "I did not choose one" — `from_dict` passes the null through."""
+    d = deck(process=Process(fit_intent="easy")).to_dict()
+    d["process"]["cavity_clearance_mm"] = None
+    assert OrganizerSpec.from_dict(d).process.cavity_clearance_mm == 4.0
+
+
+def test_the_clearance_is_resolved_on_construction_so_the_round_trip_compiles_the_same():
+    """The canonical form must carry the millimetres the geometry is built from. If
+    the intent were read at compile time instead, a spec and its own round trip could
+    disagree about the cavity while sharing a hash."""
+    spec = deck(process=Process(fit_intent="easy"))
+    assert spec.to_dict()["process"]["cavity_clearance_mm"] == 4.0
+    assert OrganizerSpec.from_dict(spec.to_dict()) == spec
+    assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
+def test_the_intent_is_in_the_canonical_form_and_moves_the_hash():
+    assert '"fit_intent":"snug"' in canonical_json(deck())
+    assert spec_hash(deck(process=Process(fit_intent="easy"))) != spec_hash(deck())
+
+
+def test_diff_reports_the_fit_intent_and_the_clearance_it_chose():
+    """F8 iterates by spec diff, so "I want to be able to get the cards out" has to be
+    a path — and the millimetres it moved must be visible beside it."""
+    a, b = deck(), deck(process=Process(fit_intent="easy"))
+    assert spec_diff(a, b) == {
+        "process.fit_intent": ("snug", "easy"),
+        "process.cavity_clearance_mm": (1.5, 4.0),
+    }
 
 
 def test_constraints_need_three_positive_numbers_or_nothing():
@@ -354,14 +431,16 @@ def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
     which is a schema-version bump, not a refactor.
 
-    It has moved exactly once, deliberately: `constraints.fit_margin_mm` (issue #70)
-    is a scalar with a default, not an optional *section*, so it is written for every
-    spec the way `process.wall_mm` is. A section is omitted when absent — that is what
+    It has moved exactly twice, deliberately and for the same reason both times:
+    `constraints.fit_margin_mm` (issue #70) and `process.fit_intent` (issue #71) are
+    scalars with defaults, not optional *sections*, so they are written for every spec
+    the way `process.wall_mm` is. A section is omitted when absent — that is what
     `_OPTIONAL_SECTIONS` is for — but omitting a scalar at its default would mean the
     canonical form no longer says what the spec is, and the next default to change
     would be unreadable in a diff. The alternative, a `SCHEMA_VERSION` bump, refuses
     every existing spec file for an additive field. Rows already written keep the hash
-    they recorded; nothing re-derives one.
+    they recorded; nothing re-derives one — and the *mesh* a stored spec compiles to is
+    unchanged, which `tests/test_deck_box.py` pins in bytes.
     """
     spec = OrganizerSpec(
         archetype="deck_box",
@@ -373,7 +452,8 @@ def test_the_hash_is_stable_across_processes():
         '"count":100,"sleeving":"double"}}],'
         '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"lid":{"clearance_mm":0.2,"height_mm":15.0,"kind":"lift_off","magnets":false,'
-        '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
+        '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,'
+        '"fit_intent":"snug","floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
     )
 
@@ -420,7 +500,8 @@ def test_the_fixed_divider_vector_carries_no_lid():
         '"count":100,"sleeving":"double"}}],'
         '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"divider":{"tab_height_mm":10.0,"tab_position":"centre","tab_width_mm":20.0,'
-        '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,"floor_mm":2.0,'
+        '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,'
+        '"fit_intent":"snug","floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
     )
 

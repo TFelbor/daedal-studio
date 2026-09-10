@@ -99,6 +99,30 @@ def test_a_hundred_double_sleeved_cards_derive_the_expected_box():
     assert d.external_h == pytest.approx(d.body_h + 2.0)
 
 
+def test_an_easy_fit_widens_the_cavity_by_the_sourced_figure_on_both_axes():
+    """`docs/dimension-kb-research.md` §3's easy-in/out convention, applied where a
+    clearance applies: the cavity's width and height, not its depth (the stack has its
+    own `stack_slack_mm`) and not the wall."""
+    d = deck_box.derive(deck(process=Process(fit_intent="easy")))
+    assert d.cavity_w == pytest.approx(67.0 + 4.0)
+    assert d.cavity_h == pytest.approx(92.0 + 4.0)
+    assert d.cavity_d == pytest.approx(100 * 0.70 + 1.0)
+    snug = deck_box.derive(deck())
+    assert d.external_w - snug.external_w == pytest.approx(2.5)
+    assert d.external_h - snug.external_h == pytest.approx(2.5)
+
+
+def test_an_easy_deck_box_compiles_and_measures_back_to_its_wider_cavity():
+    """A loose deck box is a valid request, not a refusal — and the mesh carries it."""
+    spec = deck(process=Process(fit_intent="easy"))
+    result = compile_spec(spec)
+    measured = measure_spec_mesh(spec, result.mesh)
+    assert measured["cavity_width_mm"] == pytest.approx(71.0, abs=1e-4)
+    assert measured["cavity_height_mm"] == pytest.approx(96.0, abs=1e-4)
+    assert_features_within(result.features, measured, TOL_MM,
+                           required=set(deck_box.MEASURED_FEATURES))
+
+
 # ── archetype-level refusals, with the reason ──────────────────────────────────
 
 def test_a_second_compartment_is_refused_by_name():
@@ -142,6 +166,51 @@ def test_a_lid_taller_than_the_cavity_is_refused():
     with pytest.raises(SpecError) as exc:
         compile_spec(deck(lid=Lid(height_mm=200.0)))
     assert "height_mm" in str(exc.value)
+
+
+def test_an_easy_fit_that_busts_a_stated_limit_is_refused_with_both_remedies():
+    """The 2,5 mm an `easy` intent adds is a number nobody typed. It may make a box
+    loose; it may not silently make a box that does not fit the limit its spec names."""
+    exact = (74.1, 76.6, 97.5)  # the snug example's own externals
+    spec = deck(process=Process(fit_intent="easy"),
+                constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
+    with pytest.raises(SpecError) as exc:
+        compile_spec(spec)
+    message = str(exc.value)
+    assert "fit_intent 'easy'" in message and "4 mm of clearance" in message
+    assert "external width 76.6 mm exceeds 74.1 mm" in message
+    assert "'snug'" in message and "cavity_clearance_mm" in message and "max_external_mm" in message
+
+
+def test_an_easy_fit_inside_its_limit_compiles():
+    spec = deck(process=Process(fit_intent="easy"),
+                constraints=Constraints(max_external_mm=(90.0, 90.0, 110.0)))
+    assert compile_spec(spec).mesh.is_watertight
+
+
+def test_an_easy_fit_with_no_stated_limit_compiles():
+    """There is nothing for the wider cavity to bust, so there is nothing to refuse."""
+    assert compile_spec(deck(process=Process(fit_intent="easy"))).mesh.is_watertight
+
+
+def test_an_explicit_clearance_is_never_refused_for_the_intent_beside_it():
+    """The refusal is about millimetres the schema chose. `cavity_clearance_mm: 1,5`
+    with `fit_intent: easy` is a contradiction in words only — the number is the
+    person's, the geometry is snug, and it fits."""
+    exact = (74.1, 76.6, 97.5)
+    spec = deck(process=Process(fit_intent="easy", cavity_clearance_mm=1.5),
+                constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
+    assert compile_spec(spec).mesh.is_watertight
+
+
+def test_a_snug_overshoot_is_still_reported_rather_than_refused():
+    """The asymmetry is deliberate: `snug` is what every deck box here was built with,
+    and `fits_check` already names the axis and the card count that would fit. Turning
+    that report into a refusal would take a spec the UI can show a verdict for and make
+    it uncompilable."""
+    spec = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0)))
+    assert compile_spec(spec).mesh.is_watertight
+    assert fits_for(spec).fits is False
 
 
 def test_an_unknown_archetype_name_is_refused_by_the_registry():
@@ -188,6 +257,23 @@ def test_the_same_spec_exports_the_same_bytes(tmp_path):
     a = export_stl(compile_spec(deck()).mesh, tmp_path / "a.stl").read_bytes()
     b = export_stl(compile_spec(deck()).mesh, tmp_path / "b.stl").read_bytes()
     assert hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()
+
+
+def test_the_example_deck_box_still_exports_the_bytes_it_always_has(tmp_path):
+    """A fixed vector for the *mesh*, which is the thing a schema change must not move.
+
+    `process.fit_intent` (issue #71) added a scalar to the canonical form, so every
+    spec hash moved — that is a decision recorded in `tests/test_organizer_spec.py`.
+    The geometry must not have moved with it: `snug` is the default and `snug` is
+    1,5 mm, which is the number this archetype has always built. If this hash changes,
+    either the kernel's output changed or a default did, and both are answers somebody
+    has to give deliberately.
+    """
+    from pythonsrc.organizer.compiler import export_stl
+    stl = export_stl(compile_spec(example_spec("deck_box")).mesh, tmp_path / "a.stl")
+    assert hashlib.sha256(stl.read_bytes()).hexdigest() == (
+        "c638fddc0d98f8823157ec99cd767be66ec30078ffb2be149072ef12eb4de785"
+    )
 
 
 def test_the_example_spec_compiles():
@@ -343,3 +429,18 @@ def test_the_view_has_the_shape_the_ui_declares():
     assert {"stack_height_mm", "cavity_depth_mm", "external_height_mm"} <= derived
     pitch = next(d for d in view["dimensions"] if d["key"] == "pitch_mm")
     assert "0.70 mm/card" in pitch["note"]
+
+
+def test_the_view_says_which_fit_intent_chose_the_clearance():
+    """`fit_intent` is a word and a `SpecDimension` value is a number, so it rides as
+    the note of the row it decides — the same way the divider's tab position does. A
+    clearance shown with no hint of where it came from is a number on screen nobody
+    can trace."""
+    def clearance_note(spec):
+        view = view_for(spec, compile_spec(spec))
+        return next(d for d in view["dimensions"] if d["key"] == "cavity_clearance_mm")
+
+    snug = clearance_note(deck())
+    assert snug["value"] == 1.5 and "snug fit" in snug["note"]
+    easy = clearance_note(deck(process=Process(fit_intent="easy")))
+    assert easy["value"] == 4.0 and "easy fit" in easy["note"]
