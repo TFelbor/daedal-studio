@@ -12,9 +12,11 @@ the request model grows a spec field. The compilers live behind explicit imports
 from .spec import (  # noqa: F401
     ARCHETYPES,
     SCHEMA_VERSION,
+    TAB_POSITIONS,
     CardStack,
     Compartment,
     Constraints,
+    Divider,
     Lid,
     OrganizerSpec,
     Process,
