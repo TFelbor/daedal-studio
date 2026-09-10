@@ -1736,6 +1736,60 @@ accents, spacing, hyphens and case are folded and a bounded edit distance covers
 interpolates into the prompt, so a screen reading `prompt` alone leaves the colour box
 as a second, unwatched prompt channel.
 
+**A functional article is not a reproduction, and the grammar is what says which**
+(`_classify_usage`, 2026-09-10, issue #79). This screen was written for the figurine
+product, where every curated name meant "print me Pikachu". The parametric product's
+users name a franchise as the *contents*: "deck box for Pokémon cards" is the primary
+persona's literal prompt, and it was refused with score 1,0 while MTG, Yu-Gi-Oh!,
+Lorcana and One Piece passed by omission from the list — inconsistent, and worse than
+either consistent answer. So a match carries a second axis, and **only for strong
+hits**: a **depiction** cue **blocks** — the name is what the part is meant to look
+like; a **purpose** cue **flags** — the name is what the part is *for*; and with
+neither, **the category decides**, a `character` blocked as the prompt's subject ("a
+Pikachu deck box") and a `franchise` or `brand` flagged as its contents ("a Pokémon
+deck box") — the latter **only when one of the parts this product makes follows the
+name** (`ARTICLE_NOUNS`/`CONTENTS_NOUNS`, within 3 tokens). A franchise in front of
+anything else is naming the subject — "a star wars x-wing", "a hogwarts castle", "a
+nintendo switch dock" — which is a reproduction of someone else's design however the
+sentence is arranged, and stays refused exactly as it was.
+
+**Each cue is scoped to the construction it belongs to, never to a window**, and both
+loosenings were reachable: a purpose cue that only had to sit within 6 tokens read
+"for my son, a pikachu" as a purpose, so *any* prompt could be prefixed past Tier 1,
+and a depiction cue that only had to be within ±4 read "deck box for pokemon cards,
+lid on top" as a likeness — refusing the primary persona again by a second route. So a
+purpose cue has to reach the name across `BRIDGE_TOKENS` only (articles, possessives,
+digits, `sleeved`/`double`/`standard`, contents nouns), which is what separates "fits
+60 double sleeved lorcana cards" from "for my son, a pikachu"; a depiction **noun**
+(`emblem`, `figurine`, `engraved`) is read in the window either side; `in the shape of`
+counts only *before* the name and `shaped`/`themed` only *immediately after* it,
+because "shaped like a cube" after the name describes the box; and there is **no bare
+locational cue** — "on the lid" locates a depiction noun and is not evidence of one,
+and the nouns already carry "charizard emblem on the lid" unaided.
+
+Depiction wins when both fire and the most severe verdict across
+every match wins, so "deck box for Pokémon cards with a Charizard emblem on the lid"
+is still refused; the best near-match is weighed **alongside** the exact hits rather
+than only in their absence, because an exact functional hit no longer refuses the
+prompt by itself and an evasion has to be caught on the fuzzy path. The ambiguous→strong
+promotion ("the joker from batman" is not a playing card) triggers on a strong hit
+**that is itself a refusal**, not on any strong hit: a functional franchise is the one
+construction this screen accepts, and promoting on it refused "a deck box for pokemon
+cards with a creeper vine engraved on the lid" over a plant. The cues are
+English grammar the matcher reads, so they are module constants — the blocklist
+promises to be descriptive data about marks only, and the TCG franchises are on it
+**for the flag**, so every franchise is treated alike rather than passing unlisted.
+Two boundaries are stated rather than discovered: a character named only as contents,
+with no depiction cue ("a stand for Pikachu"), is flagged; and a brand naming an
+accessory's subject ("a nintendo switch dock") is refused, with the rephrasing that
+says what the part is for ("a dock for a Nintendo Switch") as the appeal path the
+refusal's own wording asks for. Both classes
+reach the human gate, which remains the last word; where the line sits is a **product
+decision pending counsel**, recorded in `docs/deferred-legal-tasks.md` § L6 and not
+legal advice. `ip_screen_flagged` carries the `usage`, which makes "how often does the
+functional rule fire" a query. F13's embossing field is the *third* prompt channel and
+is deliberately out of scope until it exists (roadmap §4A, part (b)).
+
 **Tier 2 — the image screen** (`pythonsrc/ip_screen_image.py`). Prompt filtering leaks:
 "a chunky yellow lightning-mouse figurine, anime style" names nothing on the blocklist
 and still renders something recognisable. So the render itself is scored, **before Phase
