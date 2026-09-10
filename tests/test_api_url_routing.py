@@ -211,8 +211,19 @@ def test_mps_native_keeps_the_two_addresses_apart():
 
 @pytest.fixture
 def containerised(monkeypatch):
-    """`/.dockerenv` is what says this process is in a container."""
-    monkeypatch.setattr(app_module.os.path, "exists", lambda path: path == "/.dockerenv")
+    """`/.dockerenv` is what says this process is in a container.
+
+    `app_module.os.path` *is* `os.path`, so this replaces the function for the whole
+    process while the test runs. Only the one path is answered; everything else is
+    still asked of the real filesystem, so a logging handler or a later import that
+    checks a real file does not silently get told it is missing.
+    """
+    real_exists = app_module.os.path.exists
+    monkeypatch.setattr(
+        app_module.os.path,
+        "exists",
+        lambda path: True if path == "/.dockerenv" else real_exists(path),
+    )
 
 
 def _route(monkeypatch, value):
@@ -257,7 +268,12 @@ def test_the_host_gateway_is_the_fallback_when_there_is_no_compose_route(
 
 def test_a_native_server_does_not_ask_docker_at_all(monkeypatch):
     """No compose network to reach, and no reason to pay for a daemon round-trip."""
-    monkeypatch.setattr(app_module.os.path, "exists", lambda path: False)
+    real_exists = app_module.os.path.exists
+    monkeypatch.setattr(
+        app_module.os.path,
+        "exists",
+        lambda path: False if path == "/.dockerenv" else real_exists(path),
+    )
     calls = _route(monkeypatch, "http://api-server:8000")
     assert _container_api_url(NATIVE_API_URL) == "http://host.docker.internal:8000"
     assert calls == []

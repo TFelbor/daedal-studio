@@ -1207,6 +1207,22 @@ FastAPI application with:
   container, another project, no published port, no network, Docker unreachable)
   falls back to the host gateway rather than to an address that fails at connect
   time, and a native server does not ask Docker at all.
+  **The route therefore fires only where the two project names agree, and in the
+  documented `make up` they do not yet.** `docker compose -f
+  infra/docker-compose.yml up api-server` from the repo root labels the api-server's
+  project `infra` — compose takes the directory of the first `-f` file and the
+  compose file carries no top-level `name:` — while that container's own
+  environment sets `COMPOSE_PROJECT_NAME=ds-mvp`, which is what the pipeline it
+  launches will use. Two projects are two default networks, so `own_internal_url`
+  correctly declines and the pipeline gets the host gateway, which on the default
+  `DS_API_BIND` is the dead route this bullet describes: that configuration still
+  has no live relay. Exporting `COMPOSE_PROJECT_NAME` to match is the workaround
+  (`make start-native` already sets it). Aligning the two for good is a compose
+  change — a top-level `name: ds-mvp`, which would also end the
+  `infra-*`/`ds-mvp-*` duplicate container records `SimulatorManager._prefer_running`
+  works around — and it renames every existing container and volume on a
+  developer's machine, so it is its own change rather than one smuggled into a
+  telemetry-routing fix.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
