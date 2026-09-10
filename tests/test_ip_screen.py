@@ -186,6 +186,10 @@ def test_the_blocklist_is_data_and_carries_no_legal_advice():
 
     Descriptive only: names and a category, no assertions about what is or is not
     infringing. That judgement is not a JSON file's to make.
+
+    The category is read by the usage rule now, not only by a person — an attributive
+    `character` is refused and an attributive `franchise` is flagged — so a typo in it
+    is a behaviour change and the vocabulary is closed.
     """
     from pythonsrc.ip_screen import load_blocklist
 
@@ -194,6 +198,7 @@ def test_the_blocklist_is_data_and_carries_no_legal_advice():
     for entry in entries:
         assert set(entry) <= {"term", "category", "aliases", "strength"}, entry
         assert entry.get("strength", "strong") in {"strong", "ambiguous"}, entry
+        assert entry.get("category") in {"brand", "character", "franchise"}, entry
         assert isinstance(entry["term"], str) and entry["term"]
 
 
@@ -260,3 +265,191 @@ def test_an_ambiguous_word_is_flagged_for_a_person(prompt):
 def test_an_ambiguous_word_with_a_franchise_cue_is_still_refused():
     """"joker" alone is a card; "the joker from batman" is not ambiguous at all."""
     assert screen_prompt("the joker from batman").action == "block"
+
+
+# ── A functional article is not a reproduction ────────────────────────────────
+#
+# The screen was written for the figurine product, where a curated name meant "print
+# me Pikachu". The parametric product's users name a franchise as the *contents* of
+# the part they are ordering: "deck box for Pokémon cards" is the primary persona's
+# literal prompt, and it was refused with score 1,0 while MTG, Yu-Gi-Oh!, Lorcana and
+# One Piece passed by omission from the list — inconsistent, and worse than either
+# consistent answer.
+#
+# So a match is classified on a second axis, *how* the name is used, and only for
+# strong hits. A purpose cue before the name ("for", "fits", "holds my … cards") makes
+# it functional and flags; a depiction cue near it ("emblem", "figurine", "on the
+# lid") blocks; neither leaves the category to decide, because "a Pikachu deck box"
+# names its subject and "a Pokémon deck box" names its contents.
+#
+# Both classes reach the human blueprint gate. Only one of them is refused there and
+# then, with no appeal.
+
+@pytest.mark.parametrize("prompt,term", [
+    # The three prompts the issue names.
+    ("deck box for Pokémon cards", "pokemon"),
+    ("holds my Magic commander deck", "magic"),
+    ("fits 60 sleeved Lorcana cards", "lorcana"),
+    # The same rule, every franchise.
+    ("a box that holds my yu-gi-oh deck", "yu-gi-oh"),
+    ("card divider for my one piece collection", "one piece"),
+    ("storage for flesh and blood boosters", "flesh and blood"),
+    ("a tray that fits my warhammer tokens", "warhammer"),
+    ("dividers for my star wars unlimited deck", "star wars"),
+    ("a deck box for digimon cards", "digimon"),
+    ("a binder page for my magic the gathering collection", "magic the gathering"),
+    # A purpose cue five tokens ahead of the name still reaches it.
+    ("fits 60 double sleeved standard lorcana cards", "lorcana"),
+    # And the normaliser is the same normaliser.
+    ("deck box for pokmon cards", "pokemon"),          # one character dropped
+    ("deck box for P O K E M O N cards", "pokemon"),    # spaced out
+    ("deck box for pokémon cards", "pokemon"),          # accented
+    ("a deck box for Yu-Gi-Oh! cards", "yu-gi-oh"),     # punctuation
+])
+def test_a_name_used_for_what_the_part_holds_is_flagged_not_refused(prompt, term):
+    """Flagged, never blocked: the job proceeds and a person sees the term."""
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "flag", f"{prompt!r} was {verdict.action}ed"
+    assert verdict.term == term
+    assert verdict.usage == "functional", f"{prompt!r} read as {verdict.usage}"
+    assert verdict.suggestion is None, "a flag is not a refusal and needs no rephrasing"
+
+
+@pytest.mark.parametrize("prompt,term", [
+    ("a pokemon deck box", "pokemon"),
+    ("MTG commander deck box", "magic the gathering"),
+    ("a lorcana card divider", "lorcana"),
+])
+def test_a_franchise_naming_the_contents_attributively_is_flagged(prompt, term):
+    """"a Pokémon deck box" is the same order as "a deck box for Pokémon cards".
+
+    A franchise or a brand in front of the article names what goes in it. A character
+    in the same position names the subject, which is the test below.
+    """
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "flag", f"{prompt!r} was {verdict.action}ed"
+    assert verdict.term == term
+    assert verdict.usage == "attributive"
+
+
+@pytest.mark.parametrize("prompt", [
+    "a Pikachu figurine",
+    "Charizard emblem on the lid",
+    "a pikachu deck box",                                   # the subject, not the contents
+    "eevee embossed on the front",
+    "a charizard silhouette engraved on a deck box",
+    "a deck box with a pikachu logo",
+    "a box for pokemon cards with a pikachu figure on top",  # depiction beats purpose
+    "a pikchu deck box",                                    # one character dropped
+    "a P I K A C H U deck box",                             # spaced out
+    "a bulbasaur shaped card holder",
+])
+def test_a_name_used_for_what_the_part_depicts_is_still_refused(prompt):
+    """The functional rule must not blunt the screen's actual purpose.
+
+    Every one of these asks for a likeness of someone else's character, whether or
+    not the object carrying it is a deck box.
+    """
+    verdict = screen_prompt(prompt)
+
+    assert verdict.action == "block", f"{prompt!r} was not refused"
+    assert verdict.term, "a block must name what it matched"
+    assert verdict.usage in {"depiction", "attributive"}
+
+
+def test_every_franchise_on_the_list_gets_the_same_answer():
+    """Consistency is the half of this the issue calls worse than either extreme.
+
+    Pokémon was blocked and four comparable franchises passed unlisted. Whatever the
+    verdict is for "deck box for X cards", it must be the same X by X — and it must
+    not be a refusal, because that phrasing describes contents.
+    """
+    from pythonsrc.ip_screen import load_blocklist
+
+    franchises = [e["term"] for e in load_blocklist() if e.get("category") == "franchise"]
+    assert len(franchises) >= 20, "the franchise list shrank; this test is measuring nothing"
+
+    refused = [t for t in franchises if screen_prompt(f"deck box for {t} cards").action == "block"]
+    assert not refused, f"functional use of these franchises is refused: {refused}"
+
+
+@pytest.mark.parametrize("prompt", [
+    "a magic wand holder",       # magic is ordinary English
+    "a one-piece lid",           # and so is a one-piece anything
+    "a flesh coloured vase",
+    "a deck box, 60 cards, three compartments",
+])
+def test_the_new_entries_do_not_refuse_ordinary_prompts(prompt):
+    """The TCG names are on the list *for the flag*. Two of them are ordinary English
+    and carry `strength: ambiguous` for exactly that reason."""
+    assert screen_prompt(prompt).action != "block", f"{prompt!r} was refused"
+
+
+def test_a_functional_flag_says_what_it_decided():
+    """The detail is what a person reads at the gate, so it has to name the reason.
+
+    "This prompt names X, which belongs to someone else" is the refusal's wording and
+    would be a lie here — the job is going ahead.
+    """
+    verdict = screen_prompt("a deck box for pokemon cards")
+
+    assert "pokemon" in verdict.detail.lower()
+    assert "for" in verdict.detail.lower()
+    assert "cannot" not in verdict.detail.lower()
+
+
+def test_the_cues_are_already_normalised():
+    """A cue with an accent, a capital or a hyphen in it can never match.
+
+    The tokens they are compared against have been through `_normalise`; a cue that
+    has not is dead weight nothing would report.
+    """
+    from pythonsrc import ip_screen
+
+    cues = (
+        ip_screen.DEPICTION_CUES + ip_screen.PURPOSE_CUES
+        + ip_screen.POSSESSIVE_CUES + ip_screen.CONTENTS_NOUNS
+    )
+    for cue in cues:
+        assert ip_screen._normalise(cue) == cue, cue
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_the_primary_personas_prompt_reaches_the_gate(mock_run, printer_configured):
+    """End to end through the real screen: the job is created, and the flag is on it.
+
+    The whole point of the re-scope is that this prompt produces a job. The event is
+    the appeal path — it carries the term and now the usage, so "how often does the
+    functional rule fire" is a query rather than a log grep.
+    """
+    resp = client.post(
+        "/jobs", json={"prompt": "deck box for Pokémon cards", "printer_id": "default"},
+    )
+    assert resp.status_code == 202, resp.text
+
+    db = TelemetryDB()
+    events = db.get_job_events(resp.json()["job_id"])
+    db.close()
+
+    flagged = [e for e in events if e.kind == "ip_screen_flagged"]
+    assert flagged, f"no ip_screen_flagged event; got {[e.kind for e in events]}"
+    assert flagged[0].detail["term"] == "pokemon"
+    assert flagged[0].detail["usage"] == "functional"
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_depiction_is_still_refused_at_the_boundary(mock_run, printer_configured):
+    """The other half: a franchise in a for-phrase is not a licence for the rest."""
+    resp = client.post(
+        "/jobs",
+        json={
+            "prompt": "a deck box for pokemon cards with a charizard emblem on the lid",
+            "printer_id": "default",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "charizard" in resp.json()["detail"].lower()
+    mock_run.assert_not_called()
