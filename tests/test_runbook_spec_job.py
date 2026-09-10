@@ -172,7 +172,7 @@ def test_every_compose_service_and_profile_it_names_is_declared():
         seen_subcommand = False
         for token in tokens:
             if expect_value:
-                if tokens[tokens.index(token) - 1] == "--profile":
+                if previous == "--profile":
                     named_profiles.add(token)
                 expect_value = False
                 continue
