@@ -40,11 +40,15 @@ export function FitsCheck({ fits, unavailableReason, variant = 'panel' }: FitsCh
   }
 
   const Icon = fits.fits ? Check : X;
+  // The default words are the stack-against-cavity question. A verdict that answered
+  // a different question — Phase 3's dimension check answers "does the mesh match the
+  // spec" — says so in its own words rather than borrowing these.
+  const words = fits.verdict ?? { pass: 'Fits', fail: "Doesn't fit" };
   return (
     <div className={`${cls} ${fits.fits ? styles.pass : styles.fail}`}>
       <span className={styles.verdict}>
         <Icon size={variant === 'badge' ? 12 : 18} strokeWidth={2} aria-hidden="true" />
-        {fits.fits ? 'Fits' : "Doesn't fit"}
+        {fits.fits ? words.pass : words.fail}
       </span>
       <span className={styles.sum}>{fits.line}</span>
       {fits.basis && <span className={styles.basis}>{fits.basis}</span>}

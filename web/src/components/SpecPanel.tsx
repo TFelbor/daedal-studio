@@ -1,7 +1,7 @@
 import { RotateCcw } from 'lucide-react';
 import { Blueprint } from './Blueprint';
 import { FitsCheck } from './FitsCheck';
-import type { OrganizerSpec } from '../organizer/spec';
+import { UNMEASURED_FIT_REASON, type OrganizerSpec } from '../organizer/spec';
 import styles from './SpecPanel.module.css';
 
 interface SpecPanelProps {
@@ -23,8 +23,13 @@ interface SpecPanelProps {
  * describing the box is not something anyone can verify.
  *
  * With no spec it renders the reason and whatever the caller passes as children —
- * today the phase-1 output, labelled as the image it is. It does not invent a
- * table, and it does not pretend the absent one is loading.
+ * for a generative job the phase-1 output, labelled as the image it is. It does not
+ * invent a table, and it does not pretend the absent one is loading.
+ *
+ * Every row is a field of the spec itself, so every number on screen is one somebody
+ * wrote. The derived figures — the stack height, the internal depth — are the
+ * compiler's, and they arrive with the annotated preview off `GET /jobs/{id}/spec`
+ * rather than being recomputed here against a second copy of the dimension KB.
  */
 export function SpecPanel({ spec, unavailableReason, onRecompile, children }: SpecPanelProps) {
   if (!spec) {
@@ -43,9 +48,16 @@ export function SpecPanel({ spec, unavailableReason, onRecompile, children }: Sp
   return (
     <Blueprint tone="accent" className={styles.panel}>
       <div className={styles.head}>
-        <span className="label">Spec · editable</span>
+        {/* "editable" is a promise, and only `onRecompile` keeps it. Until the
+            composer can edit a spec and recompile it, this table is a record of
+            what the part was built from — say that rather than the other thing. */}
+        <span className="label">{onRecompile ? 'Spec · editable' : 'Spec · as compiled'}</span>
         <span className={styles.archetype}>
-          {spec.archetype} · {spec.archetypeVersion} archetype
+          {/* No version until Phase 2 has compiled it. "v?" would be a version, and
+              "v1" would be a guess at which archetype ran. */}
+          {spec.archetypeVersion
+            ? `${spec.archetype} · ${spec.archetypeVersion} archetype`
+            : `${spec.archetype} · not compiled yet`}
         </span>
       </div>
 
@@ -65,7 +77,10 @@ export function SpecPanel({ spec, unavailableReason, onRecompile, children }: Sp
         ))}
       </dl>
 
-      <FitsCheck fits={spec.fits} unavailableReason={unavailableReason} />
+      {/* Not `unavailableReason`: that explains why there is no *spec*, and there
+          plainly is one. A spec whose mesh Phase 3 has not measured has no fit
+          verdict for its own reason, and none is invented for it meanwhile. */}
+      <FitsCheck fits={spec.fits} unavailableReason={UNMEASURED_FIT_REASON} />
 
       {onRecompile && (
         <div className={styles.actions}>

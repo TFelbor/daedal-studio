@@ -1,21 +1,34 @@
 /**
- * The organizer spec — the shape the parametric engine will hand the UI.
+ * The organizer spec — the shape the parametric engine hands the UI.
  *
- * Nothing produces one of these yet. `pythonsrc/organizer/` (spec schema,
- * archetype library, dimension KB) is roadmap §§0.1–7A and is not built; the
- * backend runs the generative pipeline, and `JobStatusResponse` carries no spec
- * field. This module exists so that the day it does, the wiring is one function
- * — `specFromJob` — rather than a hunt through four components.
+ * `GET /jobs/{id}` carries four parametric values for a job compiled from a spec:
+ * the canonical spec itself, the hash Phase 2 compiled, the archetype and its
+ * version, and Phase 3's dimension check. `specFromJob` is the one seam that turns
+ * them into the display shape below; everything else in the app reads that shape.
  *
- * Every consumer of a spec in this app renders an explicit "not available yet"
- * state, never a plausible-looking placeholder. That is not fastidiousness: this
- * product's entire pitch to a community that distrusts AI output is that the
+ * Two rules the projection here obeys, and both are the same rule:
+ *
+ * **Every row is a number somebody wrote or a number a machine measured.** The
+ * table shows the spec's *own* fields — the wall the requester asked for, the
+ * clearance, the card count — and nothing derived. A stack height or an internal
+ * depth is a function of the dimension KB and the archetype's `derive()`, and
+ * re-implementing either in TypeScript would put a second, drifting copy of the
+ * arithmetic on screen. The designed figures the compiler actually produced live in
+ * `compile_features.json` and are served by `GET /jobs/{id}/spec`, which nothing
+ * polls; the annotated preview is where they belong.
+ *
+ * **The fit verdict is the measured one or none at all.** `measuredFit` renders
+ * Phase 3's `dimension_check` — the exported mesh read back against the spec at
+ * ±0,05 mm — and there is deliberately no path from an uncompiled spec to a badge.
+ * This product's entire pitch to a community that distrusts AI output is that the
  * numbers are real and checkable. A UI that displays "✓ Fits · 66.5 mm stack"
- * computed from nothing teaches exactly the habit the Fits Check exists to
- * break, and a screenshot of it outlives any caveat in a commit message.
+ * computed from nothing teaches exactly the habit the Fits Check exists to break,
+ * and a screenshot of it outlives any caveat in a commit message.
  */
 
-import type { JobStatusResponse } from '../api/client';
+import type { DimensionCheck, JobStatusResponse, RawSpec } from '../api/client';
+
+export type { RawSpec };
 
 /** The archetypes the composer offers. Ordered as the strip presents them. */
 export const ARCHETYPES = [
@@ -48,36 +61,145 @@ export interface FitsResult {
   basis?: string;
   /** What to change when it does not fit. Present only on a failure. */
   remedy?: string;
+  /**
+   * The word beside the tick, when "Fits" is not what was checked. A dimension
+   * check is a comparison of a mesh against its spec, not of a stack against a
+   * cavity, and labelling it "Fits" would claim a measurement nobody made.
+   */
+  verdict?: { pass: string; fail: string };
 }
 
 export interface OrganizerSpec {
   archetype: ArchetypeId;
-  /** The archetype library version that compiled it, e.g. "v3". */
-  archetypeVersion: string;
+  /** The archetype library version that compiled it, e.g. "v3". Null until Phase 2
+   *  has run: nothing has compiled this spec yet, so no version applies to it. */
+  archetypeVersion: string | null;
   /** Content hash of the spec. The approval at the gate is bound to this. */
   hash: string;
   dimensions: SpecDimension[];
   fits: FitsResult | null;
 }
 
+/** How a card kind and a sleeving read in a sentence, under the card count. */
+const SLEEVING_NOTE: Record<string, string> = {
+  none: 'unsleeved',
+  single: 'single sleeved',
+  double: 'double sleeved',
+};
+
+function row(
+  key: string,
+  label: string,
+  value: number,
+  unit: string,
+  editable: boolean,
+  note?: string,
+): SpecDimension {
+  return note ? { key, label, value, unit, editable, note } : { key, label, value, unit, editable };
+}
+
+/**
+ * Phase 3's dimension check as a fit verdict, or null when nothing measured one.
+ *
+ * The line is the measurement itself rather than its conclusion, for the same
+ * reason the stack sum is: "19/19 designed features within ±0,05 mm" is something
+ * a reader can hold against the report, and "✓" on its own is a claim.
+ */
+export function measuredFit(check: DimensionCheck | null | undefined): FitsResult | null {
+  if (!check) return null;
+
+  const within = `${check.features_within}/${check.features_checked} designed features within ±${check.tolerance_mm} mm of the spec`;
+  const worst =
+    check.max_abs_error_mm == null
+      ? ''
+      : ` · largest error ${check.max_abs_error_mm.toFixed(3)} mm`;
+
+  const missed = [...(check.out_of_tolerance ?? []), ...(check.missing ?? [])];
+  return {
+    fits: check.within_tolerance,
+    line: within + worst,
+    basis: 'measured off the exported mesh, after Phase 3, with the archetype’s own measure()',
+    remedy: missed.length ? `Out of tolerance: ${missed.join(', ')}.` : undefined,
+    verdict: { pass: 'Dimensions verified', fail: 'Dimensions off spec' },
+  };
+}
+
 /**
  * The spec for a job, or null when there is none.
  *
- * Always null today, and deliberately written as a lookup rather than a
- * `return null`: the parameter is used, the type is real, and the call sites are
- * already correct. When the server grows the field this reads it.
+ * Reads the four fields `GET /jobs/{id}` carries and projects them onto the display
+ * shape. A prompt job has no spec and gets null, which is what puts `NO_SPEC_REASON`
+ * on screen.
  */
 export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSpec | null {
   if (!job) return null;
-  const spec = (job as { spec?: OrganizerSpec | null }).spec;
-  return spec ?? null;
+  const spec = job.spec;
+  if (!spec) return null;
+
+  const stack = spec.compartments?.[0]?.contents;
+  const p = spec.process;
+  const lid = spec.lid;
+  const dimensions: SpecDimension[] = [];
+
+  if (stack) {
+    const sleeving = SLEEVING_NOTE[stack.sleeving] ?? `${stack.sleeving} sleeved`;
+    dimensions.push(row('card_count', 'Cards', stack.count, 'cards', true, `${stack.card}, ${sleeving}`));
+  }
+  if (p) {
+    dimensions.push(
+      row('wall_mm', 'Wall', p.wall_mm, 'mm', true),
+      row('floor_mm', 'Floor', p.floor_mm, 'mm', true),
+      row('cavity_clearance_mm', 'Cavity clearance', p.cavity_clearance_mm, 'mm', true,
+        'total per axis over the sleeve envelope'),
+      row('stack_slack_mm', 'Stack slack', p.stack_slack_mm, 'mm', true),
+      row('min_feature_mm', 'Minimum feature', p.min_feature_mm, 'mm', true,
+        'the archetype refuses anything thinner'),
+    );
+  }
+  if (lid) {
+    dimensions.push(
+      row('lid_height_mm', 'Lid engagement', lid.height_mm, 'mm', true,
+        lid.magnets ? `${lid.kind}, magnets` : lid.kind),
+      row('lid_wall_mm', 'Lid wall', lid.wall_mm, 'mm', true),
+      row('lid_clearance_mm', 'Lid clearance', lid.clearance_mm, 'mm', true,
+        'per side; the fit tolerance a test coupon prints first'),
+      row('lid_top_mm', 'Lid top', lid.top_mm, 'mm', true),
+    );
+  }
+  const limit = spec.constraints?.max_external_mm;
+  if (limit) {
+    const axes = ['width', 'depth', 'height'] as const;
+    axes.forEach((axis, i) => {
+      dimensions.push(row(`max_external_${axis}_mm`, `Max external ${axis}`, limit[i], 'mm', true,
+        i === 0 ? 'the finished part must fit inside this' : undefined));
+    });
+  }
+
+  return {
+    archetype: spec.archetype as ArchetypeId,
+    archetypeVersion: job.archetype_version ?? null,
+    hash: job.spec_hash ?? '',
+    dimensions,
+    fits: measuredFit(job.dimension_check),
+  };
 }
 
 /**
  * Why there is no spec, in one sentence, for the empty states to show.
  *
- * One string in one place so four components cannot explain the same absence
- * four different ways.
+ * Three absences, three sentences, one place each: four components must not explain
+ * the same gap four different ways, and they must not explain three different gaps
+ * with one word.
  */
+
+/** A job that was not compiled from a spec. */
 export const NO_SPEC_REASON =
-  'The parametric engine is not wired up yet — this job was built by the generative pipeline, which produces geometry without a dimensioned spec.';
+  'This job was built by the generative pipeline, which produces geometry from an image — there are no dimensioned parameters behind it.';
+
+/** The composer, before anything has been submitted. */
+export const UNCOMPOSED_SPEC_REASON =
+  'Nothing has been composed yet — the fit check needs a spec, and a spec exists once a design has been compiled.';
+
+/** A spec job whose Phase 3 has not measured the mesh yet. */
+export const UNMEASURED_FIT_REASON =
+  'Not measured yet — the fit verdict is read off the exported mesh once Phase 3 has checked every designed dimension against the spec.';

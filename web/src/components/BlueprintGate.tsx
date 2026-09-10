@@ -84,9 +84,10 @@ export function BlueprintGate({ jobId, subject, spec = null, onApproved, onRejec
         </p>
       </div>
 
-      {/* The spec, when one exists. Today it never does, so this states the reason
-          rather than showing an empty table — and the blueprint below it stays the
-          thing being approved. */}
+      {/* The spec, when one exists. A gated job is a Phase 1 job by construction —
+          a spec run skips both generative phases and is never gated — so this states
+          the reason rather than showing an empty table, and the blueprint below it
+          stays the thing being approved. */}
       <SpecPanel spec={spec} unavailableReason={NO_SPEC_REASON} />
 
       {subject ? (
