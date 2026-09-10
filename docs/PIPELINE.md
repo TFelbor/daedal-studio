@@ -47,7 +47,7 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 60 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. On failure, says so on the issue. |
 | `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 200 turns | issue labelled, or `workflow_dispatch` with an issue number | Builds the CI environment, creates `claude/issue-<n>`, implements on it, runs the tests, opens a PR with the acceptance criteria as a checklist. Whatever happens, keeps the transcript and leaves the work findable (§ When a run fails). |
 | `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
-| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. |
+| `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. Keeps the transcript whatever happened, because a review that returns no verdict is red for a reason the log does not carry (§ When a review produces no verdict). |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
 | `.github/workflows/claude-resume.yml` | none — `infra/ci/claude_resume.py` | every two hours, or by hand | Re-dispatches `claude-implement` for drafts the safety net left after a transient failure — the subscription's usage limit above all. Retries only a transient failure — never a budget failure, a finished run or a cancelled one — never touches a draft a person or the model opened, and stops after three attempts or the first human comment. |
 
@@ -288,6 +288,45 @@ ready pull request that calls itself work in progress. Only that exact prefix is
 a title a person edited is theirs.
 
 `tests/test_claude_resume.py` pins every rule on the pure `decide()` function.
+
+## When a review produces no verdict
+
+`claude-review` is red in two different situations and they mean opposite things. A
+verdict of `request_changes` is the check working. **No verdict at all** — the step
+failing with `--json-schema was provided but Claude did not return structured_output` —
+means nothing reviewed the pull request, and until 2026-09-10 the run held no sentence
+saying why. Two live examples, four minutes apart:
+
+| PR | duration | turns | spend | what the run said |
+|---|---|---|---|---|
+| #98 | 231 s | 29 | USD 2,89 | nothing beyond the missing verdict |
+| #99 | 0,98 s | 1 | USD 0,00 | nothing beyond the missing verdict |
+
+Those are not the same failure. One ran a real review and lost its verdict at the end;
+the other never reached the model — one turn, no cost, an empty `modelUsage`. Telling
+them apart decides whether to rerun the job or to go and look at the token, and neither
+run could answer it, because the action hides the model's messages from the log and this
+workflow, unlike `claude-implement.yml`, kept nothing.
+
+It keeps the transcript now, on the same terms: an artifact named
+`claude-review-pr-<n>-transcript`, uploaded with `if: always()`, kept 14 days.
+`gh run download <run-id>` fetches it, and the result message at its end carries the
+error the log summary elides.
+
+The live equivalent is a lever, not a setting. `show_full_output` prints *every* message
+including tool results — upstream's own input description warns they "may contain
+secrets, API keys, or other sensitive information" — into a run log that has no
+retention limit and is readable by anyone who can read the repository. So it reads the
+repository variable `CLAUDE_REVIEW_VERBOSE`, which does not exist until somebody
+creates it:
+
+```bash
+gh variable set CLAUDE_REVIEW_VERBOSE --body on    # while chasing a failure
+gh variable set CLAUDE_REVIEW_VERBOSE --body off   # afterwards
+```
+
+Same shape as `AUTO_MERGE`, and for the same reason: how much a run may print is a
+decision about this repository, not a line a pull request can change.
 
 ## Skills are vendored, not installed
 

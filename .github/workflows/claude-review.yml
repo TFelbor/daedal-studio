@@ -80,6 +80,16 @@ jobs:
             output: `verdict` is "approve" or "request_changes", and `summary` is one
             sentence. The verdict decides whether this required check passes, so
             return "request_changes" whenever any check above fails.
+          # The transcript above is the durable record; this is the live one, and it is
+          # off unless somebody turns it on. Upstream's own warning is why: the input
+          # prints *every* message including tool results, "which may contain secrets,
+          # API keys, or other sensitive information", into a run log that has no
+          # retention limit and is readable by anyone who can read the repository. So it
+          # is a lever rather than a setting — `gh variable set CLAUDE_REVIEW_VERBOSE
+          # --body on` while chasing a failure, `--body off` after. Same shape as
+          # AUTO_MERGE, and for the same reason: how much output a run may print is a
+          # decision about this repository, not a line a pull request can change.
+          show_full_output: ${{ vars.CLAUDE_REVIEW_VERBOSE == 'on' }}
           # `--max-turns` is not a limiter here, it is a post-hoc budget assertion,
           # and 20 was below what a real review costs. The SDK does not stop at the
           # cap — on PR #55 it ran to completion, returned `subtype: "success"` with
@@ -111,6 +121,31 @@ jobs:
             --max-turns 80
             --allowedTools "Read,Glob,Grep,Skill,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
             --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
+
+      - name: Keep the transcript
+        # The only record of a review that produced no verdict.
+        #
+        # The action hides the model's turns from the log ("full output hidden for
+        # security") and prints a summary of the final result message instead. When
+        # that summary is `is_error: true` with `subtype: "success"`, the reason is in
+        # the part that was hidden — and it went nowhere, because unlike
+        # claude-implement.yml this workflow kept nothing. PR #99's review died in
+        # 983 ms at one turn having spent USD 0,00, and the run holds no sentence
+        # saying why; PR #98's died at 29 turns having spent USD 2,89, and the run
+        # holds no sentence saying why either. Two different failures, one empty log.
+        #
+        # `if: always()` is the point: this step runs precisely when the verdict is
+        # missing, which is the only time the file is worth reading. Fourteen days
+        # matches claude-implement.yml, and for its reason — long enough to read after
+        # a failure, short enough that a tool result which happened to print an
+        # environment does not live forever.
+        if: always() && steps.review.outputs.execution_file != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: claude-review-pr-${{ github.event.pull_request.number }}-transcript
+          path: ${{ steps.review.outputs.execution_file }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Decide the check from the verdict
         # Three outcomes, and they are three different facts:
