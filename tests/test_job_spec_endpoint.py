@@ -26,7 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pythonsrc.organizer.compiler import DimensionReport
-from pythonsrc.organizer.spec import Lid, OrganizerSpec, Process, spec_hash
+from pythonsrc.organizer.spec import Constraints, Lid, OrganizerSpec, Process, spec_hash
 from pythonsrc.telemetry.db import TelemetryDB
 from server import app as app_module
 from server.app import SPEC_ARTIFACTS, app, job_spec_summary
@@ -164,7 +164,7 @@ def test_the_spec_is_carried_canonically_so_no_field_is_missing(spec_job):
     from pythonsrc.organizer.spec import _OPTIONAL_SECTIONS
     body = client.get(f"/jobs/{spec_job()}").json()
     assert body["spec"]["process"]["wall_mm"] == 2.8
-    assert body["spec"]["constraints"] == {"max_external_mm": None}
+    assert body["spec"]["constraints"] == {"max_external_mm": None, "fit_margin_mm": 2.0}
     required = {f.name for f in fields(OrganizerSpec)} - set(_OPTIONAL_SECTIONS)
     assert required <= set(body["spec"])
     assert "lid" in body["spec"] and "divider" not in body["spec"]
@@ -350,11 +350,20 @@ def test_the_raw_spec_interface_matches_the_python_schema():
     declared = set(re.findall(r"^  (\w+)\??:", body, re.M))
     assert declared == {f.name for f in fields(OrganizerSpec)}
 
-    for cls in (Process, Lid):
+    for cls in (Process, Lid, Constraints):
         for f in fields(cls):
             assert re.search(rf"\n    {f.name}\??:", body), (
                 f"RawSpec does not declare {cls.__name__}.{f.name}."
             )
+
+
+def test_the_panel_shows_the_fit_margin_when_the_spec_carries_one():
+    """The margin decides whether a part fits, so a table that lists the stated
+    limit and not the two millimetres taken off it shows a number nothing was
+    compared against — the mystery the margin's own error text exists to avoid."""
+    text = SPEC_TS.read_text()
+    assert "fit_margin_mm" in text, "specFromJob no longer reads constraints.fit_margin_mm."
+    assert "'Fit margin'" in text
 
 
 def test_the_dimension_check_interface_matches_the_report_the_pipeline_writes():

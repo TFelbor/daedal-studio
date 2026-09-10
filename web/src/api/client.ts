@@ -159,7 +159,17 @@ export interface RawSpec {
     tab_height_mm: number;
     tab_position: string;
   } | null;
-  constraints: { max_external_mm: [number, number, number] | null };
+  /**
+   * `fit_margin_mm` is optional here and required in the schema, which is not a
+   * contradiction: it is written for every spec composed since issue #70, and rows
+   * stored before it exist and are served back verbatim — the row is authoritative,
+   * so nothing back-fills them. Read it as "the margin this spec was judged
+   * against, if the spec says".
+   */
+  constraints: {
+    max_external_mm: [number, number, number] | null;
+    fit_margin_mm?: number;
+  };
   process: {
     wall_mm: number;
     floor_mm: number;
