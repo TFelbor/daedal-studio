@@ -887,6 +887,31 @@ FastAPI application with:
   `OCTOPRINT_API_KEY`. That is a bigger hole than any profile read and wants its own
   issue.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
+- **A stored value reaches a subprocess through one allowlist, and never through
+  `os.environ`.** `POST /config` wrote the store *and* `os.environ[key]`, the startup
+  hook copied the whole store into `os.environ` besides, and both launches —
+  `docker compose run pipeline-runner` and `run_operator.py` — were
+  `os.environ.copy()`. So every stored key was a variable in every child process this
+  server spawns, set by an endpoint with **no authentication** in front of it.
+  `PYTHONPATH` was one of those keys: one request prepended an import path to the
+  pipeline container, whose `data/inputs`, `data/outputs` and `data/logs` are writable
+  bind mounts — one file write away from code execution, so a chain rather than a
+  curiosity. `server.subprocess_env()` is the only builder now: this process's
+  environment (which came from `.env` and the image) plus `SUBPROCESS_ENV_KEYS`, three
+  keys each carrying the consumer that reads it. Everything else stays server-side and
+  is read with `config_store.get()` — the printer set becomes
+  `DS_FIRMWARE`/`DS_PRINTER_URL`/`DS_PRINTER_KEY` at the launch (which is also where
+  the container's localhost rewrite happens), the `SKIP_*` flags become argv,
+  `EXECUTION_STRATEGY_OVERRIDE` becomes a strategy, and `LOG_LEVEL` has no reader in
+  anything this server launches. The store is read **at the launch**, not cached at
+  import, because that is the one useful thing the `os.environ` write did: a key saved
+  in Settings must reach the next job without a restart. `PYTHONPATH` is out of
+  `CONFIG_KEYS` and off the Settings page — an import path is the image's — and
+  `purge_retired_keys()` deletes the row at startup, because dropping the key without
+  dropping the value leaves a setting nothing can read, edit or delete.
+  `tests/test_subprocess_env.py` binds the three halves: no environ mutation, exactly
+  the allowlist in both launch environments, and a value changed after startup
+  reaching the next one.
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
 
 ### Data Flow
