@@ -31,4 +31,9 @@ COPY infra/docker/entrypoint.sh /usr/local/bin/ds-entrypoint
 RUN chmod +x /usr/local/bin/ds-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/ds-entrypoint"]
+# `--host 0.0.0.0` is this container's own interface, not an exposure decision, and
+# it must stay: Docker publishes a port by connecting to the container's address, so
+# a loopback bind here makes the published port dead. Who may reach the server is
+# decided by the bind address on the host side — `ports:` in
+# infra/docker-compose.yml, loopback by default, moved by $DS_API_BIND.
 CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

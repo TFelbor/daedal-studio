@@ -63,6 +63,12 @@ DS_PIXAZO_IMAGE_BASE_URL
 DS_PIXAZO_UP_AXIS
 TRELLIS2_PIPELINE_TYPE
 PAUSE_ON_FAILURE
+# The host address the API is published on. It is an interface, not a filesystem
+# location, and it means the same thing on both sides of the boundary: expose the
+# server here, on the machine you are running it on. So a .env that opens the API
+# up deliberately opens it for make start-native too, and one that says nothing
+# leaves the container and the native run alike on loopback.
+DS_API_BIND
 DS_NATIVE_ENV_KEYS
     unset _ds_key _ds_val
 fi
