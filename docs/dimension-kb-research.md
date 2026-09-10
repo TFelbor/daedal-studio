@@ -82,7 +82,10 @@ corroboration rather than a measurement of ours.
 | DeckSmith commander box internal | 76 × 68 × 98 | [decksmith.shop](https://www.decksmith.shop/en/commander-deck-box) |
 
 **Working convention:** +1,5–2 mm over the sleeve envelope for a snug commercial-style
-fit; +4–6 mm for easy-in/out printed boxes.
+fit; +4–6 mm for easy-in/out printed boxes. **In the code** (issue #71) this is
+`Process.fit_intent`, `snug` | `easy`, and `FIT_INTENT_CLEARANCE_MM` in
+`pythonsrc/organizer/spec.py` is the only place either number lives — the low end of
+each band, 1,5 and 4,0 mm. Both are total per axis, not per side.
 
 ## 4. Dice
 
