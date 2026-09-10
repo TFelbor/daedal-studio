@@ -20,6 +20,15 @@ The property asserted is therefore about the argument, not the strategy: whateve
 `-e DS_API_URL=…` is handed to `docker compose run`, it must never name a loopback
 host. And on `mps_native` the two addresses must actually differ, or the fix is
 just the old bug written twice.
+
+`host.docker.internal` is not enough on its own, either. It reaches the host's
+gateway address, while `ports:` publishes this server on `${DS_API_BIND:-127.0.0.1}`
+— and a socket bound to loopback does not accept a connection arriving on another
+interface. So a containerised api-server on the default bind is unreachable that way
+however well the name resolves, and the compose network is preferred when this
+process is a container in the project the pipeline will join. When it is not, the
+host gateway remains the fallback: the native Mac server has no compose network at
+all, and there the published port *is* the host's loopback.
 """
 
 import asyncio
@@ -196,3 +205,91 @@ def test_mps_native_keeps_the_two_addresses_apart():
     finally:
         blueprint.unlink()
         blueprint.parent.rmdir()
+
+
+# ── The route when the server is itself a container ──────────────────────────
+
+@pytest.fixture
+def containerised(monkeypatch):
+    """`/.dockerenv` is what says this process is in a container."""
+    monkeypatch.setattr(app_module.os.path, "exists", lambda path: path == "/.dockerenv")
+
+
+def _route(monkeypatch, value):
+    calls: list[tuple] = []
+
+    def own_internal_url(host_port, project):
+        calls.append((host_port, project))
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(
+        app_module.simulator_manager, "own_internal_url", own_internal_url,
+    )
+    return calls
+
+
+def test_the_compose_network_is_preferred_over_the_host_gateway(containerised, monkeypatch):
+    calls = _route(monkeypatch, "http://api-server:8000")
+    assert _container_api_url(NATIVE_API_URL) == "http://api-server:8000"
+    # Asked about the published port the URL names, and about the project the
+    # pipeline container will join — not this container's own.
+    assert calls == [(8000, app_module._compose_project_name())]
+
+
+def test_only_the_address_is_taken_from_the_route(containerised, monkeypatch):
+    """The scheme and any path stay the caller's; the route supplies host and port."""
+    _route(monkeypatch, "http://api-server:8000")
+    assert (
+        _container_api_url("http://127.0.0.1:8000/base")
+        == "http://api-server:8000/base"
+    )
+
+
+def test_the_host_gateway_is_the_fallback_when_there_is_no_compose_route(
+    containerised, monkeypatch,
+):
+    """A container outside the pipeline's project has no service name that resolves."""
+    _route(monkeypatch, None)
+    assert _container_api_url(NATIVE_API_URL) == "http://host.docker.internal:8000"
+
+
+def test_a_native_server_does_not_ask_docker_at_all(monkeypatch):
+    """No compose network to reach, and no reason to pay for a daemon round-trip."""
+    monkeypatch.setattr(app_module.os.path, "exists", lambda path: False)
+    calls = _route(monkeypatch, "http://api-server:8000")
+    assert _container_api_url(NATIVE_API_URL) == "http://host.docker.internal:8000"
+    assert calls == []
+
+
+def test_a_docker_lookup_failure_never_breaks_a_launch(containerised, monkeypatch):
+    """The route is an optimisation; losing it must not lose the job."""
+    _route(monkeypatch, RuntimeError("docker daemon went away"))
+    assert _container_api_url(NATIVE_API_URL) == "http://host.docker.internal:8000"
+
+
+def test_a_routable_address_is_not_rerouted_either(containerised, monkeypatch):
+    """Nothing to translate, so nothing is looked up."""
+    calls = _route(monkeypatch, "http://api-server:8000")
+    assert _container_api_url("http://ds-api.internal:8000") == "http://ds-api.internal:8000"
+    assert calls == []
+
+
+def test_the_project_name_follows_the_environment(monkeypatch):
+    """`COMPOSE_PROJECT_NAME` is what the launched `docker compose` will use."""
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "somewhere-else")
+    assert app_module._compose_project_name() == "somewhere-else"
+    monkeypatch.delenv("COMPOSE_PROJECT_NAME")
+    # Unset, compose names the project after the directory of the first `-f` file.
+    assert app_module._compose_project_name() == app_module.COMPOSE_FILE.parent.name
+
+
+@pytest.mark.parametrize("strategy", STRATEGIES)
+def test_the_launch_names_the_compose_file_the_project_is_derived_from(strategy):
+    """The constant and the command must not drift: the project name depends on it."""
+    request = app_module.JobRequest(
+        prompt="a vase", printer_id="default", profile="default", skip_visualizer=True,
+    )
+    argv, _ = _compose_run(_launches(_job_row(), strategy, request))
+    assert argv[argv.index("-f") + 1] == app_module.COMPOSE_FILE.as_posix()

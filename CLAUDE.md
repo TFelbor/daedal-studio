@@ -1184,6 +1184,29 @@ FastAPI application with:
   that opens the connection is the pipeline container, and it prefers the OctoPrint
   simulator's compose route. `tests/test_api_url_routing.py` asserts the forwarded
   argument names no loopback host on any strategy.
+- **`host.docker.internal` is the fallback, not the answer, when the server is a
+  container too.** It resolves to the host's gateway address, while `ports:`
+  publishes the api-server on `${DS_API_BIND:-127.0.0.1}` — and a socket bound to
+  loopback does not accept a connection arriving on another interface. So under
+  `docker compose up api-server` on the default bind the name resolves and the
+  connect fails, which is the same silent dead relay by a second route.
+  `_container_api_url` therefore prefers the compose network, via
+  `SimulatorManager.own_internal_url` — the mirror of `internal_url`: the container
+  being addressed is the one the server runs in, and the caller is the pipeline
+  container it is about to start. It lives on that class because the server's one
+  Docker client and its "which container am I" lookup are already there, and
+  because `tests/conftest.py` cuts *that object* off from the daemon; a second
+  client built elsewhere would reach a developer's real Docker during a test run.
+  **The project it is asked about is the caller's, not its own**
+  (`_compose_project_name`, read from `COMPOSE_PROJECT_NAME` with `COMPOSE_FILE`'s
+  directory as the fallback compose itself would use): compose names a project
+  after the directory of the first `-f` file, so an api-server brought up from
+  `infra/` is in project `infra` while the pipeline it launches — carrying
+  `COMPOSE_PROJECT_NAME=ds-mvp` from the compose file — is in `ds-mvp`, and a
+  service name does not resolve across two default networks. Every decline (not a
+  container, another project, no published port, no network, Docker unreachable)
+  falls back to the host gateway rather than to an address that fails at connect
+  time, and a native server does not ask Docker at all.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under

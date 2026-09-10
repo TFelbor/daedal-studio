@@ -809,6 +809,24 @@ NATIVE_API_URL = "http://127.0.0.1:8000"
 #: different on each side of a container boundary.
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
+#: The compose file every pipeline launch names, relative to the repo root. Kept as
+#: a constant because the *project name* is derived from its directory when
+#: `COMPOSE_PROJECT_NAME` is unset, so the two cannot be allowed to drift;
+#: `tests/test_api_url_routing.py` asserts the launched command names this file.
+COMPOSE_FILE = Path("infra") / "docker-compose.yml"
+
+
+def _compose_project_name() -> str:
+    """The compose project the pipeline container this server launches will join.
+
+    `docker compose run pipeline-runner` is launched with this process's environment
+    (`subprocess_env`), so `COMPOSE_PROJECT_NAME` decides it when it is set — and
+    `infra/docker-compose.yml` sets it in the api-server's own environment, so in a
+    container it always is. Unset, compose falls back to the name of the directory
+    holding the first `-f` file, which is what this mirrors.
+    """
+    return os.environ.get("COMPOSE_PROJECT_NAME") or COMPOSE_FILE.parent.name
+
 
 def _container_api_url(url: str) -> str:
     """`url` as the pipeline container must see this server.
@@ -828,25 +846,50 @@ def _container_api_url(url: str) -> str:
     the host is parsed rather than string-replaced, so a path or query containing
     "localhost" is left alone.
 
-    `container_reachable_url` is the wrong tool for this. It asks whether *this*
-    process is containerised (`/.dockerenv`) before translating anything, because it
-    translates a URL this process is about to open; here the process that opens it
-    is the pipeline container, which is containerised however this server is
-    running. It also prefers the OctoPrint simulator's compose route, which has
-    nothing to do with the API server.
+    `container_reachable_url` is the wrong tool for this, close as the two look. It
+    declines to translate anything unless *this* process is containerised, which is
+    right for a URL this process is about to open and wrong here, where the process
+    that opens it is the pipeline container — containerised however this server is
+    running. And the compose route it prefers is the OctoPrint simulator's, which
+    has nothing to do with the API server; the equivalent route for this server is
+    `SimulatorManager.own_internal_url`, preferred below for the same reason and one
+    more, given there.
 
     Args:
         url: The API server's address as the host sees it.
 
     Returns:
-        The same URL via `host.docker.internal` when it names a loopback host —
+        A container-to-container route over the compose network when this server is
+        itself a container in the project the pipeline will join; else the same URL
+        via `host.docker.internal` when it names a loopback host —
         `pipeline-runner` carries the `host.docker.internal:host-gateway` extra
-        host — and unchanged otherwise, since a routable address means the same
-        thing from either side.
+        host; else the URL unchanged, since a routable address means the same thing
+        from either side.
     """
     parsed = urlparse(url)
     if parsed.hostname not in _LOOPBACK_HOSTS:
         return url
+
+    # The compose network is preferred over the host gateway, for the reason
+    # `container_reachable_url` prefers it for the simulator — and here it is not
+    # only faster but the *only* route that works. `host.docker.internal` reaches
+    # the host's gateway address, while `ports:` publishes this server on
+    # `${DS_API_BIND:-127.0.0.1}`: a socket bound to loopback does not accept a
+    # connection arriving on another interface, so a containerised api-server on the
+    # default bind is unreachable that way however well the name resolves.
+    if os.path.exists("/.dockerenv"):
+        try:
+            route = simulator_manager.own_internal_url(
+                parsed.port or 80, _compose_project_name(),
+            )
+        except Exception as exc:  # noqa: BLE001 — never let a lookup break a launch
+            logger.debug("Could not resolve a container route to this server: %s", exc)
+            route = None
+        if route:
+            # Only the address is taken from the route; the scheme and any path stay
+            # the caller's.
+            return urlunparse(parsed._replace(netloc=urlparse(route).netloc))
+
     netloc = "host.docker.internal"
     if parsed.port:
         netloc = f"{netloc}:{parsed.port}"
