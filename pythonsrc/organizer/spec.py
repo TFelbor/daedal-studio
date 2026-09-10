@@ -314,7 +314,8 @@ class Process:
         problems: list[str] = []
         _set(self, "wall_mm", _mm(self.wall_mm, "wall_mm", problems))
         _set(self, "floor_mm", _mm(self.floor_mm, "floor_mm", problems))
-        if self.fit_intent not in FIT_INTENTS:
+        intent_ok = isinstance(self.fit_intent, str) and self.fit_intent in FIT_INTENTS
+        if not intent_ok:
             problems.append(
                 f"fit_intent must be one of {list(FIT_INTENTS)}, got {self.fit_intent!r}"
             )
@@ -322,7 +323,8 @@ class Process:
             # A bad intent has already been collected above; fall back to the snug
             # figure so the frozen object holds a float until the error is raised.
             _set(self, "cavity_clearance_mm",
-                 FIT_INTENT_CLEARANCE_MM.get(self.fit_intent, FIT_INTENT_CLEARANCE_MM["snug"]))
+                 FIT_INTENT_CLEARANCE_MM[self.fit_intent] if intent_ok
+                 else FIT_INTENT_CLEARANCE_MM["snug"])
         else:
             _set(self, "cavity_clearance_mm",
                  _mm(self.cavity_clearance_mm, "cavity_clearance_mm", problems, inclusive=True))
