@@ -31,9 +31,11 @@ and read the part that covers what you are touching.
   pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
   replace this note with the command. -->
   <!-- TODO: no coverage measurement exists anywhere — pytest.ini, requirements-base.txt,
-  the Makefile and ci.yml all lack it. The only figure available today is 949 test
-  functions across 65 files. Add pytest-cov and a floor before anyone quotes a
-  percentage. -->
+  the Makefile and ci.yml all lack it (issue #82). The only figure available is what
+  `pytest tests/ --collect-only` reports, and it is a count of tests, not of covered
+  lines. A number written into this file instead had rotted from 949 to 2 493 without
+  anything noticing, which is the argument for measuring rather than quoting. Add
+  pytest-cov and a floor before anyone states a percentage. -->
 
 ### Layout
 
@@ -47,8 +49,12 @@ and read the part that covers what you are touching.
 - `services/trellis2_worker/` — the GPU sculptor worker; runs only on a CUDA host.
 - `supabase/migrations/` — the telemetry DDL, **generated** from
   `python -m pythonsrc.telemetry.db --ddl`. `infra/` — Dockerfiles, compose, CI helpers.
-- `tests/` — 65 files, 949 test functions. `docs/` — PRD, roadmap, `PIPELINE.md`,
-  `deferred-legal-tasks.md`. `licenses/` — the committed dependency tree.
+- `tests/` — the suite; `pytest tests/ --collect-only` is the only honest count.
+  `docs/` — PRD, roadmap, `PIPELINE.md`,
+  `deferred-legal-tasks.md`, `RUNBOOK-spec-job.md` (one spec job by hand, from
+  `POST /jobs` to the telemetry row — the steps the default selection cannot reach
+  because they need a real slicer, a printer and a database).
+  `licenses/` — the committed dependency tree.
 
 ### Conventions
 
@@ -770,6 +776,18 @@ pin that).
   own `parametrize`), the token tray and box-insert archetypes, LLM extraction and the
   KB (M2). `python -m pythonsrc.organizer example|compile|measure [--report]` is the
   developer loop; `example` takes the archetype positionally or as `--archetype`.
+- **No spec job has yet reached the real slicer, a printer or the telemetry database.**
+  Everything above is verified to Phase 3 plus printability against a CuraEngine
+  **stub** — `infra/ci/curaengine_stub.sh` exits 70 if anything really invokes it — so
+  the brim decision over two grounded bodies, `slice_status`/`layer_count`/the filament
+  figures (all derived from an E axis that only exists once something sliced) and the
+  dispatch gate against the OctoPrint simulator are unexercised. The harness for that
+  run is `tests/test_spec_job_end_to_end.py` (`slow`, `real_printer`: it needs Docker,
+  the built `ds-mvp-pipeline` image, the CuraEngine *inside* it and a simulator on
+  5001, and skips naming whichever is missing) and `docs/RUNBOOK-spec-job.md` is the
+  same run by hand, with `tests/test_runbook_spec_job.py` holding every command,
+  service, endpoint, column and filename it names against the source. Roadmap §0.3
+  Phase 1 carries the box, and it stays `[~]` until a real row's `trace` output exists.
 
 ### Server (server/app.py)
 
