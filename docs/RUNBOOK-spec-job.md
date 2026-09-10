@@ -238,7 +238,7 @@ than `$DS_DATABASE_URL`. The session is opened read-only.
 | generation | `generation_model = organizer/deck_box`, `generation_backend = local`, no `generation_cost_eur`, the spec hash in `generation_params` |
 | blueprint | every `blueprint_*` column null — no image existed, and nothing invented one |
 | mesh lineage | `repair_report.repair_method = asserted`, `scale_applied = false`, `scale_axis = preserved`, and a `dimension_check` with `within_tolerance: true` |
-| printability | a score and a verdict (a deck box scores `risky` on `min_wall_thickness`: the measurement pitch grows with the plate, which is the check's known quantisation, not a thin lip) |
+| printability | a score and a verdict — `ready` for this spec (the 20-card box measured 100 / `ready` in the dry run); a wider plate can read `risky` on `min_wall_thickness`, because the measurement pitch grows with the plate's width and a 1,4 mm lip then reads as "within tolerance of the minimum" — the check's known quantisation, not a thin lip |
 | slice | `slice_status = success`, a `layer_count`, filament figures derived from the E axis |
 | dispatch | `dispatched_printer_url = http://localhost:5001` |
 
