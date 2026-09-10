@@ -161,8 +161,15 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
     dimensions.push(
       row('wall_mm', 'Wall', p.wall_mm, 'mm', true),
       row('floor_mm', 'Floor', p.floor_mm, 'mm', true),
+      // `fit_intent` is a word and a row's value is a number, so — like the divider's
+      // `tab_position` — it rides as the note of the row it decides. A spec stored
+      // before issue #71 carries no intent and gets the plain sentence: no word chose
+      // its clearance, and naming one would attribute the number to a decision nobody
+      // made.
       row('cavity_clearance_mm', 'Cavity clearance', p.cavity_clearance_mm, 'mm', true,
-        'total per axis over the sleeve envelope'),
+        p.fit_intent
+          ? `total per axis over the sleeve envelope; ${p.fit_intent} fit`
+          : 'total per axis over the sleeve envelope'),
       row('stack_slack_mm', 'Stack slack', p.stack_slack_mm, 'mm', true),
       row('min_feature_mm', 'Minimum feature', p.min_feature_mm, 'mm', true,
         'the archetype refuses anything thinner'),
