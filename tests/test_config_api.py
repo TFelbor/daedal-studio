@@ -27,14 +27,15 @@ if __name__ == "__main__":
 import os
 from fastapi.testclient import TestClient
 from server.app import app
+from server.config_store import CONFIG_KEYS
 
 def run_tests():
     with TestClient(app) as client:
-        # 1. GET /config returns all 9 keys with metadata.
+        # 1. GET /config returns every key in CONFIG_KEYS with metadata.
         resp = client.get("/config")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert len(data) == 9
+        assert len(data) == len(CONFIG_KEYS)
         assert "HF_TOKEN" in data
         assert data["HF_TOKEN"]["secret"] is True
         assert data["HF_TOKEN"]["required"] is True
@@ -63,10 +64,12 @@ def run_tests():
         assert data["message"] == "MOONRAKER_URL not configured"
         print("POST /config/test-connection - OK")
         
-        # 5. Server startup syncs config to os.environ.
-        # Note: os.environ update occurs in startup event, but we just set it in test 2 as well via POST
-        assert os.environ.get("HF_TOKEN") == "test123"
-        print("Startup syncs config to os.environ - OK")
+        # 5. Neither startup nor POST /config puts a stored value in os.environ.
+        # It used to do both, and both subprocess launches copied that environment
+        # wholesale — see tests/test_subprocess_env.py, which is the pytest half of
+        # this. The store is read at the moment it is used instead.
+        assert os.environ.get("HF_TOKEN") != "test123"
+        print("Config stays out of os.environ - OK")
 
 if __name__ == "__main__":
     run_tests()
