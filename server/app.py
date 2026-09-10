@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Mapping, Optional, Any, Dict
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -796,6 +796,66 @@ def _container_database_url(dsn: str) -> str:
         parts["host"] = "host.docker.internal"
         return make_conninfo(**parts)
     return dsn
+
+
+#: This server's own address, as a process running *beside* it sees it: the native
+#: Phase 1 subprocess on the mps_native path, and `run_operator.py`, which runs in
+#: this process's own container. The port is the one `ports:` publishes in
+#: infra/docker-compose.yml and the one `make start-native` gives uvicorn;
+#: `DS_API_BIND` moves the bind address, never the port.
+NATIVE_API_URL = "http://127.0.0.1:8000"
+
+#: Hostnames that mean "the machine reading this", and therefore mean something
+#: different on each side of a container boundary.
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def _container_api_url(url: str) -> str:
+    """`url` as the pipeline container must see this server.
+
+    The pipeline runs as `docker compose run --rm pipeline-runner` on **every**
+    execution strategy, mps_native included — that strategy runs Phase 1 natively
+    and everything after it in the container. So `DS_API_URL` used to be chosen by
+    strategy, `127.0.0.1:8000` for mps_native, and the container was handed the
+    address of *itself*: on a Mac the collector's
+    `internal_telemetry.send_internal_telemetry` POSTed into the void and live print
+    telemetry never reached the WebSocket fan-out. Silent, because the relay falls
+    back to a local broadcaster the container does not have, and invisible until the
+    pipeline reaches Phase 5 itself (`--print`), which the web app never asks for.
+
+    One value is set for the native side and translated here, at the one boundary
+    that needs it — the `_container_database_url` shape, and for the same reason:
+    the host is parsed rather than string-replaced, so a path or query containing
+    "localhost" is left alone.
+
+    `container_reachable_url` is the wrong tool for this. It asks whether *this*
+    process is containerised (`/.dockerenv`) before translating anything, because it
+    translates a URL this process is about to open; here the process that opens it
+    is the pipeline container, which is containerised however this server is
+    running. It also prefers the OctoPrint simulator's compose route, which has
+    nothing to do with the API server.
+
+    Args:
+        url: The API server's address as the host sees it.
+
+    Returns:
+        The same URL via `host.docker.internal` when it names a loopback host —
+        `pipeline-runner` carries the `host.docker.internal:host-gateway` extra
+        host — and unchanged otherwise, since a routable address means the same
+        thing from either side.
+    """
+    parsed = urlparse(url)
+    if parsed.hostname not in _LOOPBACK_HOSTS:
+        return url
+    netloc = "host.docker.internal"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    if parsed.username:
+        credentials = parsed.username
+        if parsed.password:
+            credentials = f"{credentials}:{parsed.password}"
+        netloc = f"{credentials}@{netloc}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 def _iso(value) -> Optional[str]:
@@ -1775,10 +1835,13 @@ async def _run_pipeline(job_id: str, request: JobRequest):
         if key:
             pipeline_env["DS_PRINTER_KEY"] = key
             
-        if strategy == "mps_native":
-            pipeline_env["DS_API_URL"] = "http://127.0.0.1:8000"
-        else:
-            pipeline_env["DS_API_URL"] = "http://host.docker.internal:8000"
+        # `pipeline_env` is the environment of the process this server launches
+        # *itself*: on the mps_native path that is the native Phase 1 subprocess,
+        # which reaches this server on the host's loopback. The pipeline is a
+        # container on every strategy, so its copy of this variable is translated
+        # where it crosses that boundary — see `_container_api_url`, which is also
+        # why this value is no longer chosen by strategy.
+        pipeline_env["DS_API_URL"] = NATIVE_API_URL
 
         # Appended, not truncated. The blueprint gate resumes a job as a *second*
         # invocation against the same log file, and "w" threw away the Phase 1 record —
@@ -1805,7 +1868,11 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             if "DS_FIRMWARE" in pipeline_env:
                 docker_env_args.extend(["-e", f"DS_FIRMWARE={pipeline_env['DS_FIRMWARE']}"])
             if "DS_API_URL" in pipeline_env:
-                docker_env_args.extend(["-e", f"DS_API_URL={pipeline_env['DS_API_URL']}"])
+                # The collectors relay their samples here for WebSocket fan-out, and
+                # inside the container the host's loopback is the container itself.
+                docker_env_args.extend([
+                    "-e", f"DS_API_URL={_container_api_url(pipeline_env['DS_API_URL'])}",
+                ])
             # Forward the paid-backend kill switch across the container boundary.
             # Phase 2's hosted backend bills per call and runs *inside* the container,
             # so a guard that only exists in this process cannot stop it. `compose run`
@@ -3021,7 +3088,9 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
             env["DS_DISPATCH_URL"] = target["base_url"]
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
-        env.setdefault("DS_API_URL", "http://127.0.0.1:8000")
+        # The operator runs beside this process — in this container, or on this host
+        # — so the loopback address is the right one and needs no translation.
+        env.setdefault("DS_API_URL", NATIVE_API_URL)
 
         process = await asyncio.create_subprocess_exec(
             *cmd,

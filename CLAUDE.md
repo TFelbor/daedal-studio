@@ -1166,6 +1166,24 @@ FastAPI application with:
   other routes. Tests that need a legacy orphan drop the named constraint for one insert
   and re-add it `NOT VALID`.
 - **Collectors**: `MoonrakerCollector` (JSON-RPC over WebSocket to Klipper) and `OctoPrintCollector` (SockJS WebSocket to OctoPrint) write samples to the DB as a background asyncio task, and relay them to the API server via `internal_telemetry.send_internal_telemetry` (`DS_API_URL`) for WebSocket fan-out. OctoPrint's socket will not accept the API key directly: the collector exchanges it for a session token via `POST /api/login {"passive": true}` and authenticates as `<user>:<session>`. Sending `_api:<api_key>` instead is answered with `reauthRequired` and no telemetry ever arrives.
+- **`DS_API_URL` is one value with a translation, not one value per strategy.**
+  `NATIVE_API_URL` (`http://127.0.0.1:8000`) is this server's address to a process
+  running *beside* it — the native Phase 1 subprocess, and `run_operator.py`, which
+  runs in this container — and `_container_api_url` rewrites the loopback host to
+  `host.docker.internal` at the one boundary that needs it, the `-e DS_API_URL=` on
+  `docker compose run`. It used to be chosen by execution strategy, and
+  `mps_native` set the loopback for *both* processes: the pipeline runs in a
+  container on **every** strategy, so on a Mac it was handed the address of itself
+  and the collector's `send_internal_telemetry` POSTed into the void, taking the
+  WebSocket fan-out of live print telemetry with it. Silent three times over — the
+  relay falls back to a local broadcaster the container does not have, the pipeline
+  still exits 0, and it only bites once Phase 5 runs *inside* the pipeline
+  (`--print`), which the web app never asks for because it stops at the dispatch
+  gate. `container_reachable_url` is deliberately *not* reused: it asks whether
+  *this* process is containerised, which is the wrong question when the process
+  that opens the connection is the pipeline container, and it prefers the OctoPrint
+  simulator's compose route. `tests/test_api_url_routing.py` asserts the forwarded
+  argument names no loopback host on any strategy.
 - **The server-side collector attaches when Phase 5 starts, not at job creation**
   (`_attach_job_telemetry`, fired by `_run_pipeline`'s `on_phase` hook when the Phase 5
   banner arrives). Attached at creation it wrote ~1 idle-printer sample per second under
