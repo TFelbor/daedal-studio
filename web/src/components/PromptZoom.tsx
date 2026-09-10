@@ -107,8 +107,8 @@ export function PromptZoom({ value, busy, onChange, onSubmit, onClose }: PromptZ
             className={styles.input}
             value={value}
             maxLength={MAX_PROMPT_CHARS}
-            placeholder="A low poly planter box with a modern geometric design…"
-            aria-label="Describe the object to print"
+            placeholder="A deck box for 100 double-sleeved commander cards, with a removable tray for 12 dice and a lid that snaps shut…"
+            aria-label="Describe the organizer to build"
             disabled={busy}
             onChange={event => onChange(event.target.value)}
             onKeyDown={event => {

@@ -818,7 +818,7 @@ export function NewJob() {
                   <span>
                     No printer or simulator is running.{' '}
                     <Link to="/setup" className={styles.noticeLink}>Configure one in Settings</Link>{' '}
-                    before you generate.
+                    before you compile.
                   </span>
                 </div>
               )}
@@ -844,7 +844,7 @@ export function NewJob() {
                     id="job-prompt"
                     className={styles.promptInput}
                     placeholder="A Commander deck box for 100 double-sleeved cards (Dragon Shield Perfect Fit + Matte), removable tray for 12 dice, magnetic snap lid."
-                    aria-label="Describe the object to print"
+                    aria-label="Describe the organizer to build"
                     value={prompt}
                     maxLength={MAX_PROMPT_CHARS}
                     onChange={(e) => setPrompt(e.target.value)}

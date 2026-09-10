@@ -356,7 +356,8 @@ export function OutcomeFeedback() {
               : `${jobs.length} prints awaiting your verdict`}
           </span>
           <span className={styles.headerSub}>
-            Did it come off the bed? One tap tells us whether the model actually worked.
+            Did it come off the bed, and does it fit? One tap tells us whether the part
+            actually worked.
           </span>
         </span>
         {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
