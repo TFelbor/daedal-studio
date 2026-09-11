@@ -191,16 +191,20 @@ def test_the_guard_resumes_a_draft_first_draft_once_the_workflow_knows_about_it(
     """The half of the protocol that lives inside `.github/workflows/`.
 
     A pipeline run cannot push a workflow change — GitHub refuses any push from an App
-    or from `GITHUB_TOKEN` that touches `.github/workflows/` — so that patch is applied
-    by hand (docs/PIPELINE.md § The draft comes first). This asserts the binding from
-    the moment it is: the guard filters drafts with one pattern, and it has to match
-    both of the pipeline's markers or a draft carrying one reads as somebody else's and
-    blocks the issue instead of resuming it.
+    or from `GITHUB_TOKEN` that touches `.github/workflows/` — so that patch was applied
+    by hand (docs/PIPELINE.md § The draft comes first). It is applied, so this asserts
+    rather than skips: a skip here would stay green for as long as the patch was missing,
+    which is exactly the window in which the guard is broken. The guard filters drafts
+    with one pattern, and it has to match both of the pipeline's markers or a draft
+    carrying one reads as somebody else's and blocks the issue instead of resuming it.
     """
     workflow = (REPO_ROOT / ".github" / "workflows" / "claude-implement.yml").read_text()
     ours = re.search(r"^\s*ours='([^']*)'", workflow, re.MULTILINE)
-    if not ours:
-        pytest.skip("the draft-first patch to claude-implement.yml has not been applied yet")
+    assert ours, (
+        "claude-implement.yml's `guard` has no `ours='...'` pattern. The draft-first "
+        "flow needs the guard to recognise both markers; without it every draft-first "
+        "draft blocks its own issue. See docs/PIPELINE.md § The draft comes first."
+    )
     for marker in (resume.DRAFT_FIRST_MARKER, resume.SAFETY_NET_MARKER):
         assert re.search(ours.group(1), marker), (
             f"the guard's pattern {ours.group(1)!r} does not match {marker!r}, so a draft "

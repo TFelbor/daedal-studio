@@ -373,10 +373,13 @@ treats it differently:
 
 `tests/test_claude_resume.py` binds the marker across those files, and
 `tests/test_claude_implement_report.py` covers both halves of the tail's behaviour. The
-middle row is the half that lives inside the workflow file, so it lands with the prompt
-patch below and not before: until it does, a draft-first draft from a failed run reads to
-the guard as somebody else's, and a `claude-resume` dispatch against it is a no-op run
-rather than a resumed one.
+middle row is the half that lives inside the workflow file: `guard` matches drafts with a
+single pattern, `ours='<!-- claude-implement-(safety-net|draft-first)'`, and
+`tests/test_claude_resume.py` asserts that pattern against both markers. Filtering on the
+safety net alone was the regression this closes — a draft-first draft from a failed run
+read to the guard as somebody else's, which set `existing=1` and made both a
+`claude-resume` dispatch and a manual one a no-op for that issue until a person closed
+the draft.
 
 **Where `gh pr create` is still reached** — a run that ended before the model got that far
 — the refusal now names its cause and both remedies rather than `could not open a pull
@@ -391,9 +394,11 @@ permission`), and no `permissions:` block grants it. The instruction to open the
 first therefore lives in **`CLAUDE.md`'s conventions**, which the action loads into every
 turn of every run and which a pipeline run may edit; the copy of it in
 `claude-implement.yml`'s prompt — where an implementer-only instruction belongs, and where
-it costs the other jobs nothing — is applied by hand. A run asked to edit a workflow can
-write the patch and nothing more. The same fact is why § One exemption exists: a pull
-request that changes a workflow is a human's from end to end.
+it costs the other jobs nothing — and the `ours=` pattern in `guard` were applied by hand,
+in this pull request, by a person with `workflow` scope. A run asked to edit a workflow can
+write the patch and nothing more; this one did, and the patch was then applied rather than
+left in the body for later. The same fact is why § One exemption exists: a pull request
+that changes a workflow is a human's from end to end.
 
 **Resuming.** Comment on the draft:
 
