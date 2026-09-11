@@ -18,7 +18,7 @@ are in one file:
     gate and the fixture badge talk about FLUX renders and bundled reference assets
     because that is what a generative job does today. Rewriting *those* for
     organizers would be the same fabrication as a fits badge with no measurement
-    behind it (CLAUDE.md § The fixture flag is carried out to the UI).
+    behind it (docs/SYSTEM-AS-BUILT.md § The fixture flag is carried out to the UI).
 """
 
 import re

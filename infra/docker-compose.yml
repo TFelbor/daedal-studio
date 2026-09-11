@@ -237,7 +237,8 @@ services:
       # Override in .env if your OctoPrint is at a different address.
       OCTOPRINT_URL: ${OCTOPRINT_URL:-http://host.docker.internal:5001}
       # The telemetry database: PostgreSQL on Supabase, one URL for every process —
-      # native, container, pipeline subprocess. See "One database" in CLAUDE.md. It
+      # native, container, pipeline subprocess. See "One database" in
+      # docs/SYSTEM-AS-BUILT.md. It
       # arrives through `env_file` above and is deliberately **not** repeated under
       # `environment`, which is where it used to be:
       #

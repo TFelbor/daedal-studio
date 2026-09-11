@@ -2,7 +2,7 @@
 actual print duration, and real foreign-key enforcement.
 
 Each of these exists because the value has exactly one moment at which it is
-knowable (see CLAUDE.md, "the capture principle") — or, for the FK pragma,
+knowable (see docs/SYSTEM-AS-BUILT.md, "the capture principle") — or, for the FK pragma,
 because the orphaned-events incident proved a declared-but-unenforced foreign
 key is how a dataset quietly rots.
 """
