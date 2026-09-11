@@ -589,9 +589,9 @@ def wall_floor_problems(
     return [
         f"process.wall_mm {wall:g} mm is below the {floor:g} mm wall floor "
         f"({WALL_FLOOR_NOZZLE_MULTIPLE:g} × the {float(nozzle_diameter_mm):g} mm nozzle "
-        "this printer profile declares); the audited insert standard calls anything "
-        "under 1,2 mm flimsy, and three extrusion widths is the least a wall that "
-        "carries anything is built from. Thicken the wall, or slice for a finer nozzle"
+        "this printer profile declares). Three extrusion widths is the least a wall "
+        "that carries anything is built from — at a 0,4 mm nozzle that is 1,2 mm, the "
+        "bottom of the audited insert band. Thicken the wall, or fit a finer nozzle"
     ]
 
 
