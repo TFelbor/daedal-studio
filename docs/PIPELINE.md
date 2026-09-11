@@ -179,8 +179,18 @@ Two consequences for whoever labels an issue. A budget is not a substitute for t
 an issue that names a decision to make first, or spans several modules, is
 `tier:fable-plan` or several issues, not `tier:opus-direct` with a bigger number. And
 the turns are spent where the model spends them — #60 also carried the whole of
-`CLAUDE.md` (130 KB) into every turn's context, which costs tokens rather than turns,
-but reading a 3 800-line file in 200-line pieces costs turns.
+`CLAUDE.md` (130 KB at the time) into every turn's context, which costs tokens rather
+than turns, but reading a 3 800-line file in 200-line pieces costs turns.
+
+**A turn budget is a token budget too, and the per-turn floor is now 11 KB rather than
+167 KB** (issue #91). The action loads `CLAUDE.md` into *every* turn of every run, so a
+200-turn implement job carried that file two hundred times; the system-as-built
+narrative moved to `docs/SYSTEM-AS-BUILT.md`, which an agent reads by section, on
+demand, and what stays in every turn is the contract plus a one-line index — 156 KB off
+every turn, on the order of 39 000 tokens, against the same budget of turns.
+`tests/test_claude_md_size.py`
+is what stops it growing back: the contract must stay under 30 KB, and every heading
+that moved must still exist in the new file.
 
 ### When the fix loop does not ask
 

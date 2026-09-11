@@ -13,9 +13,9 @@ interface BlueprintPreviewProps {
    * It reaches the alt text and nothing else. The visible caption beside this frame
    * already says "a fixture, not a render of this prompt"; without the flag here the
    * alt text said the opposite of it, so the caption a screen reader got was the one
-   * the fixture badge exists to prevent (CLAUDE.md § The fixture flag is carried out
-   * to the UI). Defaults to false because that is what an unknown flag means for
-   * every job the pipeline actually renders.
+   * the fixture badge exists to prevent (docs/SYSTEM-AS-BUILT.md § The fixture flag
+   * is carried out to the UI). Defaults to false because that is what an unknown
+   * flag means for every job the pipeline actually renders.
    */
   usedFixtures?: boolean;
 }

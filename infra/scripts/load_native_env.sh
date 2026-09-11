@@ -19,7 +19,7 @@
 # While it was set, container runs and native runs used two *different* databases
 # and nothing said so. The database is PostgreSQL on Supabase now, named by
 # `DS_DATABASE_URL` — a URL, which means the same thing on both sides of the
-# boundary, so it *is* lifted across. See "One database" in CLAUDE.md.
+# boundary, so it *is* lifted across. See "One database" in docs/SYSTEM-AS-BUILT.md.
 #
 # So only keys that mean the same thing on both sides of the container boundary
 # are lifted across — credentials, backend selection and the database URL. Every
