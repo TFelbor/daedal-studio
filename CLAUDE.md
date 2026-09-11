@@ -31,12 +31,16 @@ covers what you are touching.
   <!-- TODO: no Python linter or formatter is configured — no ruff, flake8, black or
   pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
   replace this note with the command. -->
-  <!-- TODO: no coverage measurement exists anywhere — pytest.ini, requirements-base.txt,
-  the Makefile and ci.yml all lack it (issue #82). The only figure available is what
-  `pytest tests/ --collect-only` reports, and it is a count of tests, not of covered
-  lines. A number written into this file instead had rotted from 949 to 2 493 without
-  anything noticing, which is the argument for measuring rather than quoting. Add
-  pytest-cov and a floor before anyone states a percentage. -->
+- **Coverage:** measured in CI only, on the full-suite step, and gated at **75 %**:
+  `pytest tests/ --cov=pythonsrc --cov=server --cov-report=term-missing:skip-covered
+  --cov-fail-under=75`. **Measured 76,6 % on 2026-09-11** (8 470 statements, 1 979
+  missed), which is where the floor comes from — rounded down, less a point, so it
+  gates a drop rather than setting a target. `pytest.ini` does not pass `--cov`, so a
+  local `pytest tests/` is unchanged; run the command above to reproduce the figure.
+  `.coveragerc` excludes the CUDA-only files no hosted runner can execute
+  (`services/trellis2_worker/`, `pythonsrc/sculptors/trellis2*`). Raising the floor
+  means re-measuring and updating this line and `ci.yml` together —
+  `tests/test_coverage_gate.py` fails when they disagree.
 
 ### Layout
 
