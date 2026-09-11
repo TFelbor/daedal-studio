@@ -1,0 +1,35 @@
+# Coverage configuration — read by `pytest --cov`, which CI passes on the full-suite
+# step and nothing passes locally (`pytest.ini`'s addopts deliberately does not, so a
+# local run stays as fast as it was). See CLAUDE.md § Build and test for the measured
+# figure, the floor and the command.
+#
+# The `source` packages are given on the CI command line rather than here, because the
+# flags that select them are the ones a developer reproduces by hand; what belongs in a
+# file is the part nobody should have to remember — which files cannot honestly be
+# measured on a hosted runner.
+
+[run]
+branch = False
+
+# Excluded from the measurement because CI cannot execute them, not because they do not
+# matter. Both need a CUDA GPU:
+#
+#   * `services/trellis2_worker/` is the GPU sculptor service. It imports the TRELLIS.2
+#     stack at module scope and only runs on a CUDA host; `tests/test_trellis2_worker.py`
+#     reaches it through a stubbed import, so counting its lines would price in a file
+#     the runner can never execute.
+#   * `pythonsrc/sculptors/trellis2*` is Phase 2's local and worker-backed backends —
+#     the same stack, on the pipeline side.
+#
+# Counting unrunnable files does not make the floor stricter, it makes it meaningless:
+# it would be a constant dead weight that moves only when someone adds GPU code, and it
+# would tempt whoever next raises the floor to lower the standard for everything else to
+# compensate.
+omit =
+    services/trellis2_worker/*
+    pythonsrc/sculptors/trellis2*
+
+# Nothing else is excluded, and in particular there is no `[report] exclude_lines` here:
+# coverage's default already honours `# pragma: no cover`, which is what
+# `pythonsrc/telemetry/collector_claim.py` uses on its typing-only import, and a
+# project-wide exclusion list is how a floor quietly stops measuring anything.

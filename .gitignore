@@ -31,6 +31,13 @@ build/
 .eggs/
 .pytest_cache/
 
+# Coverage byproducts. `.coveragerc` is tracked — it says what is measured — but the
+# data files a `--cov` run drops are per-run and machine-specific.
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
 # Conda / virtual environments
 env/
 venv/
