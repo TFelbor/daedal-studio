@@ -358,10 +358,52 @@ job event's `usage` field, which is how often the rule fires.
 
 ## Open question for counsel (not blocking)
 
-EU AI Act Art. 50 imposes transparency duties around artificially generated content. The
-plain target is synthetic media — image, audio, video, text — and its machine-readable
-marking obligation sits on *providers* of generative systems rather than on a deployer
-using an openly licensed model downstream. Whether any part of it reaches a physical
-object produced from a generated image, and whether the pilot's scale engages it at all,
-is a question for counsel rather than something to design around now. Raised here only so
-it is not discovered late.
+EU AI Act Art. 50 imposes transparency duties around AI systems and artificially
+generated content. It splits, and the two halves are now in different states.
+
+**Art. 50(1) — telling a person they are interacting with an AI system — is handled in
+the interface** (issue #78, 2026-09-11). Research verified 3–4 September 2026: Art. 50
+applies from **2 August 2026**, and the Commission's May 2026 guidelines say a line in
+the T&Cs does not discharge 50(1) — the interface itself has to say it, at the latest at
+the first interaction. The Digital Omnibus grace period to 2 December 2026 reaches only
+systems placed on the market before 2 August 2026, so this product gets none of it.
+
+What is live, and where:
+
+- One sentence in `web/src/components/PromptNotice.tsx`, which all three composers (the
+  landing field, the inline "New job" field and the zoomed field) share, so they cannot
+  tell people different things: *"Your prompt is read by an AI system that turns it into
+  a parametric spec; the geometry itself is computed, not generated."* Wording approved
+  by the owner on 2026-09-09.
+- The same disclosure in fewer words on the running view's Composer stage, where the
+  extracted spec is shown — because someone opening a job someone else started never
+  passed a composer.
+- `AI_SYSTEM_NOTICE` / `AI_SYSTEM_NOTICE_SHORT` are the one place either is worded, and
+  `tests/test_ip_notice.py` fails if the disclosure leaves any of the four files.
+
+Two things counsel should know about the wording rather than discover. The first half —
+a person's prompt is read by an AI system — is true on both paths the product has: FLUX
+reads it on the generative path running today, and the extractor will read it on the
+parametric one. The tail ("turns it into a parametric spec … computed, not generated")
+describes the parametric pipeline, which is literal for a `--spec` job, where
+`pythonsrc/organizer/` compiles geometry deterministically, and is the vocabulary the
+whole UI was deliberately moved onto ahead of the engine (CLAUDE.md § Project Overview).
+Until the composer can build a spec, a *prompt* job's mesh is still reconstructed by
+TRELLIS.2 from a FLUX image — generated, not computed. Nothing on the page claims
+otherwise about a given job, and the telemetry columns (`generation_model`,
+`blueprint_model`) record what actually ran; but if counsel reads the tail as a
+representation about output rather than about the product, it wants revisiting before
+the pilot rather than after.
+
+**Art. 50(2) — machine-readable marking of AI-generated content — is deferred with the
+decorative tier.** It does not arise in the spec-driven v0.2 scope: the deliverable is a
+compiled mesh and its G-code, and no AI-generated image is shown to or handed to a user.
+It returns with PRD F13/F14 (decorative personalization, roadmap §4A), which is where a
+generated image becomes part of the product again, and where the third prompt channel
+for the IP screen also lands. Do not ship F13 without answering 50(2) alongside the F13
+screen named in Task L6.
+
+**Still open.** Whether any part of Art. 50 reaches the *physical object* produced from
+a generated image — marking has no obvious meaning for a single-colour FDM part — and
+whether the pilot's scale engages the rest of the Act at all. Neither is blocking; both
+are raised here so they are not discovered late.

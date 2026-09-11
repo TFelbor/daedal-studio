@@ -538,6 +538,17 @@
   font-family: var(--font-mono);
 }
 
+/* The AI Act Art. 50(1) line under the Composer stage. On `--ink-mute` rather than
+   the caption's `--ink-faint`: it is a sentence, and the bottom two ladder steps are
+   the orientation tier, deliberately below AA and reserved for block labels. A
+   disclosure the interface owes a person is not something to make them squint at. */
+.stageAiNote {
+  margin: 8px 0 0;
+  max-width: 62ch;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+
 /* Slice tab: the toolpath fills the frame; its figures sit below it. */
 /* The figures now sit below the frame rather than inside it, so they need their own
    top rule and margin. Three equal columns, matching the phase row. */
