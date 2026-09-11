@@ -18,8 +18,9 @@ branch = False
 #     stack at module scope and only runs on a CUDA host; `tests/test_trellis2_worker.py`
 #     reaches it through a stubbed import, so counting its lines would price in a file
 #     the runner can never execute.
-#   * `pythonsrc/sculptors/trellis2*` is Phase 2's local and worker-backed backends —
-#     the same stack, on the pipeline side.
+#   * `pythonsrc/sculptors/trellis2*` is Phase 2's local TRELLIS.2 backend — the same
+#     stack, on the pipeline side. (`remote.py`, the worker-backed backend, is a CPU-side
+#     HTTP client and is measured.)
 #
 # Counting unrunnable files does not make the floor stricter, it makes it meaningless:
 # it would be a constant dead weight that moves only when someone adds GPU code, and it
