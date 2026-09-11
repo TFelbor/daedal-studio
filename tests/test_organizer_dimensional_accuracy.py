@@ -34,6 +34,7 @@ from pythonsrc.organizer.compiler import (
 )
 from pythonsrc.organizer.dimensions import resolve_stack
 from pythonsrc.organizer.spec import (
+    ARCHETYPE_WALL_MM,
     FIT_INTENT_CLEARANCE_MM,
     FIT_INTENTS,
     CardStack,
@@ -42,6 +43,8 @@ from pythonsrc.organizer.spec import (
     Lid,
     OrganizerSpec,
     Process,
+    SpecError,
+    wall_floor_mm,
 )
 
 TOL_MM = DEFAULT_TOLERANCE_MM
@@ -98,6 +101,8 @@ def test_the_report_serialises_to_the_json_written_beside_the_mesh():
 
 def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0, floor=2.0,
          fit_intent="snug"):
+    """A deck box spec. `wall=None` states no wall and takes the archetype's default,
+    which is what every spec that does not mention one compiles with (issue #72)."""
     return OrganizerSpec(
         archetype="deck_box",
         compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
@@ -115,11 +120,33 @@ def exported_and_reloaded(spec, path):
 
 COUNTS = (15, 40, 60, 100, 160)
 SLEEVINGS = ("none", "single", "double")
-WALLS = (2.6, 2.8, 4.0)  # 2.6 − 1.2 lid wall − 0.35 clearance = 1.05 mm lip, above min_feature
+#: `None` states no wall at all and takes the archetype's own default (2,4 mm). It is
+#: swept as a value rather than checked once, because it is what almost every real spec
+#: compiles with, and a dimensional claim about a wall nobody typed is worth as much as
+#: one about 2,8 mm. 2.6 − 1.2 lid wall − 0.35 clearance = 1.05 mm lip, above
+#: min_feature; at the 2,4 mm default that same clearance leaves 0.85 mm and the
+#: archetype refuses it, so `_lip_is_buildable` drops the pair rather than sweeping a
+#: box that does not exist.
+WALLS = (None, 2.6, 2.8, 4.0)
 CLEARANCES = (0.1, 0.2, 0.35)
 LID_HEIGHTS = (8.0, 15.0, 30.0)
 
-ENVELOPE = list(itertools.product(COUNTS, SLEEVINGS, WALLS, CLEARANCES, LID_HEIGHTS))
+
+def _wall_mm(wall):
+    """The wall a swept case actually builds with; `None` is the archetype's default."""
+    return ARCHETYPE_WALL_MM["deck_box"] if wall is None else wall
+
+
+def _lip_is_buildable(wall, clearance):
+    """`deck_box.validate`'s lip rule, restated so the sweep asks only for boxes that
+    exist: the body wall less the lid's wall and clearance must reach `min_feature_mm`."""
+    return _wall_mm(wall) - (Lid().wall_mm + clearance) >= Process().min_feature_mm - 1e-9
+
+
+ENVELOPE = [
+    case for case in itertools.product(COUNTS, SLEEVINGS, WALLS, CLEARANCES, LID_HEIGHTS)
+    if _lip_is_buildable(case[2], case[3])
+]
 
 
 @pytest.mark.parametrize("count,sleeving,wall,clearance,lid_height", ENVELOPE)
@@ -134,10 +161,79 @@ def test_every_measured_feature_of_the_exported_mesh_is_within_tolerance(
 
 
 def test_the_envelope_is_wide_enough_to_mean_something():
-    """Guards the sweep against being quietly narrowed to the one example spec."""
+    """Guards the sweep against being quietly narrowed to the one example spec, and in
+    particular against losing the unstated wall: `None` is what almost every real spec
+    is, and it is the case a changed archetype default moves."""
     assert len(ENVELOPE) >= 400
     assert min(COUNTS) < 20 and max(COUNTS) >= 150
     assert set(SLEEVINGS) == {"none", "single", "double"}
+    assert None in WALLS
+    assert len([c for c in ENVELOPE if c[2] is None]) >= 90
+
+
+# ── the wall: the archetype's default, and the nozzle's floor (issue #72) ──────
+#
+# The sweep above carries the default as one of its `WALLS`, which proves the
+# millimetres. What it cannot carry is the floor: below it nothing compiles, so there
+# is no mesh to measure and the coverage is a refusal instead. Both halves live here —
+# the default is *measured off the mesh*, the floor is *named in the refusal* — and
+# both are swept across the counts and sleevings that move the numbers around them.
+
+FLOOR_NOZZLES = (0.4, 0.6, 0.8)
+
+
+@pytest.mark.parametrize("count,sleeving", list(itertools.product(COUNTS, SLEEVINGS)))
+def test_the_wall_the_archetype_chose_is_on_the_exported_mesh(tmp_path, count, sleeving):
+    """A spec that states no wall gets 2,4 mm, and the mesh has to carry it — not the
+    dataclass, the geometry. Read as the difference between two planes in the exported
+    float32 STL, like every other number in this file."""
+    spec = deck(count, sleeving, wall=None)
+    assert spec.process.wall_mm == ARCHETYPE_WALL_MM["deck_box"]
+    result, mesh = exported_and_reloaded(spec, tmp_path / "deck.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    measured_wall = report.features["wall_mm"][1]
+    assert measured_wall == pytest.approx(ARCHETYPE_WALL_MM["deck_box"], abs=TOL_MM)
+    # And the externals move with it: the wall is on both sides of every axis.
+    envelope_w = resolve_stack(count, "standard", sleeving).footprint_w_mm
+    assert report.features["external_width_mm"][1] - envelope_w == pytest.approx(
+        FIT_INTENT_CLEARANCE_MM["snug"] + 2 * ARCHETYPE_WALL_MM["deck_box"], abs=TOL_MM
+    )
+
+
+@pytest.mark.parametrize("nozzle", FLOOR_NOZZLES)
+def test_a_wall_under_the_nozzles_floor_is_refused_with_both_numbers(tmp_path, nozzle):
+    """One micron under the floor is refused; the floor itself compiles and measures
+    back. The lid is thinned so the *only* thing standing between this spec and a mesh
+    is the floor — otherwise the lip rule would be doing the refusing."""
+    floor = wall_floor_mm(nozzle)
+    assert floor == pytest.approx(3.0 * nozzle)
+
+    def at(wall):
+        return OrganizerSpec(
+            archetype="deck_box",
+            compartments=(Compartment(CardStack(count=100, sleeving="double")),),
+            lid=Lid(height_mm=15.0, wall_mm=0.6, clearance_mm=0.1),
+            process=Process(wall_mm=wall, min_feature_mm=0.2),
+        )
+
+    with pytest.raises(SpecError) as exc:
+        compile_spec(at(round(floor - 0.001, 3)), nozzle_diameter_mm=nozzle)
+    message = str(exc.value)
+    assert f"{floor:g} mm wall floor" in message and f"{nozzle:g} mm nozzle" in message
+
+    spec = at(floor)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "floor.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    assert report.features["wall_mm"][1] == pytest.approx(floor, abs=TOL_MM)
+
+
+def test_the_floor_is_the_same_rule_at_every_nozzle_the_sweep_names():
+    """Guards the parametrize above against collapsing to 0,4 mm, which is the one
+    nozzle where a hard-coded 1,2 mm and the derived floor are indistinguishable."""
+    assert len(set(FLOOR_NOZZLES)) >= 3
+    assert len({wall_floor_mm(n) for n in FLOOR_NOZZLES}) == len(FLOOR_NOZZLES)
 
 
 # ── the easy fit intent's corner (issue #71) ───────────────────────────────────
@@ -181,7 +277,8 @@ from pythonsrc.engineer import Engineer  # noqa: E402
 
 CORNERS = list(itertools.product(
     (15, 60, 160), SLEEVINGS,
-    ((2.6, 0.1, 8.0), (2.8, 0.2, 15.0), (4.0, 0.35, 30.0), (2.6, 0.35, 8.0)),
+    ((2.6, 0.1, 8.0), (2.8, 0.2, 15.0), (4.0, 0.35, 30.0), (2.6, 0.35, 8.0),
+     (None, 0.2, 15.0)),
 ))
 
 

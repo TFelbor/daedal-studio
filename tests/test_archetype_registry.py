@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from pythonsrc.organizer.archetypes import REGISTRY, example_spec
-from pythonsrc.organizer.spec import ARCHETYPES
+from pythonsrc.organizer.spec import ARCHETYPE_WALL_MM, ARCHETYPES, wall_floor_mm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_SPEC = REPO_ROOT / "web" / "src" / "organizer" / "spec.ts"
@@ -33,7 +33,7 @@ WEB_SPEC = REPO_ROOT / "web" / "src" / "organizer" / "spec.ts"
 #: Every name an archetype module must expose. The registry dispatches through all of
 #: them; a module missing one fails at the call site, phases into a run.
 ARCHETYPE_API = (
-    "ARCHETYPE", "ARCHETYPE_VERSION", "MEASURED_FEATURES",
+    "ARCHETYPE", "ARCHETYPE_VERSION", "MEASURED_FEATURES", "USES_PROCESS_WALL_MM",
     "derive", "validate", "build", "compile", "example",
     "measure", "fits_check", "to_view",
 )
@@ -79,3 +79,25 @@ def test_every_archetypes_example_names_itself_and_declares_its_measurements(nam
     features = set(REGISTRY[name].MEASURED_FEATURES)
     assert features, f"{name} promises to measure nothing"
     assert features <= set(REGISTRY[name].compile(spec).features)
+
+
+def test_every_archetype_names_the_wall_it_builds_with_when_a_spec_does_not():
+    """`spec.ARCHETYPE_WALL_MM` is the third list that has to name the same archetypes.
+    Issue #72 retired one unsourced 2,8 mm for all of them, so a new archetype now has
+    to choose — and an archetype with no entry would leave `process.wall_mm` None on
+    every spec that states no wall, which nothing downstream can build from.
+
+    Every default must also clear `wall_floor_mm()` at the default nozzle, or it would
+    be a default `compile_spec` refuses.
+    """
+    assert set(ARCHETYPE_WALL_MM) == set(REGISTRY)
+    for name, wall in ARCHETYPE_WALL_MM.items():
+        assert isinstance(wall, float) and wall >= wall_floor_mm(), name
+
+
+@pytest.mark.parametrize("name", sorted(REGISTRY))
+def test_every_archetype_says_whether_the_process_wall_is_its_wall(name):
+    """The floor only means something for an archetype that builds with the field. A
+    module that does not declare either way would be held to a limit on a number it
+    ignores, or exempted from one it builds with — both silently."""
+    assert isinstance(REGISTRY[name].USES_PROCESS_WALL_MM, bool)
