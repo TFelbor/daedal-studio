@@ -756,9 +756,15 @@ def test_the_audit_note_and_the_commit_cover_the_same_events():
     that way.
     """
     workflow = WORKFLOW.read_text()
-    assert "RECORDS_DATA: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" in workflow, (
-        "the `RECORDS_DATA` expression is gone or changed shape; the audit note and the "
-        "commit below it both read it, and they must not become two conditions again"
+    records = re.search(r"^\s*RECORDS_DATA:\s*(.+)$", workflow, re.MULTILINE)
+    assert records, (
+        "the `RECORDS_DATA` expression is gone; the audit note and the commit below it "
+        "both read it, and they must not become two conditions again"
+    )
+    events = set(re.findall(r"github\.event_name == '([a-z_]+)'", records.group(1)))
+    assert events == {"schedule", "workflow_dispatch"}, (
+        f"RECORDS_DATA names {sorted(events)}; the events that commit the tree are the "
+        "scheduled run and a dispatch, and both must also write the dated note"
     )
 
     score_step = workflow.split("name: Score the tree", 1)[1].split("- name:", 1)[0]
@@ -806,6 +812,31 @@ def test_the_workflow_only_commits_on_main_or_the_schedule():
     assert events <= permitted, (
         f"{sorted(events - permitted)} may commit the licence data. A pull request, "
         "including one from a fork, must never push to a branch."
+    )
+
+
+def test_the_commit_is_gated_on_main_not_only_on_the_event():
+    """The step pushes to `HEAD:${GITHUB_REF_NAME}`, so the ref has to be checked too.
+
+    `workflow_dispatch` can be started from any branch. While it never committed that
+    was harmless; now that it does, the event clause alone would land a regenerated
+    `licenses/` and a dated audit note on whatever feature branch someone dispatched
+    from — under a step still called "Commit the data to main". `schedule` always runs
+    on the default branch, so the ref clause costs the run that needs it nothing.
+    """
+    workflow = WORKFLOW.read_text()
+    records = re.search(r"^\s*RECORDS_DATA:\s*(.+)$", workflow, re.MULTILINE)
+    assert records, "the workflow no longer defines RECORDS_DATA"
+    assert "github.ref == 'refs/heads/main'" in records.group(1), (
+        "RECORDS_DATA gates the commit on the event alone. The push below it is "
+        "`git push origin HEAD:${GITHUB_REF_NAME}`, not a hard-coded `main`, so a "
+        "workflow_dispatch from a feature branch would commit licence data there."
+    )
+
+    commit_step = workflow.split("Commit the data to main", 1)[1].split("run:", 1)[0]
+    assert "RECORDS_DATA" in commit_step, (
+        "the commit step stopped reading RECORDS_DATA, so the `main` gate above no "
+        "longer covers it"
     )
 
 

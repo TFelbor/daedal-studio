@@ -35,8 +35,10 @@
 #     commit here at all: a base image moving, an unpinned range resolving differently,
 #     a package relicensing. This is the run that also does the macOS tree and the
 #     registry SBOMs;
-#   * `workflow_dispatch`, which now also commits, so a dependency that lands between
-#     scheduled runs can be recorded immediately instead of waiting for the 1st.
+#   * `workflow_dispatch`, which now also commits — but only when it is dispatched
+#     from `main` — so a dependency that lands between scheduled runs can be recorded
+#     immediately instead of waiting for the 1st. Dispatched from a branch it still
+#     builds, scans and scores; it just does not write the note or push.
 #
 # There is deliberately no `push:` trigger. `tests/test_licensing_guards.py` runs in
 # `ci.yml` on every push and every pull request and is what actually enforces the
@@ -73,9 +75,10 @@ on:
         type: boolean
         default: false
 
-# Same rule as ci.yml: a newer push supersedes an in-flight run, except on `main`.
-# Cancelling there would drop the data commit for that merge, and the next merge would
-# report its delta against a tree two merges old.
+# Same rule as ci.yml: a newer run supersedes an in-flight one, except on `main`. The
+# runs on `main` are the scheduled and dispatched ones, and those are the only runs that
+# commit; cancelling one would drop its data commit and leave the next run reporting its
+# delta against a tree a fortnight old.
 concurrency:
   group: licence-data-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -221,8 +224,8 @@ jobs:
       - run: mkdir -p licenses/sbom
       - name: SBOM each base image
         # Scanned straight from the registry — no build, no local pull into docker.
-        # nvidia/cuda is the TRELLIS.2 worker's base and is the reason this job is not
-        # on the per-merge path: it is a multi-gigabyte devel image.
+        # nvidia/cuda is the TRELLIS.2 worker's base and is the reason this job runs on
+        # the schedule or on request only: it is a multi-gigabyte devel image.
         run: |
           set -euo pipefail
           scan() {
@@ -287,12 +290,21 @@ jobs:
     permissions:
       contents: write
     env:
-      # The events whose data is *recorded*: they write the dated audit note and they
+      # The runs whose data is *recorded*: they write the dated audit note and they
       # commit. One expression with two readers below, because the pair drifted once —
       # when `push` was dropped from the triggers, the commit condition followed and the
       # audit-note condition did not, so a dispatched run would have committed data with
       # no note saying where it came from. `tests/test_licence_data.py` binds them.
-      RECORDS_DATA: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+      #
+      # `main` only, and it is the ref that carries that, not the event. `schedule`
+      # always runs on the default branch so the clause is free there; `workflow_dispatch`
+      # can be started from any branch, and without it a dispatch from a feature branch
+      # would commit regenerated `licenses/` and a dated audit note onto that branch —
+      # the push below is `HEAD:${GITHUB_REF_NAME}`, not a hard-coded `main`. A dispatch
+      # off `main` still builds, scans, scores and uploads the artifacts; it just does
+      # not record. `pull_request` is excluded by the event clause, so a fork's PR
+      # cannot push whatever its ref says.
+      RECORDS_DATA: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -309,7 +321,7 @@ jobs:
       - name: Score the tree
         id: score
         # --fail-on deny: a non-commercial or in-process copyleft package fails the
-        # build. Flags do not — they need a person, not a red X on every merge.
+        # build. Flags do not — they need a person, not a red X on every run.
         run: |
           set +e
           if [ "$RECORDS_DATA" = "true" ]; then
@@ -330,7 +342,9 @@ jobs:
       - name: Commit the data to main
         # `push` is gone (see the header); `workflow_dispatch` is added so a dependency
         # that lands between scheduled runs can be recorded without waiting for the 1st.
-        # Same `RECORDS_DATA` the audit note above keys on, so the two cannot disagree.
+        # Same `RECORDS_DATA` the audit note above keys on, so the two cannot disagree —
+        # and it is gated on `main`, so the `HEAD:${GITHUB_REF_NAME}` push below cannot
+        # land licence data on whichever branch a dispatch happened to be started from.
         if: env.RECORDS_DATA == 'true'
         run: |
           set -euo pipefail
