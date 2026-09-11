@@ -319,10 +319,19 @@ SAFETY_NET_DRAFT = json.dumps([{
     "title": "WIP: Bind the API server to loopback by default",
     "body": "Closes #7\n\n<!-- claude-implement-safety-net subtype=error_during_execution -->\n**Opened by the claude-implement workflow**",
 }])
+#: The model opened this and has *not* finished: an unticked box is its own statement
+#: that work remains. A run can exit 0 without completing the checklist — the turn
+#: budget is a cost bound, not a definition of done.
 DRAFT_FIRST_DRAFT = json.dumps([{
     "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
     "title": "WIP: Bind the API server to loopback by default",
     "body": "Closes #7\n\n<!-- claude-implement-draft-first -->\n## Acceptance criteria\n\n- [ ] the first one",
+}])
+#: The same draft with the checklist completed — the only shape that earns promotion.
+DRAFT_FIRST_DRAFT_DONE = json.dumps([{
+    "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
+    "title": "WIP: Bind the API server to loopback by default",
+    "body": "Closes #7\n\n<!-- claude-implement-draft-first -->\n## Acceptance criteria\n\n- [x] the first one",
 }])
 HUMAN_DRAFT = json.dumps([{
     "number": 13, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/13", "isDraft": True,
@@ -453,13 +462,43 @@ def test_success_promotes_the_draft_the_model_opened_first(repo: dict) -> None:
     """
     _commit(repo, "a.py")
     result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0),
-                  FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT)
+                  FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT_DONE)
     assert result.returncode == 0, result.stderr
     calls = _calls(repo)
     assert "pr ready 12" in calls, calls
     assert "pr edit 12 --title Bind the API server to loopback by default" in calls, calls
     (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
     assert "<!-- claude-implement-finished -->" in comment
+    assert not any(c.startswith("pr create") for c in calls), "a second pull request was opened"
+
+
+def test_success_leaves_a_draft_whose_checklist_is_unfinished(repo: dict) -> None:
+    """Finishing the run is not finishing the work, and the body says which.
+
+    `success` is the model step exiting 0; it is not a claim that every acceptance
+    criterion is met, and the prompt tells the model to leave a draft whose body says
+    what remains when it cannot finish. Before the draft came first this never arose —
+    the only draft this script promoted was its own, opened because a run had *died*,
+    and it carries no checklist. Promoting on `success` alone would hand claude-review a
+    pull request whose own description lists what is missing, and a reviewer would have
+    to discover that for themselves.
+    """
+    _commit(repo, "a.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0),
+                  FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert "pr ready 12" not in calls, (
+        "a draft with an unticked acceptance criterion was marked ready for review"
+    )
+    assert not any(c.startswith("pr edit 12 --title") for c in calls), (
+        "the `WIP:` prefix was dropped from a pull request that is still work in progress"
+    )
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "still unticked" in comment, comment
+    assert "<!-- claude-implement-finished -->" not in comment, (
+        "the finished marker stops claude-resume, and this run did not finish the work"
+    )
     assert not any(c.startswith("pr create") for c in calls), "a second pull request was opened"
 
 

@@ -282,12 +282,32 @@ implement_mode() {
   # model's own "not finished" or a person's work, and is left alone.
   pr_is_pipeline_draft=$(printf '%s' "$prs" | jq -r --arg draft_first "$DRAFT_FIRST_MARKER" '.[0] | if (.isDraft == true and (((.body // "") | contains("<!-- claude-implement-safety-net")) or ((.body // "") | contains($draft_first)))) then "yes" else "no" end' 2>/dev/null) || pr_is_pipeline_draft="no"
 
+  # An unticked `- [ ]` in the body is the model's own statement that it did not finish.
+  # A run can exit 0 without completing the checklist — the turn budget is a cost bound,
+  # not a definition of done — and before the draft comes first that never mattered: the
+  # only draft this script promoted was its own, opened because a run had *died*, and it
+  # carries no checklist. The model's draft-first draft does carry one, so promoting on
+  # `success` alone would hand claude-review a pull request whose own description says
+  # what is missing. The prompt's "if you cannot finish, leave it a draft whose body says
+  # what remains" is that instruction; this is what honours it.
+  pr_open_boxes=$(printf '%s' "$prs" | jq -r '[.[0].body // "" | split("\n")[] | select(test("^\\s*[-*] \\[ \\]"))] | length' 2>/dev/null) || pr_open_boxes=0
+  [ -n "$pr_open_boxes" ] || pr_open_boxes=0
+
   if [ -n "$pr_number" ]; then
     if [ "$CONCLUSION" = "success" ]; then
       # A finished run on a draft the pipeline opened — this script's, or the model's
       # draft-first one: it was waiting for exactly this. Marking it ready hands it to
       # claude-review; the finished marker stops claude-resume. A draft the model chose
       # to leave unmarked, or a person's, is theirs to promote.
+      if [ "$pr_is_pipeline_draft" = "yes" ] && [ "$pr_open_boxes" -gt 0 ]; then
+        # Finished the run, not the work. Left a draft deliberately: a draft nobody
+        # promoted is visible, resumable and honest, where a ready pull request whose
+        # own checklist is unticked asks a reviewer to find that out for themselves.
+        log "#$pr_number left as a draft: $pr_open_boxes acceptance criteria still unticked"
+        comment_pr "$pr_number" "$(printf '%s\n**The claude-implement run finished (%s), but %s acceptance criterion(s) in the description are still unticked, so this stays a draft.** Either the work is incomplete, or it is done and the checklist was not updated — only a person can tell those apart. Tick what is verified and `gh pr ready` it, or comment `@claude` with what remains.\n\n%s' "$(marker)" "$why" "$pr_open_boxes" "$(transcript_hint)")"
+        return 0
+      fi
+
       if [ "$pr_is_pipeline_draft" = "yes" ]; then
         gh pr ready "$pr_number" >/dev/null || log "could not mark #$pr_number ready"
         # The draft was titled `WIP:` because the run that opened it had not finished.

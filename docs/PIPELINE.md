@@ -371,7 +371,7 @@ treats it differently:
 
 | Reader | What it does with a draft-first draft |
 |---|---|
-| `claude_implement_report.sh` | On success, promotes it exactly as it promotes its own safety-net draft. On failure, comments the `subtype=` record on it — the only safety-net record such a draft ever gets, because the body the model wrote carries none. |
+| `claude_implement_report.sh` | On success **with every acceptance criterion ticked**, promotes it. On success with an unticked `- [ ]` it leaves it a draft and comments how many remain: `success` is the model step exiting 0, not a claim the work is done, and a ready pull request whose own description lists what is missing makes the reviewer find that out. On failure, comments the `subtype=` record on it — the only safety-net record such a draft ever gets, because the body the model wrote carries none. |
 | `claude-implement.yml` · `guard` | Resumes the branch behind it, rather than reading it as somebody else's draft and declining to implement. |
 | `infra/ci/claude_resume.py` | Treats it as a candidate, and **leaves it alone until a safety-net record exists**. Without that rule the scheduler would dispatch a second Opus run against a branch whose first run is still going. |
 
