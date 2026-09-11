@@ -9,7 +9,7 @@ import { MeshViewer } from '../components/MeshViewer';
 import { GCodeViewer } from '../components/GCodeViewer';
 import { ProcessLog } from '../components/ProcessLog';
 import { PromptComposer } from '../components/PromptComposer';
-import { PromptNotice } from '../components/PromptNotice';
+import { AI_SYSTEM_NOTICE_SHORT, PromptNotice } from '../components/PromptNotice';
 import { StageState } from '../components/StageState';
 import { stageStatus } from '../components/stageStatus';
 import { JobControlPanel } from '../components/JobControlPanel';
@@ -1393,6 +1393,17 @@ export function NewJob() {
             <span>{caption.left}</span>
             <span className={styles.stageCaptionMono}>{caption.right}</span>
           </div>
+
+          {/* EU AI Act Art. 50(1), on the stage where the extracted spec is shown —
+              the same disclosure the composer makes, in fewer words, worded once in
+              `PromptNotice.tsx`. The duty is on the interface, and someone who
+              arrives on a shared job link never passed the composer. Its own line
+              rather than a third item in the caption above: that row is
+              `--ink-faint`, the orientation tier, which is deliberately below AA and
+              is for labels rather than sentences. */}
+          {activeTab === 'spec' && (
+            <p className={styles.stageAiNote}>{AI_SYSTEM_NOTICE_SHORT}</p>
+          )}
 
           {/* Printability, where the mesh is. The gate runs the moment the Engineer
               finishes, and its verdict is about the geometry on the stage — reading it
