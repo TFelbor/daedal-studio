@@ -16,9 +16,10 @@ issue + labels
       └─ tier:opus-direct ─────────────────┤
                                            ▼
                               claude-implement.yml · job `implement` (Opus 5)
-                                branch claude/issue-<n>, tests run, PR opened
-                                — or, when the run ends early: work pushed,
-                                  draft PR opened, issue told why (§ When a run fails)
+                                branch claude/issue-<n>, draft PR opened first
+                                (§ The draft comes first), tests run, PR marked ready
+                                — or, when the run ends early: work pushed, the draft
+                                  left where it is, issue told why (§ When a run fails)
                                            │
                                            ▼
                               claude-review.yml (Fable 5.1)
@@ -45,8 +46,8 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | File | Model | Trigger | What it does |
 |---|---|---|---|
 | `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 60 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. On failure, says so on the issue. |
-| `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 200 turns | issue labelled, or `workflow_dispatch` with an issue number | Builds the CI environment, creates `claude/issue-<n>`, implements on it, runs the tests, opens a PR with the acceptance criteria as a checklist. Whatever happens, keeps the transcript and leaves the work findable (§ When a run fails). |
-| `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
+| `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 200 turns | issue labelled, or `workflow_dispatch` with an issue number | Builds the CI environment, creates `claude/issue-<n>`, **opens a draft pull request before it implements anything** (§ The draft comes first), implements, runs the tests, marks the pull request ready with the acceptance criteria as a ticked checklist. Whatever happens, keeps the transcript and leaves the work findable (§ When a run fails). |
+| `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR — never on an issue | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
 | `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. Keeps the transcript whatever happened, because a review that returns no verdict is red for a reason the log does not carry (§ When a review produces no verdict). |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
 | `.github/workflows/claude-resume.yml` | none — `infra/ci/claude_resume.py` | every two hours, or by hand | Re-dispatches `claude-implement` for drafts the safety net left after a transient failure — the subscription's usage limit above all. Retries only a transient failure — never a budget failure, a finished run or a cancelled one — never touches a draft a person or the model opened, and stops after three attempts or the first human comment. |
@@ -273,8 +274,13 @@ model step failed:
    - uncommitted edits become one `WIP:` commit, marked as the workflow's, not the model's;
    - commits origin does not have are pushed;
    - commits with no pull request get a **draft** one, titled `WIP: <issue title>`,
-     whose description says how the run ended and how to resume or restart;
+     whose description says how the run ended and how to resume or restart — the
+     exception rather than the rule now, and the one call this token may be refused
+     (§ The draft comes first);
    - commits with a pull request get a comment on it saying the same;
+   - a finished run whose pull request is one of the pipeline's own drafts gets it
+     **promoted** — `gh pr ready`, the `WIP:` prefix dropped, one
+     `<!-- claude-implement-finished -->` comment — which is the normal route;
    - nothing committed gets a comment on the issue saying so, and why.
 
    **It authenticates twice, because the first token is already dead.** The App's
@@ -304,9 +310,10 @@ model step failed:
    `pull/new/<branch>` link, the two commands that start over, and the fact that
    `claude-resume` has nothing to pick up. It deliberately does **not** claim the work is
    "on the branch as a draft pull request", which is what the old wording did in the one
-   place a person was relying on it. Turning that setting on is a decision about the
-   repository — it also permits workflows to *approve* pull requests — so it is not done
-   here.
+   place a person was relying on it. Turning that setting on is not even the repository's
+   decision: the **organisation** refuses `createPullRequest` above it, and granting it
+   would let every workflow in every repository create *and approve* pull requests. That
+   is why the draft is opened at the start of a run instead — § The draft comes first.
 
    The draft is opened with the App's token when the action produced one, so it is the
    Claude app's pull request and the fix loop can act on it. A successful run that
