@@ -134,7 +134,21 @@ jobs:
         run: pytest tests/test_organizer_dimensional_accuracy.py tests/test_deck_box.py tests/test_engineer_assert.py
 
       - name: Test suite
-        run: pytest tests/
+        # The only step that measures coverage, and the only place `--cov` appears:
+        # `pytest.ini`'s addopts deliberately does not carry it, so a local run is as
+        # fast as it ever was and a developer opts in by repeating this line. The named
+        # steps above are subsets and would report a figure for a fraction of the suite.
+        #
+        # The floor is the figure measured on `main` rounded down and then reduced by a
+        # point — a gate against a drop, not a target. What it excludes is in
+        # `.coveragerc` (the CUDA-only files no hosted runner can execute); the measured
+        # figure, the date and this command are recorded in CLAUDE.md § Build and test,
+        # and raising the floor means re-measuring and updating both.
+        run: >-
+          pytest tests/
+          --cov=pythonsrc --cov=server
+          --cov-report=term-missing:skip-covered
+          --cov-fail-under=75
 
   web:
     name: Frontend
