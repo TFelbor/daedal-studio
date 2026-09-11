@@ -12,7 +12,8 @@ guard recognises the draft, resumes the branch and tells the model it is resumin
 Every rule in `decide()` exists to stop the loop spending a run where a run would not
 help, or where a person is already at work:
 
-- not a draft, or a draft without the marker         -> not the safety net's; leave it
+- not a draft, or a draft without a marker           -> not the pipeline's; leave it
+- a draft-first draft with no outcome recorded yet   -> that run is still going, or said nothing
 - a `<!-- claude-implement-finished -->` comment      -> a run already finished; a person decides
 - latest safety-net subtype is not retryable         -> only a transient failure is worth another run
 - a human commented since the pipeline last acted    -> a person took over
@@ -36,6 +37,14 @@ from typing import Any, Optional
 SAFETY_NET_MARKER = "<!-- claude-implement-safety-net"
 SUBTYPE_RE = re.compile(r"<!-- claude-implement-safety-net subtype=([A-Za-z0-9_-]+) -->")
 FINISHED_MARKER = "<!-- claude-implement-finished -->"
+#: The draft the *model* opens as its first action on the branch, before it implements
+#: anything (`claude-implement.yml`'s prompt). It is the normal route now — the workflow's
+#: own token may not create pull requests here — so most unfinished work arrives carrying
+#: this marker rather than the safety net's, and the safety net adds its `subtype=` record
+#: as a *comment* on it when the run ends. Such a draft is a candidate; whether it is
+#: dispatched is still decided by that record, so a draft whose run has not reported
+#: anything yet is left alone.
+DRAFT_FIRST_MARKER = "<!-- claude-implement-draft-first"
 RESUME_MARKER = "<!-- claude-implement-resume -->"
 BRANCH_RE = re.compile(r"^claude/issue-(\d+)$")
 
@@ -94,8 +103,8 @@ def decide(
         return Decision("skip", "not a draft")
     body = pr.get("body") or ""
     body_subtype = SUBTYPE_RE.search(body)
-    if not body_subtype:
-        return Decision("skip", "not the safety net's draft (no marker)")
+    if not body_subtype and DRAFT_FIRST_MARKER not in body:
+        return Decision("skip", "not one of the pipeline's drafts (no marker)")
     branch = BRANCH_RE.match(pr.get("headRefName") or "")
     if not branch:
         return Decision("skip", f"branch {pr.get('headRefName')!r} is not claude/issue-<n>")
@@ -105,11 +114,19 @@ def decide(
     if any(FINISHED_MARKER in (c.get("body") or "") for c in ordered):
         return Decision("skip", "a resumed run already finished; a person decides what happens next", issue=issue)
 
-    records: list[tuple[datetime, str]] = [(_when(pr["createdAt"]), body_subtype.group(1))]
+    records: list[tuple[datetime, str]] = []
+    if body_subtype:
+        records.append((_when(pr["createdAt"]), body_subtype.group(1)))
     for c in ordered:
         m = SUBTYPE_RE.search(c.get("body") or "")
         if m:
             records.append((_when(c["createdAt"]), m.group(1)))
+    # A draft-first draft carries no subtype in its body: the model opened it before it
+    # had an outcome to report. Until the safety net records one as a comment, the run is
+    # either still going or ended in a way nothing has described — dispatching over the
+    # top of it would be a second Opus run on the same branch, decided on no evidence.
+    if not records:
+        return Decision("skip", "the run that opened this draft has not reported an outcome yet", issue=issue)
     latest_time, latest_subtype = max(records, key=lambda r: r[0])
     if latest_subtype not in RETRYABLE_SUBTYPES:
         why = WHY_NOT_RETRYABLE.get(latest_subtype, "only a transient failure is retried")
@@ -159,8 +176,13 @@ def main() -> int:
         print(f"claude-resume: could not list pull requests: {exc}", file=sys.stderr)
         return 1
 
-    candidates = [p for p in prs if p.get("isDraft") and SAFETY_NET_MARKER in (p.get("body") or "")]
-    print(f"claude-resume: {len(prs)} open pull request(s), {len(candidates)} safety-net draft(s)")
+    candidates = [
+        p
+        for p in prs
+        if p.get("isDraft")
+        and (SAFETY_NET_MARKER in (p.get("body") or "") or DRAFT_FIRST_MARKER in (p.get("body") or ""))
+    ]
+    print(f"claude-resume: {len(prs)} open pull request(s), {len(candidates)} unfinished pipeline draft(s)")
     for pr in candidates:
         number = pr["number"]
         try:

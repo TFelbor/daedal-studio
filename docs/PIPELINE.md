@@ -212,6 +212,24 @@ job summary says which precondition withheld it.
 `claude-implement.yml`'s `fix` job carries the open/unmerged half of the same guard,
 because it answers *any* `@claude` comment on a PR, not only the reviewer's.
 
+### `@claude` works on a pull request and never on an issue
+
+`issue_comment` fires on plain issues too, so the `fix` job's `if` requires
+`github.event.issue.pull_request` — the field GitHub sets only on a pull request's
+comment thread. **A comment addressed to `@claude` on an issue therefore does nothing,
+and says nothing.** `@claude address this error` was posted on issue #72; run
+[34619631278](https://github.com/Daedal-Studio/ds-mvp/actions/runs/34619631278) reports
+`implement=skipped, fix=skipped` and the issue got no reply. Nothing anywhere had said so
+before this line.
+
+It is left that way deliberately, and that is a decision rather than an oversight. The
+fix loop pushes to a branch and answers review comments; on an issue there is no branch to
+push to and no diff to read, so "make it work on issues" is not a trigger change but a
+second implementation of the implementer. The way to put Opus on an issue is the way it
+has always been: apply the `tier:*` label, or
+`gh workflow run claude-implement.yml -f issue_number=<n>`. On a *draft* — including one
+the pipeline opened — `@claude please continue` is the supported resume.
+
 One detail worth knowing before editing either guard: **`gh` spells the same GitHub App
 three ways, by field.** A pull request's `author.login` from `gh pr view --json author`
 is `app/claude` (with `is_bot: true`); the same actor is `claude` on comments and
@@ -294,6 +312,81 @@ model step failed:
    Claude app's pull request and the fix loop can act on it. A successful run that
    opened its own pull request gets nothing from this step: the pull request is the
    report.
+
+### The draft comes first
+
+Run [34616884881](https://github.com/Daedal-Studio/ds-mvp/actions/runs/34616884881) for
+#72 ended `CONCLUSION=success`, pushed five commits — 21 files, +821/−73 — to
+`claude/issue-72`, and **opened no pull request**. The workflow reported success. Its
+tail logged three lines, the last of which was `could not open a pull request for
+claude/issue-72`. PR #122 was opened by hand afterwards to rescue those commits, which is
+why that branch's provenance is not the usual one.
+
+The chain is not a regression and nothing was reconfigured. The action revokes its App
+token when its own step ends, so the tail always falls back to `GH_TOKEN_FALLBACK` — and
+`createPullRequest` is refused for that token by **organisation** policy, which the
+repository setting cannot override:
+
+```
+PUT /repos/Daedal-Studio/ds-mvp/actions/permissions/workflow
+409 "The organization does not allow GitHub Actions to create or approve pull requests"
+```
+
+Every pipeline pull request before #122 — #106 through #121 — was opened by the *model*,
+mid-run, while its own token was alive, so the fallback had never had to. #72 was the
+first run that finished without the model opening one, which is the first time that path
+executed at all. It recurs on every such run.
+
+So the pull request is opened **first**, not last: as the implementer's first action on
+the branch, before it implements anything, as a draft carrying
+`<!-- claude-implement-draft-first -->` in its body. What follows only ever *promotes* a
+draft, and promoting is a call this token can make.
+
+- the branch is never orphaned, however the run ends;
+- `claude_implement_report.sh`'s promote-on-success path — `gh pr ready`, drop the `WIP:`
+  title prefix, comment `<!-- claude-implement-finished -->` — becomes the normal route
+  rather than the exception it was written as;
+- `claude-resume` always has something to pick up, which its own design assumes;
+- no organisation-wide grant is needed.
+
+Turning the organisation setting on is the alternative and is **deliberately not
+chosen**: it would let every workflow in every repository in the organisation create *and
+approve* pull requests, which is a wide grant for a narrow need and sits badly beside
+§ The trust boundary.
+
+**The marker is a three-file protocol, and each half fails silently alone.** The draft it
+marks is not "a run failed here" but "a run is working here", which is why each reader
+treats it differently:
+
+| Reader | What it does with a draft-first draft |
+|---|---|
+| `claude_implement_report.sh` | On success, promotes it exactly as it promotes its own safety-net draft. On failure, comments the `subtype=` record on it — the only safety-net record such a draft ever gets, because the body the model wrote carries none. |
+| `claude-implement.yml` · `guard` | Resumes the branch behind it, rather than reading it as somebody else's draft and declining to implement. |
+| `infra/ci/claude_resume.py` | Treats it as a candidate, and **leaves it alone until a safety-net record exists**. Without that rule the scheduler would dispatch a second Opus run against a branch whose first run is still going. |
+
+`tests/test_claude_resume.py` binds the marker across those files, and
+`tests/test_claude_implement_report.py` covers both halves of the tail's behaviour. The
+middle row is the half that lives inside the workflow file, so it lands with the prompt
+patch below and not before: until it does, a draft-first draft from a failed run reads to
+the guard as somebody else's, and a `claude-resume` dispatch against it is a no-op run
+rather than a resumed one.
+
+**Where `gh pr create` is still reached** — a run that ended before the model got that far
+— the refusal now names its cause and both remedies rather than `could not open a pull
+request for <branch>`, and the issue comment leads with the finding: commits on a branch,
+no pull request, nothing for `claude-resume` to pick up. That outcome stays *reachable*;
+what it no longer is, is silent.
+
+**A pipeline run cannot change this pipeline.** GitHub refuses any push from an App or
+from `GITHUB_TOKEN` that creates or updates a file under `.github/workflows/`
+(`refusing to allow a GitHub App to create or update workflow … without 'workflows'
+permission`), and no `permissions:` block grants it. The instruction to open the draft
+first therefore lives in **`CLAUDE.md`'s conventions**, which the action loads into every
+turn of every run and which a pipeline run may edit; the copy of it in
+`claude-implement.yml`'s prompt — where an implementer-only instruction belongs, and where
+it costs the other jobs nothing — is applied by hand. A run asked to edit a workflow can
+write the patch and nothing more. The same fact is why § One exemption exists: a pull
+request that changes a workflow is a human's from end to end.
 
 **Resuming.** Comment on the draft:
 
