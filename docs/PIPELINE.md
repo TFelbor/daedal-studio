@@ -344,9 +344,13 @@ mid-run, while its own token was alive, so the fallback had never had to. #72 wa
 first run that finished without the model opening one, which is the first time that path
 executed at all. It recurs on every such run.
 
-So the pull request is opened **first**, not last: as the implementer's first action on
-the branch, before it implements anything, as a draft carrying
-`<!-- claude-implement-draft-first -->` in its body. What follows only ever *promotes* a
+So the pull request is opened **first**, not last: as soon as the implementer has a
+commit to hang it on — first commit, immediate `git push -u origin HEAD`, then
+`gh pr create --draft` carrying `<!-- claude-implement-draft-first -->` in its body —
+and not a turn later. It cannot be earlier than that: `Create or resume the working
+branch` checks out the branch locally at `main`'s commit and does not push it, and
+GitHub refuses a pull request with nothing between base and head. The window this leaves
+open is the one before any work exists, where there is nothing to orphan. What follows only ever *promotes* a
 draft, and promoting is a call this token can make.
 
 - the branch is never orphaned, however the run ends;
