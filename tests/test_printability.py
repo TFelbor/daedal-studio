@@ -5,11 +5,14 @@ rather than at "the score moved".
 """
 
 import json
+import logging
+import pathlib
 
 import numpy as np
 import pytest
 import trimesh
 
+import pythonsrc.printability as printability
 from pythonsrc.printability import (
     CheckResult,
     PrintabilityReport,
@@ -205,6 +208,57 @@ def test_profile_derives_limits_from_printer_profile():
     assert profile.build_volume_mm == [220.0, 220.0, 250.0]
     assert profile.layer_height_mm == 0.2
     assert profile.min_wall_mm == pytest.approx(0.8)     # two nozzle widths
+
+
+def test_every_bundled_machine_profile_declares_its_nozzle():
+    """The nozzle stopped being cosmetic at issue #72: it sets the organizer's wall
+    floor as well as `min_wall_mm`, so a profile that does not declare one has its
+    parts judged against a machine it is not. Read under CuraEngine's own setting
+    name, so the value reaches the slicer through the validated `-s` overrides
+    instead of being declared twice.
+
+    A profile with no `machine_*` keys at all is a connection stub (`bambu_test.json`)
+    and is skipped: it describes how to reach a printer, not one to slice for.
+    """
+    profiles = sorted(pathlib.Path("pythonsrc/profiles").glob("*.json"))
+    assert profiles, "no bundled printer profiles found"
+    machines = [p for p in profiles if any(k.startswith("machine_") for k in json.load(open(p)))]
+    assert len(machines) >= 3
+    for path in machines:
+        data = json.load(open(path))
+        assert data.get("machine_nozzle_size"), f"{path.name} declares no machine_nozzle_size"
+        assert ProcessProfile.from_printer_profile(data).nozzle_diameter_mm == data["machine_nozzle_size"]
+
+
+def test_a_profile_with_no_nozzle_falls_back_to_the_cura_default_and_says_so_once(caplog):
+    """The fallback stays — it is CuraEngine's own default and every bundled profile
+    agrees with it — but it is no longer silent, because it now decides what walls a
+    spec may ask for. Once per process: the profile is re-read at Phase 2, Phase 3 and
+    Phase 3.5 of a spec run and three identical warnings train a reader to skip them."""
+    import pythonsrc.printability as printability_module
+
+    printability_module._nozzle_fallback_warned = False
+    try:
+        with caplog.at_level(logging.WARNING, logger="ds.printability"):
+            for _ in range(3):
+                profile = ProcessProfile.from_printer_profile({"machine_name": "No Nozzle"})
+                assert profile.nozzle_diameter_mm == pytest.approx(0.4)
+                assert profile.min_wall_mm == pytest.approx(0.8)
+        warnings = [r for r in caplog.records if "machine_nozzle_size" in r.getMessage()]
+        assert len(warnings) == 1
+        assert "No Nozzle" in warnings[0].getMessage()
+    finally:
+        printability_module._nozzle_fallback_warned = False
+
+
+def test_the_nozzle_fallback_is_the_same_number_the_organizer_assumes():
+    """Two modules, one figure. The organizer may not import printability (the schema
+    is stdlib-only, on purpose), so the constant is repeated — and bound here, because
+    a drift would mean a wall floor derived from a nozzle nobody is slicing with."""
+    from pythonsrc.organizer.spec import DEFAULT_NOZZLE_DIAMETER_MM
+
+    assert printability.DEFAULT_NOZZLE_DIAMETER_MM == DEFAULT_NOZZLE_DIAMETER_MM
+    assert ProcessProfile().nozzle_diameter_mm == DEFAULT_NOZZLE_DIAMETER_MM
 
 
 def test_profile_without_machine_keys_skips_volume_check():

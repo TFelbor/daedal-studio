@@ -23,7 +23,7 @@ import trimesh
 
 from .archetypes import compile_spec, example_spec, verify_spec_mesh
 from .compiler import DEFAULT_TOLERANCE_MM, MeasureError, export_stl
-from .spec import ARCHETYPES, SpecError, dump_spec, load_spec
+from .spec import ARCHETYPES, DEFAULT_NOZZLE_DIAMETER_MM, SpecError, dump_spec, load_spec
 
 
 def _cmd_example(args: argparse.Namespace) -> int:
@@ -36,7 +36,7 @@ def _cmd_example(args: argparse.Namespace) -> int:
 
 def _cmd_compile(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
-    result = compile_spec(spec)
+    result = compile_spec(spec, nozzle_diameter_mm=args.nozzle_mm)
     out = export_stl(result.mesh, args.out)
     if args.features:
         Path(args.features).write_text(json.dumps(result.features_document(), indent=2, sort_keys=True) + "\n")
@@ -90,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
     p_compile.add_argument("--out", required=True, help="mesh path to write (.stl)")
     p_compile.add_argument("--features", help="also write the designed features as JSON")
     p_compile.add_argument("--spec-out", dest="spec_out", help="also write the spec in canonical, sorted form")
+    # The wall floor is three of these (`spec.wall_floor_mm`). A flag rather than a
+    # profile path because this is the developer loop and the loop has no printer;
+    # `pipeline.py --spec` reads the real machine's `machine_nozzle_size` instead.
+    p_compile.add_argument("--nozzle-mm", dest="nozzle_mm", type=float,
+                           default=DEFAULT_NOZZLE_DIAMETER_MM,
+                           help="nozzle diameter the wall floor is derived from, mm "
+                                f"(default: {DEFAULT_NOZZLE_DIAMETER_MM:g})")
     p_compile.set_defaults(func=_cmd_compile)
 
     p_measure = sub.add_parser("measure", help="measure a mesh against the spec it claims to implement")

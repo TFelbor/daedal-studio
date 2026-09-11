@@ -30,6 +30,15 @@ lift cards out of), both from `docs/dimension-kb-research.md` §3. An `easy` dec
 compiles; it is refused only when those wider millimetres are what push it past a stated
 `constraints.max_external_mm` — see `_easy_fit_problems`.
 
+`w` is `process.wall_mm`, and this archetype's default for it is
+`spec.ARCHETYPE_WALL_MM["deck_box"]` = **2,4 mm**, which is not a taste figure: it is
+`Lid.wall_mm` + `Lid.clearance_mm` + `Process.min_feature_mm`, the thinnest body wall
+that still leaves the lip below a valid feature — `validate` refuses anything thinner,
+so a smaller default would be a default that does not compile. It replaces an
+unsourced 2,8 mm (issue #72). Below it the spec is refused by the lip rule; below
+`spec.wall_floor_mm(nozzle)` — three extrusion widths — it is refused by
+`archetypes.compile_spec` before this module is reached.
+
 Rules that belong to this *shape* rather than to specs in general — exactly one
 compartment, a lift-off lid without magnets, no `divider` section, a lip no thinner than
 `process.min_feature_mm`, a lid shorter than the cavity — are checked here and refused
@@ -63,6 +72,9 @@ from .common import (
 ARCHETYPE = "deck_box"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
 ARCHETYPE_VERSION = "1"
+#: The body wall *is* `process.wall_mm` here, so `compile_spec` holds it to the
+#: nozzle-derived floor. `spec.ARCHETYPE_WALL_MM["deck_box"]` is what it defaults to.
+USES_PROCESS_WALL_MM = True
 #: Clear space between the body and the lid on the plate, mm.
 PLATE_GAP_MM = 10.0
 #: How this archetype names itself in a refusal or a measurement finding.

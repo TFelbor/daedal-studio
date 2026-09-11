@@ -63,9 +63,21 @@ def test_assert_features_within_refuses_a_missing_measurement():
         assert_features_within({"a_mm": 10.0}, {}, tol_mm=0.05)
 
 
-from pythonsrc.organizer.spec import CardStack, Compartment, Constraints, Lid, OrganizerSpec, Process, SpecError  # noqa: E402
+from pythonsrc.organizer.spec import (  # noqa: E402
+    ARCHETYPE_WALL_MM,
+    CardStack,
+    Compartment,
+    Constraints,
+    Divider,
+    Lid,
+    OrganizerSpec,
+    Process,
+    SpecError,
+    canonical_json,
+    wall_floor_mm,
+)
 from pythonsrc.organizer.archetypes import compile_spec, example_spec, get_archetype  # noqa: E402
-from pythonsrc.organizer.archetypes import deck_box  # noqa: E402
+from pythonsrc.organizer.archetypes import card_divider, deck_box  # noqa: E402
 
 
 def deck(count=100, sleeving="double", **overrides):
@@ -90,11 +102,13 @@ def test_a_hundred_double_sleeved_cards_derive_the_expected_box():
     assert d.cavity_w == pytest.approx(67.0 + 1.5)
     assert d.cavity_d == pytest.approx(100 * 0.70 + 1.0)
     assert d.cavity_h == pytest.approx(92.0 + 1.5)
-    assert d.external_w == pytest.approx(68.5 + 2 * 2.8)
-    assert d.external_d == pytest.approx(71.0 + 2 * 2.8)
+    assert d.external_w == pytest.approx(68.5 + 2 * 2.4)
+    assert d.external_d == pytest.approx(71.0 + 2 * 2.4)
     assert d.body_h == pytest.approx(93.5 + 2.0)
     assert d.lip_inset == pytest.approx(1.2 + 0.2)
-    assert d.lip_wall == pytest.approx(2.8 - 1.4)
+    # 2,4 mm of wall less a 1,4 mm lip inset is a 1,0 mm lip — exactly
+    # `process.min_feature_mm`, which is where the default came from (issue #72).
+    assert d.lip_wall == pytest.approx(2.4 - 1.4)
     assert d.lid_cavity_w == pytest.approx(d.lip_outer_w + 2 * 0.2)
     assert d.external_h == pytest.approx(d.body_h + 2.0)
 
@@ -162,6 +176,82 @@ def test_a_lip_thinner_than_the_minimum_feature_is_refused_with_the_remedy():
     assert "lip" in message and "1.000" in message and "wall" in message
 
 
+# ── the wall: the archetype's default, and the nozzle's floor (issue #72) ──────
+
+def test_the_deck_boxs_default_wall_is_the_lids_own_arithmetic():
+    """2,4 mm is not a taste figure: it is lid wall + lid clearance + minimum feature,
+    the thinnest body wall that still leaves this archetype's own lift-off lid a valid
+    lip. Bound to the numbers it is derived from, so changing `Lid`'s defaults without
+    changing the wall fails here rather than producing a default that cannot compile."""
+    assert ARCHETYPE_WALL_MM["deck_box"] == pytest.approx(
+        Lid().wall_mm + Lid().clearance_mm + Process().min_feature_mm
+    )
+    assert ARCHETYPE_WALL_MM["deck_box"] > wall_floor_mm()
+
+
+def test_a_spec_that_states_no_wall_builds_with_the_archetypes_default():
+    """The canonical form carries it — the spec says what the geometry has — and the
+    mesh is measured to prove the default reached the kernel, not just the dataclass."""
+    spec = deck()
+    assert spec.process.wall_mm == ARCHETYPE_WALL_MM["deck_box"]
+    assert '"wall_mm":2.4' in canonical_json(spec)
+    measured = measure_spec_mesh(spec, compile_spec(spec).mesh)
+    assert measured["wall_mm"] == pytest.approx(2.4, abs=TOL_MM)
+
+
+def test_an_explicit_null_wall_means_the_same_as_an_omitted_one():
+    """`from_dict` must not treat "I wrote null" as different from "I wrote nothing",
+    or two spec files that mean the same thing would hash differently."""
+    d = deck().to_dict()
+    d["process"]["wall_mm"] = None
+    assert OrganizerSpec.from_dict(d) == deck()
+
+
+def test_a_wall_below_the_nozzles_floor_is_refused_with_the_floor_and_the_nozzle():
+    """1,2 mm is three perimeters at 0,4 and fine there; on a 0,6 mm nozzle it is two,
+    and the refusal has to say which machine said so and what the limit was.
+
+    The thin lid is what makes a 1,2 mm body wall a legal deck box at all — the lip
+    has to fit inside it — so the only thing this spec is refused for is the floor."""
+    thin = dict(lid=Lid(wall_mm=0.8, clearance_mm=0.1),
+                process=Process(wall_mm=1.2, min_feature_mm=0.1))
+    spec = deck(**thin)
+    compile_spec(spec, nozzle_diameter_mm=0.4)  # three perimeters: allowed
+    with pytest.raises(SpecError) as exc:
+        compile_spec(spec, nozzle_diameter_mm=0.6)
+    message = str(exc.value)
+    assert "process.wall_mm 1.2" in message
+    assert "1.8 mm wall floor" in message and "0.6 mm nozzle" in message
+    assert exc.value.problems == [p for p in exc.value.problems if "wall floor" in p]
+
+
+def test_the_floor_is_refused_together_with_the_archetypes_own_problems():
+    """"It is refused whole" is a property of this schema, and a floor bolted on in
+    front of the archetype would have broken it: the wall is too thin *and* the lid is
+    taller than the cavity, and one attempt must report both."""
+    spec = deck(process=Process(wall_mm=1.0, min_feature_mm=0.1),
+                lid=Lid(height_mm=500.0, wall_mm=0.8, clearance_mm=0.1))
+    with pytest.raises(SpecError) as exc:
+        compile_spec(spec, nozzle_diameter_mm=0.4)
+    assert any("wall floor" in p for p in exc.value.problems)
+    assert any("height_mm" in p for p in exc.value.problems)
+
+
+def test_the_divider_is_not_held_to_a_wall_it_does_not_build():
+    """`process.wall_mm` builds nothing on a card divider, so a big nozzle must not
+    refuse a perfectly good plate over it — the plate's own thickness is the feature
+    that matters and `divider.thickness_mm` carries it."""
+    assert deck_box.USES_PROCESS_WALL_MM is True
+    assert card_divider.USES_PROCESS_WALL_MM is False
+    spec = OrganizerSpec(
+        archetype="card_divider",
+        compartments=(Compartment(CardStack(count=100)),),
+        divider=Divider(),
+    )
+    assert spec.process.wall_mm == ARCHETYPE_WALL_MM["card_divider"]
+    assert compile_spec(spec, nozzle_diameter_mm=0.8).mesh.is_watertight
+
+
 def test_a_lid_taller_than_the_cavity_is_refused():
     with pytest.raises(SpecError) as exc:
         compile_spec(deck(lid=Lid(height_mm=200.0)))
@@ -171,14 +261,14 @@ def test_a_lid_taller_than_the_cavity_is_refused():
 def test_an_easy_fit_that_busts_a_stated_limit_is_refused_with_both_remedies():
     """The 2,5 mm an `easy` intent adds is a number nobody typed. It may make a box
     loose; it may not silently make a box that does not fit the limit its spec names."""
-    exact = (74.1, 76.6, 97.5)  # the snug example's own externals
+    exact = (73.3, 75.8, 97.5)  # the snug example's own externals
     spec = deck(process=Process(fit_intent="easy"),
                 constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
     with pytest.raises(SpecError) as exc:
         compile_spec(spec)
     message = str(exc.value)
     assert "fit_intent 'easy'" in message and "4 mm of clearance" in message
-    assert "external width 76.6 mm exceeds 74.1 mm" in message
+    assert "external width 75.8 mm exceeds 73.3 mm" in message
     assert "'snug'" in message and "cavity_clearance_mm" in message and "max_external_mm" in message
 
 
@@ -197,7 +287,7 @@ def test_an_explicit_clearance_is_never_refused_for_the_intent_beside_it():
     """The refusal is about millimetres the schema chose. `cavity_clearance_mm: 1,5`
     with `fit_intent: easy` is a contradiction in words only — the number is the
     person's, the geometry is snug, and it fits."""
-    exact = (74.1, 76.6, 97.5)
+    exact = (73.3, 75.8, 97.5)
     spec = deck(process=Process(fit_intent="easy", cavity_clearance_mm=1.5),
                 constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
     assert compile_spec(spec).mesh.is_watertight
@@ -259,20 +349,40 @@ def test_the_same_spec_exports_the_same_bytes(tmp_path):
     assert hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()
 
 
-def test_the_example_deck_box_still_exports_the_bytes_it_always_has(tmp_path):
-    """A fixed vector for the *mesh*, which is the thing a schema change must not move.
+def test_a_spec_that_states_the_old_wall_exports_the_bytes_it_always_has(tmp_path):
+    """A fixed vector for the *mesh* of a spec that says what it wants.
 
-    `process.fit_intent` (issue #71) added a scalar to the canonical form, so every
-    spec hash moved — that is a decision recorded in `tests/test_organizer_spec.py`.
-    The geometry must not have moved with it: `snug` is the default and `snug` is
-    1,5 mm, which is the number this archetype has always built. If this hash changes,
-    either the kernel's output changed or a default did, and both are answers somebody
-    has to give deliberately.
+    This hash is the one the example deck box carried before issue #72, and the spec
+    that produces it is the example plus `process.wall_mm: 2.8` — the number that used
+    to be the schema's default. **A spec that states its wall compiles to the byte it
+    always did**, which is the whole compatibility claim of retiring an unsourced
+    default: every spec file, saved design and stored hash that named 2,8 mm is
+    untouched, and only specs that never said anything move.
+
+    If this hash changes, either the kernel's output changed or something other than a
+    default did, and both are answers somebody has to give deliberately.
+    """
+    from pythonsrc.organizer.compiler import export_stl
+    spec = deck(process=Process(wall_mm=2.8))
+    stl = export_stl(compile_spec(spec).mesh, tmp_path / "a.stl")
+    assert hashlib.sha256(stl.read_bytes()).hexdigest() == (
+        "c638fddc0d98f8823157ec99cd767be66ec30078ffb2be149072ef12eb4de785"
+    )
+
+
+def test_the_example_deck_box_exports_the_bytes_its_own_default_builds(tmp_path):
+    """The same fixed vector for the example as it stands: no wall stated, so
+    `spec.ARCHETYPE_WALL_MM["deck_box"]` — 2,4 mm — builds it.
+
+    It moved exactly once, at issue #72, when the unsourced 2,8 mm default was
+    replaced by the lid's own arithmetic. `process.fit_intent` (issue #71) had moved
+    every spec *hash* before that without moving any geometry; this is the converse,
+    and the test above keeps the old geometry reachable by naming its wall.
     """
     from pythonsrc.organizer.compiler import export_stl
     stl = export_stl(compile_spec(example_spec("deck_box")).mesh, tmp_path / "a.stl")
     assert hashlib.sha256(stl.read_bytes()).hexdigest() == (
-        "c638fddc0d98f8823157ec99cd767be66ec30078ffb2be149072ef12eb4de785"
+        "a54271bf044a1dba08db93829e8d0fb19b318fd676987d899dbb7428dbae9aa8"
     )
 
 
@@ -302,7 +412,10 @@ def test_every_designed_feature_is_on_the_compiled_mesh(count, sleeving):
 
 
 def test_the_lid_clears_the_lip_by_exactly_the_clearance():
-    spec = deck(lid=Lid(clearance_mm=0.25))
+    """The wall is stated because the default cannot take this clearance: 2,4 mm is
+    exactly lid wall + clearance + `min_feature_mm` at the *default* 0,2 mm, so a
+    0,25 mm clearance needs 0,05 mm more wall and `validate` says so."""
+    spec = deck(lid=Lid(clearance_mm=0.25), process=Process(wall_mm=2.8))
     measured = measure_spec_mesh(spec, compile_spec(spec).mesh)
     assert measured["lid_clearance_mm"] == pytest.approx(0.25, abs=1e-4)
 
@@ -352,7 +465,7 @@ def test_the_fits_line_shows_the_arithmetic():
     assert fits.fits is True
     assert fits.line.startswith("100 × 0.7 mm = 70 mm stack")
     assert "internal 71 mm" in fits.line
-    assert "external 74.1 × 76.6 × 97.5 mm" in fits.line
+    assert "external 73.3 × 75.8 × 97.5 mm" in fits.line
     assert "0.70 mm/card" in fits.basis
     assert fits.remedy is None
 
@@ -361,10 +474,10 @@ def test_an_external_constraint_that_fails_names_the_axis_and_a_card_count():
     spec = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0)))
     fits = fits_for(spec)
     assert fits.fits is False
-    assert "depth" in fits.remedy and "76.6" in fits.remedy and "68" in fits.remedy
-    # (70 − 2 margin − 2·2.8 − 1.0) / 0.70 = 87.71 → 87 cards. Derived from the
+    assert "depth" in fits.remedy and "75.8" in fits.remedy and "68" in fits.remedy
+    # (70 − 2 margin − 2·2.4 − 1.0) / 0.70 = 88.86 → 88 cards. Derived from the
     # *effective* limit, or the remedy names a count that busts the margin again.
-    assert "87 cards" in fits.remedy
+    assert "88 cards" in fits.remedy
 
 
 def test_an_external_constraint_that_holds_passes():
@@ -376,14 +489,14 @@ def test_an_external_constraint_that_holds_passes():
 
 def test_the_default_margin_refuses_a_box_that_fitted_the_stated_limit_exactly():
     """The whole point: a box internal is one person's measurement of one copy, and
-    the same copy next door is 1–2 mm smaller. 76,6 mm of depth "fits" a 76,6 mm
-    limit and splits the box; against the effective 74,6 mm it does not fit, and the
+    the same copy next door is 1–2 mm smaller. 75,8 mm of depth "fits" a 75,8 mm
+    limit and splits the box; against the effective 73,8 mm it does not fit, and the
     remedy says where the two millimetres came from."""
-    exact = (74.1, 76.6, 97.5)  # the example deck box's own external dimensions
+    exact = (73.3, 75.8, 97.5)  # the example deck box's own external dimensions
     fits = fits_for(deck(constraints=Constraints(max_external_mm=exact)))
     assert fits.fits is False
-    assert "external width 74.1 mm exceeds 72.1 mm (max_external 74.1 − 2 margin)" in fits.remedy
-    assert "external depth 76.6 mm exceeds 74.6 mm (max_external 76.6 − 2 margin)" in fits.remedy
+    assert "external width 73.3 mm exceeds 71.3 mm (max_external 73.3 − 2 margin)" in fits.remedy
+    assert "external depth 75.8 mm exceeds 73.8 mm (max_external 75.8 − 2 margin)" in fits.remedy
     assert "external height 97.5 mm exceeds 95.5 mm (max_external 97.5 − 2 margin)" in fits.remedy
 
 
@@ -391,15 +504,15 @@ def test_a_zero_margin_restores_the_old_comparison_and_the_old_sentence():
     """`fit_margin_mm: 0` is for a person who measured the box they are filling. It
     must read exactly as this project read before the margin existed — no
     parenthetical explaining an arithmetic that did not happen."""
-    exact = (74.1, 76.6, 97.5)
+    exact = (73.3, 75.8, 97.5)
     spec = deck(constraints=Constraints(max_external_mm=exact, fit_margin_mm=0))
     assert fits_for(spec).fits is True
     over = deck(constraints=Constraints(max_external_mm=(80.0, 70.0, 100.0), fit_margin_mm=0))
     fits = fits_for(over)
     assert fits.fits is False
     assert fits.remedy == (
-        "external depth 76.6 mm exceeds 70 mm by 6.6 mm; "
-        "90 cards would fit the depth limit. "
+        "external depth 75.8 mm exceeds 70 mm by 5.8 mm; "
+        "91 cards would fit the depth limit. "
         "Reduce the card count, the wall or the slack, or relax the constraint."
     )
 

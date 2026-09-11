@@ -11,10 +11,13 @@ import json
 import pytest
 
 from pythonsrc.organizer.spec import (
+    ARCHETYPE_WALL_MM,
     ARCHETYPES,
+    DEFAULT_NOZZLE_DIAMETER_MM,
     FIT_INTENT_CLEARANCE_MM,
     FIT_INTENTS,
     TAB_POSITIONS,
+    WALL_FLOOR_NOZZLE_MULTIPLE,
     CardStack,
     Compartment,
     Constraints,
@@ -23,6 +26,9 @@ from pythonsrc.organizer.spec import (
     OrganizerSpec,
     Process,
     SpecError,
+    check_wall_floor,
+    wall_floor_mm,
+    wall_floor_problems,
 )
 
 
@@ -315,6 +321,83 @@ def test_several_problems_are_reported_together():
     assert len(exc.value.problems) == 3
 
 
+# ── the wall, and the floor the nozzle puts under it (issue #72) ───────────────
+
+def test_a_process_on_its_own_states_no_wall_until_a_spec_names_the_archetype():
+    """`Process` has no archetype, so it cannot know which default applies; the spec
+    resolves it. This is the one place the field is legitimately None."""
+    assert Process().wall_mm is None
+    assert Process(wall_mm=3.0).wall_mm == 3.0
+
+
+@pytest.mark.parametrize("archetype", sorted(ARCHETYPE_WALL_MM))
+def test_every_archetypes_wall_default_is_resolved_on_construction(archetype):
+    """Resolved once, on the way in — `cavity_clearance_mm`'s rule verbatim — so the
+    canonical form always states the wall and two equal canonical forms compile the
+    same. A spec is never handed downstream with a None wall."""
+    section = Divider() if archetype == "card_divider" else None
+    spec = OrganizerSpec(
+        archetype=archetype,
+        compartments=(Compartment(CardStack(count=100)),),
+        lid=None if section else Lid(),
+        divider=section,
+    )
+    assert spec.process.wall_mm == ARCHETYPE_WALL_MM[archetype]
+    assert spec.to_dict()["process"]["wall_mm"] == ARCHETYPE_WALL_MM[archetype]
+    assert OrganizerSpec.from_dict(spec.to_dict()) == spec
+
+
+def test_a_stated_wall_is_kept_whatever_the_archetype_would_have_chosen():
+    assert deck(process=Process(wall_mm=2.8)).process.wall_mm == 2.8
+    assert card_divider(process=Process(wall_mm=2.8)).process.wall_mm == 2.8
+
+
+def test_a_null_wall_in_a_file_means_the_archetypes_default():
+    """An omitted key and an explicit null must mean the same thing, or two spec files
+    that say the same thing would hash differently."""
+    d = deck().to_dict()
+    d["process"]["wall_mm"] = None
+    assert OrganizerSpec.from_dict(d).process.wall_mm == ARCHETYPE_WALL_MM["deck_box"]
+
+
+def test_the_wall_floor_is_three_extrusion_widths_of_whatever_nozzle_is_fitted():
+    """1,2 mm at 0,4 mm is the bottom of the audited insert band; the point of deriving
+    it is that the same *rule* gives 1,8 mm on a 0,6 mm nozzle rather than a constant
+    that only happens to be right on one machine."""
+    assert WALL_FLOOR_NOZZLE_MULTIPLE == 3.0
+    assert wall_floor_mm() == pytest.approx(1.2)
+    assert wall_floor_mm(DEFAULT_NOZZLE_DIAMETER_MM) == pytest.approx(1.2)
+    assert wall_floor_mm(0.6) == pytest.approx(1.8)
+    assert wall_floor_mm(0.25) == pytest.approx(0.75)
+
+
+def test_every_archetypes_default_wall_clears_the_floor_at_the_default_nozzle():
+    """A default that the floor refuses would be a default that cannot compile."""
+    for archetype, wall in ARCHETYPE_WALL_MM.items():
+        assert wall >= wall_floor_mm(), archetype
+
+
+def test_the_floor_names_both_numbers_and_check_raises_what_problems_reports():
+    """"1,2 mm minimum" is unactionable on a machine that is not the reader's; the
+    message has to say the floor *and* the nozzle it came from."""
+    spec = deck(process=Process(wall_mm=1.0))
+    assert wall_floor_problems(spec) == wall_floor_problems(spec, 0.4)
+    problem = wall_floor_problems(spec, 0.4)[0]
+    assert "process.wall_mm 1" in problem
+    assert "1.2 mm wall floor" in problem and "0.4 mm nozzle" in problem
+    with pytest.raises(SpecError) as exc:
+        check_wall_floor(spec, 0.4)
+    assert exc.value.problems == [problem]
+
+
+def test_a_wall_exactly_on_the_floor_is_accepted():
+    """The floor is a minimum, not a threshold to clear — and it must not be lost to
+    float noise, which is why the comparison carries a micron of slack."""
+    assert wall_floor_problems(deck(process=Process(wall_mm=1.2)), 0.4) == []
+    assert wall_floor_problems(deck(process=Process(wall_mm=1.8)), 0.6) == []
+    assert wall_floor_problems(deck(process=Process(wall_mm=1.799)), 0.6) != []
+
+
 # ── from_dict: strict, path-annotated ──────────────────────────────────────────
 
 def test_from_dict_refuses_unknown_keys():
@@ -409,7 +492,9 @@ def test_any_field_change_changes_the_hash():
     base = spec_hash(deck())
     assert spec_hash(deck(count=99)) != base
     assert spec_hash(deck(lid=Lid(clearance_mm=0.25))) != base
-    assert spec_hash(deck(process=Process(wall_mm=2.4))) != base
+    # 2,8 mm rather than the 2,4 mm this once used: 2,4 is the deck box's own default
+    # since issue #72, so it is no longer a change at all.
+    assert spec_hash(deck(process=Process(wall_mm=2.8))) != base
 
 
 def test_an_absent_optional_section_is_omitted_from_the_canonical_form():
@@ -431,16 +516,23 @@ def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
     which is a schema-version bump, not a refactor.
 
-    It has moved exactly twice, deliberately and for the same reason both times:
-    `constraints.fit_margin_mm` (issue #70) and `process.fit_intent` (issue #71) are
-    scalars with defaults, not optional *sections*, so they are written for every spec
-    the way `process.wall_mm` is. A section is omitted when absent — that is what
-    `_OPTIONAL_SECTIONS` is for — but omitting a scalar at its default would mean the
-    canonical form no longer says what the spec is, and the next default to change
-    would be unreadable in a diff. The alternative, a `SCHEMA_VERSION` bump, refuses
-    every existing spec file for an additive field. Rows already written keep the hash
-    they recorded; nothing re-derives one — and the *mesh* a stored spec compiles to is
-    unchanged, which `tests/test_deck_box.py` pins in bytes.
+    It has moved three times, deliberately. `constraints.fit_margin_mm` (issue #70)
+    and `process.fit_intent` (issue #71) are scalars with defaults, not optional
+    *sections*, so they are written for every spec the way `process.wall_mm` is.
+    Issue #72 moved it again without adding a field: `process.wall_mm`'s default
+    stopped being one unsourced 2,8 mm for every archetype and became the archetype's
+    own — 2,4 mm here, the lid's arithmetic. A spec that *states* 2,8 mm hashes and
+    compiles exactly as it always did, which is what `tests/test_deck_box.py` pins in
+    bytes; only specs that never said anything move.
+
+    A section is omitted when absent — that is what `_OPTIONAL_SECTIONS` is for — but
+    omitting a scalar at its default would mean the canonical form no longer says what
+    the spec is, and the next default to change would be unreadable in a diff. That is
+    also why `wall_mm` is resolved here rather than left null for the compiler:
+    `"wall_mm":2.4` in the canonical form is the wall the geometry has. The
+    alternative, a `SCHEMA_VERSION` bump, refuses every existing spec file for an
+    additive field. Rows already written keep the hash they recorded; nothing
+    re-derives one.
     """
     spec = OrganizerSpec(
         archetype="deck_box",
@@ -454,7 +546,7 @@ def test_the_hash_is_stable_across_processes():
         '"lid":{"clearance_mm":0.2,"height_mm":15.0,"kind":"lift_off","magnets":false,'
         '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,'
         '"fit_intent":"snug","floor_mm":2.0,'
-        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
+        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.4},"schema_version":1}'
     )
 
 
@@ -502,7 +594,7 @@ def test_the_fixed_divider_vector_carries_no_lid():
         '"divider":{"tab_height_mm":10.0,"tab_position":"centre","tab_width_mm":20.0,'
         '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,'
         '"fit_intent":"snug","floor_mm":2.0,'
-        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.8},"schema_version":1}'
+        '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":1.2},"schema_version":1}'
     )
 
 

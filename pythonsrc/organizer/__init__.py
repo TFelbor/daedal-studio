@@ -10,11 +10,14 @@ the request model grows a spec field. The compilers live behind explicit imports
 `pipeline.py --spec` is the entry that runs them.
 """
 from .spec import (  # noqa: F401
+    ARCHETYPE_WALL_MM,
     ARCHETYPES,
+    DEFAULT_NOZZLE_DIAMETER_MM,
     FIT_INTENT_CLEARANCE_MM,
     FIT_INTENTS,
     SCHEMA_VERSION,
     TAB_POSITIONS,
+    WALL_FLOOR_NOZZLE_MULTIPLE,
     CardStack,
     Compartment,
     Constraints,
@@ -24,8 +27,11 @@ from .spec import (  # noqa: F401
     Process,
     SpecError,
     canonical_json,
+    check_wall_floor,
     dump_spec,
     load_spec,
     spec_diff,
     spec_hash,
+    wall_floor_mm,
+    wall_floor_problems,
 )

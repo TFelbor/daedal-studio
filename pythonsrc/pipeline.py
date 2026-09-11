@@ -434,6 +434,39 @@ def _record_blueprint(args, blueprint_path, result=None) -> None:
         logger.warning("Could not record blueprint provenance: %s", exc)
 
 
+def _profile_nozzle_mm(args) -> float:
+    """The nozzle the spec's wall floor is derived from, in mm.
+
+    Read off the same printer profile Phase 3.5 and the slicer read, through
+    `ProcessProfile.from_printer_profile` so `machine_nozzle_size` has one reader on
+    the pipeline side. (`server/app.py`'s `_profile_snapshot` reads the key a second
+    time, for the job record, with its own silent 0,4 fallback; routing it through
+    `ProcessProfile` too is follow-up work, not this phase's.) Phase 2 is the first
+    place in the run that needs it: the wall floor is a property of the machine, and a
+    wall the nozzle cannot lay down should be refused before a mesh is built for it,
+    not after (`archetypes.compile_spec`).
+
+    An unreadable profile falls back to the `ProcessProfile` default rather than
+    failing the phase: no profile has ever meant "no printer" here, and the floor at
+    0,4 mm is the one every bundled profile declares anyway.
+    """
+    try:
+        from printability import ProcessProfile
+    except ImportError:
+        from pythonsrc.printability import ProcessProfile
+
+    profile_path = args.profile or "pythonsrc/profiles/ender3.json"
+    try:
+        with open(profile_path, "r") as handle:
+            return ProcessProfile.from_printer_profile(json.load(handle)).nozzle_diameter_mm
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Could not read %s for the nozzle diameter (%s) — using the FDM default.",
+            profile_path, exc,
+        )
+        return ProcessProfile().nozzle_diameter_mm
+
+
 def _compile_spec_phase(args, outputs_dir: Path):
     """Phase 2 for a spec run: compile the spec into the job directory.
 
@@ -443,15 +476,23 @@ def _compile_spec_phase(args, outputs_dir: Path):
     dimension, the part list, the archetype and version, the spec hash). Nothing here
     is a fixture, so the caller's `outputs_dir` is the real namespace.
 
+    The printer profile's nozzle is handed to the compiler, which is the whole of
+    issue #72's plumbing: `process.wall_mm` is held to three extrusion widths of *this*
+    machine's nozzle, and the archetype's own default applies when the spec states no
+    wall at all. `spec.json` is written after the compile, so a refused spec leaves no
+    canonical file claiming to describe a part that was never built.
+
     Args:
-        args: Parsed CLI arguments; `args.spec` names the spec file.
+        args: Parsed CLI arguments; `args.spec` names the spec file and
+            `args.profile` the printer.
         outputs_dir: The job's output directory.
 
     Returns:
         The compiled mesh path and the `CompileResult`.
 
     Raises:
-        SpecError: If the file is not a spec, or the archetype refuses it.
+        SpecError: If the file is not a spec, the archetype refuses it, or the wall is
+            below the nozzle-derived floor.
     """
     try:
         from organizer.spec import load_spec, dump_spec
@@ -463,7 +504,7 @@ def _compile_spec_phase(args, outputs_dir: Path):
         from pythonsrc.organizer.compiler import export_stl
 
     spec = load_spec(args.spec)
-    result = compile_spec(spec)
+    result = compile_spec(spec, nozzle_diameter_mm=_profile_nozzle_mm(args))
     _ensure_outputs_dir(outputs_dir)
     mesh_path = export_stl(result.mesh, outputs_dir / "compiled_mesh.stl")
     dump_spec(spec, outputs_dir / "spec.json")

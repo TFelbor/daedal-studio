@@ -516,6 +516,51 @@ pin that).
   show it. This moved every spec hash a second time, for `fit_margin_mm`'s reasons;
   the *mesh* a stored spec compiles to did not move, and
   `tests/test_deck_box.py` pins the example's STL in bytes.
+- **`process.wall_mm` has a floor the printer sets and a default the archetype
+  chooses** (issue #72, 2026-09-11). It used to default to **2,8 mm** for everything,
+  which is seven perimeters at a 0,4 mm nozzle and was sourced by nobody — defensible
+  for a box you carry and drop, indefensible as one constant across archetypes, and
+  roughly 2× the material and print time of the audited insert band (1,2–1,6 mm,
+  roadmap §0.5) over a large part. It is now two separate decisions:
+  - **The floor is the machine's.** `spec.wall_floor_mm(nozzle)` is
+    `WALL_FLOOR_NOZZLE_MULTIPLE` (3) × the profile's `machine_nozzle_size` — 1,2 mm at
+    0,4 mm, which is the audited band's bottom, and 1,8 mm at 0,6 mm, which a constant
+    1,2 could never have said. It is deliberately *not*
+    `printability.min_wall_mm` (two nozzle widths): that is what the extruder can
+    physically lay down, this is what a wall that carries something is built from.
+  - **The default is the archetype's.** `spec.ARCHETYPE_WALL_MM` names one per
+    archetype and `archetypes/__init__.py` refuses to import if the registry has an
+    entry it does not. The deck box's **2,4 mm** is `Lid.wall_mm` + `Lid.clearance_mm`
+    + `Process.min_feature_mm` — the thinnest body wall that still leaves this
+    archetype's own lift-off lid a valid lip, so a thinner default would be one
+    `validate` refuses; `tests/test_deck_box.py` binds it to the three numbers it is
+    derived from. The card divider's 1,2 mm builds nothing (its one thickness is
+    `divider.thickness_mm`), so the module sets `USES_PROCESS_WALL_MM = False` and the
+    floor skips it rather than refusing a good plate on a big nozzle over a field it
+    ignores.
+  - **The wall is resolved on construction**, in `OrganizerSpec.__post_init__` because
+    only the spec knows the archetype — `cavity_clearance_mm`'s rule verbatim, and for
+    its reasons: the canonical form states the wall the geometry has. An explicit
+    `null` means the same as omitted.
+  - **The floor is checked in `archetypes.compile_spec`, which is Phase 2**, not in
+    Phase 3's `_assert_spec_dimensions` where `pipeline.py` also holds the profile.
+    Phase 3 runs after Phase 2 has written `compiled_mesh.stl`, `spec.json` and
+    `compile_features.json` and recorded the archetype as the job's generation model,
+    so a floor enforced there refuses a part the system has already produced and
+    described — and the CLI, `fits_check` and the composer preview never reach Phase 3
+    at all. `pipeline._profile_nozzle_mm` reads the nozzle through
+    `ProcessProfile.from_printer_profile`, so `machine_nozzle_size` has one reader on
+    the pipeline side and the same value reaches CuraEngine through the validated `-s`
+    overrides. **A second reader remains**: `server/app.py`'s `_profile_snapshot` takes
+    the key off the profile itself, for the nozzle it stores on the job record, and
+    falls back to 0,4 silently rather than through the warning
+    `ProcessProfile.from_printer_profile` logs. It is a known gap, left where it was
+    because the server was outside issue #72's scope; the two agree on every bundled
+    profile, and they can only disagree on a profile that omits the key.
+  - This moved every spec hash a third time, for `fit_margin_mm`'s reasons, and moved
+    the deck box's **mesh** for the first time. **A spec that states `wall_mm: 2.8`
+    compiles to the byte it always did**, which `tests/test_deck_box.py` pins next to a
+    new pin for the example at its own default.
 - **Each archetype refuses the other's section by name.** `deck_box` refuses a
   `divider`, `card_divider` refuses a `lid`. Ignoring a section prints a different part
   than the one asked for, silently, which is the same failure as ignoring an unsupported
