@@ -68,7 +68,7 @@ def test_a_ready_pull_request_is_never_redispatched() -> None:
 
 def test_a_draft_without_the_marker_is_left_alone() -> None:
     d = resume.decide(_pr(subtype=None), [], NOW)
-    assert d.action == "skip" and "safety net" in d.reason
+    assert d.action == "skip" and "no marker" in d.reason
 
 
 def test_a_finished_run_stops_the_loop() -> None:
@@ -116,6 +116,100 @@ def test_the_two_scripts_agree_on_which_subtypes_are_retried() -> None:
     declared = re.search(r'^RETRYABLE_SUBTYPES="([^"]*)"', shell, re.MULTILINE)
     assert declared, "claude_implement_report.sh no longer declares RETRYABLE_SUBTYPES"
     assert set(declared.group(1).split()) == set(resume.RETRYABLE_SUBTYPES)
+
+
+# --- the draft the model opens before it implements anything ----------------------------
+
+
+def _draft_first_pr(number=12, branch="claude/issue-7", created=NOW - timedelta(hours=5)):
+    """What `claude-implement.yml`'s prompt tells the model to open as its first action.
+
+    It carries no `subtype=`: the run had no outcome to report when it was opened. The
+    safety net adds that record as a *comment* if the run ends badly.
+    """
+    body = (
+        "Closes #7\n\n<!-- claude-implement-draft-first -->\n"
+        "## Acceptance criteria\n\n- [ ] the first one\n"
+    )
+    return {"number": number, "isDraft": True, "body": body, "headRefName": branch,
+            "createdAt": created.isoformat()}
+
+
+def test_a_draft_first_draft_with_no_outcome_yet_is_left_alone() -> None:
+    """The marker means "a run is working on this", not "a run failed on this".
+
+    Every implement run now opens one on its first turn, so without this rule the
+    scheduler would dispatch a second Opus run against a branch whose first run is
+    still going — deciding on no evidence at all.
+    """
+    d = resume.decide(_draft_first_pr(), [], NOW)
+    assert d.action == "skip" and "not reported an outcome" in d.reason, d
+
+
+def test_a_draft_first_draft_is_resumed_once_a_transient_failure_is_recorded() -> None:
+    """The safety net comments the subtype on the draft the model opened, and that
+    comment is the only record: the body never had one. Losing that path would mean the
+    usage-limit retry stops working the day the draft-first flow becomes the normal
+    route, which is the same day it shipped."""
+    comments = [_comment("claude", MARK.format("error_during_execution") + " the run ended", NOW - timedelta(hours=3))]
+    d = resume.decide(_draft_first_pr(), comments, NOW)
+    assert d.action == "dispatch" and d.issue == 7, d
+
+
+def test_a_draft_first_draft_whose_run_spent_its_budget_is_not_retried() -> None:
+    comments = [_comment("claude", MARK.format("error_max_turns") + " 200 turns", NOW - timedelta(hours=3))]
+    d = resume.decide(_draft_first_pr(), comments, NOW)
+    assert d.action == "skip" and "error_max_turns" in d.reason, d
+
+
+def test_every_place_that_recognises_the_draft_first_marker_agrees_on_it() -> None:
+    """The same string is written in one file and read in three, and each fails silently.
+
+    `CLAUDE.md` tells the implementer to write it into the draft it opens first —
+    that file is loaded into every turn of every run, which is what makes the
+    instruction reach the model at all. `claude_implement_report.sh` reads it to decide
+    whether a finished run may promote that draft. This module reads it to decide
+    whether the scheduler may pick the draft up. A marker that drifts in one of them
+    turns the draft-first flow back into an orphaned branch with nothing red anywhere.
+    """
+    contract = (REPO_ROOT / "CLAUDE.md").read_text()
+    report = (REPO_ROOT / "infra" / "ci" / "claude_implement_report.sh").read_text()
+
+    assert f"{resume.DRAFT_FIRST_MARKER} -->" in contract, (
+        "CLAUDE.md no longer tells the implementer to write the "
+        f"{resume.DRAFT_FIRST_MARKER} --> marker into the draft it opens first. It is "
+        "the only channel that reaches every run: a pipeline run may not push a change "
+        "to .github/workflows/, so the prompt cannot carry this on its own."
+    )
+    assert f"DRAFT_FIRST_MARKER='{resume.DRAFT_FIRST_MARKER}'" in report, (
+        "claude_implement_report.sh declares a different draft-first marker; a finished "
+        "run would then leave the draft it was supposed to promote sitting as a draft"
+    )
+
+
+def test_the_guard_resumes_a_draft_first_draft_once_the_workflow_knows_about_it() -> None:
+    """The half of the protocol that lives inside `.github/workflows/`.
+
+    A pipeline run cannot push a workflow change — GitHub refuses any push from an App
+    or from `GITHUB_TOKEN` that touches `.github/workflows/` — so that patch was applied
+    by hand (docs/PIPELINE.md § The draft comes first). It is applied, so this asserts
+    rather than skips: a skip here would stay green for as long as the patch was missing,
+    which is exactly the window in which the guard is broken. The guard filters drafts
+    with one pattern, and it has to match both of the pipeline's markers or a draft
+    carrying one reads as somebody else's and blocks the issue instead of resuming it.
+    """
+    workflow = (REPO_ROOT / ".github" / "workflows" / "claude-implement.yml").read_text()
+    ours = re.search(r"^\s*ours='([^']*)'", workflow, re.MULTILINE)
+    assert ours, (
+        "claude-implement.yml's `guard` has no `ours='...'` pattern. The draft-first "
+        "flow needs the guard to recognise both markers; without it every draft-first "
+        "draft blocks its own issue. See docs/PIPELINE.md § The draft comes first."
+    )
+    for marker in (resume.DRAFT_FIRST_MARKER, resume.SAFETY_NET_MARKER):
+        assert re.search(ours.group(1), marker), (
+            f"the guard's pattern {ours.group(1)!r} does not match {marker!r}, so a draft "
+            "carrying it reads as somebody else's and blocks the issue instead of resuming it"
+        )
 
 
 def test_the_latest_safety_net_record_decides_the_subtype() -> None:

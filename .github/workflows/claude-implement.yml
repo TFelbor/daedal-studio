@@ -191,9 +191,17 @@ jobs:
             echo "Could not ask GitHub whether a pull request was already merged for #${ISSUE_NUMBER}." >&2
             exit 1
           }
+          # Both markers the pipeline opens a draft with: the safety net's, and the
+          # draft-first draft the implementer opens as its first action. A draft
+          # carrying either is *ours* — resumable; anything else is somebody else's and
+          # blocks the issue. Matching the safety net alone made a draft-first draft
+          # read as foreign, which set `existing=1` and turned both `claude-resume` and
+          # a manual dispatch into a no-op run for that issue until a person closed the
+          # draft. `tests/test_claude_resume.py` binds this pattern to both markers.
+          ours='<!-- claude-implement-(safety-net|draft-first)'
           ready=$(jq '[.[] | select(.isDraft | not)] | length' <<<"$open_prs")
-          foreign_drafts=$(jq '[.[] | select(.isDraft and (((.body // "") | contains("<!-- claude-implement-safety-net")) | not))] | length' <<<"$open_prs")
-          resume_pr=$(jq -r '[.[] | select(.isDraft and ((.body // "") | contains("<!-- claude-implement-safety-net")))] | .[0].number // empty' <<<"$open_prs")
+          foreign_drafts=$(jq --arg ours "$ours" '[.[] | select(.isDraft and (((.body // "") | test($ours)) | not))] | length' <<<"$open_prs")
+          resume_pr=$(jq -r --arg ours "$ours" '[.[] | select(.isDraft and ((.body // "") | test($ours)))] | .[0].number // empty' <<<"$open_prs")
 
           if [ "$merged" -gt 0 ] || [ "$ready" -gt 0 ] || [ "$foreign_drafts" -gt 0 ]; then
             existing=1
@@ -328,7 +336,9 @@ jobs:
 
             Add or update tests so every acceptance criterion is covered. While iterating, run only the tests you are touching; run the full `pytest tests/` and `npm --prefix web run build` once, before opening the pull request, and make them pass.
 
-            When done, open a pull request with `gh pr create` that references this issue, copies its acceptance criteria into the body as a checklist, ticks each one you verified, and carries the issue's `risk:*` label. Keep the pull request to this task only. If you cannot finish, push what you have and open the pull request as a draft (`--draft`) whose body says what remains.
+            Unless the note above already names a pull request to continue: make your **first commit a small one and push it straight away** (`git push -u origin HEAD`), and then, before any further work, open a draft pull request with `gh pr create --draft`. It references this issue, copies its acceptance criteria into the body as an unticked checklist, carries the issue's `risk:*` label, and contains the line `<!-- claude-implement-draft-first -->`. It has to be that early — as soon as there is a commit to hang it on, and not a turn later — because nothing that runs after your turns are gone can open one: the token the tail falls back to is refused `createPullRequest` by organisation policy, so a branch with no pull request is work nobody finds. (Earlier than that is not possible: the branch is created locally at `main`'s commit, and GitHub refuses a pull request with nothing between base and head.) Then carry on implementing.
+
+            Tick each criterion with `gh pr edit` as you verify it. When every one is ticked and the full suite and the web build pass, mark it ready with `gh pr ready`. Keep the pull request to this task only; if you cannot finish, leave it a draft whose body says what remains.
           # `Skill` is on the allowlist so the vendored `.claude/skills/` are reachable;
           # without it the model sees their descriptions and can invoke none of them.
           # See docs/PIPELINE.md § Skills are vendored, not installed.

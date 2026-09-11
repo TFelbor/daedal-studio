@@ -14,8 +14,17 @@
 #   uncommitted edits            -> one `WIP:` commit, clearly marked as the workflow's
 #   commits origin does not have -> pushed
 #   commits and no pull request  -> a *draft* pull request, saying why it is a draft
-#   commits and a pull request   -> a comment on it when the run failed
+#   commits and a pull request   -> a comment on it when the run failed, and when the run
+#                                   succeeded on a draft the pipeline opened, `gh pr ready`
 #   nothing committed            -> a comment on the issue saying so, and why
+#
+# The third row is the exception now rather than the rule. The model is told to open its
+# draft as the first action on the branch (claude-implement.yml's prompt), because
+# `createPullRequest` is refused for this job's token by organisation policy and the App's
+# token is revoked before this script runs — so the only moment a pull request can be
+# opened for the branch is while the model is still going. Run 34616884881 for #72 pushed
+# five commits, reported success, and opened nothing. The fourth row — promoting a draft —
+# is a call this token *can* make, and is now the normal route.
 #
 # A person can then finish it, resume it with one `@claude please continue` comment
 # (claude-implement.yml's `fix` job answers those on any open pull request), or throw
@@ -157,10 +166,14 @@ is_retryable() {
 
 # The markers are the protocol between this script and .github/workflows/claude-resume.yml:
 #   safety-net  — on every draft body and comment this script writes, with the subtype
-#   finished    — a run succeeded while a safety-net draft existed; the loop stops here
+#   draft-first — on the draft the *model* opens as its first action on the branch
+#                 (claude-implement.yml's prompt), which is the normal route now; this
+#                 script promotes that draft on success exactly as it promotes its own
+#   finished    — a run succeeded while one of those drafts existed; the loop stops here
 #   resume      — written by claude-resume when it re-dispatches (counted for the cap)
 marker()   { printf '<!-- claude-implement-safety-net subtype=%s -->' "$(subtype)"; }
 FINISHED_MARKER='<!-- claude-implement-finished -->'
+DRAFT_FIRST_MARKER='<!-- claude-implement-draft-first'
 
 # What happens next, said once and honestly: a budget failure repeats itself on retry; a
 # transient one — the subscription's usage wall above all — is what claude-resume exists for.
@@ -263,14 +276,39 @@ implement_mode() {
   pr_number=$(printf '%s' "$prs" | jq -r '.[0].number // empty' 2>/dev/null) || pr_number=""
   pr_url=$(printf '%s' "$prs" | jq -r '.[0].url // empty' 2>/dev/null) || pr_url=""
   pr_title=$(printf '%s' "$prs" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""
-  pr_is_safety_net_draft=$(printf '%s' "$prs" | jq -r '.[0] | if (.isDraft == true and ((.body // "") | contains("<!-- claude-implement-safety-net"))) then "yes" else "no" end' 2>/dev/null) || pr_is_safety_net_draft="no"
+  # Either of the pipeline's own markers: the draft this script opened after an earlier
+  # run ended, or the draft the model opened as its first action on the branch. Both are
+  # this workflow's to promote when a run finishes; a draft carrying neither is the
+  # model's own "not finished" or a person's work, and is left alone.
+  pr_is_pipeline_draft=$(printf '%s' "$prs" | jq -r --arg draft_first "$DRAFT_FIRST_MARKER" '.[0] | if (.isDraft == true and (((.body // "") | contains("<!-- claude-implement-safety-net")) or ((.body // "") | contains($draft_first)))) then "yes" else "no" end' 2>/dev/null) || pr_is_pipeline_draft="no"
+
+  # An unticked `- [ ]` in the body is the model's own statement that it did not finish.
+  # A run can exit 0 without completing the checklist — the turn budget is a cost bound,
+  # not a definition of done — and before the draft comes first that never mattered: the
+  # only draft this script promoted was its own, opened because a run had *died*, and it
+  # carries no checklist. The model's draft-first draft does carry one, so promoting on
+  # `success` alone would hand claude-review a pull request whose own description says
+  # what is missing. The prompt's "if you cannot finish, leave it a draft whose body says
+  # what remains" is that instruction; this is what honours it.
+  pr_open_boxes=$(printf '%s' "$prs" | jq -r '[.[0].body // "" | split("\n")[] | select(test("^\\s*[-*] \\[ \\]"))] | length' 2>/dev/null) || pr_open_boxes=0
+  [ -n "$pr_open_boxes" ] || pr_open_boxes=0
 
   if [ -n "$pr_number" ]; then
     if [ "$CONCLUSION" = "success" ]; then
-      # A finished run on a draft this script opened: the draft was waiting for exactly
-      # this. Marking it ready hands it to claude-review; the finished marker stops
-      # claude-resume. A draft the model or a person opened is theirs to promote.
-      if [ "$pr_is_safety_net_draft" = "yes" ]; then
+      # A finished run on a draft the pipeline opened — this script's, or the model's
+      # draft-first one: it was waiting for exactly this. Marking it ready hands it to
+      # claude-review; the finished marker stops claude-resume. A draft the model chose
+      # to leave unmarked, or a person's, is theirs to promote.
+      if [ "$pr_is_pipeline_draft" = "yes" ] && [ "$pr_open_boxes" -gt 0 ]; then
+        # Finished the run, not the work. Left a draft deliberately: a draft nobody
+        # promoted is visible, resumable and honest, where a ready pull request whose
+        # own checklist is unticked asks a reviewer to find that out for themselves.
+        log "#$pr_number left as a draft: $pr_open_boxes acceptance criteria still unticked"
+        comment_pr "$pr_number" "$(printf '%s\n**The claude-implement run finished (%s), but %s acceptance criterion(s) in the description are still unticked, so this stays a draft.** Either the work is incomplete, or it is done and the checklist was not updated — only a person can tell those apart. Tick what is verified and `gh pr ready` it, or comment `@claude` with what remains.\n\n%s' "$(marker)" "$why" "$pr_open_boxes" "$(transcript_hint)")"
+        return 0
+      fi
+
+      if [ "$pr_is_pipeline_draft" = "yes" ]; then
         gh pr ready "$pr_number" >/dev/null || log "could not mark #$pr_number ready"
         # The draft was titled `WIP:` because the run that opened it had not finished.
         # This one has, so the prefix is now false — and a ready pull request that still
@@ -287,7 +325,12 @@ implement_mode() {
     return
   fi
 
-  # Commits and no pull request: open a draft, as the workflow, and say so.
+  # Commits and no pull request. This is no longer the normal route: the model is told to
+  # open the draft as its first action on the branch (docs/PIPELINE.md § The draft comes
+  # first), precisely because the call below is the one this token cannot make. Reaching
+  # here means the run ended before that first action, or the model's own `gh pr create`
+  # failed. Try anyway — the App's token can still be alive — and report honestly when it
+  # is refused.
   local title body url
   if [ "$CONCLUSION" = "success" ]; then
     title="$ISSUE_TITLE"
@@ -305,7 +348,12 @@ implement_mode() {
   if url=$(gh pr create --draft --head "$BRANCH" --base "$BASE_BRANCH" --title "$title" --body "$body" ${label_args[@]+"${label_args[@]}"}); then
     log "opened draft pull request $url"
   else
-    log "could not open a pull request for $BRANCH"
+    # Not "could not open a pull request for <branch>", which named neither the cause nor
+    # a remedy and was the entire log of run 34616884881: five commits pushed for #72, a
+    # green tail, and no pull request. `createPullRequest` is refused for the workflow's
+    # token by *organisation* policy, which the repository setting cannot override.
+    log "gh pr create was refused for $BRANCH — GitHub Actions may not create pull requests here (organisation policy: createPullRequest)."
+    log "two remedies: the draft-first flow (the model opens the draft as its first action on the branch, docs/PIPELINE.md § The draft comes first), or the organisation setting that allows Actions to create and approve pull requests."
     opened=no
   fi
 
@@ -325,7 +373,12 @@ implement_mode() {
     return
   fi
 
-  comment_issue "$(printf '**claude-implement did not finish this issue, and no pull request could be opened for it.** The run ended with %s. Everything it committed is pushed to the branch `%s` and nothing else points at it: with no draft pull request, `claude-resume` has nothing to pick up and this issue will not be retried on its own.\n\nOpen one by hand — %s/pull/new/%s — or discard the attempt and start over:\n\n    git push origin --delete %s\n    gh workflow run claude-implement.yml -f issue_number=%s\n\nIf this keeps happening, the workflow token is probably not allowed to open pull requests: Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests".\n\n%s' "$why" "$BRANCH" "${REPO_URL:-https://github.com/$GITHUB_REPOSITORY}" "$BRANCH" "$BRANCH" "${ISSUE_NUMBER:-N}" "$(transcript_hint)")"
+  # The first sentence has to be the whole finding, because this is the one outcome the
+  # pipeline cannot fix for itself: commits exist, no pull request could be opened, and
+  # `claude-resume` looks for a draft. Run 34616884881 ended exactly here for #72 — five
+  # commits, `CONCLUSION=success`, no pull request — and the issue comment it wrote said
+  # "could not open a pull request for claude/issue-72" and nothing else.
+  comment_issue "$(printf '**claude-implement left commits on `%s` and no pull request could be opened for them.** Nothing points at that branch, and with no draft `claude-resume` has nothing to pick up: this issue will not be retried on its own. The run ended with %s.\n\n`gh pr create` was refused. Two things address it, and the first is this pipeline'"'"'s normal route:\n\n1. **The draft should already have existed.** The implementer is told to open a draft pull request as its first action on the branch, before it implements anything, precisely so that no run can orphan its commits (docs/PIPELINE.md § The draft comes first). This run ended before it got that far, or its own `gh pr create` failed — the transcript says which.\n2. **The organisation setting.** `GITHUB_TOKEN` may not create a pull request unless Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests" is on, and here the *organisation* refuses it above the repository ("The organization does not allow GitHub Actions to create or approve pull requests"). Turning it on grants every workflow in every repository the right to create *and approve* pull requests, which is why this pipeline does not rely on it.\n\nOpen one by hand — %s/pull/new/%s — or discard the attempt and start over:\n\n    git push origin --delete %s\n    gh workflow run claude-implement.yml -f issue_number=%s\n\n%s' "$BRANCH" "$why" "${REPO_URL:-https://github.com/$GITHUB_REPOSITORY}" "$BRANCH" "$BRANCH" "${ISSUE_NUMBER:-N}" "$(transcript_hint)")"
 }
 
 fix_mode() {

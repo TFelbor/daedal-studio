@@ -319,6 +319,20 @@ SAFETY_NET_DRAFT = json.dumps([{
     "title": "WIP: Bind the API server to loopback by default",
     "body": "Closes #7\n\n<!-- claude-implement-safety-net subtype=error_during_execution -->\n**Opened by the claude-implement workflow**",
 }])
+#: The model opened this and has *not* finished: an unticked box is its own statement
+#: that work remains. A run can exit 0 without completing the checklist — the turn
+#: budget is a cost bound, not a definition of done.
+DRAFT_FIRST_DRAFT = json.dumps([{
+    "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
+    "title": "WIP: Bind the API server to loopback by default",
+    "body": "Closes #7\n\n<!-- claude-implement-draft-first -->\n## Acceptance criteria\n\n- [ ] the first one",
+}])
+#: The same draft with the checklist completed — the only shape that earns promotion.
+DRAFT_FIRST_DRAFT_DONE = json.dumps([{
+    "number": 12, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/12", "isDraft": True,
+    "title": "WIP: Bind the API server to loopback by default",
+    "body": "Closes #7\n\n<!-- claude-implement-draft-first -->\n## Acceptance criteria\n\n- [x] the first one",
+}])
 HUMAN_DRAFT = json.dumps([{
     "number": 13, "url": "https://github.com/Daedal-Studio/ds-mvp/pull/13", "isDraft": True,
     "title": "Bind the API server to loopback by default",
@@ -433,9 +447,77 @@ def test_an_unanticipated_subtype_is_not_promised_a_retry(repo: dict) -> None:
     assert "not retried automatically" in create and "error_deadline_exceeded" in create
 
 
+# --- the draft the model opens before it implements anything ----------------------------
+
+
+def test_success_promotes_the_draft_the_model_opened_first(repo: dict) -> None:
+    """The draft-first flow's other half, and the one this script owns.
+
+    `claude-implement.yml` tells the model to open a draft as its first action on the
+    branch, because this job's token is refused `createPullRequest` by organisation
+    policy and the App's token is revoked before this script runs — run 34616884881
+    pushed five commits for #72, reported success and opened nothing. Promoting that
+    draft is a call this token *can* make, so the promote-on-success path below is now
+    the normal route rather than the exception it was written as.
+    """
+    _commit(repo, "a.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0),
+                  FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT_DONE)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert "pr ready 12" in calls, calls
+    assert "pr edit 12 --title Bind the API server to loopback by default" in calls, calls
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "<!-- claude-implement-finished -->" in comment
+    assert not any(c.startswith("pr create") for c in calls), "a second pull request was opened"
+
+
+def test_success_leaves_a_draft_whose_checklist_is_unfinished(repo: dict) -> None:
+    """Finishing the run is not finishing the work, and the body says which.
+
+    `success` is the model step exiting 0; it is not a claim that every acceptance
+    criterion is met, and the prompt tells the model to leave a draft whose body says
+    what remains when it cannot finish. Before the draft came first this never arose —
+    the only draft this script promoted was its own, opened because a run had *died*,
+    and it carries no checklist. Promoting on `success` alone would hand claude-review a
+    pull request whose own description lists what is missing, and a reviewer would have
+    to discover that for themselves.
+    """
+    _commit(repo, "a.py")
+    result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0),
+                  FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT)
+    assert result.returncode == 0, result.stderr
+    calls = _calls(repo)
+    assert "pr ready 12" not in calls, (
+        "a draft with an unticked acceptance criterion was marked ready for review"
+    )
+    assert not any(c.startswith("pr edit 12 --title") for c in calls), (
+        "the `WIP:` prefix was dropped from a pull request that is still work in progress"
+    )
+    (comment,) = [c for c in calls if c.startswith("pr comment 12 ")]
+    assert "still unticked" in comment, comment
+    assert "<!-- claude-implement-finished -->" not in comment, (
+        "the finished marker stops claude-resume, and this run did not finish the work"
+    )
+    assert not any(c.startswith("pr create") for c in calls), "a second pull request was opened"
+
+
+def test_a_failed_run_records_its_subtype_on_the_draft_the_model_opened(repo: dict) -> None:
+    """That comment is the *only* safety-net record such a draft ever gets: the body the
+    model wrote carries no `subtype=`. `claude_resume.py` reads it to decide whether
+    another run would help, so without it the usage-limit retry stops working for every
+    run that opened its own draft — which is now every run."""
+    _commit(repo, "a.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo, "error_during_execution", 12, 0, errors=["429"]),
+         FAKE_GH_PR_LIST=DRAFT_FIRST_DRAFT)
+    (comment,) = [c for c in _calls(repo) if c.startswith("pr comment 12 ")]
+    assert "<!-- claude-implement-safety-net subtype=error_during_execution -->" in comment
+    assert "@claude please continue" in comment
+
+
 def test_success_with_a_draft_the_model_opened_is_left_alone(repo: dict) -> None:
-    """A draft without the marker is the model's own way of saying "not finished", or a
-    person's work in progress. Neither is the workflow's to promote."""
+    """A draft without either marker is the model's own way of saying "not finished", or
+    a person's work in progress. Neither is the workflow's to promote."""
     _commit(repo, "a.py")
     result = _run(repo, CONCLUSION="success", EXECUTION_FILE=_execution_file(repo, "success", 40, 0), FAKE_GH_PR_LIST=HUMAN_DRAFT)
     assert result.returncode == 0, result.stderr
@@ -531,3 +613,40 @@ def test_a_draft_that_could_not_be_opened_is_not_reported_as_one(repo: dict) -> 
     assert "git push origin --delete claude/issue-7" in comment, comment
     assert "issue_number=7" in comment, comment
     assert "pull/new/claude/issue-7" in comment, comment
+
+
+def test_commits_with_no_pull_request_are_the_first_sentence_of_the_report(repo: dict) -> None:
+    """This outcome stays reachable — a run can end before the model opens its draft, and
+    the token here cannot open one — so the issue comment has to lead with it.
+
+    Run 34616884881 for #72 ended `CONCLUSION=success` with five commits pushed and no
+    pull request, and said `could not open a pull request for claude/issue-72` in the run
+    log. PR #122 was opened by hand to rescue those commits. Whatever else the comment
+    goes on to say, its first sentence is what a person skims.
+    """
+    _commit(repo, "card_divider.py")
+    _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+         GITHUB_REPOSITORY="Daedal-Studio/ds-mvp", FAKE_GH_PR_CREATE_FAILS="1")
+    comment = next(c for c in _reports(repo) if c.startswith("issue comment "))
+    body = comment.split("--body ", 1)[1]
+    first = body.split(".", 1)[0]
+    assert "claude/issue-7" in first, first
+    assert "commits" in first and "no pull request could be opened" in first, first
+
+
+def test_a_refused_pr_create_names_the_cause_and_both_remedies(repo: dict) -> None:
+    """`could not open a pull request for <branch>` named neither, and it was the whole
+    report. The refusal is organisation policy on `createPullRequest`, not a bug in this
+    script and not a missing permission it can ask for — so both ways out belong in the
+    comment: the draft-first flow, which is how the pipeline avoids needing the call at
+    all, and the organisation setting, which is a decision somebody has to take
+    deliberately because it also grants every workflow the right to *approve*."""
+    _commit(repo, "card_divider.py")
+    result = _run(repo, CONCLUSION="failure", EXECUTION_FILE=_execution_file(repo),
+                  GITHUB_REPOSITORY="Daedal-Studio/ds-mvp", FAKE_GH_PR_CREATE_FAILS="1")
+    comment = next(c for c in _reports(repo) if c.startswith("issue comment "))
+    assert "organization does not allow GitHub Actions to create or approve pull requests" in comment, comment
+    assert "first action on the branch" in comment, comment
+    assert "Allow GitHub Actions to create and approve pull requests" in comment, comment
+    assert "create was refused" in result.stderr, result.stderr
+    assert "organisation policy" in result.stderr, result.stderr
