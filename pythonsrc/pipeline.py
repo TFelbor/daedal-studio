@@ -438,10 +438,13 @@ def _profile_nozzle_mm(args) -> float:
     """The nozzle the spec's wall floor is derived from, in mm.
 
     Read off the same printer profile Phase 3.5 and the slicer read, through
-    `ProcessProfile.from_printer_profile` so `machine_nozzle_size` has exactly one
-    reader. Phase 2 is the first place in the run that needs it: the wall floor is a
-    property of the machine, and a wall the nozzle cannot lay down should be refused
-    before a mesh is built for it, not after (`archetypes.compile_spec`).
+    `ProcessProfile.from_printer_profile` so `machine_nozzle_size` has one reader on
+    the pipeline side. (`server/app.py`'s `_profile_snapshot` reads the key a second
+    time, for the job record, with its own silent 0,4 fallback; routing it through
+    `ProcessProfile` too is follow-up work, not this phase's.) Phase 2 is the first
+    place in the run that needs it: the wall floor is a property of the machine, and a
+    wall the nozzle cannot lay down should be refused before a mesh is built for it,
+    not after (`archetypes.compile_spec`).
 
     An unreadable profile falls back to the `ProcessProfile` default rather than
     failing the phase: no profile has ever meant "no printer" here, and the floor at

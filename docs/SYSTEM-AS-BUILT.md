@@ -549,8 +549,14 @@ pin that).
     so a floor enforced there refuses a part the system has already produced and
     described — and the CLI, `fits_check` and the composer preview never reach Phase 3
     at all. `pipeline._profile_nozzle_mm` reads the nozzle through
-    `ProcessProfile.from_printer_profile`, so `machine_nozzle_size` has exactly one
-    reader and the same value reaches CuraEngine through the validated `-s` overrides.
+    `ProcessProfile.from_printer_profile`, so `machine_nozzle_size` has one reader on
+    the pipeline side and the same value reaches CuraEngine through the validated `-s`
+    overrides. **A second reader remains**: `server/app.py`'s `_profile_snapshot` takes
+    the key off the profile itself, for the nozzle it stores on the job record, and
+    falls back to 0,4 silently rather than through the warning
+    `ProcessProfile.from_printer_profile` logs. It is a known gap, left where it was
+    because the server was outside issue #72's scope; the two agree on every bundled
+    profile, and they can only disagree on a profile that omits the key.
   - This moved every spec hash a third time, for `fit_margin_mm`'s reasons, and moved
     the deck box's **mesh** for the first time. **A spec that states `wall_mm: 2.8`
     compiles to the byte it always did**, which `tests/test_deck_box.py` pins next to a
