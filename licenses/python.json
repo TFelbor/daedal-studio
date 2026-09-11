@@ -189,7 +189,7 @@
   "License": "MIT",
   "Name": "fonttools",
   "URL": "http://github.com/fonttools/fonttools",
-  "Version": "4.64.0"
+  "Version": "4.65.0"
  },
  {
   "Author": "UNKNOWN",
@@ -712,7 +712,7 @@
   "LicenseText": "`tqdm` is a product of collaborative work.\nUnless otherwise stated, all authors (see commit logs) retain copyright\nfor their respective work, and release the work under the MIT licence\n(text below).\n\nExceptions or notable authors are listed below\nin reverse chronological order:\n\n* files: *\n  MPL-2.0 2015-2026 (c) Casper da Costa-Luis\n  [casperdcl](https://github.com/casperdcl).\n* files: tqdm/_tqdm.py\n  MIT 2016 (c) [PR #96] on behalf of Google Inc.\n* files: tqdm/_tqdm.py README.rst .gitignore\n  MIT 2013 (c) Noam Yorav-Raphael, original author.\n\n[PR #96]: https://github.com/tqdm/tqdm/pull/96\n\n\nMozilla Public Licence (MPL) v. 2.0 - Exhibit A\n-----------------------------------------------\n\nThis Source Code Form is subject to the terms of the\nMozilla Public License, v. 2.0.\nIf a copy of the MPL was not distributed with this project,\nYou can obtain one at https://mozilla.org/MPL/2.0/.\n\n\nMIT License (MIT)\n-----------------\n\nCopyright (c) 2013 noamraph\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
   "Name": "tqdm",
   "URL": "https://tqdm.github.io",
-  "Version": "4.70.0"
+  "Version": "4.70.1"
  },
  {
   "Author": "The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors)",
