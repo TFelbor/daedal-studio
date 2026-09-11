@@ -19,14 +19,33 @@
 #     documents the one command that produces `licenses/python-worker.json` on a CUDA
 #     host. A gap that is named is auditable; one that is silently skipped is not.
 #
-# The commit back to main is deliberately conservative: it is skipped when nothing but
-# the report's own timestamp changed, so merges that touch no dependency leave no trace.
+# When it runs, and why not on every merge. This regenerates a tree that only changes
+# when a dependency changes, and producing it costs two amd64 image builds plus syft —
+# measured at ~349 billable minutes over 39 runs, the largest single consumer in this
+# repository. It used to run on every push to `main`, and the output of a merge that
+# touched no dependency was two lines: `generated_at` and `commit` in
+# `licenses/report.json`. (The "skipped when nothing changed" guard below does not stop
+# that: each run writes a date-stamped `docs/audits/YYYY-MM-DD-licence.md`, so the
+# staged diff is never empty.) So:
+#
+#   * `pull_request`, filtered to the files this data is a function of — the only
+#     pre-merge look at a dependency's licence, and it fires on the rare PR that adds
+#     one, not on every PR;
+#   * `schedule`, on the 1st and the 15th — what catches drift that happens with no
+#     commit here at all: a base image moving, an unpinned range resolving differently,
+#     a package relicensing. This is the run that also does the macOS tree and the
+#     registry SBOMs;
+#   * `workflow_dispatch`, which now also commits, so a dependency that lands between
+#     scheduled runs can be recorded immediately instead of waiting for the 1st.
+#
+# There is deliberately no `push:` trigger. `tests/test_licensing_guards.py` runs in
+# `ci.yml` on every push and every pull request and is what actually enforces the
+# rules; this workflow produces the evidence, and evidence a fortnight old is still
+# evidence.
 
 name: licence-data
 
 on:
-  push:
-    branches: [main]
   pull_request:
     paths:
       - "requirements*.txt"
@@ -38,9 +57,11 @@ on:
       - "pythonsrc/licence_policy.py"
       - ".github/workflows/licence-data.yml"
   schedule:
-    # Monday 04:17 UTC. Base images and unpinned ranges move without a commit here, so
-    # the weekly run is what catches a dependency that changed underneath us.
-    - cron: "17 4 * * 1"
+    # The 1st and the 15th, 04:17 UTC. Base images and unpinned ranges move without a
+    # commit here, so a scheduled run is what catches a dependency that changed
+    # underneath us. Fortnightly rather than weekly because this is also the run that
+    # pays for the macOS tree (billed at ten times Linux) and the registry SBOMs.
+    - cron: "17 4 1,15 * *"
   workflow_dispatch:
     inputs:
       include_mac:
@@ -299,7 +320,9 @@ jobs:
           retention-days: 90
 
       - name: Commit the data to main
-        if: github.event_name == 'push' || github.event_name == 'schedule'
+        # `push` is gone (see the header); `workflow_dispatch` is added so a dependency
+        # that lands between scheduled runs can be recorded without waiting for the 1st.
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

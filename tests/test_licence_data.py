@@ -718,12 +718,29 @@ def test_the_workflow_runs_the_scripts_that_score_and_normalise():
 
 
 def test_the_workflow_only_commits_on_main_or_the_schedule():
-    """A pull request — including one from a fork — must not push to a branch."""
+    """A pull request — including one from a fork — must not push to a branch.
+
+    Asserted as "no pull-request event may commit" rather than as a fixed list of
+    permitted events. The list has already changed once — `push` was dropped when the
+    cadence moved off every merge — and a test that enumerates it goes red for a
+    scheduling decision while saying nothing about the property that matters.
+    """
     workflow = WORKFLOW.read_text()
     commit_step = workflow.split("Commit the data to main", 1)[1]
     guard = commit_step.split("run:", 1)[0]
-    assert "github.event_name == 'push'" in guard
-    assert "github.event_name == 'schedule'" in guard
+    condition = next(
+        (line for line in guard.splitlines() if line.strip().startswith("if:")), ""
+    )
+    events = set(re.findall(r"github\.event_name == '([a-z_]+)'", condition))
+    assert events, (
+        "the commit step has no `github.event_name` guard, so it would run for every "
+        "event this workflow accepts — a fork's pull request included."
+    )
+    permitted = {"push", "schedule", "workflow_dispatch"}
+    assert events <= permitted, (
+        f"{sorted(events - permitted)} may commit the licence data. A pull request, "
+        "including one from a fork, must never push to a branch."
+    )
 
 
 #: The model each phase declares in code, and where it is declared. `ARCHITECTURE.md` is

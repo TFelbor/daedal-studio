@@ -2024,7 +2024,9 @@ resolved tree is several thousand across four ecosystems, and **both components 
 have broken this grant arrived transitively** — `pymeshfix` under something that looked
 like a mesh utility, `briaai/RMBG-2.0` as another model's configured default. Neither
 was in a manifest. `.github/workflows/licence-data.yml` therefore regenerates
-`licenses/` on every merge and commits it: `pip-licenses` run **inside the built
+`licenses/` and commits it — on the 1st and the 15th, on a pull request that touches a
+dependency manifest, and on demand; not on every merge, because two amd64 image builds
+to rewrite a timestamp was the largest single consumer of this repository's CI minutes: `pip-licenses` run **inside the built
 images** (the requirements files are not what ships — `pipeline.Dockerfile` installs
 `diffusers` from git HEAD and `server.Dockerfile` pins nothing at all),
 `license-checker` over the web app's production tree, and `syft` SBOMs, which are the
