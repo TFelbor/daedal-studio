@@ -6,7 +6,7 @@ to trimesh for export. Two rules hold across all of them:
 
 - **The kernel's vertices are exported untouched.** `manifold_to_trimesh` builds the
   Trimesh with `process=False`: no merging, no re-indexing, so the planes the design
-  put at 2.8 mm are at 2.8 mm in the file. (STL itself is float32, so a 156.6 mm
+  put at 2.4 mm are at 2.4 mm in the file. (STL itself is float32, so a 156.6 mm
   extent reads back as 156.6000061 — six millionths of a millimetre, four orders of
   magnitude under N1's ±0,05 mm.)
 - **Designed features are measured, never assumed.** `plane_set` reads the distinct

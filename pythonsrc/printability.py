@@ -53,6 +53,18 @@ MAX_THICKNESS_VOXELS = 2_000_000
 # precision, which is where thin-wall judgements actually happen.
 MAX_CELLS_PER_AXIS = 256
 
+# CuraEngine's own default nozzle, and the fallback for a profile that does not declare
+# `machine_nozzle_size`. `organizer.spec.DEFAULT_NOZZLE_DIAMETER_MM` is the same number
+# and must stay so; it is repeated rather than imported because this module is not
+# allowed to depend on the organizer package (`tests/test_printability.py` runs without
+# manifold3d), and `tests/test_printability.py` binds the two.
+DEFAULT_NOZZLE_DIAMETER_MM = 0.4
+
+# Whether the fallback above has already been logged. Once per process: the profile is
+# re-read at Phase 2, Phase 3 and Phase 3.5 of a spec run, and three identical warnings
+# for one missing key is noise that trains a reader to skip the line.
+_nozzle_fallback_warned = False
+
 
 @dataclasses.dataclass
 class ProcessProfile:
@@ -91,10 +103,30 @@ class ProcessProfile:
 
         Returns:
             A ProcessProfile using the profile's machine limits where present, and FDM
-            defaults elsewhere. Nozzle diameter is absent from the bundled profiles, so
-            it falls back to 0.4mm — the CuraEngine default.
+            defaults elsewhere.
+
+        The nozzle is read from `machine_nozzle_size` — CuraEngine's own setting name,
+        so the same value reaches the slicer through the validated `-s` overrides
+        rather than being declared twice under two names. Every bundled profile
+        carries it; a profile that does not falls back to 0,4 mm and says so **once**
+        per process, because the number is not cosmetic any more: it sets the
+        organizer's wall floor (`organizer.spec.wall_floor_mm`) as well as
+        `min_wall_mm`, and a silent fallback would judge a 0,6 mm machine's part
+        against a 0,4 mm machine's limits.
         """
-        nozzle = float(profile.get("machine_nozzle_size", 0.4) or 0.4)
+        global _nozzle_fallback_warned
+        declared = profile.get("machine_nozzle_size")
+        if declared is None or not float(declared):
+            nozzle = DEFAULT_NOZZLE_DIAMETER_MM
+            if not _nozzle_fallback_warned:
+                _nozzle_fallback_warned = True
+                logger.warning(
+                    "Printer profile %r declares no machine_nozzle_size — assuming "
+                    "%.2f mm for the wall floor and the minimum wall.",
+                    profile.get("machine_name", "<unnamed>"), nozzle,
+                )
+        else:
+            nozzle = float(declared)
         layer_height = float(profile.get("layer_height", 0.2) or 0.2)
 
         build_volume = None

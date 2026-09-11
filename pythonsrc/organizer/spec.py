@@ -81,6 +81,58 @@ FIT_INTENTS: tuple[str, ...] = tuple(FIT_INTENT_CLEARANCE_MM)
 #: Decimal places kept on every millimetre value: 3 → 1 µm.
 MM_DECIMALS = 3
 
+#: The nozzle a wall floor is derived from when nobody hands one in. CuraEngine's own
+#: default, and what `printability.ProcessProfile.from_printer_profile` falls back to
+#: for a profile with no `machine_nozzle_size` — the same number, on purpose, so the
+#: floor a spec is judged against off-pipeline is the floor the pipeline uses.
+DEFAULT_NOZZLE_DIAMETER_MM = 0.4
+
+#: Extrusion widths in the thinnest body wall an archetype may build with.
+#:
+#: Three, because three perimeters at a 0,4 mm nozzle is 1,2 mm, and 1,2 mm is the
+#: bottom of the audited insert document's 1,2–1,6 mm band (roadmap §0.5 — one
+#: practitioner's practice, not a standard), which calls anything under 1,2 mm flimsy.
+#: Expressing it as a multiple of the nozzle rather than as 1,2 mm is the point of
+#: issue #72: a 0,6 mm nozzle cannot lay a 1,2 mm wall as three passes, so the floor
+#: is a property of the machine and has to move with it. `printability.min_wall_mm`
+#: is two nozzle widths — what the extruder can *physically* put down — and this is
+#: three, what a wall that carries load wants; they are different numbers answering
+#: different questions, and neither is the other's default.
+WALL_FLOOR_NOZZLE_MULTIPLE = 3.0
+
+#: The wall each archetype builds with when a spec does not state `process.wall_mm`.
+#: One constant per archetype rather than one for the schema, because 2,8 mm — seven
+#: perimeters at a 0,4 mm nozzle, sourced by nobody — was defensible for a box you
+#: carry and drop and indefensible for a flat insert, and one number cannot be both.
+#: Every entry sits above `wall_floor_mm()` at the default nozzle, and
+#: `tests/test_archetype_registry.py` binds this map to the registry so a new
+#: archetype cannot arrive without choosing.
+ARCHETYPE_WALL_MM: dict[str, float] = {
+    # 2,4 mm = `Lid.wall_mm` 1,2 + `Lid.clearance_mm` 0,2 + `Process.min_feature_mm`
+    # 1,0: the thinnest body wall that still leaves this archetype's own lift-off lid
+    # a lip at the minimum feature size, which `deck_box.validate` refuses below. So
+    # it is not a taste figure — it is the closure's arithmetic, read off the lid
+    # defaults it has to mate with, and `tests/test_deck_box.py` binds it to them. At
+    # six perimeters it is double the audited floor, which is the margin a hand-carried
+    # box that gets dropped is worth; the insert band is for parts that sit in a box.
+    "deck_box": 2.4,
+    # The divider reads `divider.thickness_mm` and never `process.wall_mm` — see that
+    # module's "Process fields this archetype does not read still hash" — so this
+    # number builds nothing. It is the floor at the default nozzle rather than an
+    # invented figure, so a spec that carries it claims no wall the plate does not
+    # have. `card_divider.USES_PROCESS_WALL_MM` is False and the floor check skips it.
+    "card_divider": 1.2,
+}
+
+
+def wall_floor_mm(nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM) -> float:
+    """The thinnest body wall a spec may ask for on this nozzle, in mm.
+
+    `WALL_FLOOR_NOZZLE_MULTIPLE × nozzle`, rounded to 1 µm like every other millimetre
+    here: 1,2 mm at 0,4 mm, 1,8 mm at 0,6 mm.
+    """
+    return round(WALL_FLOOR_NOZZLE_MULTIPLE * float(nozzle_diameter_mm), MM_DECIMALS)
+
 
 class SpecError(ValueError):
     """A spec that cannot be compiled, with every problem listed.
@@ -299,9 +351,22 @@ class Process:
     `s`. Deriving it later — or remembering *how* it was arrived at — would make two
     specs with identical canonical forms compile differently, which is the one
     property this schema exists to guarantee.
+
+    **`wall_mm` is resolved the same way, one level up.** It defaults to None, and
+    `OrganizerSpec.__post_init__` replaces None with `ARCHETYPE_WALL_MM[archetype]` —
+    up there rather than here because only the spec knows which archetype is going to
+    build the wall. A `Process` built on its own therefore holds None until a spec
+    wraps it; inside a spec it is always a float, and the canonical form always states
+    the wall the geometry has, for the clearance's reasons verbatim. Explicit null in
+    a spec file means the same as omitted: take the archetype's default.
+
+    A *stated* wall is checked against the printer's nozzle — `wall_floor_mm()`, three
+    extrusion widths — by `archetypes.compile_spec`, not here: this dataclass has no
+    printer and inventing one would either refuse a spec on a machine nobody named or
+    pass a wall the machine cannot lay down.
     """
 
-    wall_mm: float = 2.8
+    wall_mm: Optional[float] = None
     floor_mm: float = 2.0
     #: `snug` (a box you close) or `easy` (a tray you lift cards out of).
     fit_intent: str = "snug"
@@ -312,7 +377,8 @@ class Process:
 
     def __post_init__(self) -> None:
         problems: list[str] = []
-        _set(self, "wall_mm", _mm(self.wall_mm, "wall_mm", problems))
+        if self.wall_mm is not None:
+            _set(self, "wall_mm", _mm(self.wall_mm, "wall_mm", problems))
         _set(self, "floor_mm", _mm(self.floor_mm, "floor_mm", problems))
         intent_ok = isinstance(self.fit_intent, str) and self.fit_intent in FIT_INTENTS
         if not intent_ok:
@@ -372,6 +438,15 @@ class OrganizerSpec:
             problems.append("constraints must be a Constraints object")
         if not isinstance(self.process, Process):
             problems.append("process must be a Process object")
+        elif self.process.wall_mm is None:
+            # The one place an archetype's wall default is applied. Done here because
+            # `Process` does not know the archetype, and done *now* rather than at
+            # compile time so the canonical form states the wall the geometry has —
+            # `Process`'s docstring, and `cavity_clearance_mm`'s before it. An unknown
+            # archetype leaves it None and is already refused above.
+            default = ARCHETYPE_WALL_MM.get(self.archetype) if isinstance(self.archetype, str) else None
+            if default is not None:
+                _set(self, "process", dataclasses.replace(self.process, wall_mm=default))
         if self.schema_version != SCHEMA_VERSION:
             problems.append(
                 f"schema_version must be {SCHEMA_VERSION}, got {self.schema_version!r}"
@@ -485,6 +560,49 @@ def _from_mapping(cls: type, data: Any, path: str, problems: list[str]) -> Any:
         # A missing required argument is the only TypeError a keyword-only build raises.
         problems.append(f"{path} is missing a required field ({exc})")
     return None
+
+
+# ── the wall floor ─────────────────────────────────────────────────────────────
+
+def wall_floor_problems(
+    spec: OrganizerSpec, nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM
+) -> list[str]:
+    """The refusal for a `process.wall_mm` the printer's nozzle cannot lay down, or [].
+
+    A list rather than a raise so the caller can report it beside the archetype's own
+    findings — a spec is refused whole, with every problem named at once.
+
+    The message names both numbers on purpose. "1,2 mm minimum" alone is unactionable
+    on a machine that is not the one the reader has; "3 × the 0,4 mm nozzle from the
+    printer profile" says where the limit came from and what would move it.
+
+    Args:
+        spec: The spec, with `process.wall_mm` already resolved to a float.
+        nozzle_diameter_mm: The printer profile's `machine_nozzle_size`.
+    """
+    wall = spec.process.wall_mm
+    if wall is None:
+        return []
+    floor = wall_floor_mm(nozzle_diameter_mm)
+    if wall + 1e-9 >= floor:
+        return []
+    return [
+        f"process.wall_mm {wall:g} mm is below the {floor:g} mm wall floor "
+        f"({WALL_FLOOR_NOZZLE_MULTIPLE:g} × the {float(nozzle_diameter_mm):g} mm nozzle "
+        "this printer profile declares); the audited insert standard calls anything "
+        "under 1,2 mm flimsy, and three extrusion widths is the least a wall that "
+        "carries anything is built from. Thicken the wall, or slice for a finer nozzle"
+    ]
+
+
+def check_wall_floor(
+    spec: OrganizerSpec, nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM
+) -> None:
+    """Raise `SpecError` if the spec's wall is below this nozzle's floor.
+
+    The raising form of `wall_floor_problems`, for callers with nothing else to add.
+    """
+    _raise_if(wall_floor_problems(spec, nozzle_diameter_mm))
 
 
 # ── canonical form, hash, diff ─────────────────────────────────────────────────

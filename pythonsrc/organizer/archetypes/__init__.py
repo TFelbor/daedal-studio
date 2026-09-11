@@ -2,9 +2,11 @@
 
 One module per archetype, each exposing the same verbs (`validate`, `derive`, `build`,
 `compile`, `measure`, `fits_check`, `to_view`, `example`) plus `ARCHETYPE`,
-`ARCHETYPE_VERSION` and `MEASURED_FEATURES`. The registry maps a spec's `archetype`
-string to its module; adding an archetype is adding a module and a line here, and
-`spec.ARCHETYPES` must name it too or the schema refuses it before this is reached.
+`ARCHETYPE_VERSION`, `MEASURED_FEATURES` and `USES_PROCESS_WALL_MM`. The registry maps a
+spec's `archetype` string to its module; adding an archetype is adding a module and a
+line here, and `spec.ARCHETYPES` must name it too or the schema refuses it before this
+is reached. `spec.ARCHETYPE_WALL_MM` must name it as well — the wall it builds with when
+a spec does not state one — which `tests/test_archetype_registry.py` binds.
 
 Two archetypes as of issue #65 — the deck box (two bodies, a lip and a lift-off lid)
 and the card divider (one flat plate with a label tab). Nothing outside these modules
@@ -18,7 +20,14 @@ from __future__ import annotations
 from types import ModuleType
 
 from ..compiler import DEFAULT_TOLERANCE_MM, CompileResult, DimensionReport, FitsResult, check_dimensions
-from ..spec import ARCHETYPES, OrganizerSpec, SpecError
+from ..spec import (
+    ARCHETYPE_WALL_MM,
+    ARCHETYPES,
+    DEFAULT_NOZZLE_DIAMETER_MM,
+    OrganizerSpec,
+    SpecError,
+    wall_floor_problems,
+)
 from . import card_divider, deck_box
 
 REGISTRY: dict[str, ModuleType] = {
@@ -31,6 +40,12 @@ REGISTRY: dict[str, ModuleType] = {
 _unregistered = sorted(set(ARCHETYPES) - set(REGISTRY))
 if _unregistered:  # pragma: no cover
     raise ImportError(f"spec.ARCHETYPES names archetypes with no compiler: {_unregistered}")
+
+# Same reason, for the wall: an archetype with no entry leaves `process.wall_mm` None
+# on every spec that does not state one, and the compiler would build with nothing.
+_wall_less = sorted(set(REGISTRY) - set(ARCHETYPE_WALL_MM))
+if _wall_less:  # pragma: no cover
+    raise ImportError(f"spec.ARCHETYPE_WALL_MM names no wall for: {_wall_less}")
 
 
 def get_archetype(name: str) -> ModuleType:
@@ -45,9 +60,43 @@ def get_archetype(name: str) -> ModuleType:
         raise SpecError([f"unknown archetype {name!r}; known: {sorted(REGISTRY)}"]) from None
 
 
-def compile_spec(spec: OrganizerSpec) -> CompileResult:
-    """Compile a spec with its archetype. Raises `SpecError` if the archetype refuses it."""
-    return get_archetype(spec.archetype).compile(spec)
+def compile_spec(
+    spec: OrganizerSpec, nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM,
+) -> CompileResult:
+    """Compile a spec with its archetype, on a printer with this nozzle.
+
+    The wall floor is enforced **here**, at compile time, rather than in Phase 3's
+    `_assert_spec_dimensions` where `pipeline.py` also has the printer profile in hand.
+    Three reasons, and the third is the one that settles it. Phase 3 runs after Phase 2
+    has already written `compiled_mesh.stl`, `spec.json` and `compile_features.json`
+    into the job directory and recorded the archetype as the job's generation model, so
+    a floor enforced there refuses a part the system has already produced and described.
+    Refusing an unbuildable wall is what "the archetype refuses a spec it cannot honour"
+    already means, and that lives in Phase 2. And `python -m pythonsrc.organizer
+    compile`, `fits_check` and the composer's preview never reach Phase 3 at all — a
+    floor only Phase 3 knew about would not exist for the developer loop or the UI.
+
+    Args:
+        spec: The spec, already schema-valid.
+        nozzle_diameter_mm: The printer profile's `machine_nozzle_size`; the floor is
+            `spec.wall_floor_mm()` of it. Defaults to CuraEngine's 0,4 mm, which is
+            what every bundled profile declares.
+
+    Raises:
+        SpecError: If the archetype refuses the spec, or the wall is below the floor.
+            Both sets of problems are reported together — a spec is refused whole.
+    """
+    module = get_archetype(spec.archetype)
+    problems = (
+        wall_floor_problems(spec, nozzle_diameter_mm) if module.USES_PROCESS_WALL_MM else []
+    )
+    if problems:
+        try:
+            module.validate(spec)
+        except SpecError as exc:
+            problems.extend(exc.problems)
+        raise SpecError(problems)
+    return module.compile(spec)
 
 
 def example_spec(name: str) -> OrganizerSpec:

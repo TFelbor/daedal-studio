@@ -67,6 +67,12 @@ from .common import (
 ARCHETYPE = "card_divider"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
 ARCHETYPE_VERSION = "1"
+#: This archetype has no wall — the plate's one thickness is `divider.thickness_mm`
+#: (see "Process fields this archetype does not read still hash" above) — so
+#: `compile_spec` does not hold `process.wall_mm` to the nozzle floor. It would
+#: otherwise refuse a perfectly good divider on a 0,6 mm nozzle over a number that
+#: builds nothing.
+USES_PROCESS_WALL_MM = False
 #: How this archetype names itself in a refusal or a measurement finding.
 _SUBJECT = f"a card divider v{ARCHETYPE_VERSION}"
 
