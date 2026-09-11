@@ -387,7 +387,8 @@ reads it on the generative path running today, and the extractor will read it on
 parametric one. The tail ("turns it into a parametric spec … computed, not generated")
 describes the parametric pipeline, which is literal for a `--spec` job, where
 `pythonsrc/organizer/` compiles geometry deterministically, and is the vocabulary the
-whole UI was deliberately moved onto ahead of the engine (CLAUDE.md § Project Overview).
+whole UI was deliberately moved onto ahead of the engine
+(`docs/SYSTEM-AS-BUILT.md` § Project Overview).
 Until the composer can build a spec, a *prompt* job's mesh is still reconstructed by
 TRELLIS.2 from a FLUX image — generated, not computed. Nothing on the page claims
 otherwise about a given job, and the telemetry columns (`generation_model`,
