@@ -163,7 +163,7 @@ def test_the_spec_is_carried_canonically_so_no_field_is_missing(spec_job):
     `lid` is there and `divider` is not, and `RawSpec` declares both optional."""
     from pythonsrc.organizer.spec import _OPTIONAL_SECTIONS
     body = client.get(f"/jobs/{spec_job()}").json()
-    assert body["spec"]["process"]["wall_mm"] == 2.8
+    assert body["spec"]["process"]["wall_mm"] == 2.4  # the deck box's own default
     assert body["spec"]["constraints"] == {"max_external_mm": None, "fit_margin_mm": 2.0}
     required = {f.name for f in fields(OrganizerSpec)} - set(_OPTIONAL_SECTIONS)
     assert required <= set(body["spec"])

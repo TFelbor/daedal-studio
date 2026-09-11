@@ -52,7 +52,12 @@ def test_without_spec_nothing_changes():
 
 
 def _ns(**kw):
-    base = dict(spec=None, mesh=None, skip_visualizer=False, skip_sculptor=False, job_id="j1", stop_after_phase=None)
+    # `profile` is None by default, which is what `--profile` parses to and what the
+    # bundled Ender 3 stands in for. Phase 2 reads it now (the wall floor is the
+    # machine's — issue #72), so a namespace without it is not a namespace `run()`
+    # would ever build.
+    base = dict(spec=None, mesh=None, skip_visualizer=False, skip_sculptor=False, job_id="j1",
+                stop_after_phase=None, profile=None)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -75,7 +80,16 @@ def test_a_spec_run_writes_to_the_real_namespace(tmp_path):
 import json  # noqa: E402
 
 from pythonsrc.organizer.archetypes import example_spec  # noqa: E402
-from pythonsrc.organizer.spec import SpecError, dump_spec, spec_hash  # noqa: E402
+from pythonsrc.organizer.spec import (  # noqa: E402
+    CardStack,
+    Compartment,
+    Lid,
+    OrganizerSpec,
+    Process,
+    SpecError,
+    dump_spec,
+    spec_hash,
+)
 from pythonsrc.pipeline import _compile_spec_phase  # noqa: E402
 
 
@@ -98,6 +112,50 @@ def test_a_bad_spec_is_a_spec_error_not_a_crash(tmp_path):
     bad.write_text('{"archetype": "deck_box", "compartments": [], "schema_version": 1}')
     with pytest.raises(SpecError):
         _compile_spec_phase(_ns(spec=str(bad)), tmp_path / "out")
+
+
+# ── the printer's nozzle reaches Phase 2 (issue #72) ──────────────────────────
+
+def test_the_nozzle_comes_off_the_printer_profile_the_rest_of_the_run_reads(tmp_path):
+    """`_profile_nozzle_mm` reads `machine_nozzle_size` through
+    `ProcessProfile.from_printer_profile`, so the wall floor, `min_wall_mm` and
+    CuraEngine's own `-s` override are all the same declared number."""
+    from pythonsrc.pipeline import _profile_nozzle_mm
+
+    assert _profile_nozzle_mm(_ns()) == 0.4  # the bundled Ender 3
+    assert _profile_nozzle_mm(_ns(profile="pythonsrc/profiles/ender3.json")) == 0.4
+    wide = tmp_path / "wide.json"
+    wide.write_text(json.dumps({"machine_name": "Wide", "machine_nozzle_size": 0.6}))
+    assert _profile_nozzle_mm(_ns(profile=str(wide))) == 0.6
+    # A profile that cannot be read is not a failed phase: no profile has never meant
+    # no printer here, and 0,4 mm is what every bundled one declares anyway.
+    assert _profile_nozzle_mm(_ns(profile=str(tmp_path / "gone.json"))) == 0.4
+
+
+def test_phase_2_refuses_a_wall_the_configured_nozzle_cannot_lay_down(tmp_path):
+    """The plumbing, end to end: a 1,4 mm wall is three perimeters at 0,4 mm and two at
+    0,6 mm, so the *same spec file* compiles on one machine and is refused on the other
+    — and nothing is written into the job directory for the refused one."""
+    spec = OrganizerSpec(
+        archetype="deck_box",
+        compartments=(Compartment(CardStack(count=20, sleeving="single")),),
+        lid=Lid(height_mm=12.0, wall_mm=0.6, clearance_mm=0.1),
+        process=Process(wall_mm=1.4, min_feature_mm=0.2),
+    )
+    spec_path = dump_spec(spec, tmp_path / "in" / "thin.json")
+    wide = tmp_path / "wide.json"
+    wide.write_text(json.dumps({"machine_name": "Wide", "machine_nozzle_size": 0.6}))
+
+    ok = tmp_path / "ok"
+    _compile_spec_phase(_ns(spec=str(spec_path)), ok)
+    assert (ok / "compiled_mesh.stl").exists()
+
+    refused = tmp_path / "refused"
+    with pytest.raises(SpecError) as exc:
+        _compile_spec_phase(_ns(spec=str(spec_path), profile=str(wide)), refused)
+    assert "1.8 mm wall floor" in str(exc.value) and "0.6 mm nozzle" in str(exc.value)
+    assert not (refused / "compiled_mesh.stl").exists()
+    assert not (refused / "spec.json").exists()
 
 
 def test_the_generation_record_names_the_compiler(tmp_path, monkeypatch):
