@@ -182,7 +182,7 @@ def test_section_references_name_a_section_claude_md_still_has() -> None:
     kept = tuple(_normalise(h) for h in KEPT_HEADINGS)
     offenders: list[str] = []
     for path in _searchable_files():
-        if path == Path(__file__):
+        if path == Path(__file__).resolve():
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             match = SECTION_REF.search(line)
