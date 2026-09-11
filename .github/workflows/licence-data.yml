@@ -206,7 +206,7 @@ jobs:
           path: licenses/
           retention-days: 14
 
-  # ── Base images, from the registry: weekly, or on request ───────────────────
+  # ── Base images, from the registry: on the schedule, or on request ──────────
   base-images:
     name: sbom (registry base images)
     if: github.event_name == 'schedule' || inputs.include_base_images
@@ -285,6 +285,13 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+    env:
+      # The events whose data is *recorded*: they write the dated audit note and they
+      # commit. One expression with two readers below, because the pair drifted once —
+      # when `push` was dropped from the triggers, the commit condition followed and the
+      # audit-note condition did not, so a dispatched run would have committed data with
+      # no note saying where it came from. `tests/test_licence_data.py` binds them.
+      RECORDS_DATA: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -304,7 +311,7 @@ jobs:
         # build. Flags do not — they need a person, not a red X on every merge.
         run: |
           set +e
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$RECORDS_DATA" = "true" ]; then
             python3 infra/scripts/licence_report.py --audit-out auto --fail-on deny
           else
             python3 infra/scripts/licence_report.py --fail-on deny
@@ -322,7 +329,8 @@ jobs:
       - name: Commit the data to main
         # `push` is gone (see the header); `workflow_dispatch` is added so a dependency
         # that lands between scheduled runs can be recorded without waiting for the 1st.
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        # Same `RECORDS_DATA` the audit note above keys on, so the two cannot disagree.
+        if: env.RECORDS_DATA == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -330,7 +338,7 @@ jobs:
           git add -A licenses docs/audits
 
           # report.json carries a timestamp, so it differs on every run. Committing on
-          # that alone would put an empty licence commit on main after every merge, so
+          # that alone would put an empty licence commit on main after every run, so
           # the data files decide whether there is anything to record.
           if git diff --cached --quiet -- licenses docs/audits; then
             echo "No licence data changed."

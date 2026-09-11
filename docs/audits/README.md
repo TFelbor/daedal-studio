@@ -44,7 +44,7 @@ how many is not a new finding.
 make licence-audit     # writes docs/audits/<today>-licence.md from licenses/
 ```
 
-CI does this on every push to `main` and on the weekly schedule
+CI does this on the 1st and the 15th, and on a manual run
 (`.github/workflows/licence-data.yml`). The raw trees under
 [`licenses/`](../../licenses/README.md) are the input; that directory's README explains
 where each file comes from and which trees CI cannot produce.
