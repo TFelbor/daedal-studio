@@ -1,8 +1,9 @@
 # `licenses/` — the resolved dependency tree, committed
 
 Machine-generated. **Do not hand-edit.** Everything here is rewritten by
-[`.github/workflows/licence-data.yml`](../.github/workflows/licence-data.yml) on every
-push to `main` and once a week.
+[`.github/workflows/licence-data.yml`](../.github/workflows/licence-data.yml) on the 1st
+and the 15th, on a pull request that touches a dependency manifest, and on demand — not
+on every merge, which is what it used to do and what most of this directory's churn was.
 
 The reasoned, human document is [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md);
 this directory is the evidence under it. `THIRD-PARTY-NOTICES.md` records *why* a
@@ -32,7 +33,7 @@ An audit of the names in a requirements file could not have found either.
 | `node.json` | The web app's **production** tree — what reaches the browser bundle. | `license-checker` |
 | `node-dev.json` | The build toolchain (Vite, TypeScript, ESLint). Runs on our machines, not the user's. | `license-checker` |
 | `sbom/ds-*.json` | SBOMs of the built images: Python packages **and** OS packages. | `syft` (syft-json) |
-| `sbom/base-*.json` | SBOMs of the registry base images. Weekly. | `syft` (syft-json) |
+| `sbom/base-*.json` | SBOMs of the registry base images. Refreshed on the 1st and the 15th, on the scheduled run only — pulling `nvidia/cuda` is multi-gigabyte. | `syft` (syft-json) |
 | `sbom/base-octoprint.json` | Same tool, but a **peer service**, not a base image — see below. | `syft` (syft-json) |
 
 `pip-licenses` runs **inside the built images**, not against a requirements file, because

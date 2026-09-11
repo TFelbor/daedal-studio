@@ -19,8 +19,9 @@ Three properties matter more than the rule list itself:
   scanner that disagrees with the tests the first time either is edited.
 * **Arm's-length components are recorded, not rediscovered.** CuraEngine is AGPL-3.0
   and *is* allowed, because it is a CLI subprocess. An SBOM of the pipeline image will
-  report it every single week; without `ARM_LENGTH_COMPONENTS` the weekly audit reports
-  the same resolved finding forever and the one new AGPL package hides in the noise.
+  report it on every single run; without `ARM_LENGTH_COMPONENTS` the recurring audit
+  reports the same resolved finding forever and the one new AGPL package hides in the
+  noise.
 * **A licence this module cannot read is `UNKNOWN`, never `PERMISSIVE`.** Unknown is a
   flag — something for a person to read — because the two incidents in this repo were
   both cases of a tag that said one thing and a licence text that said another.

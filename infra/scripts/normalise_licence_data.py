@@ -49,7 +49,7 @@ _PATH_FIELDS = ("path", "licenseFile")
 #: The only artifact fields a licence audit reads. syft's own output for the pipeline
 #: image is **16 MB**: `metadata` alone is 9 MB of per-package file manifests, `files` a
 #: further 6 MB, and `cpes` most of the rest. None of it says anything about a licence,
-#: and committing it on every merge would put 20 MB of churn in git for a file nothing
+#: and committing it unstripped would put 20 MB of churn in git for a file nothing
 #: can diff. `purl` is kept because it is the one field that identifies a package
 #: unambiguously across ecosystems.
 KEEP_ARTIFACT_FIELDS = ("name", "version", "type", "language", "licenses", "purl")
