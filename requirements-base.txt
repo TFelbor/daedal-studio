@@ -120,5 +120,12 @@ websockets
 
 pytest
 pytest-asyncio
+# Coverage measurement, for CI only. `pytest.ini` does not pass `--cov`, so installing
+# this changes nothing about a local `pytest tests/`; `.github/workflows/ci.yml` passes
+# it on the full-suite step with a floor, which is what turns "the suite is large" into
+# a number that cannot quietly fall. Pinned because the floor is measured against a
+# specific version's accounting. MIT; it pulls coverage.py (Apache-2.0). Test-only —
+# no image installs this file. See THIRD-PARTY-NOTICES.md § 2 and `.coveragerc`.
+pytest-cov==7.1.0
 responses
 docker

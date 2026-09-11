@@ -10,7 +10,7 @@ own licence.
 This file exists to satisfy the attribution and source-offer obligations those
 licences impose. It is reviewed whenever a dependency is added or bumped.
 
-Last reviewed: 2026-08-22.
+Last reviewed: 2026-09-11.
 
 **This file is the reasoning; [`licenses/`](licenses/README.md) is the evidence.** The
 resolved transitive tree for every image — `pip-licenses` run *inside* the containers,
@@ -78,7 +78,7 @@ identifier.
 ### Python libraries
 
 **Permissive — Q1 yes, Q2 yes, Q3 no restriction, all [d]:**
-torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore, lxml (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
+torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore, lxml (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · pytest-cov **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache, coverage **[v]** (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
 
 **Weak copyleft — permitted, obligations only on distribution:**
 
@@ -510,6 +510,8 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | paho-mqtt | EPL-2.0 OR BSD-3-Clause |
 | numba, llvmlite | BSD-2-Clause |
 | Pillow | MIT-CMU |
+| pytest-cov (dev only) | MIT |
+| coverage.py (dev only, via pytest-cov) | Apache-2.0 |
 
 **lxml is there for one exporter, and it is declared rather than inherited.**
 trimesh's 3MF writer streams the model XML through `lxml.etree.xmlfile` and imports
@@ -520,6 +522,15 @@ the shape of arrival this file exists to stop being the way a dependency enters 
 `infra/docker/phase3.Dockerfile` all name it. The package is BSD-3-Clause; its binary
 wheels bundle **libxml2 and libxslt, both MIT**, and it downloads no weights or data
 at runtime.
+
+**pytest-cov is a development dependency and lands in no image.** It is named in
+`requirements-base.txt` because CI installs that file, and `.github/workflows/ci.yml`
+is the only thing that passes `--cov`; every Dockerfile installs its own explicit list
+and none of them installs this one, so nothing distributed contains it. It is MIT and
+pulls **coverage.py (Apache-2.0)**, which is a pure-Python package with an optional C
+tracer built from its own sources — no vendored third-party code, no runtime download.
+Both are permissive, so neither would impose an obligation even if an image did carry
+them.
 
 ### Frontend (`web/`)
 
