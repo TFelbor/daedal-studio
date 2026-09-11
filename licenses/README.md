@@ -27,7 +27,7 @@ An audit of the names in a requirements file could not have found either.
 | `report.json` | **Read this first.** Scored index: totals, licence histogram, and the rows that need a person. | `infra/scripts/licence_report.py` |
 | `python.json` | Every Python distribution inside the built `ds-mvp-pipeline` image (Phases 1, 3–5). | `pip-licenses`, run in the container |
 | `python-api-server.json` | Every Python distribution inside the built `ds-api-server` image. | `pip-licenses`, run in the container |
-| `python-mac.json` | The macOS-native tree (`requirements-mac.txt`, `mflux`/`mlx`). Weekly. | `pip-licenses` on a macOS runner |
+| `python-mac.json` | The macOS-native tree (`requirements-mac.txt`, `mflux`/`mlx`). Refreshed on the 1st and the 15th, on the scheduled run only — macOS minutes are billed at ten times Linux. | `pip-licenses` on a macOS runner |
 | `python-worker.json` | The TRELLIS.2 GPU worker's tree. **Not produced by CI** — see below. | `pip-licenses` on a CUDA host |
 | `node.json` | The web app's **production** tree — what reaches the browser bundle. | `license-checker` |
 | `node-dev.json` | The build toolchain (Vite, TypeScript, ESLint). Runs on our machines, not the user's. | `license-checker` |
@@ -148,4 +148,4 @@ unreadable).
 
 CI fails on a `deny`: a non-commercial licence, or strong copyleft in a tree that is
 linked in-process. It does **not** fail on a `flag` — a flag needs a person to read a
-licence, and a red X on every merge is a red X nobody reads.
+licence, and a red X on every run is a red X nobody reads.

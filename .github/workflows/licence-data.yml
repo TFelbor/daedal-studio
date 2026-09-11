@@ -254,8 +254,9 @@ jobs:
         with:
           python-version: "3.10"
       # mflux/mlx are Apple-Silicon-only, so this tree cannot be resolved on Linux at
-      # all — the only options are a macOS runner or no data. It runs weekly rather
-      # than per-merge because macOS minutes are billed at ten times the Linux rate.
+      # all — the only options are a macOS runner or no data. It runs on the schedule
+      # only — the 1st and the 15th — because macOS minutes are billed at ten times the
+      # Linux rate, which makes this the most expensive job in the repository per run.
       - name: Resolve the macOS tree
         run: |
           python -m venv /tmp/macvenv
