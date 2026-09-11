@@ -17,6 +17,8 @@ somewhere in this repo:
 import importlib.util
 import json
 import re
+
+import yaml
 from pathlib import Path
 
 import pytest
@@ -717,13 +719,125 @@ def test_the_workflow_runs_the_scripts_that_score_and_normalise():
     assert "infra/scripts/normalise_licence_data.py" in workflow
 
 
+def test_the_workflow_does_not_run_on_a_push():
+    """The cadence: this data is produced on a schedule, not on every merge.
+
+    Regenerating it costs two amd64 image builds plus syft, and the output of a merge
+    that touched no dependency was `generated_at` and `commit` in `licenses/report.json`
+    and nothing else — measured at ~349 billable minutes over 39 runs, the largest single
+    consumer in this repository. Enforcement does not live here: it is
+    `tests/test_licensing_guards.py`, which `ci.yml` runs on every push and every pull
+    request. This workflow produces the evidence.
+    """
+    triggers = yaml.safe_load(WORKFLOW.read_text())[True]
+    assert "push" not in triggers, (
+        "licence-data.yml has a `push:` trigger again. It regenerates a tree that only "
+        "changes when a dependency changes; running it per merge spent ~349 billable "
+        "minutes to rewrite a timestamp. The `pull_request` paths filter is the "
+        "pre-merge check and the schedule is the drift check."
+    )
+    assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}, (
+        f"unexpected trigger set {sorted(triggers)}"
+    )
+    crons = [entry["cron"] for entry in triggers["schedule"]]
+    assert crons == ["17 4 1,15 * *"], (
+        f"the schedule is {crons}; it is the run that also pays for the macOS tree, "
+        "billed at ten times Linux, so its cadence is a cost decision"
+    )
+
+
+def test_the_audit_note_and_the_commit_cover_the_same_events():
+    """A run that commits the data must also write the note explaining it.
+
+    These were two independent conditions and they drifted: when `push` was dropped from
+    the triggers the commit condition was updated and the audit-note condition was not,
+    so a `workflow_dispatch` run would have committed a regenerated tree with no dated
+    note beside it. They now read one `RECORDS_DATA` expression; this is what keeps it
+    that way.
+    """
+    workflow = WORKFLOW.read_text()
+    records = re.search(r"^\s*RECORDS_DATA:\s*(.+)$", workflow, re.MULTILINE)
+    assert records, (
+        "the `RECORDS_DATA` expression is gone; the audit note and the commit below it "
+        "both read it, and they must not become two conditions again"
+    )
+    events = set(re.findall(r"github\.event_name == '([a-z_]+)'", records.group(1)))
+    assert events == {"schedule", "workflow_dispatch"}, (
+        f"RECORDS_DATA names {sorted(events)}; the events that commit the tree are the "
+        "scheduled run and a dispatch, and both must also write the dated note"
+    )
+
+    score_step = workflow.split("name: Score the tree", 1)[1].split("- name:", 1)[0]
+    assert '"$RECORDS_DATA" = "true"' in score_step, (
+        "the audit note no longer keys on RECORDS_DATA, so a run can commit data "
+        "without writing the dated note that explains where it came from"
+    )
+
+    commit_step = workflow.split("Commit the data to main", 1)[1].split("run:", 1)[0]
+    assert "env.RECORDS_DATA == 'true'" in commit_step, (
+        "the commit no longer keys on RECORDS_DATA; it and the audit note above have "
+        "become two conditions that can disagree"
+    )
+
+
 def test_the_workflow_only_commits_on_main_or_the_schedule():
-    """A pull request — including one from a fork — must not push to a branch."""
+    """A pull request — including one from a fork — must not push to a branch.
+
+    Asserted as "no pull-request event may commit" rather than as a fixed list of
+    permitted events. The list has already changed once — `push` was dropped when the
+    cadence moved off every merge — and a test that enumerates it goes red for a
+    scheduling decision while saying nothing about the property that matters.
+    """
     workflow = WORKFLOW.read_text()
     commit_step = workflow.split("Commit the data to main", 1)[1]
     guard = commit_step.split("run:", 1)[0]
-    assert "github.event_name == 'push'" in guard
-    assert "github.event_name == 'schedule'" in guard
+    condition = next(
+        (line for line in guard.splitlines() if line.strip().startswith("if:")), ""
+    )
+    events = set(re.findall(r"github\.event_name == '([a-z_]+)'", condition))
+    if not events and "RECORDS_DATA" in condition:
+        # The condition delegates to the job-level expression the audit note also reads
+        # (see test_the_audit_note_and_the_commit_cover_the_same_events). Resolve it
+        # rather than skipping: the events are still what decides whether a fork's pull
+        # request can push, they are just named one level up.
+        records = re.search(r"^\s*RECORDS_DATA:\s*(.+)$", workflow, re.MULTILINE)
+        assert records, "the condition names RECORDS_DATA but the workflow does not define it"
+        events = set(re.findall(r"github\.event_name == '([a-z_]+)'", records.group(1)))
+    assert events, (
+        "the commit step has no `github.event_name` guard, directly or through "
+        "RECORDS_DATA, so it would run for every event this workflow accepts — a fork's "
+        "pull request included."
+    )
+    permitted = {"push", "schedule", "workflow_dispatch"}
+    assert events <= permitted, (
+        f"{sorted(events - permitted)} may commit the licence data. A pull request, "
+        "including one from a fork, must never push to a branch."
+    )
+
+
+def test_the_commit_is_gated_on_main_not_only_on_the_event():
+    """The step pushes to `HEAD:${GITHUB_REF_NAME}`, so the ref has to be checked too.
+
+    `workflow_dispatch` can be started from any branch. While it never committed that
+    was harmless; now that it does, the event clause alone would land a regenerated
+    `licenses/` and a dated audit note on whatever feature branch someone dispatched
+    from — under a step still called "Commit the data to main". `schedule` always runs
+    on the default branch, so the ref clause costs the run that needs it nothing.
+    """
+    workflow = WORKFLOW.read_text()
+    records = re.search(r"^\s*RECORDS_DATA:\s*(.+)$", workflow, re.MULTILINE)
+    assert records, "the workflow no longer defines RECORDS_DATA"
+    assert "github.ref == 'refs/heads/main'" in records.group(1), (
+        "RECORDS_DATA gates the commit on the event alone. The push below it is "
+        "`git push origin HEAD:${GITHUB_REF_NAME}`, not a hard-coded `main`, so a "
+        "workflow_dispatch from a feature branch would commit licence data there."
+    )
+
+    commit_step = workflow.split("Commit the data to main", 1)[1].split("run:", 1)[0]
+    assert "RECORDS_DATA" in commit_step, (
+        "the commit step stopped reading RECORDS_DATA, so the `main` gate above no "
+        "longer covers it"
+    )
 
 
 #: The model each phase declares in code, and where it is declared. `ARCHITECTURE.md` is

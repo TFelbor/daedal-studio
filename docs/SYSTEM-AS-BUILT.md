@@ -2069,11 +2069,14 @@ resolved tree is several thousand across four ecosystems, and **both components 
 have broken this grant arrived transitively** — `pymeshfix` under something that looked
 like a mesh utility, `briaai/RMBG-2.0` as another model's configured default. Neither
 was in a manifest. `.github/workflows/licence-data.yml` therefore regenerates
-`licenses/` on every merge and commits it: `pip-licenses` run **inside the built
-images** (the requirements files are not what ships — `pipeline.Dockerfile` installs
-`diffusers` from git HEAD and `server.Dockerfile` pins nothing at all),
-`license-checker` over the web app's production tree, and `syft` SBOMs, which are the
-only thing that can see `cura-engine` arriving as an AGPL-3.0 apt package.
+`licenses/` and commits it, on the 1st and the 15th, on a pull request that touches a
+dependency manifest, and on demand. Not on every merge: two amd64 image builds to
+rewrite a timestamp was the largest single consumer of this repository's CI minutes.
+What it runs: `pip-licenses` **inside the built images** (the requirements files are
+not what ships — `pipeline.Dockerfile` installs `diffusers` from git HEAD and
+`server.Dockerfile` pins nothing at all), `license-checker` over the web app's
+production tree, and `syft` SBOMs, which are the only thing that can see `cura-engine`
+arriving as an AGPL-3.0 apt package.
 `licenses/report.json` is the scored index — read it first.
 
 - **The rules live in `pythonsrc/licence_policy.py`, not in the scanner.**
@@ -2106,7 +2109,7 @@ only thing that can see `cura-engine` arriving as an AGPL-3.0 apt package.
   `licenses/README.md`. That is also the one tree where `nvdiffrast` would appear, so
   refresh it after touching `infra/docker/trellis2-worker.Dockerfile`.
 - **`docs/audits/YYYY-MM-DD-licence.md` is how a recurring audit gets deltas** instead of
-  re-deriving the same list weekly. The block between the `generated:` markers is
+  re-deriving the same list every run. The block between the `generated:` markers is
   rewritten from `report.json`; everything outside it is preserved, because judgement is
   the half no scanner produces. The `digest` fence excludes the timestamp and the commit,
   so an unchanged run is *visibly* unchanged.

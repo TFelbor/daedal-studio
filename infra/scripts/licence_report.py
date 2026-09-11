@@ -29,11 +29,12 @@ Two design points worth keeping:
   OctoPrint's own AGPL plugins, and scoring those as linked denied the build on every
   merge to `main` for a tree this project never imports. `licence_policy`
   `ARM_LENGTH_IMAGE_SBOMS` names the exceptions, and their flags aggregate rather than
-  listing one row per plugin — the isolation is recorded once, not re-litigated weekly.
+  listing one row per plugin — the isolation is recorded once, not re-litigated on
+  every run.
 * **`allow` rows are counted, not listed.** `findings` carries flags, denials and the
   arm's-length components that are *expected* to appear. A report that lists all 1,400
   permissive packages is one nobody diffs, and the point of committing this is true
-  deltas rather than the same forty lines every week.
+  deltas rather than the same forty lines on every run.
 
 Usage:
     python infra/scripts/licence_report.py                      # write licenses/report.json
@@ -354,7 +355,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
 
             # `allow` rows are counted above and listed only when they are a recorded
             # exception — an arm's-length or reviewed-copyleft component carries a note,
-            # and those are exactly the rows an auditor must not re-litigate weekly.
+            # and those are exactly the rows an auditor must not re-litigate each run.
             # Two kinds of SBOM row are expected in bulk and say nothing individually:
             # the operating system underneath, and a wheel whose licence syft could not
             # read but the dedicated tool did. Both are aggregated. A denial never is.

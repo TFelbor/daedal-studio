@@ -19,14 +19,35 @@
 #     documents the one command that produces `licenses/python-worker.json` on a CUDA
 #     host. A gap that is named is auditable; one that is silently skipped is not.
 #
-# The commit back to main is deliberately conservative: it is skipped when nothing but
-# the report's own timestamp changed, so merges that touch no dependency leave no trace.
+# When it runs, and why not on every merge. This regenerates a tree that only changes
+# when a dependency changes, and producing it costs two amd64 image builds plus syft —
+# measured at ~349 billable minutes over 39 runs, the largest single consumer in this
+# repository. It used to run on every push to `main`, and the output of a merge that
+# touched no dependency was two lines: `generated_at` and `commit` in
+# `licenses/report.json`. (The "skipped when nothing changed" guard below does not stop
+# that: each run writes a date-stamped `docs/audits/YYYY-MM-DD-licence.md`, so the
+# staged diff is never empty.) So:
+#
+#   * `pull_request`, filtered to the files this data is a function of — the only
+#     pre-merge look at a dependency's licence, and it fires on the rare PR that adds
+#     one, not on every PR;
+#   * `schedule`, on the 1st and the 15th — what catches drift that happens with no
+#     commit here at all: a base image moving, an unpinned range resolving differently,
+#     a package relicensing. This is the run that also does the macOS tree and the
+#     registry SBOMs;
+#   * `workflow_dispatch`, which now also commits — but only when it is dispatched
+#     from `main` — so a dependency that lands between scheduled runs can be recorded
+#     immediately instead of waiting for the 1st. Dispatched from a branch it still
+#     builds, scans and scores; it just does not write the note or push.
+#
+# There is deliberately no `push:` trigger. `tests/test_licensing_guards.py` runs in
+# `ci.yml` on every push and every pull request and is what actually enforces the
+# rules; this workflow produces the evidence, and evidence a fortnight old is still
+# evidence.
 
 name: licence-data
 
 on:
-  push:
-    branches: [main]
   pull_request:
     paths:
       - "requirements*.txt"
@@ -38,9 +59,11 @@ on:
       - "pythonsrc/licence_policy.py"
       - ".github/workflows/licence-data.yml"
   schedule:
-    # Monday 04:17 UTC. Base images and unpinned ranges move without a commit here, so
-    # the weekly run is what catches a dependency that changed underneath us.
-    - cron: "17 4 * * 1"
+    # The 1st and the 15th, 04:17 UTC. Base images and unpinned ranges move without a
+    # commit here, so a scheduled run is what catches a dependency that changed
+    # underneath us. Fortnightly rather than weekly because this is also the run that
+    # pays for the macOS tree (billed at ten times Linux) and the registry SBOMs.
+    - cron: "17 4 1,15 * *"
   workflow_dispatch:
     inputs:
       include_mac:
@@ -52,9 +75,10 @@ on:
         type: boolean
         default: false
 
-# Same rule as ci.yml: a newer push supersedes an in-flight run, except on `main`.
-# Cancelling there would drop the data commit for that merge, and the next merge would
-# report its delta against a tree two merges old.
+# Same rule as ci.yml: a newer run supersedes an in-flight one, except on `main`. The
+# runs on `main` are the scheduled and dispatched ones, and those are the only runs that
+# commit; cancelling one would drop its data commit and leave the next run reporting its
+# delta against a tree a fortnight old.
 concurrency:
   group: licence-data-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -185,7 +209,7 @@ jobs:
           path: licenses/
           retention-days: 14
 
-  # ── Base images, from the registry: weekly, or on request ───────────────────
+  # ── Base images, from the registry: on the schedule, or on request ──────────
   base-images:
     name: sbom (registry base images)
     if: github.event_name == 'schedule' || inputs.include_base_images
@@ -200,8 +224,8 @@ jobs:
       - run: mkdir -p licenses/sbom
       - name: SBOM each base image
         # Scanned straight from the registry — no build, no local pull into docker.
-        # nvidia/cuda is the TRELLIS.2 worker's base and is the reason this job is not
-        # on the per-merge path: it is a multi-gigabyte devel image.
+        # nvidia/cuda is the TRELLIS.2 worker's base and is the reason this job runs on
+        # the schedule or on request only: it is a multi-gigabyte devel image.
         run: |
           set -euo pipefail
           scan() {
@@ -233,8 +257,9 @@ jobs:
         with:
           python-version: "3.10"
       # mflux/mlx are Apple-Silicon-only, so this tree cannot be resolved on Linux at
-      # all — the only options are a macOS runner or no data. It runs weekly rather
-      # than per-merge because macOS minutes are billed at ten times the Linux rate.
+      # all — the only options are a macOS runner or no data. It runs on the schedule
+      # only — the 1st and the 15th — because macOS minutes are billed at ten times the
+      # Linux rate, which makes this the most expensive job in the repository per run.
       - name: Resolve the macOS tree
         run: |
           python -m venv /tmp/macvenv
@@ -264,6 +289,22 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+    env:
+      # The runs whose data is *recorded*: they write the dated audit note and they
+      # commit. One expression with two readers below, because the pair drifted once —
+      # when `push` was dropped from the triggers, the commit condition followed and the
+      # audit-note condition did not, so a dispatched run would have committed data with
+      # no note saying where it came from. `tests/test_licence_data.py` binds them.
+      #
+      # `main` only, and it is the ref that carries that, not the event. `schedule`
+      # always runs on the default branch so the clause is free there; `workflow_dispatch`
+      # can be started from any branch, and without it a dispatch from a feature branch
+      # would commit regenerated `licenses/` and a dated audit note onto that branch —
+      # the push below is `HEAD:${GITHUB_REF_NAME}`, not a hard-coded `main`. A dispatch
+      # off `main` still builds, scans, scores and uploads the artifacts; it just does
+      # not record. `pull_request` is excluded by the event clause, so a fork's PR
+      # cannot push whatever its ref says.
+      RECORDS_DATA: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -280,10 +321,10 @@ jobs:
       - name: Score the tree
         id: score
         # --fail-on deny: a non-commercial or in-process copyleft package fails the
-        # build. Flags do not — they need a person, not a red X on every merge.
+        # build. Flags do not — they need a person, not a red X on every run.
         run: |
           set +e
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$RECORDS_DATA" = "true" ]; then
             python3 infra/scripts/licence_report.py --audit-out auto --fail-on deny
           else
             python3 infra/scripts/licence_report.py --fail-on deny
@@ -299,7 +340,12 @@ jobs:
           retention-days: 90
 
       - name: Commit the data to main
-        if: github.event_name == 'push' || github.event_name == 'schedule'
+        # `push` is gone (see the header); `workflow_dispatch` is added so a dependency
+        # that lands between scheduled runs can be recorded without waiting for the 1st.
+        # Same `RECORDS_DATA` the audit note above keys on, so the two cannot disagree —
+        # and it is gated on `main`, so the `HEAD:${GITHUB_REF_NAME}` push below cannot
+        # land licence data on whichever branch a dispatch happened to be started from.
+        if: env.RECORDS_DATA == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -307,7 +353,7 @@ jobs:
           git add -A licenses docs/audits
 
           # report.json carries a timestamp, so it differs on every run. Committing on
-          # that alone would put an empty licence commit on main after every merge, so
+          # that alone would put an empty licence commit on main after every run, so
           # the data files decide whether there is anything to record.
           if git diff --cached --quiet -- licenses docs/audits; then
             echo "No licence data changed."
