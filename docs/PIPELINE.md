@@ -50,7 +50,7 @@ is created. Phase 1 is: a human reads the PR and merges it.
 | `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR — never on an issue | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
 | `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. Keeps the transcript whatever happened, because a review that returns no verdict is red for a reason the log does not carry (§ When a review produces no verdict). |
 | `.github/workflows/claude-automerge.yml` | none — plain `gh` | review submitted, check suite completed | Phase 2 only. Squash-merges and deletes the branch when every gate below passes. |
-| `.github/workflows/claude-resume.yml` | none — `infra/ci/claude_resume.py` | every two hours, or by hand | Re-dispatches `claude-implement` for drafts the safety net left after a transient failure — the subscription's usage limit above all. Retries only a transient failure — never a budget failure, a finished run or a cancelled one — never touches a draft a person or the model opened, and stops after three attempts or the first human comment. |
+| `.github/workflows/claude-resume.yml` | none — `infra/ci/claude_resume.py` | every six hours, or by hand | Re-dispatches `claude-implement` for drafts the safety net left after a transient failure — the subscription's usage limit above all. Retries only a transient failure — never a budget failure, a finished run or a cancelled one — never touches a draft a person or the model opened, and stops after three attempts or the first human comment. |
 
 ### One exemption, and only one
 
@@ -435,7 +435,7 @@ run back without anyone watching:
 1. Every safety-net draft body and comment carries
    `<!-- claude-implement-safety-net subtype=<result subtype> -->`. That is the protocol:
    the subtype says whether waiting would help.
-2. Every two hours `infra/ci/claude_resume.py` lists open drafts with the marker and, for
+2. Every six hours `infra/ci/claude_resume.py` lists open drafts with the marker and, for
    each one whose **latest** safety-net record names a retryable subtype, where **no
    person has commented since the pipeline last acted**, fewer than **three** attempts
    have been made and the last one is more than two hours old, runs
@@ -462,7 +462,7 @@ worth another attempt; everything else is left where it is, with the reason on t
 pressing Cancel in the Actions tab still reaches it, still pushes the work and still
 opens the draft — and the run leaves no result message, so the subtype would have read
 `none`, which *is* retryable. Someone stopping a run is a decision, and re-dispatching it
-two hours later would quietly undo it, so `subtype()` lets `CONCLUSION=cancelled`
+on the next tick would quietly undo it, so `subtype()` lets `CONCLUSION=cancelled`
 override the file. **§ How to stop it below says cancelling stops it; that skip is the
 only thing that makes the sentence true.**
 

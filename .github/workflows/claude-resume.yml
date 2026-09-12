@@ -21,8 +21,21 @@ name: claude-resume
 
 on:
   schedule:
-    # Every two hours, off the hour so it does not queue behind everyone's :00 crons.
-    - cron: "17 */2 * * *"
+    # Every six hours, off the hour so it does not queue behind everyone's :00 crons.
+    #
+    # It was every two. A tick that finds nothing still costs a checkout and a billed
+    # minute — measured at 8–47 s of wall clock, and GitHub bills Actions by the minute
+    # rounded up — so the floor price of this workflow is one minute per tick whether or
+    # not a draft exists. At two hours that is ~360 minutes a month against a 2 000-minute
+    # allowance, for a safety net that fires a handful of times a month: in September it
+    # was the second-largest consumer of the allowance after the work itself, and the
+    # allowance ran out on the 12th.
+    #
+    # Six hours costs a third of that and delays nothing that matters. `MAX_ATTEMPTS` is
+    # 3, so a draft is still given up on inside a day, and the thing this exists to beat
+    # is *a person not noticing*, which is measured in days. `MIN_GAP_MINUTES` stays at
+    # 120: it is a floor on retries, and it still governs `workflow_dispatch` runs.
+    - cron: "17 */6 * * *"
   workflow_dispatch: {}
 
 permissions:
