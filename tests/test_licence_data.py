@@ -741,8 +741,11 @@ def test_the_workflow_does_not_run_on_a_push():
     )
     crons = [entry["cron"] for entry in triggers["schedule"]]
     assert crons == ["17 4 1,15 * *"], (
-        f"the schedule is {crons}; it is the run that also pays for the macOS tree, "
-        "billed at ten times Linux, so its cadence is a cost decision"
+        f"the schedule is {crons}; base images and unpinned ranges move without a "
+        "commit here, so this is the only thing that catches a dependency that "
+        "changed underneath us, and its cadence is a cost decision. It no longer "
+        "pays for the macOS tree — that job came off the schedule on 2026-09-12 "
+        "because `requirements-mac.txt` is not distributed; see its own comment."
     )
 
 

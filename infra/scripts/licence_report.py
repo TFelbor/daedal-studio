@@ -89,7 +89,15 @@ KNOWN_SOURCES: dict[str, dict[str, Any]] = {
         "in_process": True,
     },
     "python-mac.json": {
-        "label": "Python — macOS native dev/Phase 1 path (requirements-mac.txt)",
+        # Not distributed, and therefore not refreshed on the schedule (2026-09-12):
+        # this is the tree a developer installs on their own Apple Silicon machine to
+        # run the models locally instead of paying for an API, and licence obligations
+        # attach to distribution. The label says so, because a reader comparing dates
+        # across sources will otherwise read a stale file as a broken pipeline.
+        "label": (
+            "Python — macOS native dev tree (requirements-mac.txt); "
+            "not distributed, refreshed on request only"
+        ),
         "ecosystem": "python",
         "tool": "pip-licenses",
         "in_process": True,

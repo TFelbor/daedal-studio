@@ -67,7 +67,7 @@ on:
   workflow_dispatch:
     inputs:
       include_mac:
-        description: "Also resolve requirements-mac.txt on a macOS runner"
+        description: "Also resolve requirements-mac.txt (dev-only tree; the only way to refresh it)"
         type: boolean
         default: false
       include_base_images:
@@ -245,10 +245,30 @@ jobs:
           path: licenses/
           retention-days: 14
 
-  # ── The macOS-native dev/Phase 1 path ──────────────────────────────────────
+  # ── The macOS-native dev path — on request only ────────────────────────────
+  #
+  # Not on the schedule (2026-09-12). Licence obligations — attribution, the source
+  # offer, copyleft — attach to *distribution*, and `requirements-mac.txt` is not
+  # distributed: it is the tree a developer installs on their own Apple Silicon
+  # machine to run the models locally instead of paying for an API. Nothing in it
+  # reaches a customer, so nothing in it needs attributing, and scanning it monthly
+  # bought evidence for an obligation that does not exist.
+  #
+  # Kept as a dispatch rather than deleted, because the job is the only way this tree
+  # can be enumerated at all — `mflux`/`mlx` are Apple-Silicon-only and will not
+  # resolve on a Linux runner — and the posture is one decision away from changing.
+  # **If the self-hosted path is ever offered to customers, this goes back on the
+  # schedule before it ships**: at that point the tree is distributed and its 139
+  # packages need the same evidence as every other ecosystem here. Run it with
+  # `gh workflow run licence-data.yml -f include_mac=true`.
+  #
+  # `licenses/python-mac.json` stays committed and stays dated. It is evidence of what
+  # that tree held on the day it was scanned, which is true and useful; what it is no
+  # longer is a current picture, and `licenses/README.md` says so rather than leaving
+  # a reader to infer it from a timestamp.
   mac:
     name: python (requirements-mac.txt)
-    if: github.event_name == 'schedule' || inputs.include_mac
+    if: inputs.include_mac
     runs-on: macos-14
     timeout-minutes: 45
     steps:
@@ -257,9 +277,9 @@ jobs:
         with:
           python-version: "3.10"
       # mflux/mlx are Apple-Silicon-only, so this tree cannot be resolved on Linux at
-      # all — the only options are a macOS runner or no data. It runs on the schedule
-      # only — the 1st and the 15th — because macOS minutes are billed at ten times the
-      # Linux rate, which makes this the most expensive job in the repository per run.
+      # all — the only options are a macOS runner or no data. Measured at 65 s, which
+      # is one billed macOS minute and therefore ten against the allowance; the cost
+      # was never the reason it came off the schedule. See the job's own comment.
       - name: Resolve the macOS tree
         run: |
           python -m venv /tmp/macvenv

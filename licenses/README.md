@@ -28,7 +28,7 @@ An audit of the names in a requirements file could not have found either.
 | `report.json` | **Read this first.** Scored index: totals, licence histogram, and the rows that need a person. | `infra/scripts/licence_report.py` |
 | `python.json` | Every Python distribution inside the built `ds-mvp-pipeline` image (Phases 1, 3–5). | `pip-licenses`, run in the container |
 | `python-api-server.json` | Every Python distribution inside the built `ds-api-server` image. | `pip-licenses`, run in the container |
-| `python-mac.json` | The macOS-native tree (`requirements-mac.txt`, `mflux`/`mlx`). Refreshed on the 1st and the 15th, on the scheduled run only — macOS minutes are billed at ten times Linux. | `pip-licenses` on a macOS runner |
+| `python-mac.json` | The macOS-native dev tree (`requirements-mac.txt`, `mflux`/`mlx`). **Not distributed, so not refreshed on the schedule** — see below. Dated evidence of what that tree held when it was last scanned, not a current picture. | `pip-licenses` on a macOS runner, on request |
 | `python-worker.json` | The TRELLIS.2 GPU worker's tree. **Not produced by CI** — see below. | `pip-licenses` on a CUDA host |
 | `node.json` | The web app's **production** tree — what reaches the browser bundle. | `license-checker` |
 | `node-dev.json` | The build toolchain (Vite, TypeScript, ESLint). Runs on our machines, not the user's. | `license-checker` |
@@ -59,7 +59,37 @@ failed the job, and the one signal the gate exists to carry — a *new* copyleft
 something we link — arrived underneath six standing false positives. The flags for that
 image are aggregated now, the way the OS layer already was.
 
-## Two deliberate gaps
+## Deliberate gaps
+
+(Four, and the heading used to say two — it had drifted. A count in a heading rots every
+time the list grows, so there is no longer one.)
+
+* **The macOS-native dev tree is not scanned on the schedule** (2026-09-12).
+  `requirements-mac.txt` is what a developer installs on their own Apple Silicon machine
+  to run the models locally instead of paying for an API. It is not shipped, not offered
+  to customers, and not part of any deployment — and licence obligations (attribution,
+  the source offer, copyleft) attach to **distribution**. There is nothing to attribute
+  to anyone, so the monthly scan was buying evidence for an obligation that does not
+  exist.
+
+  `licenses/python-mac.json` stays committed as dated evidence of what that tree held
+  when it was last scanned. It is not a current picture and `report.json`'s label for it
+  says so, because a reader comparing dates across sources would otherwise read a stale
+  file as a broken pipeline.
+
+  Refresh it by hand when you want it — it is the only way, since `mflux`/`mlx` are
+  Apple-Silicon-only and will not resolve on a Linux runner:
+
+  ```bash
+  gh workflow run licence-data.yml -f include_mac=true
+  ```
+
+  **This reverses the moment the self-hosted path is offered to customers.** At that
+  point the tree is distributed, its 139 packages need the same evidence as every other
+  ecosystem here, and the job goes back on the schedule *before* it ships.
+  `tests/test_licensing_guards.py` keeps scanning `requirements-mac.txt` for forbidden
+  renderers either way: what may be *installed* is a different question from what must
+  be *attributed*, and that guard is static and free.
 
 * **The TRELLIS.2 worker image is not built in CI.** It compiles four CUDA extensions
   against a specific GPU architecture, which no hosted runner has. On a CUDA host:
