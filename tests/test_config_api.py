@@ -27,15 +27,16 @@ if __name__ == "__main__":
 import os
 from fastapi.testclient import TestClient
 from server.app import app
-from server.config_store import CONFIG_KEYS
+from server.config_store import CONFIG_KEYS, INTERNAL_CONFIG_KEYS
 
 def run_tests():
     with TestClient(app) as client:
-        # 1. GET /config returns every key in CONFIG_KEYS with metadata.
+        # 1. GET /config returns every settable key in CONFIG_KEYS with metadata. The
+        # printer-key host bindings are the store's own bookkeeping and are not listed.
         resp = client.get("/config")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert len(data) == len(CONFIG_KEYS)
+        assert len(data) == len(CONFIG_KEYS) - len(INTERNAL_CONFIG_KEYS)
         assert "HF_TOKEN" in data
         assert data["HF_TOKEN"]["secret"] is True
         assert data["HF_TOKEN"]["required"] is True

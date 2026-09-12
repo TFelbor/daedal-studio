@@ -142,7 +142,14 @@ def test_connection_failures_are_reported_as_credential_problems(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "get", boom)
     monkeypatch.setattr(
         app_module.config_store, "get_all",
-        lambda: {"OCTOPRINT_URL": "http://localhost:5001", "OCTOPRINT_API_KEY": "wrong"},
+        lambda: {
+            "OCTOPRINT_URL": "http://localhost:5001",
+            "OCTOPRINT_API_KEY": "wrong",
+            # Bound to the address it is stored against, so the probe carries it and
+            # the 403 really is the printer refusing a wrong key rather than the key
+            # being withheld — see `tests/test_credential_host_binding.py`.
+            "OCTOPRINT_API_KEY_HOST": "http://localhost:5001",
+        },
     )
 
     res = client.post("/config/test-connection", json={"service": "octoprint"})

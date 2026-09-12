@@ -23,6 +23,44 @@ from pythonsrc.operators import PrinterFactory
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("run_operator")
 
+def printer_from_env(profile_data: dict, environ) -> tuple:
+    """Which printer, at which address, with which key.
+
+    Two sources, and they are never mixed. The dispatch gate resolves the target and
+    hands it over as `DS_FIRMWARE`/`DS_PRINTER_URL`/`DS_PRINTER_KEY` — the same three
+    variables `create_job` gives the pipeline, and the key in them has already been
+    through the host binding for *that* firmware. When there is no resolved address,
+    the profile is the whole target and the profile's own `api_key` is the right one
+    to pair with it.
+
+    The mixing is what had to stop. `OCTOPRINT_API_KEY` was read here and paired with
+    `OCTOPRINT_URL`, and the dispatch gate wrote `target["base_url"]` into that
+    variable — so on a klipper or bambu profile the OctoPrint key was carried to the
+    Moonraker or Bambu address. The store is written by an unauthenticated request and
+    the profile is a file on disk; either may name an address, and neither may lend a
+    credential to the other one's.
+
+    Args:
+        profile_data: The parsed printer profile.
+        environ: A mapping of environment variables, usually `os.environ`.
+
+    Returns:
+        A (firmware, base_url, api_key) tuple; `api_key` is None when the server
+        withheld the credential or there was none to send.
+    """
+    firmware = environ.get("DS_FIRMWARE") or profile_data.get("firmware", "octoprint")
+
+    resolved_url = environ.get("DS_PRINTER_URL")
+    if resolved_url:
+        return firmware, resolved_url, environ.get("DS_PRINTER_KEY")
+
+    return (
+        firmware,
+        profile_data.get("base_url", "http://localhost:5001"),
+        profile_data.get("api_key"),
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-id", required=True)
@@ -36,12 +74,7 @@ def main():
         with open(args.profile, "r") as f:
             profile_data = json.load(f)
 
-        firmware = profile_data.get("firmware", "octoprint")
-        api_key = profile_data.get("api_key")
-        if not api_key:
-            api_key = os.environ.get("OCTOPRINT_API_KEY")
-            
-        base_url = os.environ.get("OCTOPRINT_URL") or profile_data.get("base_url", "http://localhost:5001")
+        firmware, base_url, api_key = printer_from_env(profile_data, os.environ)
 
         # Recorded before the Docker rewrite below: host.docker.internal is a
         # container artifact, not the address anyone configured. When the caller has

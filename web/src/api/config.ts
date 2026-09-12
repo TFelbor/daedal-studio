@@ -1,3 +1,21 @@
+/**
+ * Where a stored printer credential is allowed to go.
+ *
+ * A key is bound to the host it was saved beside, so changing the printer address
+ * on its own stops the key being sent. Only the three printer credentials carry
+ * this; every other key answers null.
+ */
+export interface HostBinding {
+  /** The host the stored key was saved for, or null when nothing is bound. */
+  bound_to: string | null;
+  /** The host the address configured right now points at. */
+  target: string | null;
+  /** Whether the key will be sent on the next request. */
+  sends: boolean;
+  /** Why it will not be, phrased for a person. */
+  message: string | null;
+}
+
 export interface ConfigItem {
   value: string | null;
   is_set: boolean;
@@ -5,6 +23,7 @@ export interface ConfigItem {
   description: string;
   required: boolean;
   secret: boolean;
+  host_binding?: HostBinding | null;
 }
 
 export type ConfigResponse = Record<string, ConfigItem>;

@@ -152,6 +152,28 @@
   gap: 18px;
 }
 
+/* "Key bound to <host>", under a stored printer credential. Ghost ink, because it
+   is a standing fact about the field rather than something that just happened. */
+.bindingNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-ghost);
+  overflow-wrap: anywhere;
+}
+
+.bindingNoteWarn {
+  color: var(--bad-ink);
+}
+
+.bindingNoteWarn svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 .row {
   display: flex;
   gap: 8px;

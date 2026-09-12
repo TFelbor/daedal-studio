@@ -386,6 +386,31 @@ export function PrinterSetup() {
     }
   };
 
+  /**
+   * Where a stored printer key is allowed to go, under its field.
+   *
+   * A key is bound to the host it was saved beside, so changing the URL alone stops
+   * it being sent — an extra step, and one nobody would guess at from a probe that
+   * merely says the printer rejected the credential. Shown for a stored key only:
+   * there is nothing to explain about a field nobody has filled in.
+   */
+  const hostBinding = (key: string): ReactNode => {
+    const binding = config?.[key]?.host_binding;
+    if (!binding || !config?.[key]?.is_set) return null;
+    if (binding.sends) {
+      return (
+        <p className={styles.bindingNote}>Key bound to {binding.bound_to}.</p>
+      );
+    }
+    if (!binding.target) return null;
+    return (
+      <p className={`${styles.bindingNote} ${styles.bindingNoteWarn}`}>
+        <AlertTriangle size={12} strokeWidth={1.5} />
+        {binding.message ?? `The key is not bound to ${binding.target}.`}
+      </p>
+    );
+  };
+
   /** Saving / Saved, rendered in a field's label line. */
   const fieldState = (key: string): ReactNode => {
     if (savingField === key) {
@@ -652,6 +677,7 @@ export function PrinterSetup() {
                       onChange={(e) => setMoonrakerKey(e.target.value)}
                       onBlur={(e) => commitSecret('MOONRAKER_API_KEY', e.target.value)}
                     />
+                    {hostBinding('MOONRAKER_API_KEY')}
                   </div>
                 </div>
               )}
@@ -692,6 +718,7 @@ export function PrinterSetup() {
                       onChange={(e) => setOctoprintKey(e.target.value)}
                       onBlur={(e) => commitSecret('OCTOPRINT_API_KEY', e.target.value)}
                     />
+                    {hostBinding('OCTOPRINT_API_KEY')}
                   </div>
                 </div>
               )}
@@ -732,6 +759,7 @@ export function PrinterSetup() {
                       onChange={(e) => setBambuCode(e.target.value)}
                       onBlur={(e) => commitSecret('BAMBU_CODE', e.target.value)}
                     />
+                    {hostBinding('BAMBU_CODE')}
                   </div>
                 </div>
               )}

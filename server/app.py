@@ -43,7 +43,15 @@ from pythonsrc.ip_screen import screen_prompt
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
 from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec, spec_hash
 import httpx
-from server.config_store import ConfigStore, CONFIG_KEYS, SUBPROCESS_ENV_KEYS
+from server.config_store import (
+    BoundCredential,
+    ConfigStore,
+    CONFIG_KEYS,
+    INTERNAL_CONFIG_KEYS,
+    PRINTER_CREDENTIAL_HOSTS,
+    SUBPROCESS_ENV_KEYS,
+    bound_printer_credential,
+)
 from server.job_broadcaster import broadcaster
 from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
@@ -656,6 +664,49 @@ def job_spec_summary(job) -> dict:
     }
 
 
+#: The stored credential each firmware authenticates with. `klipper` and `moonraker`
+#: are the same machine seen from the profile and from the HTTP API in front of it.
+#: Bambu's is `BAMBU_CODE`, which is what the wizard writes — reading
+#: `BAMBU_ACCESS_CODE`, as the old code did, always resolved to None.
+FIRMWARE_CREDENTIAL_KEYS = {
+    "octoprint": "OCTOPRINT_API_KEY",
+    "klipper": "MOONRAKER_API_KEY",
+    "moonraker": "MOONRAKER_API_KEY",
+    "bambu": "BAMBU_CODE",
+}
+
+#: The stored address each firmware is reached at, in the same terms.
+FIRMWARE_URL_KEYS = {
+    "octoprint": "OCTOPRINT_URL",
+    "klipper": "MOONRAKER_URL",
+    "moonraker": "MOONRAKER_URL",
+    "bambu": "BAMBU_IP",
+}
+
+
+def printer_credential(firmware: str, read=None) -> BoundCredential:
+    """The credential a firmware may send to the address configured for it *now*.
+
+    One gate in front of every outbound printer secret — the connection test, the
+    job's own probe, `resolve_printer_target` and the dispatch gate all ask here. A
+    key is sent only to the host it was saved beside, because the address is a stored
+    value `POST /config` can change and the key is not, so the two together were a
+    way to have this server hand a printer key to a chosen third party.
+
+    Args:
+        firmware: A firmware name; anything unrecognised is read as OctoPrint, which
+            is `resolve_printer_target`'s fallback too.
+        read: How to read a stored value, defaulting to the config store. Pass
+            `stored.get` where the whole store has already been read once.
+
+    Returns:
+        A `BoundCredential`; `.value` is None when there is no key *or* when the key
+        is being withheld, and `.reason` distinguishes the two.
+    """
+    credential_key = FIRMWARE_CREDENTIAL_KEYS.get(firmware, "OCTOPRINT_API_KEY")
+    return bound_printer_credential(credential_key, read or config_store.get)
+
+
 def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | None, str | None]:
     """Resolve which printer a job talks to, from one place.
 
@@ -670,11 +721,19 @@ def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | 
     Resolving this in one place stops the telemetry collector from watching a different
     printer than the pipeline is printing to.
 
+    The stored key is subject to the host binding — `printer_credential` — so a
+    dispatch to an address that changed after the key was saved goes out without it,
+    and the profile's own `api_key` is only ever paired with the profile's own
+    `base_url`. A profile is a file in `pythonsrc/profiles`; the store is an
+    unauthenticated endpoint, and the two must not be mixed to make a credentialled
+    request to an address one side chose and the other did not.
+
     Args:
         profile_path: Optional path to a printer profile JSON.
 
     Returns:
-        A (firmware, base_url, api_key) tuple. Firmware falls back to "octoprint".
+        A (firmware, base_url, api_key) tuple. Firmware falls back to "octoprint";
+        `api_key` is None when the stored key is bound to another host.
     """
     profile_data: dict = {}
     if profile_path:
@@ -686,20 +745,15 @@ def resolve_printer_target(profile_path: str | None = None) -> tuple[str, str | 
 
     firmware = profile_data.get("firmware") or config_store.get("DEFAULT_PRINTER_FIRMWARE") or "octoprint"
 
-    if firmware in ("klipper", "moonraker"):
-        base_url = config_store.get("MOONRAKER_URL")
-        api_key = config_store.get("MOONRAKER_API_KEY")
-    elif firmware == "bambu":
-        base_url = config_store.get("BAMBU_IP")
-        # The wizard writes BAMBU_CODE; reading BAMBU_ACCESS_CODE (as the old code did)
-        # always resolved to None.
-        api_key = config_store.get("BAMBU_CODE")
-    else:
-        base_url = config_store.get("OCTOPRINT_URL")
-        api_key = config_store.get("OCTOPRINT_API_KEY")
+    base_url = config_store.get(FIRMWARE_URL_KEYS.get(firmware, "OCTOPRINT_URL"))
+    api_key = printer_credential(firmware).value
 
-    base_url = base_url or profile_data.get("base_url")
-    api_key = api_key or profile_data.get("api_key")
+    if not base_url:
+        # No stored address, so the profile's is the target — and only then is the
+        # profile's own key the right one to pair with it.
+        base_url = profile_data.get("base_url")
+        if api_key is None:
+            api_key = profile_data.get("api_key")
 
     return firmware, base_url, api_key
 
@@ -1314,6 +1368,12 @@ def subprocess_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     Settings is the live authority — and a key absent from the store leaves whatever
     `.env` set, rather than unsetting it.
 
+    `OCTOPRINT_API_KEY` is on the allowlist and is also a bound credential, so it is
+    read through `bound_printer_credential` rather than straight off the store: the
+    child pairs it with `OCTOPRINT_URL`, which is the pairing the host binding exists
+    to police. Forwarding it here and withholding it in `resolve_printer_target`
+    would have left the key reaching the printer by the other route.
+
     Args:
         base: The environment to start from. Defaults to this process's.
 
@@ -1322,7 +1382,21 @@ def subprocess_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     """
     env = dict(os.environ if base is None else base)
     for key in SUBPROCESS_ENV_KEYS:
-        value = config_store.get(key)
+        if key in PRINTER_CREDENTIAL_HOSTS:
+            bound = bound_printer_credential(key, config_store.get)
+            if bound.withheld:
+                logger.warning("%s is not being forwarded: %s", key, bound.reason)
+            # Removed before it is conditionally set, which the other keys do not need.
+            # This mapping starts from `os.environ`, and `OCTOPRINT_API_KEY` is
+            # documented in `.env.template` and loaded into every compose service by
+            # `env_file` — so with no key *stored*, the binding had nothing to withhold,
+            # the inherited one was never overwritten, and the address it was paired
+            # with was still the store's. A printer credential in a child's environment
+            # comes from the bound store or it does not come at all.
+            env.pop(key, None)
+            value = bound.value
+        else:
+            value = config_store.get(key)
         if value is not None:
             env[key] = value
     return env
@@ -2575,8 +2649,11 @@ async def get_printer_info(job_id: str):
             if firmware == "octoprint":
                 url = stored.get("OCTOPRINT_URL")
                 if url:
+                    # Same host binding as every other outbound printer request: this
+                    # probe is as much a way to post the key somewhere as the
+                    # connection test is.
                     headers = {}
-                    api_key = stored.get("OCTOPRINT_API_KEY")
+                    api_key = printer_credential("octoprint", stored.get).value
                     if api_key:
                         headers["X-Api-Key"] = api_key
                     resp = await client.get(f"{url.rstrip('/')}/api/version", headers=headers)
@@ -2586,7 +2663,11 @@ async def get_printer_info(job_id: str):
             elif firmware == "klipper":
                 url = stored.get("MOONRAKER_URL")
                 if url:
-                    resp = await client.get(f"{url.rstrip('/')}/printer/info")
+                    headers = {}
+                    api_key = printer_credential("klipper", stored.get).value
+                    if api_key:
+                        headers["X-Api-Key"] = api_key
+                    resp = await client.get(f"{url.rstrip('/')}/printer/info", headers=headers)
                     connection_status = "online" if resp.status_code == 200 else "offline"
                 else:
                     connection_status = "offline"
@@ -3099,6 +3180,16 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
             detail=f"The printer changed since you looked ({changes}). Check it and confirm again.",
         )
 
+    # A stored key belongs to the host it was saved beside, and this is the request
+    # that would carry it to whatever host is configured now. Refused rather than sent
+    # keyless: the operator would reach the machine, be rejected, and leave a job
+    # reading as dispatched — and "re-enter the key" is an answer a person can act on,
+    # where a 401 in a subprocess log is not.
+    credential = printer_credential(target["firmware"])
+    if credential.withheld:
+        db.close()
+        raise HTTPException(status_code=409, detail=credential.reason)
+
     # Asked, not assumed. A dead printer discovered here costs a click; discovered by the
     # operator subprocess it costs a job that reads as dispatched and never printed.
     probe = await printer_status()
@@ -3164,15 +3255,33 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         ]
 
         # This server's environment plus the allowlisted config-store keys, and
-        # nothing else from the store — see `subprocess_env`. `OCTOPRINT_API_KEY`
-        # arrives that way, which is how the operator authenticates when the printer
-        # profile carries no key of its own.
+        # nothing else from the store — see `subprocess_env`.
         env = subprocess_env()
+
+        # The operator is told which printer, at which address, with which key, in the
+        # same three variables `create_job` hands the pipeline — and that is the whole
+        # of it. It used to be handed `OCTOPRINT_API_KEY` beside an `OCTOPRINT_URL`
+        # this block overwrote with `target["base_url"]`, which for a klipper or bambu
+        # profile is `MOONRAKER_URL` or `BAMBU_IP`. The binding could not see that: it
+        # had checked the key against `OCTOPRINT_URL` in `subprocess_env`, one
+        # assignment earlier, and the gate above had checked the *target* firmware's
+        # credential, which in that shape is unset and therefore not withheld. So an
+        # OctoPrint key bound to the person's own printer left for whatever address an
+        # unauthenticated `POST /config MOONRAKER_URL` had just named.
+        #
+        # `credential` is the gate's own answer, resolved for `target["firmware"]`, so
+        # the key and the address here can only have come from the same firmware.
+        env.pop("OCTOPRINT_API_KEY", None)
+        env["DS_FIRMWARE"] = target["firmware"]
+        if credential.value:
+            env["DS_PRINTER_KEY"] = credential.value
+
         # The address the person just confirmed, not the dev default baked into the
         # profile file. `resolve_printer_target` makes the config store authoritative
-        # for base_url, and the operator falls back to the profile's own when this is
-        # absent — so a real printer configured in Settings was dispatched to
-        # localhost:5001 while the gate displayed the right machine.
+        # for base_url, and the operator falls back to the profile's own — with the
+        # profile's own key — when this is absent, so a real printer configured in
+        # Settings is no longer dispatched to localhost:5001 while the gate displays
+        # the right machine.
         #
         # The operator runs in this container, so it is given the route this process
         # already resolved rather than being left to derive one from a loopback
@@ -3180,7 +3289,7 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         # that — not the container route standing in for it — is what
         # `dispatched_printer_url` must record.
         if target.get("base_url"):
-            env["OCTOPRINT_URL"] = container_reachable_url(target["base_url"])
+            env["DS_PRINTER_URL"] = container_reachable_url(target["base_url"])
             env["DS_DISPATCH_URL"] = target["base_url"]
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
@@ -4177,35 +4286,71 @@ class ConfigUpdate(BaseModel):
 class TestConnectionRequest(BaseModel):
     service: str
 
+def host_binding(key: str, read) -> Optional[Dict[str, Any]]:
+    """How a printer credential stands against the address configured for it.
+
+    The extra step the binding introduces is only fair if the person can see it, so
+    Settings is told which host the stored key belongs to, which host it would be
+    sent to, and whether it will go. Without that, a key that was saved and is not
+    being used looks exactly like a key that was never saved.
+
+    Args:
+        key: A config key; anything that is not a printer credential answers None.
+        read: How to read a stored value — `stored.get` for an already-read store.
+
+    Returns:
+        `{"bound_to", "target", "sends", "message"}`, or None for every other key.
+    """
+    if key not in PRINTER_CREDENTIAL_HOSTS:
+        return None
+    credential = bound_printer_credential(key, read)
+    return {
+        "bound_to": credential.bound_host,
+        "target": credential.target_host,
+        "sends": credential.value is not None,
+        "message": credential.reason,
+    }
+
+
 @app.get("/config")
 async def get_config():
-    """Get all configuration keys with their values and metadata."""
+    """Get all configuration keys with their values and metadata.
+
+    `INTERNAL_CONFIG_KEYS` are left out: they are the store's own bookkeeping, they
+    are not editable here, and listing them would put three rows on the Settings page
+    that a person can only be confused by.
+    """
     stored = config_store.get_all()
     results = {}
     for key, meta in CONFIG_KEYS.items():
+        if key in INTERNAL_CONFIG_KEYS:
+            continue
         val = stored.get(key)
         is_set = val is not None
-        
+
         display_val = None
         if is_set:
             display_val = "••••••••" if meta.get("secret") else val
-            
+
         results[key] = {
             "value": display_val,
             "is_set": is_set,
             "label": meta.get("label"),
             "description": meta.get("description"),
             "required": meta.get("required"),
-            "secret": meta.get("secret")
+            "secret": meta.get("secret"),
+            "host_binding": host_binding(key, stored.get),
         }
     return results
 
 @app.post("/config")
 async def update_config(update: ConfigUpdate):
     """Update a configuration value."""
-    if update.key not in CONFIG_KEYS:
+    if update.key not in CONFIG_KEYS or update.key in INTERNAL_CONFIG_KEYS:
+        # A writable `OCTOPRINT_API_KEY_HOST` would undo the whole binding in one
+        # request, so the internal keys are as invalid here as an unknown one.
         raise HTTPException(status_code=400, detail="Invalid config key")
-        
+
     meta = CONFIG_KEYS[update.key]
     secret = bool(meta.get("secret"))
     # Read the old value before overwriting it: "what changed" is the question anyone
@@ -4240,15 +4385,17 @@ async def update_config(update: ConfigUpdate):
         "label": meta.get("label"),
         "description": meta.get("description"),
         "required": meta.get("required"),
-        "secret": meta.get("secret")
+        "secret": meta.get("secret"),
+        # Saving a key re-binds it, so the answer here is the one the page must show.
+        "host_binding": host_binding(update.key, config_store.get),
     }
 
 @app.delete("/config/{key}")
 async def delete_config(key: str):
     """Delete a configuration value."""
-    if key not in CONFIG_KEYS:
+    if key not in CONFIG_KEYS or key in INTERNAL_CONFIG_KEYS:
         raise HTTPException(status_code=400, detail="Invalid config key")
-    
+
     # The store only, matching the write path above: nothing this endpoint set is in
     # `os.environ` any more, and deleting a key from there would clear a value that
     # came from `.env` and that the store never owned.
@@ -4265,7 +4412,7 @@ async def delete_config(key: str):
 @app.get("/config/{key}/reveal")
 async def reveal_config(key: str):
     """Reveal a secret configuration value."""
-    if key not in CONFIG_KEYS:
+    if key not in CONFIG_KEYS or key in INTERNAL_CONFIG_KEYS:
         raise HTTPException(status_code=400, detail="Invalid config key")
         
     val = config_store.get(key)
@@ -4276,7 +4423,15 @@ async def reveal_config(key: str):
 
 @app.post("/config/test-connection")
 async def test_connection(req: TestConnectionRequest):
-    """Test connection to a specific service."""
+    """Test connection to a specific service.
+
+    The probe is the one request whose *whole job* is to be sent at whatever address
+    is stored right now, which is what made it the lever: change `OCTOPRINT_URL`, ask
+    for a test, and the server posted the real key to the new host. So the key goes
+    out only when it is bound to that host, the probe still runs without it when it
+    is not, and `withheld` is the sentence saying why — a keyless probe that silently
+    401s would read as a wrong key and send someone to re-type a correct one.
+    """
     service = req.service.lower()
     if service == "klipper":
         # The UI sends firmware names; Moonraker is the HTTP API fronting Klipper.
@@ -4284,37 +4439,57 @@ async def test_connection(req: TestConnectionRequest):
         # reads "Offline" forever.
         service = "moonraker"
     stored = config_store.get_all()
-    
+
+    # Set when the stored key is bound to another host, and appended to whatever this
+    # probe ends up saying.
+    withheld: str | None = None
+
     import time
     start_time = time.time()
-    
+
+    def answer(success: bool, message: str, latency_ms: int | None = None) -> dict:
+        """One exit, so the withholding is reported on every outcome and not just one."""
+        if withheld:
+            message = f"{message} · {withheld}"
+        return {"success": success, "message": message, "latency_ms": latency_ms}
+
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
             if service == "octoprint":
                 url = stored.get("OCTOPRINT_URL")
-                api_key = stored.get("OCTOPRINT_API_KEY")
                 if not url:
-                    return {"success": False, "message": "OCTOPRINT_URL not configured", "latency_ms": None}
+                    return answer(False, "OCTOPRINT_URL not configured")
+                credential = printer_credential("octoprint", stored.get)
+                withheld = credential.reason
                 # Opening a connection, so this is the one place the loopback address
                 # has to be read from where this process actually stands.
                 url = container_reachable_url(url)
-                
+
                 headers = {}
-                if api_key:
-                    headers["X-Api-Key"] = api_key
-                
+                if credential.value:
+                    headers["X-Api-Key"] = credential.value
+
                 resp = await client.get(f"{url.rstrip('/')}/api/version", headers=headers)
                 resp.raise_for_status()
-                
+
             elif service == "moonraker":
                 url = stored.get("MOONRAKER_URL")
                 if not url:
-                    return {"success": False, "message": "MOONRAKER_URL not configured", "latency_ms": None}
+                    return answer(False, "MOONRAKER_URL not configured")
+                credential = printer_credential("moonraker", stored.get)
+                withheld = credential.reason
                 url = container_reachable_url(url)
-                    
-                resp = await client.get(f"{url.rstrip('/')}/printer/info")
+
+                # Moonraker takes the same header OctoPrint does when its
+                # authorization component is configured. The probe used to send
+                # nothing at all, so a secured Moonraker read Offline forever.
+                headers = {}
+                if credential.value:
+                    headers["X-Api-Key"] = credential.value
+
+                resp = await client.get(f"{url.rstrip('/')}/printer/info", headers=headers)
                 resp.raise_for_status()
-                
+
             elif service == "bambu":
                 # Bambu speaks MQTT over TLS on 8883 in LAN mode, so there is no
                 # HTTP endpoint to GET. A TCP connect proves the printer is on the
@@ -4323,13 +4498,19 @@ async def test_connection(req: TestConnectionRequest):
                 # implying the credentials are good.
                 host = stored.get("BAMBU_IP")
                 if not host:
-                    return {"success": False, "message": "BAMBU_IP not configured", "latency_ms": None}
-                if not stored.get("BAMBU_CODE"):
-                    return {
-                        "success": False,
-                        "message": "No LAN access code yet — find it on the printer under Settings → Network.",
-                        "latency_ms": None,
-                    }
+                    return answer(False, "BAMBU_IP not configured")
+                credential = printer_credential("bambu", stored.get)
+                if not credential.stored:
+                    return answer(
+                        False,
+                        "No LAN access code yet — find it on the printer under "
+                        "Settings → Network.",
+                    )
+                if credential.withheld:
+                    # Nothing is sent on this probe either way, so there is no keyless
+                    # connect worth making: the code cannot authenticate a print to
+                    # this address, and that is the whole answer.
+                    return answer(False, credential.reason)
 
                 host = host.replace("mqtts://", "").replace("https://", "").split("/")[0].split(":")[0]
                 try:
@@ -4339,40 +4520,39 @@ async def test_connection(req: TestConnectionRequest):
                     writer.close()
                     await writer.wait_closed()
                 except (asyncio.TimeoutError, OSError) as exc:
-                    return {
-                        "success": False,
-                        "message": f"No answer from {host}:8883 — is the printer on and in LAN mode? ({exc})",
-                        "latency_ms": None,
-                    }
+                    return answer(
+                        False,
+                        f"No answer from {host}:8883 — is the printer on and in LAN mode? ({exc})",
+                    )
 
-                return {
-                    "success": True,
-                    "message": f"{host} is reachable on port 8883. The access code is not verified until a print is sent.",
-                    "latency_ms": int((time.time() - start_time) * 1000),
-                }
+                return answer(
+                    True,
+                    f"{host} is reachable on port 8883. The access code is not verified "
+                    "until a print is sent.",
+                    int((time.time() - start_time) * 1000),
+                )
 
             elif service == "huggingface":
                 token = stored.get("HF_TOKEN")
                 if not token:
-                    return {"success": False, "message": "HF_TOKEN not configured", "latency_ms": None}
-                    
+                    return answer(False, "HF_TOKEN not configured")
+
                 headers = {"Authorization": f"Bearer {token}"}
                 resp = await client.get("https://huggingface.co/api/whoami-v2", headers=headers)
                 resp.raise_for_status()
-                
+
             else:
                 raise HTTPException(status_code=400, detail="Invalid service")
-                
-            latency_ms = int((time.time() - start_time) * 1000)
-            return {"success": True, "message": "Connection successful", "latency_ms": latency_ms}
-            
+
+            return answer(True, "Connection successful", int((time.time() - start_time) * 1000))
+
         except httpx.TimeoutException:
-            return {"success": False, "message": "Connection timed out", "latency_ms": None}
+            return answer(False, "Connection timed out")
         except httpx.RequestError as e:
-            return {"success": False, "message": f"Connection failed: {str(e)}", "latency_ms": None}
+            return answer(False, f"Connection failed: {str(e)}")
         except httpx.HTTPStatusError as e:
             if service == "huggingface" and e.response.status_code == 401:
-                return {"success": False, "message": "Invalid HuggingFace Token", "latency_ms": None}
+                return answer(False, "Invalid HuggingFace Token")
             # A 401/403 means we reached the printer and it refused us — the opposite
             # diagnosis from "unreachable", and the fix is a key rather than a cable.
             # Dumping the raw body here surfaced OctoPrint's stock Flask 403 page
@@ -4390,21 +4570,18 @@ async def test_connection(req: TestConnectionRequest):
                     if service == "octoprint"
                     else ""
                 )
-                return {
-                    "success": False,
-                    "message": (
-                        f"Reached the printer, but it rejected the credential "
-                        f"({e.response.status_code}). Check {where}.{hint}"
-                    ),
-                    "latency_ms": int((time.time() - start_time) * 1000),
-                }
-            return {
-                "success": False,
-                "message": f"HTTP {e.response.status_code} from {service}: {e.response.text[:200]}",
-                "latency_ms": None,
-            }
+                return answer(
+                    False,
+                    f"Reached the printer, but it rejected the credential "
+                    f"({e.response.status_code}). Check {where}.{hint}",
+                    int((time.time() - start_time) * 1000),
+                )
+            return answer(
+                False,
+                f"HTTP {e.response.status_code} from {service}: {e.response.text[:200]}",
+            )
         except Exception as e:
-            return {"success": False, "message": str(e), "latency_ms": None}
+            return answer(False, str(e))
 
 @app.websocket("/ws/jobs/{job_id}")
 async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
@@ -4580,6 +4757,11 @@ async def start_octoprint_simulator():
 
     # The probe must authenticate: OctoPrint answers an unauthenticated
     # /api/version with 403, so a keyless poll can never see it come up.
+    #
+    # No host binding here, and deliberately: `status['url']` is the simulator
+    # container this process just started, not an address anyone typed, so there is
+    # no address to have been repointed. The binding polices the store's own URL
+    # keys — see `printer_credential`.
     api_key = status.get("api_key") or config_store.get("OCTOPRINT_API_KEY")
     headers = {"X-Api-Key": api_key} if api_key else {}
 

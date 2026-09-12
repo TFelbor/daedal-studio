@@ -37,7 +37,13 @@ from pythonsrc.telemetry.schema import PrintJob
 from server import app as app_module
 from server import config_store as config_store_module
 from server.app import app, subprocess_env
-from server.config_store import CONFIG_KEYS, RETIRED_CONFIG_KEYS, SUBPROCESS_ENV_KEYS
+from server.config_store import (
+    CONFIG_KEYS,
+    PRINTER_CREDENTIAL_HOSTS,
+    RETIRED_CONFIG_KEYS,
+    SUBPROCESS_ENV_KEYS,
+    credential_host,
+)
 
 client = TestClient(app)
 REPO_ROOT = Path(__file__).parent.parent
@@ -168,7 +174,18 @@ def test_every_allowlisted_key_names_the_consumer_that_reads_it():
 # ── subprocess_env(): the base environment plus the allowlist, nothing else ──
 
 def _store_returning(values: dict):
-    """Patch the module's config store so `get` answers from `values`."""
+    """Patch the module's config store so `get` answers from `values`.
+
+    The host binding of any printer credential in `values` is filled in to match its
+    address, because `subprocess_env` withholds a key bound to a *different* host and
+    a fixture meaning "this key is stored" must not quietly mean "and it is bound
+    somewhere else". That rule is `tests/test_credential_host_binding.py`'s subject;
+    here it would only be noise in front of the allowlist.
+    """
+    values = dict(values)
+    for credential_key, (host_key, url_key) in PRINTER_CREDENTIAL_HOSTS.items():
+        if values.get(credential_key) and values.get(url_key):
+            values[host_key] = credential_host(values[url_key])
     return patch.object(
         app_module.config_store, "get", side_effect=lambda key: values.get(key)
     )
@@ -328,7 +345,18 @@ def sliced_job_with_gcode():
 def test_the_operator_launch_carries_the_allowlist_and_no_other_stored_key(
     sliced_job_with_gcode, printer_configured, stored,
 ):
-    """`run_operator.py` authenticates from `OCTOPRINT_API_KEY`, and nothing else."""
+    """`run_operator.py` authenticates from `DS_PRINTER_KEY`, and nothing else.
+
+    It used to read `OCTOPRINT_API_KEY` and pair it with `OCTOPRINT_URL`, which the
+    dispatch block overwrote with the target's address — so on a klipper or bambu
+    profile the OctoPrint key went to the Moonraker or Bambu machine. The credential
+    handed over now is the gate's own answer for `target["firmware"]`, and the
+    firmware-named variable is removed from the child's environment outright.
+    """
+    # The address first, then the key: a printer key is bound to the host it was
+    # saved beside, and one saved with no address configured is bound to nothing and
+    # never forwarded. See `tests/test_credential_host_binding.py`.
+    stored("OCTOPRINT_URL", "http://printer.local:5001")
     stored("OCTOPRINT_API_KEY", "key-for-the-operator")
     stored(NOT_FORWARDED, "DEBUG")
 
@@ -348,6 +376,8 @@ def test_the_operator_launch_carries_the_allowlist_and_no_other_stored_key(
     assert resp.status_code == 200, resp.text
 
     env = captured["env"]
-    assert env["OCTOPRINT_API_KEY"] == "key-for-the-operator"
+    assert env["DS_PRINTER_KEY"] == "key-for-the-operator"
+    assert env["DS_FIRMWARE"] == "octoprint"
+    assert "OCTOPRINT_API_KEY" not in env
     assert env.get(NOT_FORWARDED) != "DEBUG"
     assert "PYTHONPATH" not in set(env) - set(os.environ)

