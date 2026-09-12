@@ -1,0 +1,177 @@
+"""`POST /organizer/resolve` — the composer's arithmetic, done where the KB lives.
+
+The form that composes a spec has to show the person what they are asking for before
+they commit to it: the resolved card stack, the millimetres the schema filled in, and
+every problem with the field it belongs to. Every one of those is a function of
+`pythonsrc/organizer`, and a second copy of it in TypeScript would be a second copy of
+the dimension KB — drifting from the one the geometry is built from, which is the
+"confident number nobody computed" this product exists to refuse.
+
+So this endpoint is the only source of the composer's numbers, and these tests are
+about the three properties that makes it need:
+
+- it runs in the api-server image, which installs neither trimesh nor manifold3d;
+- it answers a half-built spec rather than erroring at it;
+- it claims only what it checked — `schema_valid`, not `valid`.
+"""
+import ast
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from pythonsrc.organizer.dimensions import PITCH_MM_PER_CARD, resolve_stack
+from pythonsrc.organizer.spec import OrganizerSpec, spec_hash
+from server import app as app_module
+from server.app import app
+
+client = TestClient(app)
+
+SPEC = {
+    "archetype": "deck_box",
+    "compartments": [{"contents": {"count": 100, "card": "standard", "sleeving": "double"}}],
+    "lid": {"kind": "lift_off", "magnets": False, "height_mm": 15.0, "wall_mm": 1.2,
+            "clearance_mm": 0.2, "top_mm": 2.0},
+    "schema_version": 1,
+}
+
+
+def resolve(spec):
+    resp = client.post("/organizer/resolve", json={"spec": spec})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+# ── what comes back for a spec the schema accepts ─────────────────────────────
+
+def test_it_answers_with_the_canonical_spec_and_its_hash():
+    """The same two values `POST /jobs` would store, so the table under the form shows
+    the millimetres the compiler will use rather than the blanks that were typed."""
+    body = resolve(SPEC)
+    assert body["schema_valid"] is True
+    assert body["problems"] == []
+    assert body["spec"] == OrganizerSpec.from_dict(SPEC).to_dict()
+    assert body["spec_hash"] == spec_hash(OrganizerSpec.from_dict(SPEC))
+
+
+def test_the_defaults_the_schema_resolved_are_in_the_answer():
+    """A request that names no wall and no clearance means the schema's own figures by
+    it, and those are numbers the person is entitled to see *before* submitting —
+    2,4 mm is `ARCHETYPE_WALL_MM["deck_box"]` and 1,5 mm is the `snug` intent's."""
+    bare = {"archetype": "deck_box",
+            "compartments": [{"contents": {"count": 100}}],
+            "lid": {}}
+    body = resolve(bare)
+    assert body["spec"]["process"]["wall_mm"] == 2.4
+    assert body["spec"]["process"]["cavity_clearance_mm"] == 1.5
+    assert body["spec"]["process"]["fit_intent"] == "snug"
+
+
+def test_the_resolved_stack_is_the_dimension_modules_own_answer_with_its_basis():
+    body = resolve(SPEC)
+    expected = resolve_stack(100, "standard", "double")
+    assert body["stacks"] == [{
+        "count": 100,
+        "card": "standard",
+        "sleeving": "double",
+        "footprint_w_mm": expected.footprint_w_mm,
+        "footprint_h_mm": expected.footprint_h_mm,
+        "pitch_mm": expected.pitch_mm,
+        "stack_height_mm": expected.stack_height_mm,
+        "basis": expected.basis,
+    }]
+    # The sum the fits line shows, checkable against the table it came from.
+    assert body["stacks"][0]["stack_height_mm"] == round(100 * PITCH_MM_PER_CARD["double"], 3)
+    assert "two measured 100-card stacks" in body["stacks"][0]["basis"]
+
+
+def test_a_divider_resolves_the_same_stack_and_carries_no_lid():
+    body = resolve({
+        "archetype": "card_divider",
+        "compartments": [{"contents": {"count": 40, "card": "standard", "sleeving": "single"}}],
+        "divider": {},
+    })
+    assert body["schema_valid"] is True
+    assert "lid" not in body["spec"]
+    assert body["stacks"][0]["sleeving"] == "single"
+
+
+def test_no_fit_verdict_is_returned():
+    """`deck_box.fits_check` imports manifold3d, which this image does not install, so
+    there is nothing here that could honestly answer "does it fit". The only verdict
+    this product shows is Phase 3's measurement of the exported mesh."""
+    body = resolve(SPEC)
+    assert "fits" not in body
+
+
+# ── what comes back for a spec the schema refuses ─────────────────────────────
+
+def test_a_refused_spec_is_a_200_with_every_problem_and_its_path():
+    """A composer calls this while somebody is still typing. A half-built spec is a
+    question, not an error."""
+    body = resolve({
+        "archetype": "deck_box",
+        "compartments": [{"contents": {"count": 0, "card": "standard", "sleeving": "double"}}],
+        "lid": {"clearance_mm": -1},
+    })
+    assert body["schema_valid"] is False
+    assert body["spec"] is None and body["spec_hash"] is None and body["stacks"] == []
+    paths = {p["path"] for p in body["problems"]}
+    assert "spec.compartments[0].contents.count" in paths
+    assert "spec.lid.clearance_mm" in paths
+    for problem in body["problems"]:
+        assert problem["message"].startswith(problem["path"] + " ")
+
+
+def test_an_unknown_archetype_is_named_on_the_archetype_field():
+    body = resolve(dict(SPEC, archetype="dice_tray"))
+    assert body["schema_valid"] is False
+    assert [p["path"] for p in body["problems"]] == ["spec.archetype"]
+
+
+def test_an_empty_body_is_answered_rather_than_refused():
+    resp = client.post("/organizer/resolve", json={})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["schema_valid"] is False
+    assert body["problems"], "an empty spec must say what it is missing"
+
+
+def test_schema_valid_does_not_claim_the_archetype_looked():
+    """A deck box with no lid section passes the schema and is refused by
+    `deck_box.validate` in Phase 2, which needs the kernel and cannot run here. The
+    field is `schema_valid` so the answer does not claim a check nobody made."""
+    body = resolve({"archetype": "deck_box",
+                    "compartments": [{"contents": {"count": 100}}]})
+    assert body["schema_valid"] is True
+    assert "valid" not in body
+
+
+# ── the label a spec job is titled with ───────────────────────────────────────
+
+def test_the_label_describes_the_spec_and_nothing_else():
+    body = resolve(SPEC)
+    assert body["label"] == "deck box · 100 double-sleeved standard cards"
+
+
+def test_the_label_is_derived_not_stored():
+    """Every word in it is a field of the spec, so it cannot describe a different
+    part than the one that will be compiled."""
+    body = resolve(dict(
+        SPEC,
+        compartments=[{"contents": {"count": 60, "card": "standard", "sleeving": "none"}}],
+    ))
+    assert body["label"] == "deck box · 60 unsleeved standard cards"
+
+
+# ── the import rule this endpoint exists under ────────────────────────────────
+
+def test_the_server_still_imports_nothing_that_needs_the_kernel():
+    """The api-server image installs neither trimesh nor manifold3d (see
+    `infra/docker/server.Dockerfile`). This endpoint reaches further into
+    `pythonsrc.organizer` than anything before it, so the rule is asserted rather
+    than remembered: no import of `archetypes` or `compiler`, at any depth."""
+    tree = ast.parse(Path(app_module.__file__).read_text(encoding="utf-8"))
+    modules = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+    modules |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    organizer = {m for m in modules if m.startswith("pythonsrc.organizer")}
+    assert organizer == {"pythonsrc.organizer", "pythonsrc.organizer.dimensions"}

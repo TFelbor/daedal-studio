@@ -51,6 +51,45 @@ export const ARCHETYPES = [
 
 export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];
 
+/**
+ * The other five closed vocabularies the composer offers, for the strip's reason.
+ *
+ * Each is a literal in `pythonsrc/organizer/spec.py` or
+ * `pythonsrc/organizer/dimensions.py`, and `tests/test_composer_options.py` holds
+ * every one of them to its counterpart the way `test_archetype_registry.py` holds
+ * `ARCHETYPES`. An option a form offers and the schema refuses is the same class of
+ * fabrication as a fits badge with no measurement behind it — the person picks it,
+ * submits, and is told by a 422 that the thing they were shown does not exist.
+ *
+ * They are lists rather than a call to the server on mount because a select that
+ * cannot render until a fetch returns is a select that renders empty when it fails.
+ * The binding is a test, not a round trip.
+ */
+
+/** `dimensions.CARD_KINDS`. One entry: the Japanese size has no sourced sleeve
+ *  envelope, and a footprint invented to fill that gap is a fabricated number. */
+export const CARD_KINDS = ['standard'] as const;
+
+/** `dimensions.SLEEVINGS`. */
+export const SLEEVINGS = ['none', 'single', 'double'] as const;
+
+/** `spec.LID_KINDS`. Slide, hinged and magnetic lids are later archetype variants. */
+export const LID_KINDS = ['lift_off'] as const;
+
+/** `spec.FIT_INTENTS`, in the order they widen the cavity. A word rather than a
+ *  number because it is what a person actually decides; the millimetres are the KB's
+ *  and arrive on the resolved spec. */
+export const FIT_INTENTS = ['snug', 'easy'] as const;
+
+/** `spec.TAB_POSITIONS`. */
+export const TAB_POSITIONS = ['left', 'centre', 'right'] as const;
+
+/** What each fit intent means in the words somebody would use to choose it. */
+export const FIT_INTENT_LABELS: Record<string, string> = {
+  snug: 'Snug — a box you close',
+  easy: 'Easy — a tray you lift cards out of',
+};
+
 /** One editable line of the spec: a label, a number, and the unit it is in. */
 export interface SpecDimension {
   key: string;
@@ -92,7 +131,7 @@ export interface OrganizerSpec {
 }
 
 /** How a card kind and a sleeving read in a sentence, under the card count. */
-const SLEEVING_NOTE: Record<string, string> = {
+export const SLEEVING_NOTE: Record<string, string> = {
   none: 'unsleeved',
   single: 'single sleeved',
   double: 'double sleeved',
@@ -235,9 +274,12 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
 /**
  * Why there is no spec, in one sentence, for the empty states to show.
  *
- * Three absences, three sentences, one place each: four components must not explain
- * the same gap four different ways, and they must not explain three different gaps
- * with one word.
+ * Four absences, four sentences, one place each: the components must not explain the
+ * same gap four different ways, and they must not explain four different gaps with
+ * one word. The composer gained the fourth — a spec that exists and has been
+ * resolved, but that nothing has built geometry from yet — because reusing
+ * `UNCOMPOSED_SPEC_REASON` there would have said "nothing has been composed" under a
+ * table of the composed spec's own millimetres.
  */
 
 /** A job that was not compiled from a spec. */
@@ -251,3 +293,15 @@ export const UNCOMPOSED_SPEC_REASON =
 /** A spec job whose Phase 3 has not measured the mesh yet. */
 export const UNMEASURED_FIT_REASON =
   'Not measured yet — the fit verdict is read off the exported mesh once Phase 3 has checked every designed dimension against the spec.';
+
+/**
+ * The composer, with a spec the server has resolved but nothing has compiled.
+ *
+ * The composer cannot answer "does it fit" and does not try: the archetype's own
+ * `fits_check` needs the geometry kernel, which the API server does not install, and
+ * the verdict this product shows is a measurement of the exported mesh rather than a
+ * prediction about it. What the composer *can* show — and does, above this line — is
+ * the spec's own millimetres and the resolved stack, both computed by the server.
+ */
+export const UNCOMPILED_SPEC_FIT_REASON =
+  'Nothing has been built from this spec yet — the fit verdict is a measurement of the exported mesh, taken in Phase 3 after the archetype compiles the numbers above.';

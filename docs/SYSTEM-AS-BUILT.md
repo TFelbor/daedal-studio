@@ -27,8 +27,11 @@ path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. 
 (`archetypes/card_divider.py`) — entered through `pipeline.py --spec` —
 see **Organizer — the parametric path** below. Phase 3 asserts a spec run's geometry
 instead of repairing it and measures every designed feature back to ±0,05 mm, and
-`POST /jobs` accepts a spec (2026-09-03). The dimension KB, LLM extraction and the UI's
-spec panel wiring do not exist yet; do not treat generative-path tuning as roadmap work.
+`POST /jobs` accepts a spec (2026-09-03), and **since 2026-09-11 a person can compose one
+in the app**: the archetype strip opens a form-driven configurator that posts to
+`POST /organizer/resolve` and submits `createJob({ spec })` — see **The composer's
+parametric path** under Frontend. The dimension KB and LLM extraction do not exist yet; do
+not treat generative-path tuning as roadmap work.
 
 **The UI has been moved onto the pivot's vocabulary ahead of the engine** (2026-09-02). The
 five phases now read **Composer · Compiler · Printability · Slicer · Operator** in the app,
@@ -36,12 +39,15 @@ five phases now read **Composer · Compiler · Printability · Slicer · Operato
 carries an archetype strip, a Fits Check and a spec panel. Phases 1–3 therefore *describe*
 the parametric pipeline while the backend still runs FLUX → TRELLIS.2 → repair; the comment
 at the top of `pipeline.ts` says so, and nothing in the telemetry columns changed
-(`blueprint_model` and `generation_model` still record what actually ran). The new panels are
-**shells with explicit empty states**, never placeholder numbers: `organizer/spec.ts` holds
-the types and `specFromJob` is the one seam to wire when the engine lands, and
-`NO_SPEC_REASON` is the single sentence every one of them shows meanwhile. A fits badge with
-no measurement behind it is the exact failure the Fits Check exists to prevent, and a
-screenshot of one outlives any caveat.
+(`blueprint_model` and `generation_model` still record what actually ran). The panels
+landed as **shells with explicit empty states**, never placeholder numbers: `organizer/spec.ts`
+holds the types and `specFromJob` is the one seam, and `NO_SPEC_REASON` was the single
+sentence every one of them showed meanwhile. A fits badge with no measurement behind it is
+the exact failure the Fits Check exists to prevent, and a screenshot of one outlives any
+caveat. The spec panel is now fed for real — by `specFromJob` for a running job (#66) and
+by `POST /organizer/resolve` in the composer (#76) — and **the Fits Check is still a shell,
+on purpose**: the only fit verdict in this system is Phase 3's measurement of the exported
+mesh, so the composer shows `UNCOMPILED_SPEC_FIT_REASON` and no tick.
 
 The rest of this file documents the system as built. It chains: text→blueprint image (FLUX), image→3D mesh (TRELLIS.2-4B), mesh repair+scaling (trimesh/manifold3d), slicing (CuraEngine), and printer dispatch (OctoPrint/Klipper). A FastAPI server orchestrates jobs and serves a React SPA. Phases 1 and 3–5 run in Docker (linux/amd64) or natively on macOS with MPS acceleration for Phase 1.
 
@@ -746,8 +752,9 @@ FastAPI application with:
   so email or webhook delivery is a config change rather than a refactor.
 - **`POST /jobs/{id}/events/preview-reached` is the activation metric's numerator**, and
   `GET /feedback/stats` carries the rate beside the response rate. "≥ 60 % of prompt
-  submitters reach a preview" (PRD §7, roadmap §6A) had a denominator all along — `prompt`
-  is required on `POST /jobs`, so a job row *is* one prompt submission — and nothing
+  submitters reach a preview" (PRD §7, roadmap §6A) had a denominator all along — a job row
+  is one submission, which is why the key is `jobs_submitted` and not `prompts_submitted`
+  (a spec job carries no typed prompt at all; see **The prompt of a spec job** below) — and nothing
   recorded that a person ever saw the geometry they asked for. One event kind
   (`preview_reached`), no migration, and the same shape and server-side dedup as
   `outcome_prompt_shown`: **once per job**, so a reload, a switch between the mesh and
@@ -797,6 +804,43 @@ FastAPI application with:
   later job, and answered a 200 with it for any finished job whose own export was
   missing or recorded in `export_errors`. `tests/test_job_artifacts.py` binds the two
   lists and exercises the flat fallback in every format.
+- **`POST /organizer/resolve` is the composer's arithmetic, and it is here because the
+  dimension KB is here.** Spec in; the canonical spec, its hash, the resolved card stack
+  per compartment (`dimensions.resolve_stack` — footprint, pitch, height and the `basis`
+  sentence naming every source) and every `SpecError` problem with its dotted path, out.
+  Nothing in the browser computes a millimetre: a stack height is a function of a table of
+  sourced figures, and a second copy of that table in TypeScript drifts from the one the
+  geometry is built from, which is the same failure as a fits badge with nothing behind it.
+  It runs in the api-server image because `pythonsrc.organizer` and
+  `pythonsrc.organizer.dimensions` import nothing outside the stdlib — the two are the
+  *only* organizer imports `server/app.py` has, and `tests/test_organizer_resolve_endpoint.py`
+  asserts that rather than trusting it.
+  Three properties are deliberate. **It answers `schema_valid`, not `valid`**: only
+  `OrganizerSpec.from_dict` ran, and the archetype's own rules — a deck box needs a lid
+  section, a lip may not be thinner than `process.min_feature_mm` — import the kernel and
+  are enforced when Phase 2 compiles, so a field called `valid` would claim a check nobody
+  made. **It returns no fit verdict**, for the same reason and one more: `deck_box.fits_check`
+  needs `manifold3d`, and the only verdict this product shows is a measurement of an
+  exported mesh. **A spec the schema refuses is still a 200** — it is called on every
+  keystroke, it reads nothing, writes nothing and starts nothing, and answering a
+  half-composed spec with a 4xx would make typing an error in the log and in the activity
+  feed. `POST /jobs` is where a bad spec is refused, and it still is.
+- **A refused spec arrives as data, not only as prose.** `JobRequest._spec_is_valid` raises
+  a `PydanticCustomError` whose context survives into the 422 body, so the detail entry
+  carries `ctx.problems` — one `{path, message}` per problem — beside the joined `msg`.
+  The dotted path was always in the sentence (`_from_mapping` prefixes every nested problem
+  with it) but nothing said so, and `problem_path` in `pythonsrc/organizer/spec.py` is the
+  one place that now does. The alternative was splitting the joined sentence in the browser
+  on a separator no test in this repository could hold.
+- **The prompt of a spec job.** `prompt` is no longer `min_length=1`, because a spec job
+  has none: nobody typed words, and the geometry is a function of the spec alone. But
+  `print_job.prompt` is what every list, feed line and history row titles a job with, so
+  `_a_job_always_has_a_label` fills it from `spec_label(spec)` — "deck box · 100
+  double-sleeved standard cards", every word a field of the spec. Derived on the server for
+  the reason the *canonical* spec is what gets stored: a second copy of this sentence in
+  the browser would drift from the spec it claims to describe. A line somebody types is
+  kept as it is, and a request with neither a prompt nor a spec is refused exactly as
+  `min_length=1` refused it.
 - **WebSocket**: `/ws/jobs/{job_id}` streams phase progress, telemetry batches, and job completion — managed by `JobBroadcaster`
 - **Job lifecycle**: POST `/jobs` creates a DB record and launches pipeline subprocess asynchronously; polls `[DS]` banners from stdout for phase tracking
 - **Logging** (`server/logging_config.py`, called at import): the app had no handler,
@@ -1949,6 +1993,44 @@ exposes the theme as React state for an effect dependency. `GCodeViewer` re-colo
 place** via the preview's setters rather than rebuilding — a rebuild tears down the WebGL
 context, re-downloads the G-code and snaps the camera back to the top — and `MeshViewer`
 holds refs to its scene and material for the same reason.
+
+**The composer's parametric path** (2026-09-11, issue #76). The redesigned composer said
+"your words become a spec" and had no path from a person to one: the archetype strip
+reported its choice to UI telemetry and sent it nowhere, `createJob` had no `spec` field,
+and the only way to run a spec job was the CLI or a hand-built `POST`. Five decisions, and
+each of them is a refusal of something easier:
+
+- **The strip is the mode, not a hint.** It was documented as a steer that travelled with
+  the prompt to a composer phase, which would be true of a composer that extracted a spec
+  from words — and nothing extracts anything yet (a later issue, and the rule that keeps
+  them apart is the one the pivot turns on). As a hint it therefore did nothing at all.
+  Picking an archetype opens `SpecForm`; clearing it is the generative path, unchanged.
+- **The form is the alpha vehicle** (roadmap §5A cut #3). Cards, sleeving, fit intent, wall
+  and lid engagement for the deck box; plate thickness, tab width, tab height and tab
+  position for the divider. The controls follow the archetype because the archetype decides
+  which fields are *read*: `card_divider` reads neither `process.wall_mm` nor `fit_intent`,
+  and offering them would suggest they change the plate.
+- **Every millimetre on screen came back from the server.** A blank optional field is sent
+  *absent*, so what the spec panel shows is the schema's own default — the deck box's
+  2,4 mm wall, the `snug` intent's 1,5 mm clearance — rather than a copy of it in a
+  browser. The one figure the form states as prose is the `standard` card's 63,5 × 88,9 mm,
+  and `tests/test_composer_options.py` binds it to `dimensions.CARD_KINDS`.
+- **Nothing is offered that the engine refuses.** Five closed vocabularies live in
+  `organizer/spec.ts` beside `ARCHETYPES`, bound to their Python counterparts by the same
+  kind of text-reading test, for the reason the strip needed one. `CARD_KINDS` and
+  `LID_KINDS` have one entry each and are rendered as *sentences* rather than as
+  single-option selects — a select you cannot change is a control that is lying about being
+  one.
+- **Every refusal lands on the field it names.** `FIELD_BY_PATH` maps the schema's dotted
+  paths onto controls; anything unrecognised falls to `form` and is shown whole, because a
+  validation message that matches nothing and is quietly dropped is a submit button that
+  stops working for no visible reason. The test pokes each mapped path into a spec and
+  requires the schema to name it, rather than trusting the table.
+
+The height control is *absent* in spec mode rather than disabled — the server refuses a
+spec sent beside `target_mm`, so a height control there could not be obeyed — and the
+prompt field becomes the job's name, captioned with what it is: the spec decides every
+dimension, and nothing reads that line back into the geometry.
 
 Four layout rules are load-bearing enough to name, because breaking them is invisible in a
 diff and obvious on screen:

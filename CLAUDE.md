@@ -151,7 +151,8 @@ each entry below names the file it is about.
   - **Organizer — the parametric path (`pythonsrc/organizer/`)** — the spec schema, the
     two archetypes, `--spec`, Phase 3's assert-and-measure mode, and what is not built.
   - **Server (`server/app.py`)** — the REST and WebSocket surface, the job lifecycle,
-    `contained_path` and the profile confinement, the config store and `subprocess_env`.
+    `contained_path` and the profile confinement, the config store and `subprocess_env`,
+    `POST /organizer/resolve` and the prompt a spec job is titled with.
   - **Data Flow** — the five steps from `POST /jobs` to live telemetry on the socket.
   - **Telemetry (`pythonsrc/telemetry/`)** — the capture principle, every column and the
     moment it stops being recoverable, the PostgreSQL move, collectors, the single-writer
@@ -176,8 +177,10 @@ each entry below names the file it is about.
   - **Printer Operators (`pythonsrc/operators/`)** — the base signature shared code must
     call with, and the factory's firmware aliases.
   - **Docker Infrastructure** — the amd64 pin, the layered images and the model volumes.
-  - **Frontend (`web/`)** — the two themes and the ink ladder, the four load-bearing
-    layout rules, the running view's stage, and the WebSocket close.
+  - **Frontend (`web/`)** — the two themes and the ink ladder, the composer's
+    parametric path (the archetype strip as the mode, and why no number on it is
+    computed in a browser), the four load-bearing layout rules, the running view's
+    stage, and the WebSocket close.
 - **Configuration** — `.env` versus the encrypted store, the loopback API bind, and where
   each pipeline path lives on disk.
 - **Licensing Constraints** — the rules that keep the Apache-2.0 grant coherent, three of

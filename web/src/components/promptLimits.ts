@@ -36,3 +36,19 @@ export const PROMPT_SUBMIT_LABEL = 'Compile & preview';
 
 /** Shown while the job is being created. */
 export const PROMPT_SUBMIT_BUSY_LABEL = 'Starting…';
+
+/**
+ * The example in the empty prompt field — the strongest copy on the page, because it
+ * is what people edit rather than read.
+ *
+ * One constant for the label's reason, and the two fields were already caught
+ * disagreeing once: the zoomed field offered "A low poly planter box with a modern
+ * geometric design…" while the landing field beside it offered a deck box, so the same
+ * prompt in two magnifications described two different products. A text guard can only
+ * notice that afterwards; one constant makes it impossible.
+ *
+ * It describes an organizer, and it has to: an example the engine would refuse teaches
+ * the wrong prompt, and `tests/test_ui_product_copy.py` holds it to that.
+ */
+export const PROMPT_PLACEHOLDER =
+  'A Commander deck box for 100 double-sleeved cards (Dragon Shield Perfect Fit + Matte), removable tray for 12 dice, magnetic snap lid.';

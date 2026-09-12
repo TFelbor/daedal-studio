@@ -146,6 +146,33 @@ class SpecError(ValueError):
         super().__init__("invalid spec: " + "; ".join(self.problems))
 
 
+def problem_path(problem: str) -> str:
+    """The dotted path a problem sentence names, e.g. `spec.lid.clearance_mm`.
+
+    Every message this module produces begins with the path it is about and nothing
+    else: `_from_mapping` writes `f"{path} …"` for its own findings and prefixes
+    `f"{path}.{p}"` onto each problem a `__post_init__` raised, and every
+    `__post_init__` opens its sentence with the field name. So the first
+    whitespace-delimited token *is* the path, and this function is the one place that
+    says so — a form that puts a refusal on the field it names needs the path as data
+    rather than as prose, and the alternative (splitting the joined sentence in the
+    client) would put the convention in a language that cannot test it.
+
+    A problem with no space — there is none today — yields the whole string, which is
+    still the most specific thing that can honestly be claimed about it.
+    """
+    return problem.split(" ", 1)[0]
+
+
+def problems_with_paths(problems: list[str]) -> list[dict[str, str]]:
+    """`SpecError.problems` as `{"path", "message"}` pairs, order preserved.
+
+    What `POST /jobs`'s 422 and `POST /organizer/resolve` both carry, so a refusal
+    arrives at the field it is about instead of as one sentence nobody can route.
+    """
+    return [{"path": problem_path(p), "message": p} for p in problems]
+
+
 def _mm(value: Any, name: str, problems: list[str], *, minimum: float = 0.0,
         inclusive: bool = False) -> Any:
     """Validate one millimetre value and return it rounded to `MM_DECIMALS`.

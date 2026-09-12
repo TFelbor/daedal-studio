@@ -23,6 +23,10 @@ from urllib.parse import urlparse, urlunparse
 from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
+# Raised instead of a bare ValueError for one reason: its `ctx` survives into the 422
+# body, so a spec refusal arrives as a list of `{path, message}` the composer can put
+# on the control that caused it — see `JobRequest._spec_is_valid`.
+from pydantic_core import PydanticCustomError
 
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -41,7 +45,17 @@ from pythonsrc.ip_screen import screen_prompt
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
-from pythonsrc.organizer import OrganizerSpec, SpecError, dump_spec, spec_hash
+from pythonsrc.organizer import (
+    OrganizerSpec,
+    SpecError,
+    dump_spec,
+    problems_with_paths,
+    spec_hash,
+)
+# The seed dimensions, for the same reason and under the same rule: `resolve_stack` is
+# arithmetic over a table of sourced millimetres and imports nothing. It is what
+# `POST /organizer/resolve` answers with, and the only figures the composer may show.
+from pythonsrc.organizer.dimensions import resolve_stack
 import httpx
 from server.config_store import (
     BoundCredential,
@@ -1036,9 +1050,55 @@ def get_resolved_strategy() -> str:
         return override
     return get_execution_strategy()
 
+#: How a spec's sleeving reads inside the label a spec job is given.
+#:
+#: The same three *keys* as `SLEEVING_NOTE` in `web/src/organizer/spec.ts`, which
+#: captions the same field — `test_composer_options.py` binds the two key sets, and
+#: has to, because a sleeving one side knows and the other does not is a caption that
+#: silently falls back. The wording differs on purpose and only here: this one goes
+#: inside a noun phrase ("100 double-sleeved standard cards"), where the compound
+#: adjective takes a hyphen, and the panel's caption stands alone after a comma
+#: ("standard, double sleeved"), where it does not.
+SLEEVING_WORDS: Dict[str, str] = {
+    "none": "unsleeved",
+    "single": "single-sleeved",
+    "double": "double-sleeved",
+}
+
+
+def spec_label(spec: Dict[str, Any]) -> str:
+    """A one-line description of a spec, for the `prompt` column of a spec job.
+
+    A spec job has no prompt: nobody typed words, and the geometry is a function of
+    the spec alone. But `print_job.prompt` is what every list, feed line and history
+    row titles a job with, so leaving it empty makes a spec job unreadable everywhere
+    a job is named, and inventing a sentence about a box nobody described would put
+    prose in the column the generative path fills with the *actual* input.
+
+    So the label is derived, strictly, from the spec itself — the archetype and the
+    stack that was asked for, nothing else — and the server writes it rather than the
+    client, for the reason the canonical spec is stored rather than the submitted
+    bytes: a second copy of this sentence in the browser would drift from the spec it
+    claims to describe. A person who *does* type a line keeps it; a name somebody
+    chose beats a generated one, and the spec is still the whole input either way.
+    """
+    archetype = str(spec.get("archetype") or "organizer").replace("_", " ")
+    compartments = spec.get("compartments") or []
+    contents = (compartments[0] or {}).get("contents") if compartments else None
+    if not isinstance(contents, dict):
+        return archetype
+    count = contents.get("count")
+    card = contents.get("card", "standard")
+    sleeving = SLEEVING_WORDS.get(str(contents.get("sleeving")), str(contents.get("sleeving")))
+    return f"{archetype} · {count} {sleeving} {card} cards"
+
+
 class JobRequest(BaseModel):
     """Pydantic model representing a new print job request."""
-    prompt: str = Field(..., min_length=1)
+    # Not `min_length=1`: a spec job has no prompt, and `_a_job_always_has_a_label`
+    # below both enforces the old rule for a prompt job and writes the spec's own
+    # label for a spec one. See `spec_label`.
+    prompt: str = ""
     printer_id: str = Field(..., min_length=1)
     profile: str = ""
     skip_visualizer: bool = False
@@ -1109,13 +1169,29 @@ class JobRequest(BaseModel):
         model, before the value is used for anything — means the row, the file and
         the compiler all see one spec, and `spec_hash` over the row equals the
         `spec_sha256` Phase 2 records.
+
+        **The refusal is structured, not only prose.** A `PydanticCustomError`'s
+        context is carried into the 422 body by FastAPI's validation handler, so the
+        detail entry holds `ctx.problems` — one `{path, message}` per problem, with
+        the dotted path the schema already names (`spec.lid.clearance_mm`). Without
+        it the only route from a refusal to the field that caused it was splitting
+        the joined sentence in the browser, on a separator the client cannot test.
+        The joined summary stays in `msg`, because a caller that reads nothing else
+        must still get the whole refusal.
         """
         if value is None:
             return None
         try:
             return OrganizerSpec.from_dict(value).to_dict()
         except SpecError as exc:
-            raise ValueError("invalid spec: " + "; ".join(exc.problems)) from None
+            raise PydanticCustomError(
+                "spec_invalid",
+                "invalid spec: {summary}",
+                {
+                    "summary": "; ".join(exc.problems),
+                    "problems": problems_with_paths(exc.problems),
+                },
+            ) from None
 
     @model_validator(mode="after")
     def _spec_decides_the_size(self) -> "JobRequest":
@@ -1134,6 +1210,23 @@ class JobRequest(BaseModel):
                     f"a spec decides every dimension; {', '.join(named)} cannot be "
                     "combined with spec"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _a_job_always_has_a_label(self) -> "JobRequest":
+        """Every job is titled by its `prompt`; a spec job's title comes from the spec.
+
+        Runs after `_spec_is_valid`, so `self.spec` is the canonical form and the
+        label describes the spec that will actually be compiled rather than the bytes
+        that arrived. A request with neither a prompt nor a spec has nothing to build
+        and nothing to call itself, and is refused exactly as `min_length=1` refused
+        it before.
+        """
+        if self.prompt.strip():
+            return self
+        if self.spec is None:
+            raise ValueError("prompt must not be empty unless a spec is supplied")
+        self.prompt = spec_label(self.spec)
         return self
 
 
@@ -3722,6 +3815,109 @@ async def prompt_size_hint(request: SizeHintRequest):
         "span": list(hint.span),
         "axis": hint.axis,
     }}
+
+
+class SpecResolveRequest(BaseModel):
+    """A spec, as the composer has it so far. Deliberately unvalidated by pydantic —
+    the schema is the validator, and its refusal is this endpoint's answer.
+
+    The one thing pydantic does still refuse is a `spec` that is not an object at all:
+    an omitted key is an empty spec, but an explicit `null` is a 422 rather than a 200
+    carrying `schema_valid: false`. Left that way because the composer never sends one
+    — `specFromForm` always builds an object — and because "not a spec" and "a spec
+    with problems" are different answers, not because the endpoint's own promise of an
+    answer for a spec *complete or not* has an exception worth explaining to a caller.
+    """
+    spec: Dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/organizer/resolve")
+async def resolve_organizer_spec(request: SpecResolveRequest):
+    """Resolve a spec the way the compiler will, and say what is wrong with it.
+
+    The composer's arithmetic, and the reason it is here rather than in TypeScript:
+    **no number may appear on screen that a browser computed.** A stack height is a
+    function of the dimension KB (`pythonsrc/organizer/dimensions.py`), and a second
+    copy of that table in the client would drift from the one the geometry is built
+    from — the same failure as a fits badge with nothing behind it, which is what the
+    whole parametric pitch exists to refuse. So the form posts what the person typed
+    and renders what comes back, and every millimetre it shows carries the `basis`
+    sentence that says where it came from.
+
+    Three things come back, and nothing else is computed here:
+
+    - **the canonical spec and its hash** — what `POST /jobs` would store, so the
+      table under the form shows the defaults the schema resolved (an archetype's
+      wall, a fit intent's clearance) rather than blanks or client-side guesses;
+    - **the resolved stack per compartment** — `resolve_stack`'s footprint, pitch,
+      height and its `basis`;
+    - **every problem, with the dotted path it names** — `problems_with_paths`, the
+      same shape `POST /jobs`'s 422 carries, so one mapping in the client routes both.
+
+    **There is no fit verdict**, and that is not an omission. `deck_box.fits_check`
+    imports `manifold3d`, which the api-server image does not install, so this
+    process cannot honestly answer "does it fit" — and the only verdict this product
+    shows is Phase 3's measurement of the exported mesh anyway.
+
+    The answer is `schema_valid` rather than `valid` for the same reason. Only
+    `OrganizerSpec.from_dict` ran: the archetype's own rules — a deck box needs a lid
+    section, a divider needs a divider section and no lid, a lip may not be thinner
+    than `process.min_feature_mm` — live in modules that import the kernel and are
+    enforced in Phase 2. A field called `valid` would claim a check nobody made.
+
+    **A spec the schema refuses is still a 200.** The refusal *is* the answer a
+    composer asked for: this endpoint reads nothing, writes nothing and starts
+    nothing, and it is called while somebody is still typing, so answering a
+    half-built spec with a 4xx would make every keystroke an error in the log and in
+    the activity feed. `POST /jobs` is where a bad spec is refused, and it still is.
+
+    Args:
+        request: `{"spec": {...}}` — a spec as JSON, complete or not.
+
+    Returns:
+        `{"schema_valid", "problems", "spec", "spec_hash", "label", "stacks"}`. When
+        `schema_valid` is false every field but `problems` is None or empty.
+    """
+    try:
+        spec = OrganizerSpec.from_dict(request.spec)
+    except SpecError as exc:
+        return {
+            "schema_valid": False,
+            "problems": problems_with_paths(exc.problems),
+            "spec": None,
+            "spec_hash": None,
+            "label": None,
+            "stacks": [],
+        }
+
+    canonical = spec.to_dict()
+    stacks = []
+    for compartment in spec.compartments:
+        stack = resolve_stack(
+            compartment.contents.count,
+            compartment.contents.card,
+            compartment.contents.sleeving,
+        )
+        stacks.append({
+            "count": stack.count,
+            "card": stack.card,
+            "sleeving": stack.sleeving,
+            "footprint_w_mm": stack.footprint_w_mm,
+            "footprint_h_mm": stack.footprint_h_mm,
+            "pitch_mm": stack.pitch_mm,
+            "stack_height_mm": stack.stack_height_mm,
+            "basis": stack.basis,
+        })
+
+    return {
+        "schema_valid": True,
+        "problems": [],
+        "spec": canonical,
+        "spec_hash": spec_hash(spec),
+        # What the job would be called if nobody types a line. See `spec_label`.
+        "label": spec_label(canonical),
+        "stacks": stacks,
+    }
 
 
 @app.get("/health")

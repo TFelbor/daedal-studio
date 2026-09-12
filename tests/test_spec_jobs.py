@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from pythonsrc.organizer.spec import OrganizerSpec, canonical_json
 from pythonsrc.telemetry.db import TelemetryDB
@@ -233,3 +234,165 @@ def test_a_client_cannot_claim_spec_as_a_size_source():
     """Only the server derives it, from the presence of a spec."""
     with pytest.raises(Exception):
         _request(target_mm=80.0, size_source="spec")
+
+
+# ── the composer's round trip ─────────────────────────────────────────────────
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_what_the_composer_resolved_is_what_the_job_is_built_from(mock_run, printer_configured, clean_inputs):
+    """The whole path the configurator walks, at the API level.
+
+    A person fills the form, the composer posts the spec to `/organizer/resolve` and
+    shows what comes back — the canonical spec, the resolved stack and its basis —
+    and then submits. What they were shown and what the pipeline is handed have to be
+    the same object, or the panel was describing a different part than the one that
+    gets printed. They are one object because both ends run `OrganizerSpec.from_dict`
+    and store the canonical form.
+    """
+    # What the form builds: every millimetre field blank, so the sections are bare.
+    composed = {
+        "archetype": "deck_box",
+        "compartments": [{"contents": {"count": 100, "card": "standard", "sleeving": "double"}}],
+        "lid": {"kind": "lift_off"},
+        "process": {"fit_intent": "snug"},
+        "schema_version": 1,
+    }
+
+    shown = client.post("/organizer/resolve", json={"spec": composed}).json()
+    assert shown["schema_valid"] is True
+    assert shown["stacks"][0]["stack_height_mm"] == 70.0     # 100 × 0,70 mm
+    assert shown["spec"]["process"]["wall_mm"] == 2.4        # the archetype's own
+
+    resp = client.post("/jobs", json={"printer_id": "default", "spec": composed})
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["job_id"]
+    clean_inputs.append(job_id)
+
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    assert job.size_source == "spec"
+    assert job.request_params["spec"] == shown["spec"]
+    assert job.prompt == shown["label"]
+    # And the spec the running view shows back is that same object. (Issue #66.)
+    assert client.get(f"/jobs/{job_id}").json()["spec"] == shown["spec"]
+    # Phases 1 and 2 are skipped and the pipeline is handed the file, not a size.
+    launched = mock_run.call_args.args[1]
+    args = app_module._pipeline_args(launched, skip_viz=True, skip_sculpt=True, profile=None)
+    assert args[args.index("--spec") + 1] == f"/app/data/inputs/{job_id}/spec.json"
+    assert "--target-mm" not in args
+
+
+# ── the 422 reaches the field that caused it ──────────────────────────────────
+#
+# A composer can only put a refusal on the control that caused it if the path is a
+# value. Splitting the joined sentence in the browser was the alternative, on a
+# separator no test here could hold.
+
+def _spec_error(resp):
+    """The one 422 detail entry about the spec."""
+    entries = [e for e in resp.json()["detail"] if e["loc"][-1] == "spec"]
+    assert len(entries) == 1, resp.text
+    return entries[0]
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_refused_spec_carries_every_problem_with_its_dotted_path(mock_run, printer_configured):
+    bad = dict(
+        SPEC,
+        compartments=[{"contents": {"count": 0, "card": "standard", "sleeving": "double"}}],
+        lid=dict(SPEC["lid"], clearance_mm=-1),
+    )
+    resp = client.post("/jobs", json={"prompt": "a deck box", "printer_id": "default", "spec": bad})
+    assert resp.status_code == 422
+    problems = _spec_error(resp)["ctx"]["problems"]
+    assert {p["path"] for p in problems} == {
+        "spec.compartments[0].contents.count", "spec.lid.clearance_mm",
+    }
+    for problem in problems:
+        assert problem["message"].startswith(problem["path"] + " ")
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_the_joined_refusal_survives_beside_the_structured_one(mock_run, printer_configured):
+    """A caller that reads only `msg` still gets the whole refusal — a spec is refused
+    whole, and that must not depend on understanding the new field."""
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box", "printer_id": "default", "spec": dict(SPEC, archetype="dragon"),
+    })
+    assert resp.status_code == 422
+    entry = _spec_error(resp)
+    assert "archetype" in entry["msg"]
+    assert entry["msg"] == "invalid spec: " + "; ".join(
+        p["message"] for p in entry["ctx"]["problems"]
+    )
+
+
+# ── the label a spec job is titled with ───────────────────────────────────────
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_spec_job_with_no_prompt_is_titled_from_its_spec(mock_run, printer_configured, clean_inputs):
+    """A spec job has no prompt — nobody typed words, the geometry is the spec's. The
+    row's `prompt` is what every list and feed line names a job with, so the server
+    derives a label from the spec rather than storing an empty column or inventing a
+    sentence about a box nobody described."""
+    resp = client.post("/jobs", json={"printer_id": "default", "spec": SPEC})
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["job_id"]
+    clean_inputs.append(job_id)
+
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    assert job.prompt == "deck box · 100 double-sleeved standard cards"
+    # And the request the gate's continuation replays says the same thing.
+    assert job.request_params["prompt"] == job.prompt
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_line_somebody_typed_beats_the_generated_one(mock_run, printer_configured, clean_inputs):
+    resp = client.post("/jobs", json={
+        "printer_id": "default", "spec": SPEC, "prompt": "Kess deck, birthday present",
+    })
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["job_id"]
+    clean_inputs.append(job_id)
+
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+    assert job.prompt == "Kess deck, birthday present"
+
+
+def test_a_job_with_neither_a_prompt_nor_a_spec_is_refused():
+    """What `min_length=1` used to do, kept: a prompt job with no prompt has nothing to
+    build and nothing to call itself."""
+    with pytest.raises(ValidationError):
+        _request(prompt="   ")
+
+
+@pytest.mark.parametrize("body, id", [
+    pytest.param({"printer_id": "default"}, "absent", id="prompt-absent"),
+    pytest.param({"printer_id": "default", "prompt": ""}, "empty", id="prompt-empty"),
+    pytest.param({"printer_id": "default", "prompt": "   "}, "blank", id="prompt-blank"),
+])
+def test_post_jobs_refuses_a_body_with_neither_a_prompt_nor_a_spec(body, id):
+    """The rule over HTTP, where it is actually reached, and with no row written.
+
+    `prompt` stopped being `min_length=1` so a spec job could carry none, and what
+    replaced it is a model validator — which is a different thing to get wrong:
+    `pytest.raises(Exception)` on a direct construction passes just as well when the
+    validator raises `TypeError` from a bug in the label it builds. Three shapes,
+    because `min_length=1` accepted `"   "` and `.strip()` does not, so the blank case
+    is the one that changed.
+    """
+    before = _row_count()
+    resp = client.post("/jobs", json=body)
+
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert any(
+        "prompt must not be empty unless a spec is supplied" in entry.get("msg", "")
+        for entry in detail
+    ), detail
+    assert _row_count() == before, "a refused request must not leave a job row"

@@ -27,6 +27,8 @@ from pythonsrc.organizer.spec import (
     Process,
     SpecError,
     check_wall_floor,
+    problem_path,
+    problems_with_paths,
     wall_floor_mm,
     wall_floor_problems,
 )
@@ -630,3 +632,57 @@ def test_the_package_exports_the_schema_without_the_kernel():
     imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     assert imported == {"spec"}
+
+
+# ── every problem names a field, and the name is readable as data ──────────────
+#
+# A form can only put a refusal on the control it is about if the path is a value
+# rather than a phrase inside a sentence. These tests are what the composer's
+# field-level errors and `POST /jobs`'s 422 both stand on.
+
+def test_a_problem_path_is_its_first_token():
+    assert problem_path("spec.lid.clearance_mm must be ≥ 0 mm, got -1") == "spec.lid.clearance_mm"
+    assert problem_path("spec.process has unknown field(s): nope") == "spec.process"
+
+
+def test_every_schema_problem_starts_with_the_path_it_is_about():
+    """The convention `problem_path` rests on, exercised across the whole shape of the
+    schema: a nested field, a leaf's own rule, an unknown key and a bad tuple."""
+    bad = {
+        "archetype": "dragon",
+        "compartments": [{"contents": {"count": 0, "card": "standard", "sleeving": "double"}}],
+        "lid": {"kind": "slide", "clearance_mm": -1},
+        "process": {"floor_mm": -2, "nope": 1},
+        "constraints": {"max_external_mm": [10, 10]},
+    }
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(bad)
+    pairs = problems_with_paths(exc.value.problems)
+    paths = [p["path"] for p in pairs]
+    assert "spec.process" in paths            # the unknown key, on its owner
+    assert "spec.constraints.max_external_mm" in paths
+    # Every path is dotted from `spec` and names something, never a bare sentence.
+    for problem, pair in zip(exc.value.problems, pairs):
+        assert pair["message"] == problem
+        assert pair["path"] == problem.split(" ")[0]
+        assert pair["path"] == "spec" or pair["path"].startswith("spec.")
+
+
+def test_paths_reach_into_a_compartment_by_index():
+    bad = {
+        "archetype": "deck_box",
+        "compartments": [{"contents": {"count": 100}}, {"contents": {"count": 0}}],
+    }
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(bad)
+    paths = [p["path"] for p in problems_with_paths(exc.value.problems)]
+    assert "spec.compartments[1].contents.count" in paths
+
+
+def test_problems_with_paths_keeps_the_order_and_the_whole_sentence():
+    """A spec is refused whole, so the list is the refusal — nothing may be dropped or
+    reordered on the way to the field it belongs on."""
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({"archetype": "deck_box", "compartments": []})
+    pairs = problems_with_paths(exc.value.problems)
+    assert [p["message"] for p in pairs] == exc.value.problems

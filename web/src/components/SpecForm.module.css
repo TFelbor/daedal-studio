@@ -1,0 +1,126 @@
+/* The configurator. A grid of labelled controls, then the server's own readout of
+   what they resolve to — the same order the trust argument is made in: here is what
+   you asked for, here is what it comes to, and here is where those numbers are from. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field .input {
+  width: 100%;
+}
+
+.fieldNote {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-ghost);
+}
+
+.intentSeg button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 7px 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.intentSeg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* A refusal reads as one: the failure colour, monospaced like the value it is about,
+   and directly under the control that caused it. */
+.problems {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--bad-ink);
+}
+
+.formProblems {
+  align-items: flex-start;
+}
+
+.formProblem {
+  display: block;
+}
+
+/* Not a verdict, and styled so it cannot be read as one: no tick, no colour, just
+   the sum and its provenance. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.stackHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.stackTag {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.stackSum {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-body);
+}
+
+.stackBasis {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-ghost);
+}
+
+/* Dashed, like every other empty box in the app, so it reads as absent rather than
+   as a result. */
+.stackEmpty {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px dashed var(--rule-strong);
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-ghost);
+}
+
+.stackEmpty svg {
+  flex: none;
+  margin-top: 2px;
+}

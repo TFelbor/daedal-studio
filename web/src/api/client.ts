@@ -246,7 +246,13 @@ export interface TelemetrySample {
 }
 
 export interface JobRequest {
-  prompt: string;
+  /**
+   * What the person typed. Optional, and only for a spec job: a spec job has no
+   * prompt — nobody described a shape, the geometry is a function of the spec — and
+   * the server titles it from the spec itself rather than storing an empty column.
+   * See `spec_label` in server/app.py. A job with neither is refused.
+   */
+  prompt?: string;
   printer_id: string;
   profile: string;
   skip_visualizer: boolean;
@@ -286,6 +292,23 @@ export interface JobRequest {
    * sent — the server writes "default" itself and will not take our word for it.
    */
   size_source?: 'user' | 'prompt_hint';
+  /**
+   * An organizer spec. The parametric path: the pipeline compiles this in place of
+   * Phases 1–2 and asserts its dimensions after Phase 3, and the row records
+   * `size_source: "spec"`.
+   *
+   * Typed as a plain object rather than as `RawSpec` on purpose. `RawSpec` is the
+   * *canonical* form the server stores — every field present, every default
+   * resolved — and a request is allowed to be smaller than that: omitting `process`
+   * means "the schema's defaults", and spelling them out in the browser would put a
+   * second copy of the archetype's wall thickness on the wire. Send what was typed;
+   * the server normalises and hands the canonical form back.
+   *
+   * Never sent with `target_mm`, `scale_axis` or `size_source` — a spec decides every
+   * dimension, and the server refuses the combination so the row cannot lie about who
+   * chose the size.
+   */
+  spec?: Record<string, unknown>;
 }
 
 /** Filament types the mass estimate has a density for. */
@@ -438,6 +461,58 @@ export interface PrinterInfo {
   machine_dimensions: { width: number; depth: number; height: number } | null;
 }
 
+/** One thing wrong with a spec, and the dotted field it is about. */
+export interface SpecProblem {
+  /** `spec.lid.clearance_mm`, `spec.compartments[0].contents.count`, … */
+  path: string;
+  /** The whole sentence, which begins with `path`. */
+  message: string;
+}
+
+/**
+ * A failed request, with whatever the server said about it kept as data.
+ *
+ * `new Error(body.detail)` was the old shape, and it is wrong for exactly the case
+ * this feature needs: FastAPI's 422 detail is an *array* of entries, so a rejected
+ * spec reached the user as the string "[object Object]" and the composer had nothing
+ * to route. The message is now built from those entries, and `specProblems` carries
+ * the structured list the server attaches to a spec refusal.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  /** Every spec problem the server named, or empty when it was not about a spec. */
+  readonly specProblems: SpecProblem[];
+
+  constructor(status: number, message: string, specProblems: SpecProblem[] = []) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.specProblems = specProblems;
+  }
+}
+
+/** One FastAPI validation entry. `ctx.problems` is set for a refused spec. */
+interface ValidationEntry {
+  msg?: string;
+  loc?: (string | number)[];
+  ctx?: { problems?: SpecProblem[] };
+}
+
+function isValidationEntries(detail: unknown): detail is ValidationEntry[] {
+  return Array.isArray(detail);
+}
+
+/** Everything the server said, as one sentence and as a routable list. */
+function readError(status: number, body: unknown, fallback: string): ApiError {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (isValidationEntries(detail)) {
+    const problems = detail.flatMap((entry) => entry.ctx?.problems ?? []);
+    const message = detail.map((entry) => entry.msg).filter(Boolean).join('; ');
+    return new ApiError(status, message || fallback, problems);
+  }
+  return new ApiError(status, typeof detail === 'string' ? detail : fallback, []);
+}
+
 export async function createJob(request: JobRequest): Promise<JobResponse> {
   const res = await fetch('/jobs', {
     method: 'POST',
@@ -446,7 +521,68 @@ export async function createJob(request: JobRequest): Promise<JobResponse> {
   });
   if (!res.ok) {
     const errBody = await res.json().catch(() => null);
-    throw new Error(errBody?.detail || `Failed to create job (${res.status})`);
+    throw readError(res.status, errBody, `Failed to create job (${res.status})`);
+  }
+  return res.json();
+}
+
+/** One card stack as `pythonsrc/organizer/dimensions.py` resolves it. */
+export interface ResolvedStack {
+  count: number;
+  card: string;
+  sleeving: string;
+  /** Outside W × H of one card as sleeved, mm. */
+  footprint_w_mm: number;
+  footprint_h_mm: number;
+  /** Design pitch per card in the stack direction, mm. */
+  pitch_mm: number;
+  stack_height_mm: number;
+  /** Where every figure above came from, so the sum can be audited by hand. */
+  basis: string;
+}
+
+/**
+ * What `POST /organizer/resolve` answers with.
+ *
+ * `schema_valid` and not `valid`: only the schema ran. The archetype's own rules — a
+ * deck box needs a lid section, a lip may not be thinner than the minimum feature —
+ * import the geometry kernel, which the API server does not install, and are enforced
+ * when Phase 2 compiles. There is no `fits` for the same reason, and none is invented
+ * here: the only fit verdict this product shows is Phase 3's measurement of the
+ * exported mesh.
+ */
+export interface SpecResolveResponse {
+  schema_valid: boolean;
+  problems: SpecProblem[];
+  /** The canonical spec, with every default the schema resolved. Null when refused. */
+  spec: RawSpec | null;
+  spec_hash: string | null;
+  /** What the job would be titled if nobody types a line. */
+  label: string | null;
+  stacks: ResolvedStack[];
+}
+
+/**
+ * Resolve a spec the way the compiler will: canonical form, hash, stacks, problems.
+ *
+ * The composer's only source of numbers. A stack height is a function of the
+ * dimension KB, and computing one in the browser would be a second copy of that table
+ * drifting from the one the geometry is built from — the same failure as a fit badge
+ * with nothing behind it.
+ *
+ * A spec the schema refuses is a 200 carrying its problems, because this is called
+ * while somebody is still typing. A transport failure is not, and throws: an empty
+ * panel is honest, a stale one is not.
+ */
+export async function resolveSpec(spec: Record<string, unknown>): Promise<SpecResolveResponse> {
+  const res = await fetch('/organizer/resolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spec }),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw readError(res.status, errBody, `The server answered ${res.status}`);
   }
   return res.json();
 }

@@ -214,30 +214,68 @@ def test_no_visible_string_presents_a_figurine_as_the_product(word):
     )
 
 
-@pytest.mark.parametrize(
-    "source",
-    ["web/src/components/PromptZoom.tsx", "web/src/pages/NewJob.tsx"],
-)
-def test_the_example_prompts_describe_something_the_engine_could_compile(source):
+#: The two fields that offer the example prompt. They are one control at two
+#: magnifications — see PROMPT_SUBMIT_SITES, which is the same pair for the same
+#: reason.
+PROMPT_PLACEHOLDER_SITES = [
+    "web/src/components/PromptZoom.tsx",
+    "web/src/pages/NewJob.tsx",
+]
+
+
+def _prompt_placeholder() -> str:
+    """`PROMPT_PLACEHOLDER` as `promptLimits.ts` declares it."""
+    text = (REPO_ROOT / "web/src/components/promptLimits.ts").read_text()
+    found = re.search(r"export const PROMPT_PLACEHOLDER =\s*'([^']+)'", text)
+    assert found, (
+        "promptLimits.ts no longer exports a PROMPT_PLACEHOLDER string literal. "
+        "It is the one place the example prompt is written; if it moved, move this "
+        "test with it rather than deleting the check."
+    )
+    return found.group(1)
+
+
+def test_the_example_prompt_describes_something_the_engine_could_compile():
     """A placeholder is the strongest copy on the page: it is what people edit.
 
     The zoomed field offered "A low poly planter box with a modern geometric
     design…" while the landing field beside it offered a Commander deck box — two
     fields for the same prompt disagreeing about what the product makes.
+
+    Read off the constant rather than out of the JSX. This used to grep both files
+    for `placeholder="…"`, which stopped seeing anything the moment the landing field
+    became a JSX expression — the test went red for a reason that had nothing to do
+    with the copy, which is the failure mode a text guard is worst at.
+    """
+    prompt = _prompt_placeholder()
+    assert any(
+        word in prompt.lower()
+        for word in ("card", "sleeve", "dice", "deck", "tray", "divider")
+    ), (
+        f"PROMPT_PLACEHOLDER offers {prompt!r} as an example. The engine compiles "
+        "organizers — deck boxes and card dividers — and an example it would "
+        "refuse teaches the wrong prompt."
+    )
+
+
+@pytest.mark.parametrize("source", PROMPT_PLACEHOLDER_SITES)
+def test_neither_prompt_field_carries_an_example_of_its_own(source):
+    """The drift the constant exists to prevent, caught if it comes back.
+
+    `PROMPT_PLACEHOLDER`'s own docstring says one constant makes the disagreement
+    impossible — and it only does while both fields read it. `PromptZoom` kept its
+    literal through the change that introduced the constant, so the two example
+    prompts were different again the same day.
+
+    A short placeholder is fine: "Name this job — blank names it after the spec" is a
+    label, not an example of what to build.
     """
     text = (REPO_ROOT / source).read_text()
-    placeholders = re.findall(r'placeholder="([^"]+)"', text)
-    prompts = [p for p in placeholders if len(p) > 40]
-    assert prompts, f"{source} has no example prompt to check"
-    for prompt in prompts:
-        assert any(
-            word in prompt.lower()
-            for word in ("card", "sleeve", "dice", "deck", "tray", "divider")
-        ), (
-            f"{source} offers {prompt!r} as an example. The engine compiles "
-            "organizers — deck boxes and card dividers — and an example it would "
-            "refuse teaches the wrong prompt."
-        )
+    literals = [p for p in re.findall(r'placeholder="([^"]+)"', text) if len(p) > 40]
+    assert literals == [], (
+        f"{source} writes its own example prompt: {literals}. Both fields must read "
+        "PROMPT_PLACEHOLDER from promptLimits.ts, or they will disagree again."
+    )
 
 
 #: The two fields that compose one prompt. The landing field and `PromptZoom` edit the

@@ -5,6 +5,7 @@ import { Marks } from './Blueprint';
 import {
   COUNTER_REVEAL,
   MAX_PROMPT_CHARS,
+  PROMPT_PLACEHOLDER,
   PROMPT_SUBMIT_BUSY_LABEL,
   PROMPT_SUBMIT_LABEL,
 } from './promptLimits';
@@ -17,6 +18,27 @@ interface PromptZoomProps {
   /** Called with the trimmed prompt. The parent owns starting the job. */
   onSubmit: (prompt: string) => void;
   onClose: () => void;
+  /**
+   * What the empty field offers, and what a screen reader calls it.
+   *
+   * Defaulted rather than required because the free-prompt path is what this control
+   * was built for. They are props at all because the field means something different
+   * once a spec is composed: it stops being the description the geometry comes from
+   * and becomes the job's name, and a plate that still said *describe the organizer
+   * to build* would be the same drift as the two literals this component used to hold
+   * — one control at two magnifications, disagreeing about what it is for.
+   */
+  placeholder?: string;
+  ariaLabel?: string;
+  /**
+   * Whether an empty field may still be submitted.
+   *
+   * True on the spec path, where the line is an optional name and the server titles
+   * the job from the spec when nobody typed one. The page's own submit button already
+   * allows it there; this plate refused, so the same job could be sent from one field
+   * and not from the other.
+   */
+  allowEmpty?: boolean;
 }
 
 /**
@@ -33,13 +55,22 @@ interface PromptZoomProps {
  * a modal interruption, and this is the same task at a different magnification, not a
  * different task.
  */
-export function PromptZoom({ value, busy, onChange, onSubmit, onClose }: PromptZoomProps) {
+export function PromptZoom({
+  value,
+  busy,
+  onChange,
+  onSubmit,
+  onClose,
+  placeholder = PROMPT_PLACEHOLDER,
+  ariaLabel = 'Describe the organizer to build',
+  allowEmpty = false,
+}: PromptZoomProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const trimmed = value.trim();
   const remaining = MAX_PROMPT_CHARS - value.length;
-  const canSubmit = trimmed.length > 0 && !busy;
+  const canSubmit = (allowEmpty || trimmed.length > 0) && !busy;
 
   // Take focus with the caret *after* the existing text: this is a continuation of
   // what someone was already typing, and a selected-all field invites deleting it.
@@ -112,8 +143,8 @@ export function PromptZoom({ value, busy, onChange, onSubmit, onClose }: PromptZ
             className={styles.input}
             value={value}
             maxLength={MAX_PROMPT_CHARS}
-            placeholder="A deck box for 100 double-sleeved commander cards, with a removable tray for 12 dice and a lid that snaps shut…"
-            aria-label="Describe the organizer to build"
+            placeholder={placeholder}
+            aria-label={ariaLabel}
             disabled={busy}
             onChange={event => onChange(event.target.value)}
             onKeyDown={event => {

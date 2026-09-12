@@ -765,6 +765,13 @@
   margin: 6px 0 0;
 }
 
+/* What the prompt field is once a spec is being composed: a name, not an input to
+   the geometry. Sits directly under the field it re-describes. */
+.specPromptNote {
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
 .hintApply {
   background: none;
   border: 0;

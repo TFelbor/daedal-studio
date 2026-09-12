@@ -30,6 +30,8 @@ from .spec import (  # noqa: F401
     check_wall_floor,
     dump_spec,
     load_spec,
+    problem_path,
+    problems_with_paths,
     spec_diff,
     spec_hash,
     wall_floor_mm,

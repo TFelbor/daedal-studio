@@ -19,22 +19,32 @@ import { PrintabilityCard } from '../components/PrintabilityCard';
 import { PromptZoom } from '../components/PromptZoom';
 import { ArchetypeStrip } from '../components/ArchetypeStrip';
 import { FitsCheck } from '../components/FitsCheck';
+import { SpecForm } from '../components/SpecForm';
 import { SpecPanel } from '../components/SpecPanel';
 import {
   COUNTER_REVEAL,
   MAX_PROMPT_CHARS,
+  PROMPT_PLACEHOLDER,
   PROMPT_SUBMIT_BUSY_LABEL,
   PROMPT_SUBMIT_LABEL,
 } from '../components/promptLimits';
 import {
+  ApiError,
   createJob,
   fetchSizeHint,
   getJob,
   listJobs,
   markPreviewReached,
   MATERIAL_TYPES,
+  resolveSpec,
 } from '../api/client';
-import type { JobStatusResponse, SizeHint, TelemetrySample } from '../api/client';
+import type {
+  JobStatusResponse,
+  SizeHint,
+  SpecProblem,
+  SpecResolveResponse,
+  TelemetrySample,
+} from '../api/client';
 import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
 import { closeSocket } from '../api/ws';
@@ -42,10 +52,17 @@ import { useActivityFeed } from '../hooks/useActivityFeed';
 import { PIPELINE } from '../pipeline';
 import {
   NO_SPEC_REASON,
+  UNCOMPILED_SPEC_FIT_REASON,
   UNCOMPOSED_SPEC_REASON,
   specFromJob,
   type ArchetypeId,
 } from '../organizer/spec';
+import {
+  DEFAULT_SPEC_FORM,
+  mergeProblems,
+  specFromForm,
+  type SpecFormState,
+} from '../organizer/specForm';
 import styles from './NewJob.module.css';
 
 interface PhaseStatus {
@@ -194,12 +211,33 @@ function recallWatchedJob(): string | null {
 export function NewJob() {
   const [prompt, setPrompt] = useState('');
   /**
-   * The archetype steer, or null for a free prompt.
+   * The archetype being composed, or null for a free prompt.
    *
-   * Held here rather than in the composer because it travels with the prompt to
-   * the composer phase; it is a hint about what is being asked for, not a mode.
+   * This *is* the mode, and it was not always: the strip used to be described as a
+   * hint that travelled with the prompt to a composer phase, which was true of a
+   * composer that could extract a spec from words. Nothing extracts anything yet
+   * (that is a later issue), so as a hint the strip did nothing at all — it reported
+   * the choice to UI telemetry and sent it nowhere. Picking one now opens the
+   * configurator, because the archetype is the one thing the engine actually
+   * compiles; clearing it goes back to the generative path unchanged.
    */
   const [archetype, setArchetype] = useState<ArchetypeId | null>(null);
+  /** The configurator's fields. See `organizer/specForm.ts`. */
+  const [specForm, setSpecForm] = useState<SpecFormState>(DEFAULT_SPEC_FORM);
+  /** The server's answer for the spec as it stands. Null until it has answered. */
+  const [resolved, setResolved] = useState<SpecResolveResponse | null>(null);
+  const [resolving, setResolving] = useState(false);
+  /**
+   * The last resolve did not come back at all.
+   *
+   * Separate from `resolved === null`, which is also what a spec nobody has composed
+   * yet looks like. A failed request used to be indistinguishable from a refused
+   * spec, so an API server restarting mid-edit told the person their fields were
+   * wrong and put no problem on any control to say which.
+   */
+  const [resolveFailed, setResolveFailed] = useState(false);
+  /** Problems a refused `POST /jobs` named, kept until the next edit re-resolves. */
+  const [submitProblems, setSubmitProblems] = useState<SpecProblem[]>([]);
   const [materialType, setMaterialType] = useState('PLA');
   const [materialBrand, setMaterialBrand] = useState('');
   const [materialColour, setMaterialColour] = useState('');
@@ -280,6 +318,36 @@ export function NewJob() {
   const heightWasClamped = requestedHeightMm !== undefined
     && resolvedHeightMm !== undefined
     && resolvedHeightMm < requestedHeightMm;
+
+  /** The spec the configurator currently describes, or null in free-prompt mode. */
+  const composedSpec = archetype ? specFromForm({ ...specForm, archetype }) : null;
+  /**
+   * The same thing as a string, because it is an effect dependency: a fresh object
+   * every render would re-resolve on every render, and the serialised form is exactly
+   * the identity that matters — two edits producing the same spec are one request.
+   */
+  const composedSpecJson = composedSpec === null ? null : JSON.stringify(composedSpec);
+  /** Everything the server has said is wrong, live and from the last refused submit. */
+  const specProblems = mergeProblems(resolved?.problems ?? [], submitProblems);
+
+  /**
+   * What the prompt field offers and what a screen reader calls it, in one place.
+   *
+   * The field is two controls — the one on the page and `PromptZoom`'s, the same text
+   * at a different magnification — and once a spec is composed it stops being the
+   * description the geometry comes from and becomes the job's optional name. Deriving
+   * both strings here rather than at each render site is `PROMPT_PLACEHOLDER`'s own
+   * argument: the two have already been caught disagreeing once, and a guard can only
+   * notice that afterwards.
+   */
+  const promptPlaceholder = composedSpec
+    ? (resolved?.label
+      ? `Name this job — blank calls it “${resolved.label}”`
+      : 'Name this job — blank names it after the spec')
+    : PROMPT_PLACEHOLDER;
+  const promptAriaLabel = composedSpec
+    ? 'Name this job (optional)'
+    : 'Describe the organizer to build';
 
   useEffect(() => {
     getConfig()
@@ -669,21 +737,29 @@ export function NewJob() {
   }, [jobId, activeTab, meshReady, sliceReady]);
 
   /**
-   * Start a job for `text`, from either entry point.
+   * Start a job for `text`, from any entry point, with or without a spec.
    *
    * Split out of `handleSubmit` so the landing form and the inline composer share one
    * implementation. They previously would have needed two, and the second would have
    * been the one that forgot to record the material.
+   *
+   * `spec` is the parametric path, and it is exclusive with the size: the server
+   * refuses a spec beside `target_mm`, `scale_axis` or `size_source`, because
+   * `size_source` exists so the row can say who chose the size and a request naming
+   * both would make it lie whichever way it answered. The prompt is optional there
+   * and only there — a spec job has no prompt, and the server titles it from the spec
+   * unless somebody typed a line of their own.
    */
-  const startJob = async (text: string) => {
+  const startJob = async (text: string, spec?: Record<string, unknown>) => {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if ((!trimmed && !spec) || loading) return;
 
     setLoading(true);
     setSubmitError(null);
+    setSubmitProblems([]);
     try {
       const data = await createJob({
-        prompt: trimmed,
+        prompt: trimmed || undefined,
         printer_id: 'default_printer',
         profile: configDefaults.profile,
         skip_visualizer: configDefaults.skipVisualizer,
@@ -706,11 +782,18 @@ export function NewJob() {
         // Engineer now scales. Sent explicitly rather than relying on the pipeline
         // default so the row records the axis the person was actually shown; a
         // "Height" label over a longest-edge job is the bug this pairing catches.
-        target_mm: resolvedHeightMm,
-        scale_axis: resolvedHeightMm !== undefined ? 'height' : undefined,
-        size_source: resolvedHeightMm === undefined
-          ? undefined
-          : (sizeFromHint ? 'prompt_hint' : 'user'),
+        //
+        // None of the three is sent with a spec: the spec is the size, and the row
+        // records `size_source: "spec"` because the server saw one.
+        ...(spec
+          ? { spec }
+          : {
+            target_mm: resolvedHeightMm,
+            scale_axis: resolvedHeightMm !== undefined ? 'height' : undefined,
+            size_source: resolvedHeightMm === undefined
+              ? undefined
+              : (sizeFromHint ? 'prompt_hint' : 'user') as 'prompt_hint' | 'user',
+          }),
       });
       // Everything from the job being replaced has to go, or the new run inherits its
       // log, its telemetry and its socket.
@@ -719,7 +802,11 @@ export function NewJob() {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
-      setPrompt(trimmed);
+      // The title the running view carries until `GET /jobs/{id}` answers. For a spec
+      // job with no typed line that is the server's own label, read off the resolve
+      // that is already on screen — never a sentence composed here, which would be a
+      // second description of the same spec and would drift from the stored one.
+      setPrompt(trimmed || resolved?.label || '');
       setLogLines([]);
       setTelemetrySamples([]);
       setCurrentJob(null);
@@ -741,6 +828,13 @@ export function NewJob() {
 
       connectWebSocket(data.job_id);
     } catch (err: any) {
+      // A refused spec arrives as a list of problems, each naming its own field. They
+      // go onto those fields; the notice above the form is for everything else, and
+      // for the summary, because a person who has scrolled past the field that broke
+      // still needs to be told the job did not start.
+      if (err instanceof ApiError && err.specProblems.length) {
+        setSubmitProblems(err.specProblems);
+      }
       setSubmitError(err?.message || 'The job could not be started. Check the engine and try again.');
     } finally {
       setLoading(false);
@@ -749,7 +843,7 @@ export function NewJob() {
 
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
-    void startJob(prompt);
+    void startJob(prompt, composedSpec ?? undefined);
   };
 
   // ── Idle: the prompt and the pipeline it starts ────────────────────────────
@@ -778,6 +872,58 @@ export function NewJob() {
       clearTimeout(timer);
     };
   }, [prompt]);
+
+  /**
+   * Ask the server what this spec resolves to, and what is wrong with it.
+   *
+   * Debounced like the size hint, and for the same reason — it runs on every
+   * keystroke. Every number the configurator shows comes from here; nothing in the
+   * browser computes a millimetre. A failed call clears the panel rather than leaving
+   * the previous answer under the new fields: a stale stack height beside an edited
+   * card count is precisely the confident-wrong-number this whole feature refuses.
+   *
+   * Above the `if (!isRunning)` return for the hook-order reason the size hint gives,
+   * and every `setState` is inside the timeout for the other reason it gives: a
+   * synchronous one in the effect body cascades a render on each character typed.
+   */
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(async () => {
+      if (!live) return;
+      if (!composedSpecJson) {
+        setResolved(null);
+        setResolveFailed(false);
+        setResolving(false);
+        return;
+      }
+      setResolving(true);
+      setResolveFailed(false);
+      // The last refusal was about the spec as it was; it is not about this one.
+      setSubmitProblems([]);
+      try {
+        const answer = await resolveSpec(JSON.parse(composedSpecJson));
+        if (live) setResolved(answer);
+      } catch {
+        // The notice under the submit button is the user-facing answer; showing the
+        // last good resolve under changed fields would be worse than showing none.
+        // Showing the last good resolve under changed fields would be worse than
+        // showing none — but "none" has to say *why*, or the form accuses the person
+        // of a mistake the server never reported. The submit button stays enabled:
+        // a resolve that could not run has refused nothing, and `POST /jobs`
+        // validates the spec again on its own.
+        if (live) {
+          setResolved(null);
+          setResolveFailed(true);
+        }
+      } finally {
+        if (live) setResolving(false);
+      }
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [composedSpecJson]);
 
   if (!isRunning) {
     const profileName = printerNameFromProfile(configDefaults.profile);
@@ -810,8 +956,12 @@ export function NewJob() {
             <h1 className={`display-lg ${styles.hero}`}>
               What are we<br />making today?
             </h1>
+            {/* "Your words become a spec" was the old line, and nothing turned words
+                into a spec — extraction is a later issue. Pick an archetype and you
+                fill the spec in yourself; leave it and you get the generative path,
+                which does start from words. Both are named, neither is promised. */}
             <p className={`lede ${styles.lede}`}>
-              Describe the cards, sleeves and dice it has to hold. Your words become a spec, the
+              Pick an archetype and fill in the numbers, or describe it in your own words. A
               spec becomes exact geometry — no guessing anywhere near a dimension, and nothing
               prints until you approve the numbers.
             </p>
@@ -844,27 +994,55 @@ export function NewJob() {
                   }}
                   disabled={!printerReady}
                 />
+
+                {/* The configurator, when an archetype has been picked. Above the
+                    prompt field rather than below it because in this mode the spec is
+                    the input and the line underneath is only the job's name. */}
+                {composedSpec && (
+                  <SpecForm
+                    state={{ ...specForm, archetype: archetype! }}
+                    onChange={setSpecForm}
+                    problems={specProblems}
+                    stacks={resolved?.stacks ?? []}
+                    resolving={resolving}
+                    unreachable={resolveFailed}
+                    disabled={!printerReady}
+                  />
+                )}
+
                 <Blueprint tone="accent" className={`field-frame ${styles.promptFrame}`}>
                   <textarea
                     id="job-prompt"
                     className={styles.promptInput}
-                    placeholder="A Commander deck box for 100 double-sleeved cards (Dragon Shield Perfect Fit + Matte), removable tray for 12 dice, magnetic snap lid."
-                    aria-label="Describe the organizer to build"
+                    placeholder={promptPlaceholder}
+                    aria-label={promptAriaLabel}
                     value={prompt}
                     maxLength={MAX_PROMPT_CHARS}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if (prompt.trim() && !loading && printerReady) {
+                        if ((prompt.trim() || composedSpec) && !loading && printerReady) {
                           void handleSubmit();
                         }
                       }
                     }}
-                    rows={3}
+                    rows={composedSpec ? 2 : 3}
                     autoFocus
                     disabled={!printerReady}
                   />
+
+                  {/* The copy that settles what the prompt field *is* once a spec is
+                      being composed. It is not an input to the geometry — the spec is
+                      the whole input — but `print_job.prompt` titles the job
+                      everywhere a job is listed, so it stays, as a name. Nothing reads
+                      it back into the shape, and saying so is the point. */}
+                  {composedSpec && (
+                    <p className={`hint ${styles.specPromptNote}`}>
+                      The spec above decides every dimension. This line only names the job;
+                      nothing reads it back into the geometry.
+                    </p>
+                  )}
 
                   <div className={styles.frameFooter}>
                     <div className={styles.materialRow}>
@@ -887,7 +1065,19 @@ export function NewJob() {
                     {/* Height, and it says height: the Engineer scales the Z extent
                         after seating the part, so this is the dimension that comes
                         out. Every job before this control existed printed at 50mm
-                        along its *longest* edge, whatever the prompt asked for. */}
+                        along its *longest* edge, whatever the prompt asked for.
+
+                        Absent in spec mode, and not merely disabled: a spec decides
+                        every dimension and the server refuses one sent beside a size,
+                        so a height control there would be a control that cannot be
+                        obeyed. What the part will measure is the resolved spec's,
+                        above. */}
+                    {composedSpec ? (
+                      <div className={styles.sizeRow}>
+                        <span className="label-tight">Height</span>
+                        <span className={styles.sizeReadout}>from the spec</span>
+                      </div>
+                    ) : (
                     <div className={styles.sizeRow}>
                       <label className="label-tight" htmlFor="size-custom">Height</label>
                       <div className={`seg ${styles.sizeSeg}`} role="group" aria-label="Print height">
@@ -939,6 +1129,7 @@ export function NewJob() {
                           : '50 mm (default)'}
                       </span>
                     </div>
+                    )}
                     <div className={styles.footerRight}>
                       {/* Appears only near the ceiling. See MAX_PROMPT_CHARS. */}
                       <span
@@ -986,7 +1177,10 @@ export function NewJob() {
                   {/* Compared against what was *asked for*, not what survived the
                       clamp — otherwise a hint above the machine's ceiling could never
                       be marked as accepted and the offer stayed on screen for good. */}
-                  {sizeHint && requestedHeightMm !== sizeHint.mm && (
+                  {/* Never in spec mode: the line is a name, not a description, and
+                      offering to resize a part from a word in its title would apply a
+                      size the spec has already decided. */}
+                  {!composedSpec && sizeHint && requestedHeightMm !== sizeHint.mm && (
                     <p className={`hint ${styles.sizeHint}`}>
                       Your prompt says <b>{sizeHint.text}</b>.{' '}
                       <button
@@ -1039,20 +1233,46 @@ export function NewJob() {
                   )}
                 </Blueprint>
 
-                {/* The fit verdict for what is being composed. The composer does not
-                    build a spec yet, so there is nothing to check and it says so
-                    rather than showing a hopeful tick — see FitsCheck. */}
-                <FitsCheck fits={null} unavailableReason={UNCOMPOSED_SPEC_REASON} variant="badge" />
+                {/* The spec the server resolved, every default filled in — the
+                    millimetres the archetype will actually build with, before anyone
+                    commits to a run. Its own fit line says there is no verdict yet and
+                    why, which is the truth: nothing has compiled this. In free-prompt
+                    mode there is no spec at all and the badge says that instead. */}
+                {composedSpec ? (
+                  <SpecPanel
+                    spec={specFromJob({ spec: resolved?.spec, spec_hash: resolved?.spec_hash })}
+                    heading="Spec · resolved by the server"
+                    unavailableReason={
+                      resolving
+                        ? 'Resolving…'
+                        : 'The fields above do not describe a spec the schema accepts yet — every problem is on the control that caused it.'
+                    }
+                    fitUnavailableReason={UNCOMPILED_SPEC_FIT_REASON}
+                  />
+                ) : (
+                  <FitsCheck fits={null} unavailableReason={UNCOMPOSED_SPEC_REASON} variant="badge" />
+                )}
 
                 <PromptNotice className={styles.promptNotice} />
 
                 <div className={styles.submitRow}>
                   {/* `blueprint` is what scopes the corner marks; `.btn`'s own transparent
                       border is declared later in global.css, so the fill stays clean. */}
+                  {/* In spec mode the prompt is optional, so what has to be there is a
+                      spec the schema accepts. `schema_valid === false` and not
+                      `!== true`: a resolve that has not answered — or could not — must
+                      not dead-end the form. The server refuses what it refuses, and
+                      the 422 comes back onto the fields. */}
                   <button
                     type="submit"
                     className={`btn btn-primary blueprint marked-accent ${styles.submitBtn}`}
-                    disabled={!prompt.trim() || loading || !printerReady}
+                    disabled={
+                      loading
+                      || !printerReady
+                      || (composedSpec
+                        ? resolved?.schema_valid === false
+                        : !prompt.trim())
+                    }
                   >
                     <Marks />
                     {loading ? PROMPT_SUBMIT_BUSY_LABEL : PROMPT_SUBMIT_LABEL}
@@ -1099,9 +1319,12 @@ export function NewJob() {
             value={prompt}
             busy={loading}
             onChange={setPrompt}
+            placeholder={promptPlaceholder}
+            ariaLabel={promptAriaLabel}
+            allowEmpty={composedSpec !== null}
             onSubmit={next => {
               setPromptZoomed(false);
-              void startJob(next);
+              void startJob(next, composedSpec ?? undefined);
             }}
             onClose={() => {
               reportUi('prompt field', 'collapsed');

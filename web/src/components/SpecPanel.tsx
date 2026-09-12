@@ -8,6 +8,17 @@ interface SpecPanelProps {
   spec: OrganizerSpec | null;
   /** Why there is no spec. Shown instead of the table. */
   unavailableReason: string;
+  /**
+   * What the table is, when it is neither of the two defaults below. The composer's
+   * spec has not been compiled and is not being edited *in this table* — the form
+   * above it is — so it may say neither "as compiled" nor "editable".
+   */
+  heading?: string;
+  /**
+   * Why there is no fit verdict. Defaults to the post-Phase-3 answer, which is the
+   * right one for a job; the composer has a spec nothing has built yet and says so.
+   */
+  fitUnavailableReason?: string;
   /** Recompile after an edit. Absent while nothing is editable. */
   onRecompile?: () => void;
   /** Anything to show in place of the table — today, the phase-1 artifact. */
@@ -31,7 +42,14 @@ interface SpecPanelProps {
  * compiler's, and they arrive with the annotated preview off `GET /jobs/{id}/spec`
  * rather than being recomputed here against a second copy of the dimension KB.
  */
-export function SpecPanel({ spec, unavailableReason, onRecompile, children }: SpecPanelProps) {
+export function SpecPanel({
+  spec,
+  unavailableReason,
+  heading,
+  fitUnavailableReason = UNMEASURED_FIT_REASON,
+  onRecompile,
+  children,
+}: SpecPanelProps) {
   if (!spec) {
     return (
       <div className={styles.panel}>
@@ -51,7 +69,9 @@ export function SpecPanel({ spec, unavailableReason, onRecompile, children }: Sp
         {/* "editable" is a promise, and only `onRecompile` keeps it. Until the
             composer can edit a spec and recompile it, this table is a record of
             what the part was built from — say that rather than the other thing. */}
-        <span className="label">{onRecompile ? 'Spec · editable' : 'Spec · as compiled'}</span>
+        <span className="label">
+          {heading ?? (onRecompile ? 'Spec · editable' : 'Spec · as compiled')}
+        </span>
         <span className={styles.archetype}>
           {/* No version until Phase 2 has compiled it. "v?" would be a version, and
               "v1" would be a guess at which archetype ran. */}
@@ -80,7 +100,7 @@ export function SpecPanel({ spec, unavailableReason, onRecompile, children }: Sp
       {/* Not `unavailableReason`: that explains why there is no *spec*, and there
           plainly is one. A spec whose mesh Phase 3 has not measured has no fit
           verdict for its own reason, and none is invented for it meanwhile. */}
-      <FitsCheck fits={spec.fits} unavailableReason={UNMEASURED_FIT_REASON} />
+      <FitsCheck fits={spec.fits} unavailableReason={fitUnavailableReason} />
 
       {onRecompile && (
         <div className={styles.actions}>
