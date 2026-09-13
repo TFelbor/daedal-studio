@@ -233,7 +233,7 @@ tail -f "data/logs/$JOB.log"
 
 What should go past, in order: `PHASE 2` compiling the spec (the compiler *is* Phase 2 —
 "Compiler" in the app), `PHASE 3` asserting rather than repairing and then
-`[DS] Dimensions: 19/19 designed features within ±0.05 mm of the spec`, a
+`[DS] Dimensions: 26/26 designed features within ±0.05 mm of the spec`, a
 `PRINTABILITY` block, and `PHASE 4` handing an STL to CuraEngine. Expect a few minutes,
 most of it the slice.
 

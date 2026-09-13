@@ -8,6 +8,7 @@ import json
 import pytest
 
 from pythonsrc.organizer.__main__ import main
+from pythonsrc.organizer.archetypes import deck_box
 from pythonsrc.organizer.spec import OrganizerSpec, dump_spec
 
 
@@ -114,5 +115,5 @@ def test_measure_can_write_the_dimension_report_beside_the_table(tmp_path, capsy
     assert main(["measure", str(spec_path), str(out), "--report", str(report)]) == 0
     doc = json.loads(report.read_text())
     assert doc["within_tolerance"] is True
-    assert doc["features_checked"] == 19
+    assert doc["features_checked"] == len(deck_box.MEASURED_FEATURES) == 26
     assert "cavity_width_mm" in doc["features"]

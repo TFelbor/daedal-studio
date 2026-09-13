@@ -391,6 +391,17 @@ class Process:
     extrusion widths — by `archetypes.compile_spec`, not here: this dataclass has no
     printer and inventing one would either refuse a spec on a machine nobody named or
     pass a wall the machine cannot lay down.
+
+    **The three edge treatments are process parameters, not closure ones.** A base
+    chamfer fights warping and a corner round fights elephant-foot flare; both are facts
+    about laying plastic on a bed, which is what every archetype here does, so they
+    belong beside `floor_mm` rather than on `Lid`. They are on the spec rather than
+    constants inside an archetype because F8 iterates a design by spec *diff* — "no
+    chamfer" has to be a path somebody can set — and because the canonical form must
+    state what the geometry has, which is `wall_mm`'s rule verbatim. **Zero is a valid
+    value for all three and means the feature is absent**, so they are validated
+    inclusive of their minimum, and a spec that zeroes all three compiles the
+    square-cornered geometry this project built before they existed.
     """
 
     wall_mm: Optional[float] = None
@@ -401,6 +412,24 @@ class Process:
     cavity_clearance_mm: Optional[float] = None
     stack_slack_mm: float = 1.0
     min_feature_mm: float = 1.0
+    #: 45° chamfer cut into the bottom of every part, mm of height (and therefore mm of
+    #: horizontal setback). **A design default, unsourced** — the audited insert
+    #: document calls the feature mandatory and names no size (roadmap §0.5), and
+    #: nothing in `docs/dimension-kb-research.md` sources one either. 0,6 mm is three
+    #: 0,2 mm layers, which is the band an elephant foot forms in; `to_view` says so on
+    #: the row rather than presenting it as measured. 0 is no chamfer.
+    base_chamfer_mm: float = 0.6
+    #: Radius of the four external **vertical** corners, mm. A design default on the
+    #: same footing: the feature is mandatory in the audited document, the millimetre is
+    #: this project's. 1,0 mm is under the deck box's own lip inset (1,4 mm at the lid
+    #: defaults), so the closure stays square-cornered and only the outside is rounded.
+    #: 0 is a square corner.
+    corner_radius_mm: float = 1.0
+    #: Radius of a cavity's internal vertical corners, mm. **0 by default**, because the
+    #: audited document wants an internal round where a thumb has to scoop small parts
+    #: out of a bin, and a deck box's cavity holds one sleeved deck that lifts out
+    #: whole. The token tray is the archetype that will turn it up.
+    cavity_corner_radius_mm: float = 0.0
 
     def __post_init__(self) -> None:
         problems: list[str] = []
@@ -424,6 +453,8 @@ class Process:
         _set(self, "stack_slack_mm",
              _mm(self.stack_slack_mm, "stack_slack_mm", problems, inclusive=True))
         _set(self, "min_feature_mm", _mm(self.min_feature_mm, "min_feature_mm", problems))
+        for name in ("base_chamfer_mm", "corner_radius_mm", "cavity_corner_radius_mm"):
+            _set(self, name, _mm(getattr(self, name), name, problems, inclusive=True))
         _raise_if(problems)
 
 

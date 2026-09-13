@@ -1,4 +1,4 @@
-"""Deck box, version 1: a body with a lip and a lift-off lid, from box CSG.
+"""Deck box, version 2: a body with a lip and a lift-off lid, with treated edges.
 
 The first archetype, and the product thesis in one testable artifact: a spec compiles
 to a mesh whose every dimension is *designed*, and every one of those dimensions can
@@ -24,6 +24,25 @@ Cards stand upright: width along X, stack along Y, height along Z. With `n, pitc
 The one tolerance-critical surface is the lid cavity over the lip: `lid.clearance_mm`
 per side. That is the number a test-fit coupon (F12) will print first.
 
+**Every vertical corner carries a radius and every part carries a base chamfer**, from
+`process.corner_radius_mm`, `process.cavity_corner_radius_mm` and
+`process.base_chamfer_mm` through `compiler.rounded_rect_prism` and
+`compiler.base_chamfer`. Two of the four radii are *derived* rather than stated, and
+that is what keeps the closure's fit exact around a corner:
+
+    r_lip = max(r − lip_inset, 0)        r_lid_cavity = max(r − lw, 0)
+
+Both arcs then share the external corner's own centre at `(r, r)`, so the gap between
+the lip's outer arc and the lid cavity's arc is `(r − lw) − (r − lip_inset)` =
+`lid.clearance_mm` — the same clearance around the corners as along the sides. When `r`
+is under the lip inset, as it is at the defaults, both derive to 0 and the closure is
+square-cornered while the outside is rounded.
+
+The chamfer belongs to each part's **outer prism**, and the cavities are cut into it
+afterwards — `compiler.base_chamfer` says why a chamfer generated with the wall and one
+cut into a finished solid are not the same mesh. `validate` holds it below
+`process.floor_mm` and `lid.top_mm`, which keeps it out of the cavity it sits under.
+
 `cc` is `process.cavity_clearance_mm`, which `process.fit_intent` chooses when the spec
 does not state it: 1,5 mm for `snug` (a box you close) and 4,0 mm for `easy` (a tray you
 lift cards out of), both from `docs/dimension-kb-research.md` §3. An `easy` deck box
@@ -41,8 +60,9 @@ unsourced 2,8 mm (issue #72). Below it the spec is refused by the lip rule; belo
 
 Rules that belong to this *shape* rather than to specs in general — exactly one
 compartment, a lift-off lid without magnets, no `divider` section, a lip no thinner than
-`process.min_feature_mm`, a lid shorter than the cavity — are checked here and refused
-with the remedy named. Ignoring an unsupported field would print a different box than
+`process.min_feature_mm`, a lid shorter than the cavity, a corner round no larger than
+the wall it is cut from, a chamfer below the floor it sits under — are checked here and
+refused with the remedy named. Ignoring an unsupported field would print a different box than
 the one asked for, silently. The rules that are not about deck boxes — the
 compartment count, the plane-count assertion, the view row — come from
 `common.py`, which exists so the second archetype states them in the same words.
@@ -59,7 +79,15 @@ from typing import Any
 
 import manifold3d
 
-from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh
+from ..compiler import (
+    CompileResult,
+    FitsResult,
+    MeasureError,
+    face_plane_extent,
+    manifold_to_trimesh,
+    rounded_rect_prism,
+    tilted_face_extent,
+)
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Lid, OrganizerSpec, SpecError, spec_hash
 from .common import (
@@ -71,7 +99,13 @@ from .common import (
 
 ARCHETYPE = "deck_box"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
-ARCHETYPE_VERSION = "1"
+#:
+#: **2** since the edge treatments landed (issue #80). The first bump this constant has
+#: had, and it is the case its docstring is for: a spec stored before that PR carries no
+#: `process.base_chamfer_mm`, so reading it back gives the new default and compiles a
+#: different mesh than it did. `generation_model_version` on the old telemetry rows is
+#: what says which geometry those jobs got.
+ARCHETYPE_VERSION = "2"
 #: The body wall *is* `process.wall_mm` here, so `compile_spec` holds it to the
 #: nozzle-derived floor. `spec.ARCHETYPE_WALL_MM["deck_box"]` is what it defaults to.
 USES_PROCESS_WALL_MM = True
@@ -100,6 +134,11 @@ class DeckBoxDimensions:
     lid_cavity_d: float
     lid_h: float
     external_h: float
+    base_chamfer: float
+    corner_radius: float
+    cavity_corner_radius: float
+    lip_corner_radius: float
+    lid_cavity_corner_radius: float
 
     def features(self, spec: OrganizerSpec) -> dict[str, float]:
         """The designed features by name. `measure()` reads the same names back."""
@@ -127,6 +166,16 @@ class DeckBoxDimensions:
             "lid_wall_mm": lid.wall_mm,
             "lid_clearance_mm": lid.clearance_mm,
             "stack_height_mm": self.stack.stack_height_mm,
+            # The edge treatments. The chamfer and the external round are designed once
+            # and measured on **both** bodies, because "the lid got it too" is exactly
+            # the kind of thing a build refactor drops silently.
+            "base_chamfer_mm": self.base_chamfer,
+            "lid_base_chamfer_mm": self.base_chamfer,
+            "corner_radius_mm": self.corner_radius,
+            "lid_corner_radius_mm": self.corner_radius,
+            "cavity_corner_radius_mm": self.cavity_corner_radius,
+            "lip_corner_radius_mm": self.lip_corner_radius,
+            "lid_cavity_corner_radius_mm": self.lid_cavity_corner_radius,
         }
         return {k: round(float(v), 3) for k, v in raw.items()}
 
@@ -181,6 +230,14 @@ def derive(spec: OrganizerSpec) -> DeckBoxDimensions:
     lid_cavity_d = external_d - 2 * lid.wall_mm
     lid_h = lid.height_mm + lid.top_mm
     external_h = body_h + lid.top_mm
+    # The lip's outline and the lid's cavity are the outer wall stepped in, so their
+    # corner radii are the outer one stepped in by the same amount — which puts all
+    # three arcs on the same centre and leaves exactly `lid.clearance_mm` between the
+    # lip and the lid around the corner, as along the sides. Clamped at 0: a step wider
+    # than the radius leaves a square corner, not a negative one.
+    corner_radius = p.corner_radius_mm
+    lip_corner_radius = max(corner_radius - lip_inset, 0.0)
+    lid_cavity_corner_radius = max(corner_radius - lid.wall_mm, 0.0)
 
     def r(x: float) -> float:  # every value to 1 µm, like the schema
         return round(float(x), 3)
@@ -193,6 +250,10 @@ def derive(spec: OrganizerSpec) -> DeckBoxDimensions:
         lip_outer_w=r(lip_outer_w), lip_outer_d=r(lip_outer_d),
         lid_cavity_w=r(lid_cavity_w), lid_cavity_d=r(lid_cavity_d),
         lid_h=r(lid_h), external_h=r(external_h),
+        base_chamfer=r(p.base_chamfer_mm), corner_radius=r(corner_radius),
+        cavity_corner_radius=r(p.cavity_corner_radius_mm),
+        lip_corner_radius=r(lip_corner_radius),
+        lid_cavity_corner_radius=r(lid_cavity_corner_radius),
     )
 
 
@@ -232,6 +293,61 @@ def _easy_fit_problems(spec: OrganizerSpec, d: DeckBoxDimensions) -> list[str]:
     ]
 
 
+def _edge_treatment_problems(spec: OrganizerSpec, d: DeckBoxDimensions) -> list[str]:
+    """The three refusals the chamfer and the corner rounds bring, each with its remedy.
+
+    None of them is a taste rule; each names a thing the geometry would do wrong.
+
+    - **A round no larger than the wall it is cut from.** With an external radius `r`
+      and a square cavity corner at `(w, w)`, the wall at the corner measures `w` while
+      `r ≤ w` — the cavity's corner is then outside the arc's quarter and the nearest
+      surface is the flat side. Above it the wall thins to `r − (r − w)·√2`, so a 2,4 mm
+      radius on a 1,2 mm wall leaves 0,70 mm at the corner: a wall the spec does not
+      claim and the printability gate would have to catch after the fact.
+    - **A chamfer below every floor it sits under.** `base_chamfer` cuts from `z = 0` up
+      to `c`, so a chamfer at or above `process.floor_mm` reaches the body's cavity, and
+      one at or above `lid.top_mm` reaches the lid's. It would also make the footprint
+      at `z = c` a ring rather than an outline, which the primitive refuses anyway —
+      this is the same fact said where a person can act on it.
+    - **An internal round that stays out of the contents' envelope.** A corner arc of
+      radius `ρ` sits `ρ·(√2 − 1)` back from the corner it replaces, along the diagonal;
+      the cavity is the sleeve envelope plus `process.cavity_clearance_mm` **total per
+      axis**, so the room at that corner is `cc/2` per side, `cc·√2/2` along the
+      diagonal. Judged against a sharp-cornered envelope on purpose: `resolve_stack`
+      returns a rectangle, and a card's own ~3 mm corner radius is slack this rule
+      declines to spend.
+    """
+    p = spec.process
+    lid = spec.lid
+    assert lid is not None
+    problems: list[str] = []
+    if d.corner_radius > p.wall_mm + 1e-9:
+        problems.append(
+            f"process.corner_radius_mm {d.corner_radius:g} mm is larger than "
+            f"process.wall_mm {p.wall_mm:g} mm, which would thin the wall to "
+            f"{d.corner_radius - (d.corner_radius - p.wall_mm) * math.sqrt(2.0):.3f} mm at "
+            "each corner. Reduce the radius to the wall or thicken the wall"
+        )
+    for limit, name in ((p.floor_mm, "process.floor_mm"), (lid.top_mm, "lid.top_mm")):
+        if d.base_chamfer >= limit - 1e-9:
+            problems.append(
+                f"process.base_chamfer_mm {d.base_chamfer:g} mm must be less than "
+                f"{name} {limit:g} mm, or the chamfer cuts into the cavity above it. "
+                f"Reduce the chamfer or thicken {name.rsplit('.', 1)[1]}"
+            )
+    room = p.cavity_clearance_mm * math.sqrt(2.0) / 2.0
+    intrusion = d.cavity_corner_radius * (math.sqrt(2.0) - 1.0)
+    if intrusion > room + 1e-9:
+        problems.append(
+            f"process.cavity_corner_radius_mm {d.cavity_corner_radius:g} mm sets the "
+            f"cavity's corner {intrusion:.3f} mm back along the diagonal, past the "
+            f"{room:.3f} mm that process.cavity_clearance_mm "
+            f"{p.cavity_clearance_mm:g} mm leaves there. Reduce the radius, or widen "
+            "the clearance"
+        )
+    return problems
+
+
 def validate(spec: OrganizerSpec) -> None:
     """Refuse a spec this archetype cannot honour, naming every problem and its remedy.
 
@@ -257,6 +373,7 @@ def validate(spec: OrganizerSpec) -> None:
             f"lid.height_mm {lid.height_mm:g} must be less than the cavity height "
             f"{d.cavity_h:.3f} mm, or the lip would cut into the floor"
         )
+    problems.extend(_edge_treatment_problems(spec, d))
     if problems:
         raise SpecError(problems)
 
@@ -269,26 +386,41 @@ def build(spec: OrganizerSpec) -> tuple[dict[str, "manifold3d.Manifold"], DeckBo
     lid = spec.lid
     assert lid is not None
 
-    def cube(x: float, y: float, z: float) -> "manifold3d.Manifold":
-        return manifold3d.Manifold.cube([x, y, z], False)
+    def prism(
+        x: float, y: float, z: float, r: float = 0.0, chamfer: float = 0.0
+    ) -> "manifold3d.Manifold":
+        """A box with its four vertical edges rounded to `r` and its base chamfered.
+        A square-cornered, unchamfered one is `Manifold.cube` vertex for vertex, which is
+        what this archetype built before issue #80."""
+        return rounded_rect_prism(x, y, z, r, chamfer_mm=chamfer)
 
     W, D = d.external_w, d.external_d
+    # Each part's **outer prism carries the chamfer**, and the cavities are cut into it
+    # afterwards. Not a stylistic choice: a chamfer cut into a finished solid by any
+    # boolean leaves degenerate triangles along the seam where the 45° face meets the
+    # wall, and they open the mesh once it is exported as float32. `base_chamfer`'s
+    # docstring has the measurement.
+    c = d.base_chamfer
     # Body: the outer block minus the cavity (open through the top: +1 mm overshoot).
-    body = cube(W, D, d.body_h) - cube(d.cavity_w, d.cavity_d, d.cavity_h + 1.0).translate(
-        [p.wall_mm, p.wall_mm, p.floor_mm]
-    )
+    body = prism(W, D, d.body_h, d.corner_radius, c) - prism(
+        d.cavity_w, d.cavity_d, d.cavity_h + 1.0, d.cavity_corner_radius
+    ).translate([p.wall_mm, p.wall_mm, p.floor_mm])
     # Lip: remove the outer band of the top `lid.height_mm`. The band is a slab over
     # the lip height (overshooting the top) minus the lip's own outline (overshooting
-    # both ways), so exactly the perimeter strip of width `lip_inset` is cut.
-    band = cube(W, D, lid.height_mm + 1.0).translate([0.0, 0.0, d.body_h - lid.height_mm]) - cube(
-        d.lip_outer_w, d.lip_outer_d, lid.height_mm + 3.0
+    # both ways), so exactly the perimeter strip of width `lip_inset` is cut. The slab
+    # carries the outer radius and the outline the derived one, so the cut is a constant
+    # `lip_inset` around the corners too rather than widening across them.
+    band = prism(W, D, lid.height_mm + 1.0, d.corner_radius).translate(
+        [0.0, 0.0, d.body_h - lid.height_mm]
+    ) - prism(
+        d.lip_outer_w, d.lip_outer_d, lid.height_mm + 3.0, d.lip_corner_radius
     ).translate([d.lip_inset, d.lip_inset, d.body_h - lid.height_mm - 1.0])
     body = body - band
     # Lid: an inverted tray. Its cavity is the lip outline plus the clearance per side,
     # `lid.height_mm` deep (open through the top when printed open side up).
-    lid_part = cube(W, D, d.lid_h) - cube(d.lid_cavity_w, d.lid_cavity_d, lid.height_mm + 1.0).translate(
-        [lid.wall_mm, lid.wall_mm, lid.top_mm]
-    )
+    lid_part = prism(W, D, d.lid_h, d.corner_radius, c) - prism(
+        d.lid_cavity_w, d.lid_cavity_d, lid.height_mm + 1.0, d.lid_cavity_corner_radius
+    ).translate([lid.wall_mm, lid.wall_mm, lid.top_mm])
     lid_part = lid_part.translate([W + PLATE_GAP_MM, 0.0, 0.0])
     return {"body": body, "lid": lid_part}, d
 
@@ -326,11 +458,52 @@ MEASURED_FEATURES: tuple[str, ...] = (
     "lip_height_mm", "lip_wall_mm", "lip_outer_width_mm", "lip_outer_depth_mm",
     "lid_cavity_width_mm", "lid_cavity_depth_mm", "lid_cavity_height_mm",
     "lid_height_mm", "lid_wall_mm", "lid_clearance_mm",
+    "base_chamfer_mm", "lid_base_chamfer_mm",
+    "corner_radius_mm", "lid_corner_radius_mm",
+    "cavity_corner_radius_mm", "lip_corner_radius_mm", "lid_cavity_corner_radius_mm",
 )
+
+#: How far a chamfer face may sit from 45° before the measurement is a finding rather
+#: than a number. `base_chamfer` builds the angle exactly — every face is the supporting
+#: plane through a chord and the same chord moved in by `c` and down by `c` — so this is
+#: a check on the *mesh*, not a tolerance on the design: a tenth of a degree is four
+#: orders above what the kernel's own float noise produces and far below anything a
+#: broken construction would.
+CHAMFER_ANGLE_TOL_DEG = 0.1
 
 
 def _planes(part: Any, axis: int, expected: int, what: str) -> list[float]:
     return expect_planes(part, axis, expected, what=what, subject=_SUBJECT)
+
+
+def _chamfer(part: Any, what: str) -> float:
+    """The height of `part`'s base chamfer, refusing a mesh whose slope is not 45°.
+
+    A chamfer is not a difference of two planes, so it is measured off the faces that
+    slope: the only ones on this shape that point downward without being the bed face.
+    Their Z extent *is* the chamfer, and their tilt is checked rather than assumed,
+    because a face at 30° would measure a plausible height off a part nobody designed.
+    A part with no sloping face measures 0 — right for a designed 0, out of tolerance
+    for anything else.
+    """
+    low, high, worst_error_deg = tilted_face_extent(part)
+    if worst_error_deg > CHAMFER_ANGLE_TOL_DEG:
+        raise MeasureError(
+            f"the {what}'s base chamfer is {45.0 + worst_error_deg:.3f}° at its worst "
+            f"where {_SUBJECT} cuts 45°"
+        )
+    return high - low
+
+
+def _corner_radius(part: Any, y_plane: float, x_plane: float) -> float:
+    """The radius of the vertical corners a wall runs between, as a plane difference.
+
+    The wall in the plane `Y = y_plane` runs from its tangent point to its tangent
+    point — `r` in from each end — so the radius is where that wall starts along X minus
+    the X plane the design says it starts at. Exact vertices both, which is why a radius
+    survives the float32 export like every other feature here; a square corner gives 0.
+    """
+    return face_plane_extent(part, 1, y_plane, 0)[0] - x_plane
 
 
 def measure(mesh: Any) -> dict[str, float]:
@@ -341,8 +514,18 @@ def measure(mesh: Any) -> dict[str, float]:
     planes. A plane count that does not match the design is a `MeasureError`: geometry
     that does not have the planes the design says it has *is* the finding.
 
+    The edge treatments are read off the same planes and cost the design none of them.
+    A vertical fillet takes a wall's face back to its tangent points without moving the
+    plane the face lies in, so every count below is what it was before there were
+    rounds; a 45° chamfer has no horizontal face where it meets the wall, so the Z
+    counts are unchanged too. What each of the four radii is measured against is the
+    wall it is a corner of: the outer round against the body's own `X = 0`, the lip's
+    against the lip's, the cavity's against the cavity's, the lid's cavity against the
+    lid's inner wall.
+
     Raises:
-        MeasureError: If the mesh is not two bodies with the deck box's plane structure.
+        MeasureError: If the mesh is not two bodies with the deck box's plane structure,
+            or if a face that should be a 45° chamfer is not one.
     """
     parts = mesh.split(only_watertight=False)
     if len(parts) != 2:
@@ -379,6 +562,13 @@ def measure(mesh: Any) -> dict[str, float]:
         "lid_wall_mm": lx[1] - lx[0],
         "lid_clearance_mm": (lid_cavity_w - lip_outer_w) / 2.0,
         "external_height_mm": (bz[3] - bz[0]) + (lz[1] - lz[0]),
+        "base_chamfer_mm": _chamfer(body, "body"),
+        "lid_base_chamfer_mm": _chamfer(lid, "lid"),
+        "corner_radius_mm": _corner_radius(body, by[0], bx[0]),
+        "lip_corner_radius_mm": _corner_radius(body, by[1], bx[1]),
+        "cavity_corner_radius_mm": _corner_radius(body, by[2], bx[2]),
+        "lid_corner_radius_mm": _corner_radius(lid, ly[0], lx[0]),
+        "lid_cavity_corner_radius_mm": _corner_radius(lid, ly[1], lx[1]),
     }
     return {k: float(v) for k, v in measured.items()}
 
@@ -458,6 +648,19 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         row("lid_clearance_mm", "Lid clearance", lid.clearance_mm, "mm", True,
             "per side; the fit tolerance a test coupon prints first"),
         row("lid_height_mm", "Lid engagement", lid.height_mm, "mm", True),
+        # The three edge treatments. Their notes say **design default, unsourced** in
+        # as many words, as the divider's tab rows do: the audited insert document
+        # (roadmap §0.5) calls all three features mandatory and names no millimetre for
+        # any of them, and presenting a number this project chose as though it came
+        # from a source is the same fabrication as an unmeasured fits badge.
+        row("base_chamfer_mm", "Base chamfer", p.base_chamfer_mm, "mm", True,
+            "45°, against warping; design default, unsourced — three 0,2 mm layers"),
+        row("corner_radius_mm", "Corner radius", p.corner_radius_mm, "mm", True,
+            "external vertical corners, against elephant-foot flare; design default, "
+            "unsourced"),
+        row("cavity_corner_radius_mm", "Cavity corner radius", p.cavity_corner_radius_mm,
+            "mm", True,
+            "internal vertical corners; 0 — a sleeved deck lifts out whole"),
     ]
     return {
         "archetype": ARCHETYPE,

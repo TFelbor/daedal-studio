@@ -168,7 +168,9 @@ def test_the_generation_record_names_the_compiler(tmp_path, monkeypatch):
     mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), tmp_path / "out")
     pipeline._record_spec_generation(_ns(spec=str(spec_path)), result, duration_s=0.01)
     assert recorded["model"] == "organizer/deck_box"
-    assert recorded["model_version"] == "1"
+    # 2 since the edge treatments landed (issue #80) — which is the point of recording
+    # it: the rows written before that PR say 1, and 1 is a deck box with no chamfer.
+    assert recorded["model_version"] == "2"
     assert recorded["backend"] == "local"
     assert recorded["params"]["spec_sha256"] == result.spec_hash
     assert recorded["cost_eur"] is None
@@ -216,11 +218,11 @@ def test_the_dimension_check_writes_its_report_and_says_so(tmp_path, capsys):
     outputs, result, engineered, eng = _compiled_and_engineered(tmp_path)
     report = _assert_spec_dimensions(result, engineered, outputs)
     assert report["within_tolerance"] is True
-    assert report["features_checked"] == 19 and report["features_within"] == 19
+    assert report["features_checked"] == 26 and report["features_within"] == 26
     written = json.loads((outputs / "dimension_report.json").read_text())
     assert written == report
     out = capsys.readouterr().out
-    assert "[DS] Dimensions: 19/19" in out and "±0.05 mm" in out
+    assert "[DS] Dimensions: 26/26" in out and "±0.05 mm" in out
     # Six decimals: the noise floor of a float32 STL is ~1e-5 mm, and a line that
     # rounds it to "0.0000 mm" reports a measurement that was not made.
     import re

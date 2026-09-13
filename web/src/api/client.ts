@@ -176,6 +176,12 @@ export interface RawSpec {
    * before it, and the row is authoritative. `cavity_clearance_mm` is always present —
    * the schema resolves it on construction, so the millimetres the geometry was built
    * from are in the spec whether or not an intent chose them.
+   *
+   * The three edge treatments (issue #80) are optional on the same grounds, and their
+   * absence means something stronger than a missing number: a row stored before that
+   * PR was built by `deck_box` **v1**, which had no chamfer and no corner round at all.
+   * So an absent field is not "the default" — it is "this part does not have the
+   * feature", and the UI shows no row rather than a figure the mesh does not carry.
    */
   process: {
     wall_mm: number;
@@ -184,6 +190,9 @@ export interface RawSpec {
     cavity_clearance_mm: number;
     stack_slack_mm: number;
     min_feature_mm: number;
+    base_chamfer_mm?: number;
+    corner_radius_mm?: number;
+    cavity_corner_radius_mm?: number;
   };
 }
 

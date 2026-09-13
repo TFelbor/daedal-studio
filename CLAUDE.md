@@ -149,7 +149,9 @@ each entry below names the file it is about.
   - **Sculptor worker (`services/trellis2_worker/`)** — the GPU service, its serialised
     lock, the headers it returns and why a wrong backend is refused rather than served.
   - **Organizer — the parametric path (`pythonsrc/organizer/`)** — the spec schema, the
-    two archetypes, `--spec`, Phase 3's assert-and-measure mode, and what is not built.
+    two archetypes, `--spec`, Phase 3's assert-and-measure mode, the two edge primitives
+    every archetype shares (`rounded_rect_prism`, `base_chamfer`) and why a chamfer is
+    built with its wall rather than cut into a finished solid, and what is not built.
   - **Server (`server/app.py`)** — the REST and WebSocket surface, the job lifecycle,
     `contained_path` and the profile confinement, the config store and `subprocess_env`,
     `POST /organizer/resolve` and the prompt a spec job is titled with.

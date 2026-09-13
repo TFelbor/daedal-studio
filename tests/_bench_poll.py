@@ -55,12 +55,14 @@ def test_polling_cost(printer_configured):
 
     db = TelemetryDB()
     db.update_job_generation(spec_id, params={
-        "archetype": "deck_box", "archetype_version": "1", "spec_sha256": "a" * 64})
+        "archetype": "deck_box", "archetype_version": "2", "spec_sha256": "a" * 64})
+    # 26 features, which is what a deck box measures since issue #80 — the payload this
+    # benchmark weighs has to be the one the endpoint actually serves.
     db.update_job_mesh_lineage(spec_id, repair_report={"dimension_check": {
-        "tolerance_mm": 0.05, "within_tolerance": True, "features_checked": 19,
-        "features_within": 19, "max_abs_error_mm": 0.002,
+        "tolerance_mm": 0.05, "within_tolerance": True, "features_checked": 26,
+        "features_within": 26, "max_abs_error_mm": 0.002,
         "features": {f"f{i}_mm": {"designed_mm": 1.0, "measured_mm": 1.0, "error_mm": 0.0}
-                     for i in range(19)},
+                     for i in range(26)},
         "missing": [], "out_of_tolerance": []}})
     db.close()
 

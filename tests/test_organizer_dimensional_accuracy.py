@@ -100,14 +100,23 @@ def test_the_report_serialises_to_the_json_written_beside_the_mesh():
 # ── the envelope ───────────────────────────────────────────────────────────────
 
 def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0, floor=2.0,
-         fit_intent="snug"):
+         fit_intent="snug", chamfer=None, radius=None, cavity_radius=None):
     """A deck box spec. `wall=None` states no wall and takes the archetype's default,
-    which is what every spec that does not mention one compiles with (issue #72)."""
+    which is what every spec that does not mention one compiles with (issue #72). The
+    three edge treatments default to `None`, which likewise leaves `Process`'s own
+    defaults — a 0,6 mm chamfer and a 1,0 mm corner round — in place, so the envelope
+    above sweeps the geometry a real spec gets rather than a square-cornered variant."""
+    edges = {
+        name: value
+        for name, value in (("base_chamfer_mm", chamfer), ("corner_radius_mm", radius),
+                            ("cavity_corner_radius_mm", cavity_radius))
+        if value is not None
+    }
     return OrganizerSpec(
         archetype="deck_box",
         compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
         lid=Lid(height_mm=lid_height, clearance_mm=clearance),
-        process=Process(wall_mm=wall, floor_mm=floor, fit_intent=fit_intent),
+        process=Process(wall_mm=wall, floor_mm=floor, fit_intent=fit_intent, **edges),
     )
 
 
@@ -271,6 +280,74 @@ def test_both_intents_are_swept_and_they_differ(tmp_path):
     assert len(set(FIT_INTENT_CLEARANCE_MM.values())) == len(FIT_INTENTS)
 
 
+# ── the edge treatments' corner (issue #80) ───────────────────────────────────
+#
+# Its own corner rather than three more axes on ENVELOPE, for `fit_intent`'s reason and
+# one more. The reason: a chamfer and a corner round are orthogonal to the wall, the lid
+# and the clearance, so multiplying 405 by 24 would buy repetition. The one more: unlike
+# every other axis here, these two change the *kind* of surface the mesh carries — an
+# arc where there was a plane, a 45° face where there was an edge — so what has to be
+# swept is the span from "absent" to "as large as the rules allow", on both bodies, and
+# through the export the rest of this file measures on.
+#
+# `(0,5, 0,6)` and `(1,0, 1,5)` are in deliberately: a chamfer taller than the corner it
+# runs around is the case `base_chamfer`'s fast construction cannot do, so those two send
+# it down the general one. `radius = 2,4` needs `wall = 4,0` — a round may not exceed the
+# wall it is cut from — and is the case where the lip and the lid cavity get derived
+# radii of their own instead of clamping to zero.
+
+EDGE_CORNERS = [
+    (chamfer, radius, cavity_radius, wall, count, sleeving)
+    for chamfer, radius, cavity_radius, wall in (
+        (0.0, 0.0, 0.0, None),     # the geometry this project built before issue #80
+        (0.6, 1.0, 0.0, None),     # the defaults
+        (0.6, 0.0, 0.0, None),     # chamfer alone
+        (0.0, 1.0, 0.75, None),    # rounds alone, inside and out
+        (1.5, 1.0, 0.0, None),     # chamfer taller than the corner: general construction
+        (0.6, 0.5, 0.0, None),     # ditto, by a tenth
+        (0.8, 2.4, 0.75, None),    # radius exactly at the wall; derived radii non-zero
+        (1.5, 2.4, 2.5, 4.0),      # every rule at its ceiling, on a thicker wall
+    )
+    for count, sleeving in itertools.product((15, 160), SLEEVINGS)
+]
+
+
+@pytest.mark.parametrize("chamfer,radius,cavity_radius,wall,count,sleeving", EDGE_CORNERS)
+def test_every_edge_treatment_is_on_the_exported_mesh(
+    tmp_path, chamfer, radius, cavity_radius, wall, count, sleeving,
+):
+    spec = deck(count, sleeving, wall=wall, chamfer=chamfer, radius=radius,
+                cavity_radius=cavity_radius)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "deck.stl")
+    # The float32 round trip is the point of this file, and a chamfer is the feature
+    # most likely to fail it: a degenerate triangle along a seam survives float64 and
+    # opens the mesh in float32. Two bodies, both closed, or the measurement below is
+    # measuring something that could not be printed.
+    assert mesh.is_watertight
+    assert len(mesh.split(only_watertight=False)) == 2
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    assert set(report.features) == set(deck_box.MEASURED_FEATURES)
+    assert report.features["base_chamfer_mm"][1] == pytest.approx(chamfer, abs=TOL_MM)
+    assert report.features["corner_radius_mm"][1] == pytest.approx(radius, abs=TOL_MM)
+    assert report.features["cavity_corner_radius_mm"][1] == pytest.approx(
+        cavity_radius, abs=TOL_MM)
+
+
+def test_the_edge_corner_spans_absent_and_present_on_every_axis():
+    """Guards the block above against collapsing to one setting — which would leave a
+    treatment unmeasured while the sweep still looked parametrized — and against losing
+    the zero case, which is the pre-#80 geometry every stored spec file compiles to."""
+    for axis, name in enumerate(("chamfer", "external round", "internal round")):
+        values = {case[axis] for case in EDGE_CORNERS}
+        assert 0.0 in values and len(values) >= 2, name
+    assert any(c[0] > c[1] > 0 for c in EDGE_CORNERS), "no case takes the general construction"
+    assert any(c[1] == _wall_mm(c[3]) for c in EDGE_CORNERS), "no case puts the round at the wall"
+    # And one where the lip and the lid cavity get radii of their own rather than
+    # clamping to zero, which is the derivation that keeps the closure's fit exact.
+    assert any(c[1] > Lid().wall_mm + Lid().clearance_mm for c in EDGE_CORNERS)
+
+
 # ── through Phase 3 ────────────────────────────────────────────────────────────
 
 from pythonsrc.engineer import Engineer  # noqa: E402
@@ -296,6 +373,38 @@ def test_phase_3_assert_path_hands_the_slicer_the_designed_dimensions(tmp_path, 
     assert report.within_tolerance, report.problems()
     assert eng.last_report["repair_method"] == "asserted"
     assert eng.last_report["scale_applied"] is False
+
+
+EDGE_PHASE_3_CORNERS = [
+    (chamfer, radius, cavity_radius, wall, sleeving)
+    for chamfer, radius, cavity_radius, wall in (
+        (0.0, 0.0, 0.0, None), (0.6, 1.0, 0.0, None),
+        (0.6, 0.5, 0.75, None), (1.5, 2.4, 2.5, 4.0),
+    )
+    for sleeving in SLEEVINGS
+]
+
+
+@pytest.mark.parametrize("chamfer,radius,cavity_radius,wall,sleeving", EDGE_PHASE_3_CORNERS)
+def test_phase_3_assert_path_hands_the_slicer_the_treated_edges(
+    tmp_path, chamfer, radius, cavity_radius, wall, sleeving,
+):
+    """A spec run's Phase 3 asserts rather than repairs, so an edge treatment has to
+    arrive as a *solid* — a chamfer that left degenerate triangles behind would be
+    refused here with `MeshAssertionError` rather than measured. Nothing may decimate
+    the arcs away either, which is what `faces_dropped` is for."""
+    spec = deck(60, sleeving, wall=wall, chamfer=chamfer, radius=radius,
+                cavity_radius=cavity_radius)
+    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(
+        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
+        target_mm=None, repair_mode="assert",
+    )
+    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
+    assert report.within_tolerance, report.problems()
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report.get("faces_dropped", 0) == 0
 
 
 EASY_CORNERS = list(itertools.product((15, 160), SLEEVINGS))

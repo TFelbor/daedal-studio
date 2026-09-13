@@ -567,13 +567,73 @@ pin that).
     the deck box's **mesh** for the first time. **A spec that states `wall_mm: 2.8`
     compiles to the byte it always did**, which `tests/test_deck_box.py` pins next to a
     new pin for the example at its own default.
+- **The three edge treatments are shape primitives in `compiler.py`, not per-archetype
+  habits** (issue #80). The audited insert standard (roadmap §0.5) calls three features
+  mandatory and the engine had none of them: a 45° base chamfer against warping and
+  first-layer curl, external vertical corner rounds against elephant-foot flare, and
+  internal vertical rounds so small parts can be scooped out of a bin. None of it needs
+  the deferred OCCT review — `ARCHITECTURE.md` § The geometry kernel has the 2026-09-05
+  measurement — and all of it is two functions shared by every archetype:
+  `rounded_rect_prism(w, d, h, r, chamfer_mm=…)` and `base_chamfer(section, h, c)`.
+  - **`base_chamfer` takes an outline and builds the prism**, rather than taking a
+    finished solid and cutting into it, and that is the load-bearing detail rather than
+    an API preference. Every boolean formulation — intersect the solid against a 45°
+    envelope, subtract the ring between them, union a frustum onto a trimmed body —
+    leaves the kernel retriangulating a tangential seam where the 45° face runs into the
+    vertical wall, and emits zero-area triangles along it whose corners coincide to
+    within 10⁻¹⁰ mm. They are invisible in float64: the compiled plate is watertight,
+    genus 0, `Error.NoError`. Then float32 merges those corners on export and the STL
+    comes back with non-manifold edges and 45 loose bodies, which is a failed Phase 3
+    for every spec run. Hulling the chamfer and the wall into existence together emits
+    none. For the same reason the outline is the caller's `CrossSection` and never one
+    recovered with `Manifold.slice` or `.project`: both rebuild it out of triangles and
+    land ~4·10⁻¹⁰ mm² off, which is enough to reproduce the near-duplicates.
+  - **Every chamfer face is exactly 45°, corners included.** Eroding a polygon moves each
+    edge inward along its own normal, so an eroded chord is parallel to the chord it came
+    from and `c` away horizontally and below — the plane through the pair is at 45° by
+    construction. Three rings hulled build it whenever the erosion keeps every edge;
+    when the chamfer outgrows the corner it runs around, the general construction cuts
+    one 45° half-space per edge instead (exact at any height, ~70 ms a body against 4 ms,
+    re-hulled because a chain of trims leaves the same degenerate triangles).
+  - **Reading the mesh back needed a new measurer.** `plane_set` over a column of
+    vertex coordinates counts every arc vertex as its own plane, so a rounded box states
+    dozens of X planes where the design has six. `compiler.face_planes` reads *faces*
+    instead: a face square to an axis is a wall, an arc chord is 5,625° off it and a
+    chamfer facet 45°, and `archetypes/common.py`'s `expect_planes` goes through it. A
+    corner radius is then a plane difference in all but name — a wall runs exactly
+    between its tangent points, so the `Y = 0` wall's X extent is `[r, w − r]` and `r` is
+    where it starts less where the design says the wall is. A chamfer is the Z extent of
+    the faces that slope, with their angle checked rather than assumed.
+  - **The deck box carries them by default** and its `ARCHETYPE_VERSION` went to **2**,
+    the first bump that constant has had, because a spec stored before this compiles to a
+    different mesh. `process.base_chamfer_mm` 0,6 mm, `process.corner_radius_mm` 1,0 mm
+    and `process.cavity_corner_radius_mm` 0 — all three **design defaults, unsourced**,
+    said so on the `to_view` row as the divider's tab rows are, because the audited
+    document calls the features mandatory and names no millimetre for any of them. 0,6 mm
+    is three 0,2 mm layers; 1,0 mm sits under the lip inset so the closure stays
+    square-cornered; the internal round is 0 because a sleeved deck lifts out whole and
+    the token tray is the archetype that will turn it up. The lip's and the lid cavity's
+    radii are **derived** — `max(r − lip_inset, 0)` and `max(r − lid.wall_mm, 0)` — which
+    puts all three arcs on the external corner's own centre and leaves exactly
+    `lid.clearance_mm` around the corner as along the side. `validate` refuses a round
+    wider than the wall it is cut from (`r − (r − w)·√2` at the corner otherwise), a
+    chamfer at or above `floor_mm` or `lid.top_mm` (it would reach the cavity), and an
+    internal round whose `ρ·(√2 − 1)` diagonal setback eats the contents' clearance.
+  - **Zero is an identity in both primitives**, which is the whole compatibility claim:
+    `r = 0` with no chamfer is `Manifold.cube` vertex for vertex and `c = 0` is the plain
+    prism, so a spec stating all three at zero reproduces the pre-#80 STL byte for byte
+    (`tests/test_deck_box.py` pins that hash next to the example's new one). Every spec
+    hash moved a fourth time, for `fit_margin_mm`'s reasons; `RawSpec` declares the three
+    fields optional and the UI shows no row when they are absent, because an absent field
+    there means a v1 mesh with no such feature rather than today's default.
 - **Each archetype refuses the other's section by name.** `deck_box` refuses a
   `divider`, `card_divider` refuses a `lid`. Ignoring a section prints a different part
   than the one asked for, silently, which is the same failure as ignoring an unsupported
   field.
 - **`archetypes/common.py` holds what is not about one shape.** The
   exactly-one-compartment rule (`single_compartment_problem`), the plane-count assertion
-  (`expect_planes`) and the view-row builder (`view_row`), each taking its own wording as
+  (`expect_planes`, which reads faces since the edge treatments landed — see above) and
+  the view-row builder (`view_row`), each taking its own wording as
   an argument so the sentence a person reads stays the archetype's. It was extracted when
   the second archetype landed — that is the moment a habit becomes an API — and not into
   `compiler.py` (the kernel bridge and the measurers) or `archetypes/__init__.py` (which
@@ -647,7 +707,7 @@ pin that).
   recorded is reloaded from `spec.json`, the engineered mesh is measured with the
   archetype's `measure()`, and every feature in `MEASURED_FEATURES` is compared at
   `DEFAULT_TOLERANCE_MM` (0,05 mm). `dimension_report.json` is written **before** the
-  verdict so a failure is inspectable; one `[DS] Dimensions: 19/19 …` line and a `✗` per
+  verdict so a failure is inspectable; one `[DS] Dimensions: 26/26 …` line and a `✗` per
   miss are printed; the report rides on the row as `repair_report["dimension_check"]`
   (the `achieved_extent_mm` precedent — no new column); and a miss is a `MeasureError`,
   which is a failed Phase 3. A spec run that ships a wrong dimension has failed, however
@@ -656,10 +716,14 @@ pin that).
   × thicknesses × tab sizes) on the exported, reloaded STL, plus a corner set through
   the assert path for each, and runs as its own CI step. Per-archetype `parametrize`
   blocks, because the *generic* sweep across every archetype is issue #85 and still open.
+  The deck box's edge treatments get a corner of their own (48 cases from absent to the
+  ceiling of every rule, plus 12 through the assert path) rather than three more axes on
+  405, because they change the *kind* of surface rather than a length.
 - **The compiler is the generation model.** `generation_model = "organizer/deck_box"` or
   `"organizer/card_divider"`,
-  `generation_model_version = "1"`, `generation_backend = "local"`, the spec hash and
-  features in `generation_params`. No new column — this is exactly what those columns
+  `generation_model_version` = the archetype's own version — `"2"` for a deck box since
+  the edge treatments landed, `"1"` for a divider — `generation_backend = "local"`, the
+  spec hash and features in `generation_params`. No new column — this is exactly what those columns
   record. `blueprint_*` stay NULL, correctly. `size_source="spec"` is written by
   `POST /jobs` when the request carries a spec (below).
 - **The gate is told the part count**, read off `len(compile_result.parts)` so no

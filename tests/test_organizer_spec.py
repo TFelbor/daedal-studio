@@ -160,11 +160,64 @@ def test_every_tab_position_the_schema_names_is_accepted(position):
     (dict(cavity_clearance_mm=-1), "cavity_clearance_mm"),
     (dict(stack_slack_mm=-1), "stack_slack_mm"),
     (dict(min_feature_mm=0), "min_feature_mm"),
+    (dict(base_chamfer_mm=-0.1), "base_chamfer_mm"),
+    (dict(corner_radius_mm=-1), "corner_radius_mm"),
+    (dict(cavity_corner_radius_mm="round"), "cavity_corner_radius_mm"),
 ])
 def test_process_refuses_bad_fields_by_name(bad, field):
     with pytest.raises(SpecError) as exc:
         Process(**bad)
     assert field in str(exc.value)
+
+
+# ── the edge treatments (issue #80) ────────────────────────────────────────────
+
+def test_the_edge_treatments_default_to_the_features_the_audit_calls_mandatory():
+    p = Process()
+    assert (p.base_chamfer_mm, p.corner_radius_mm, p.cavity_corner_radius_mm) == (0.6, 1.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    "field", ["base_chamfer_mm", "corner_radius_mm", "cavity_corner_radius_mm"])
+def test_zero_is_a_value_and_means_the_feature_is_absent(field):
+    """Not "unset": a zero chamfer and a zero radius are the geometry this project built
+    before issue #80, and they have to stay askable for."""
+    assert getattr(Process(**{field: 0}), field) == 0.0
+
+
+@pytest.mark.parametrize(
+    "field", ["base_chamfer_mm", "corner_radius_mm", "cavity_corner_radius_mm"])
+def test_from_dict_names_the_path_of_a_bad_edge_treatment(field):
+    d = deck().to_dict()
+    d["process"][field] = -1
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict(d)
+    assert f"spec.process.{field}" in str(exc.value)
+
+
+def test_the_edge_treatments_round_trip_and_are_in_the_canonical_form():
+    spec = deck(process=Process(base_chamfer_mm=0.8, corner_radius_mm=1.6,
+                                cavity_corner_radius_mm=0.75))
+    assert OrganizerSpec.from_dict(spec.to_dict()) == spec
+    assert '"base_chamfer_mm":0.8' in canonical_json(spec)
+    assert spec_hash(spec) != spec_hash(deck())
+
+
+def test_a_spec_written_without_them_reads_back_with_the_defaults():
+    """What moved the archetype version: an older spec file has no edge fields, so it
+    compiles to a chamfered box where it once compiled to a square-cornered one. The
+    schema does not refuse it — the fields are additive — and
+    `deck_box.ARCHETYPE_VERSION` is what records which geometry a job got."""
+    d = deck().to_dict()
+    for field in ("base_chamfer_mm", "corner_radius_mm", "cavity_corner_radius_mm"):
+        del d["process"][field]
+    assert OrganizerSpec.from_dict(d).process.base_chamfer_mm == 0.6
+
+
+def test_diff_reports_an_edge_treatment_which_is_what_makes_it_iterable():
+    """F8 iterates by spec diff, so "square off the corners" has to be a path."""
+    a, b = deck(), deck(process=Process(corner_radius_mm=0.0))
+    assert spec_diff(a, b) == {"process.corner_radius_mm": (1.0, 0.0)}
 
 
 # ── fit intent (issue #71) ─────────────────────────────────────────────────────
@@ -518,14 +571,17 @@ def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
     which is a schema-version bump, not a refactor.
 
-    It has moved three times, deliberately. `constraints.fit_margin_mm` (issue #70)
+    It has moved four times, deliberately. `constraints.fit_margin_mm` (issue #70)
     and `process.fit_intent` (issue #71) are scalars with defaults, not optional
     *sections*, so they are written for every spec the way `process.wall_mm` is.
     Issue #72 moved it again without adding a field: `process.wall_mm`'s default
     stopped being one unsourced 2,8 mm for every archetype and became the archetype's
     own — 2,4 mm here, the lid's arithmetic. A spec that *states* 2,8 mm hashes and
     compiles exactly as it always did, which is what `tests/test_deck_box.py` pins in
-    bytes; only specs that never said anything move.
+    bytes; only specs that never said anything move. Issue #80 added three more
+    scalars — `base_chamfer_mm`, `corner_radius_mm`, `cavity_corner_radius_mm` — and
+    that one moved the *geometry* of a stored spec as well as its hash, which is why
+    `deck_box.ARCHETYPE_VERSION` went to 2 with it.
 
     A section is omitted when absent — that is what `_OPTIONAL_SECTIONS` is for — but
     omitting a scalar at its default would mean the canonical form no longer says what
@@ -546,8 +602,9 @@ def test_the_hash_is_stable_across_processes():
         '"count":100,"sleeving":"double"}}],'
         '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"lid":{"clearance_mm":0.2,"height_mm":15.0,"kind":"lift_off","magnets":false,'
-        '"top_mm":2.0,"wall_mm":1.2},"process":{"cavity_clearance_mm":1.5,'
-        '"fit_intent":"snug","floor_mm":2.0,'
+        '"top_mm":2.0,"wall_mm":1.2},"process":{"base_chamfer_mm":0.6,'
+        '"cavity_clearance_mm":1.5,"cavity_corner_radius_mm":0.0,'
+        '"corner_radius_mm":1.0,"fit_intent":"snug","floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":2.4},"schema_version":1}'
     )
 
@@ -594,8 +651,9 @@ def test_the_fixed_divider_vector_carries_no_lid():
         '"count":100,"sleeving":"double"}}],'
         '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
         '"divider":{"tab_height_mm":10.0,"tab_position":"centre","tab_width_mm":20.0,'
-        '"thickness_mm":1.4},"process":{"cavity_clearance_mm":1.5,'
-        '"fit_intent":"snug","floor_mm":2.0,'
+        '"thickness_mm":1.4},"process":{"base_chamfer_mm":0.6,'
+        '"cavity_clearance_mm":1.5,"cavity_corner_radius_mm":0.0,'
+        '"corner_radius_mm":1.0,"fit_intent":"snug","floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":1.2},"schema_version":1}'
     )
 

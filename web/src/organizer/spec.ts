@@ -213,6 +213,24 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
       row('min_feature_mm', 'Minimum feature', p.min_feature_mm, 'mm', true,
         'the archetype refuses anything thinner'),
     );
+    // The three edge treatments, each shown only when the spec carries it. A row
+    // stored before issue #80 was built by an archetype that had no chamfer and no
+    // corner round, so filling the gap with today's default would put a feature on
+    // screen that is not on that mesh. Their notes say **design default, unsourced**
+    // for the reason the divider's tab rows do: the audited insert document calls the
+    // features mandatory and names no millimetre for any of them.
+    if (p.base_chamfer_mm !== undefined) {
+      dimensions.push(row('base_chamfer_mm', 'Base chamfer', p.base_chamfer_mm, 'mm', true,
+        '45°, against warping; design default, unsourced'));
+    }
+    if (p.corner_radius_mm !== undefined) {
+      dimensions.push(row('corner_radius_mm', 'Corner radius', p.corner_radius_mm, 'mm', true,
+        'external vertical corners, against elephant-foot flare; design default, unsourced'));
+    }
+    if (p.cavity_corner_radius_mm !== undefined) {
+      dimensions.push(row('cavity_corner_radius_mm', 'Cavity corner radius',
+        p.cavity_corner_radius_mm, 'mm', true, 'internal vertical corners'));
+    }
   }
   if (lid) {
     dimensions.push(

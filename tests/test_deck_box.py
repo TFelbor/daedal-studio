@@ -331,7 +331,7 @@ def test_the_result_carries_the_designed_features_and_the_spec_hash():
     from pythonsrc.organizer.spec import spec_hash
     spec = deck()
     result = compile_spec(spec)
-    assert result.archetype == "deck_box" and result.archetype_version == "1"
+    assert result.archetype == "deck_box" and result.archetype_version == "2"
     assert result.spec_hash == spec_hash(spec)
     for key in ("cavity_width_mm", "cavity_depth_mm", "cavity_height_mm",
                 "external_width_mm", "external_depth_mm", "external_height_mm",
@@ -349,40 +349,53 @@ def test_the_same_spec_exports_the_same_bytes(tmp_path):
     assert hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()
 
 
-def test_a_spec_that_states_the_old_wall_exports_the_bytes_it_always_has(tmp_path):
+def test_a_spec_that_states_every_default_exports_the_bytes_it_always_has(tmp_path):
     """A fixed vector for the *mesh* of a spec that says what it wants.
 
     This hash is the one the example deck box carried before issue #72, and the spec
     that produces it is the example plus `process.wall_mm: 2.8` — the number that used
-    to be the schema's default. **A spec that states its wall compiles to the byte it
-    always did**, which is the whole compatibility claim of retiring an unsourced
-    default: every spec file, saved design and stored hash that named 2,8 mm is
-    untouched, and only specs that never said anything move.
+    to be the schema's default — and, since issue #80, the three edge treatments stated
+    at zero. **A spec that states what it wants compiles to the byte it always did**,
+    which is the compatibility claim of every default this schema has retired or added:
+    `rounded_rect_prism(…, 0)` is `Manifold.cube` vertex for vertex and a zero chamfer
+    is the plain prism, so a square-cornered deck box runs the code path it always ran.
+    Only specs that never said anything move.
 
     If this hash changes, either the kernel's output changed or something other than a
     default did, and both are answers somebody has to give deliberately.
     """
     from pythonsrc.organizer.compiler import export_stl
-    spec = deck(process=Process(wall_mm=2.8))
+    spec = deck(process=Process(
+        wall_mm=2.8, base_chamfer_mm=0.0, corner_radius_mm=0.0, cavity_corner_radius_mm=0.0,
+    ))
     stl = export_stl(compile_spec(spec).mesh, tmp_path / "a.stl")
     assert hashlib.sha256(stl.read_bytes()).hexdigest() == (
         "c638fddc0d98f8823157ec99cd767be66ec30078ffb2be149072ef12eb4de785"
     )
 
 
-def test_the_example_deck_box_exports_the_bytes_its_own_default_builds(tmp_path):
-    """The same fixed vector for the example as it stands: no wall stated, so
-    `spec.ARCHETYPE_WALL_MM["deck_box"]` — 2,4 mm — builds it.
+def test_the_example_deck_box_exports_the_bytes_its_own_defaults_build(tmp_path):
+    """The same fixed vector for the example as it stands: no wall and no edge
+    treatments stated, so `spec.ARCHETYPE_WALL_MM["deck_box"]` — 2,4 mm — and
+    `Process`'s own 0,6 mm chamfer and 1,0 mm corner round build it.
 
-    It moved exactly once, at issue #72, when the unsourced 2,8 mm default was
-    replaced by the lid's own arithmetic. `process.fit_intent` (issue #71) had moved
-    every spec *hash* before that without moving any geometry; this is the converse,
-    and the test above keeps the old geometry reachable by naming its wall.
+    It has moved twice. At issue #72, when the unsourced 2,8 mm wall default was
+    replaced by the lid's own arithmetic; and at issue #80, when the edge treatments
+    the audited insert standard calls mandatory became defaults. The test above keeps
+    the old geometry reachable by naming every number it is built from, and the
+    features are asserted below rather than only hashed — a byte pin says a mesh
+    changed, not that it is the right one.
     """
     from pythonsrc.organizer.compiler import export_stl
-    stl = export_stl(compile_spec(example_spec("deck_box")).mesh, tmp_path / "a.stl")
+    spec = example_spec("deck_box")
+    result = compile_spec(spec)
+    assert_features_within(
+        result.features, measure_spec_mesh(spec, result.mesh), TOL_MM,
+        required=set(deck_box.MEASURED_FEATURES),
+    )
+    stl = export_stl(result.mesh, tmp_path / "a.stl")
     assert hashlib.sha256(stl.read_bytes()).hexdigest() == (
-        "a54271bf044a1dba08db93829e8d0fb19b318fd676987d899dbb7428dbae9aa8"
+        "4097c70c553c221e26818b7b4bb10b11e0524ded4ffa87a4756e0bb3b806c3a6"
     )
 
 
@@ -458,6 +471,189 @@ def test_the_gate_does_not_fail_the_deck_box(tmp_path):
     assert report.verdict != "unprintable"
 
 
+# ── the edge treatments (issue #80) ────────────────────────────────────────────
+
+def test_the_defaults_put_a_chamfer_and_a_corner_round_on_the_compiled_mesh():
+    """Not "the spec says 0,6" — the mesh has a 0,6 mm 45° chamfer and a 1,0 mm corner,
+    on both bodies, read off the geometry."""
+    spec = deck()
+    result = compile_spec(spec)
+    assert result.features["base_chamfer_mm"] == 0.6
+    assert result.features["corner_radius_mm"] == 1.0
+    measured = measure_spec_mesh(spec, result.mesh)
+    for name in ("base_chamfer_mm", "lid_base_chamfer_mm"):
+        assert measured[name] == pytest.approx(0.6, abs=1e-4), name
+    for name in ("corner_radius_mm", "lid_corner_radius_mm"):
+        assert measured[name] == pytest.approx(1.0, abs=1e-4), name
+    # And the closure stays square-cornered at the defaults: 1,0 mm is under the
+    # 1,4 mm lip inset, so both derived radii clamp to 0.
+    assert result.features["lip_corner_radius_mm"] == 0.0
+    assert result.features["lid_cavity_corner_radius_mm"] == 0.0
+
+
+def test_the_derived_radii_keep_the_lid_clearance_exact_around_the_corner():
+    """A radius wider than the lip inset rounds the closure too, and the arcs share the
+    external corner's centre — so the gap between the lip and the lid cavity is
+    `lid.clearance_mm` at the corner exactly as it is along the side."""
+    spec = deck(process=Process(wall_mm=4.0, corner_radius_mm=2.4))
+    result = compile_spec(spec)
+    assert result.features["lip_corner_radius_mm"] == pytest.approx(2.4 - 1.4, abs=1e-9)
+    assert result.features["lid_cavity_corner_radius_mm"] == pytest.approx(2.4 - 1.2, abs=1e-9)
+    measured = measure_spec_mesh(spec, result.mesh)
+    assert_features_within(result.features, measured, TOL_MM,
+                           required=set(deck_box.MEASURED_FEATURES))
+    assert measured["lid_clearance_mm"] == pytest.approx(0.2, abs=1e-4)
+
+
+def test_an_internal_round_reaches_the_cavity_wall():
+    spec = deck(process=Process(cavity_corner_radius_mm=0.75))
+    result = compile_spec(spec)
+    measured = measure_spec_mesh(spec, result.mesh)
+    assert measured["cavity_corner_radius_mm"] == pytest.approx(0.75, abs=1e-4)
+    assert_features_within(result.features, measured, TOL_MM,
+                           required=set(deck_box.MEASURED_FEATURES))
+
+
+def test_a_spec_that_zeroes_the_edge_treatments_measures_them_as_zero():
+    """The other end of the range, and the one that keeps the pre-#80 geometry
+    reachable: no chamfer, square corners, and `measure` says so rather than failing to
+    find a feature."""
+    spec = deck(process=Process(
+        base_chamfer_mm=0.0, corner_radius_mm=0.0, cavity_corner_radius_mm=0.0))
+    result = compile_spec(spec)
+    measured = measure_spec_mesh(spec, result.mesh)
+    assert measured["base_chamfer_mm"] == 0.0 and measured["corner_radius_mm"] == 0.0
+    assert_features_within(result.features, measured, TOL_MM,
+                           required=set(deck_box.MEASURED_FEATURES))
+
+
+def test_the_edge_measurements_bite_when_the_mesh_does_not_match_the_design():
+    """A check that cannot fail is not a check. Measure a square-cornered, unchamfered
+    mesh against a design that asks for both, and the two features are named."""
+    designed = compile_spec(deck()).features
+    plain = deck(process=Process(
+        base_chamfer_mm=0.0, corner_radius_mm=0.0, cavity_corner_radius_mm=0.0))
+    measured = measure_spec_mesh(plain, compile_spec(plain).mesh)
+    with pytest.raises(MeasureError) as exc:
+        assert_features_within(designed, measured, TOL_MM,
+                               required=set(deck_box.MEASURED_FEATURES))
+    for name in ("base_chamfer_mm", "lid_base_chamfer_mm",
+                 "corner_radius_mm", "lid_corner_radius_mm"):
+        assert name in str(exc.value), name
+
+
+def test_a_corner_round_wider_than_the_wall_is_refused_with_the_wall_it_would_leave():
+    with pytest.raises(SpecError) as exc:
+        compile_spec(deck(process=Process(corner_radius_mm=3.0)))
+    message = "; ".join(exc.value.problems)
+    assert "process.corner_radius_mm 3 mm is larger than process.wall_mm 2.4" in message
+    assert "thin the wall to" in message and "thicken the wall" in message
+
+
+@pytest.mark.parametrize(
+    "process, lid_kwargs, names",
+    [
+        (Process(base_chamfer_mm=2.0), {}, ["process.floor_mm 2", "lid.top_mm 2"]),
+        (Process(base_chamfer_mm=1.5, floor_mm=3.0), {"top_mm": 1.0}, ["lid.top_mm 1"]),
+    ],
+)
+def test_a_chamfer_that_would_cut_into_a_cavity_is_refused(process, lid_kwargs, names):
+    with pytest.raises(SpecError) as exc:
+        compile_spec(deck(process=process, lid=Lid(**lid_kwargs)))
+    message = "; ".join(exc.value.problems)
+    for name in names:
+        assert name in message, message
+    assert "cuts into the cavity above it" in message
+
+
+def test_an_internal_round_that_intrudes_on_the_contents_is_refused():
+    """`ρ·(√2 − 1)` back along the diagonal against the `cc·√2/2` the clearance leaves
+    there: at the default 1,5 mm clearance the ceiling is 2,56 mm."""
+    assert compile_spec(deck(process=Process(cavity_corner_radius_mm=2.5))).mesh.is_watertight
+    with pytest.raises(SpecError) as exc:
+        compile_spec(deck(process=Process(cavity_corner_radius_mm=3.0)))
+    message = "; ".join(exc.value.problems)
+    assert "process.cavity_corner_radius_mm 3 mm sets the cavity's corner" in message
+    assert "process.cavity_clearance_mm 1.5 mm leaves there" in message
+
+
+def test_a_chamfered_plate_survives_the_export_as_two_watertight_bodies(tmp_path):
+    """The regression `base_chamfer`'s docstring is about. A chamfer generated by any
+    boolean leaves zero-area triangles along the seam; float32 merges their corners on
+    export, and the plate comes back with non-manifold edges and 45 loose bodies. The
+    compiled mesh being watertight does not catch it — only the round trip does."""
+    spec = deck()
+    plate = compile_spec(spec).mesh
+    assert (plate.area_faces < 1e-9).sum() == 0
+    reloaded = trimesh.load(str(export_stl(plate, tmp_path / "plate.stl")))
+    assert reloaded.is_watertight
+    assert len(reloaded.split(only_watertight=False)) == 2
+
+
+def test_the_chamfer_is_measured_off_phase_3s_output_too(tmp_path):
+    """Assert mode does not decimate, and `orient_for_print` re-centres in X and Y —
+    both features here are differences, so both survive."""
+    spec = deck(process=Process(corner_radius_mm=2.0, cavity_corner_radius_mm=0.75))
+    result = compile_spec(spec)
+    raw = export_stl(result.mesh, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(input_path=raw, output_path=tmp_path / "engineered.obj", target_mm=None)
+    measured = measure_spec_mesh(spec, trimesh.load(str(out), force="mesh"))
+    assert_features_within(result.features, measured, TOL_MM,
+                           required=set(deck_box.MEASURED_FEATURES))
+    assert eng.last_report.get("faces_dropped", 0) == 0
+
+
+def test_a_sloping_face_that_is_not_45_degrees_is_a_finding_not_a_height():
+    """`measure` reads the chamfer's *angle* off the mesh rather than trusting it. A
+    face at 30° would otherwise report a plausible height for a part nobody designed —
+    so a body with one is refused, and one with a real chamfer measures it."""
+    from pythonsrc.organizer.compiler import manifold_to_trimesh, rounded_rect_prism
+
+    chamfered = manifold_to_trimesh(rounded_rect_prism(60.0, 40.0, 20.0, 1.0, chamfer_mm=0.6))
+    assert deck_box._chamfer(chamfered, "body") == pytest.approx(0.6, abs=1e-4)
+
+    wedge = manifold_to_trimesh(
+        rounded_rect_prism(60.0, 40.0, 20.0).rotate([0.0, 30.0, 0.0])
+    )
+    with pytest.raises(MeasureError) as exc:
+        deck_box._chamfer(wedge, "body")
+    assert "the body's base chamfer is" in str(exc.value)
+    assert "where a deck box v2 cuts 45°" in str(exc.value)
+
+
+def test_the_view_names_the_edge_treatments_and_says_they_are_unsourced():
+    view = view_for(deck(), compile_spec(deck()))
+    rows = {d["key"]: d for d in view["dimensions"]}
+    assert rows["base_chamfer_mm"]["value"] == 0.6
+    assert "45°" in rows["base_chamfer_mm"]["note"]
+    assert "design default, unsourced" in rows["base_chamfer_mm"]["note"]
+    assert "design default, unsourced" in rows["corner_radius_mm"]["note"]
+    assert rows["cavity_corner_radius_mm"]["value"] == 0.0
+    assert all(rows[k]["editable"] for k in
+               ("base_chamfer_mm", "corner_radius_mm", "cavity_corner_radius_mm"))
+
+
+def test_the_chamfered_deck_box_still_passes_the_printability_gate(tmp_path):
+    """A 45° face counts as an overhang by `printability`'s own inclusive threshold, so
+    the chamfer adds overhang area by definition. It has to stay a rounding error
+    against the warn threshold, and the gate has to stay free of failures."""
+    spec = deck()
+    result = compile_spec(spec)
+    raw = export_stl(result.mesh, tmp_path / "compiled_mesh.stl")
+    out = Engineer().process(input_path=raw, output_path=tmp_path / "engineered.obj", target_mm=None)
+    report = evaluate_printability(
+        trimesh.load(str(out), force="mesh"),
+        ProcessProfile(build_volume_mm=[220.0, 220.0, 250.0]),
+        expected_components=len(result.parts),
+    )
+    by_name = {c.check: c for c in report.checks}
+    assert not any(c.status == "fail" for c in report.checks), [
+        (c.check, c.detail) for c in report.checks if c.status == "fail"]
+    assert by_name["overhang_area"].status == "pass", by_name["overhang_area"].detail
+    assert report.verdict != "unprintable"
+
+
 # ── fits check and the UI view ─────────────────────────────────────────────────
 
 def test_the_fits_line_shows_the_arithmetic():
@@ -528,7 +724,7 @@ def test_the_view_has_the_shape_the_ui_declares():
     result = compile_spec(spec)
     view = view_for(spec, result)
     assert view["archetype"] == "deck_box"
-    assert view["archetypeVersion"] == "v1"
+    assert view["archetypeVersion"] == "v2"
     assert view["hash"] == result.spec_hash
     assert view["fits"]["fits"] is True and "stack" in view["fits"]["line"]
     keys = [d["key"] for d in view["dimensions"]]

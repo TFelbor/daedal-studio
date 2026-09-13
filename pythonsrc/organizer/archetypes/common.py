@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from ..compiler import MeasureError, plane_set
+from ..compiler import MeasureError, face_planes
 from ..spec import OrganizerSpec
 
 #: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
@@ -121,17 +121,25 @@ def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: st
     per-feature error: geometry without the planes the design says it has cannot be
     measured against that design at all.
 
+    Reads the mesh's **faces** (`compiler.face_planes`) rather than a column of its
+    vertices. The two agree exactly on a part built from axis-aligned boxes, which is
+    what every archetype was when this helper was written; they stop agreeing the
+    moment an edge is rounded, because a vertical fillet puts a vertex at every
+    coordinate between the tangent point and the corner while leaving the design's walls
+    the only faces square to the axis. Faces are the honest reading of "which planes
+    does this part have", and it is the reading a rounded box survives.
+
     Args:
-        part: A mesh (or mesh body) with a `vertices` array.
+        part: A mesh (or mesh body) with `vertices` and `faces` arrays.
         axis: 0, 1 or 2 for X, Y or Z.
         expected: How many distinct planes the design puts on that axis.
         what: The body being measured, e.g. `"lid"`, for the message.
-        subject: The archetype and version, e.g. `"a deck box v1"`.
+        subject: The archetype and version, e.g. `"a deck box v2"`.
 
     Raises:
         MeasureError: Naming the count found, the count designed and every plane.
     """
-    planes = plane_set(part.vertices[:, axis])
+    planes = face_planes(part, axis)
     if len(planes) != expected:
         raise MeasureError(
             f"the {what} has {len(planes)} distinct {'XYZ'[axis]} planes where {subject} "
