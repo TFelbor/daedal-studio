@@ -95,6 +95,23 @@ each band, 1,5 and 4,0 mm. Both are total per axis, not per side.
 | d20 | ~20–22 mm (22 typical) | [Victory Dice](https://www.victorydice.com/blogs/dnd-dice-guides/how-big-are-d-d-dice) |
 | Pocket rule | wells for d20/d12 sized vertex-to-vertex: +10–15 % over face-to-face | derived from [Dice Game Depot](https://www.dicegamedepot.com/dice-sizes/) |
 
+**What is missing, and why the token tray ships with no presets** (issue #84,
+2026-09-13). The table above sources die *sizes*. It does not source:
+
+- **a punchboard token footprint** — the commonest thing a tray holds. No standard
+  exists; publishers cut tokens to whatever the sheet allows, and community
+  measurements are per-game the way box internals are (§7);
+- **a d6 pocket clearance.** The +10–15 % rule above is explicitly for d20 and d12,
+  where the well has to take the *vertex-to-vertex* dimension of a shape that does not
+  sit flat. It says nothing about how much room a 16 mm d6 wants in a 16 mm-nominal
+  square pocket, and a die in a pocket its own size is not in a pocket.
+
+A `token_tray` preset would therefore be one sourced number plus one invented one, which
+is the failure `dimensions.py` avoids by carrying no token sizes at all. So `Pocket` in
+`pythonsrc/organizer/spec.py` takes explicit millimetres and a free-text `source`, the
+view prints that provenance (or says "user-given mm" when there is none), and presets
+join when this file can source both halves — the M2 KB.
+
 ## 5. What existing parametric generators default to (prior art for our tolerances)
 
 | Generator | Parameter | Default | Source |

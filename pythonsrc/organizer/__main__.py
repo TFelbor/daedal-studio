@@ -2,6 +2,7 @@
 
     python -m pythonsrc.organizer example deck_box > deck.json
     python -m pythonsrc.organizer example card_divider > divider.json
+    python -m pythonsrc.organizer example --archetype token_tray > tray.json
     python -m pythonsrc.organizer compile deck.json --out deck.stl --features features.json
     python -m pythonsrc.organizer measure deck.json deck.stl [--report dimension_report.json]
 

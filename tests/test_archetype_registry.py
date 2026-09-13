@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from pythonsrc.organizer.archetypes import REGISTRY, example_spec
+from pythonsrc.organizer.archetypes import REGISTRY, example_spec, required_measurements
 from pythonsrc.organizer.spec import ARCHETYPE_WALL_MM, ARCHETYPES, wall_floor_mm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +79,28 @@ def test_every_archetypes_example_names_itself_and_declares_its_measurements(nam
     features = set(REGISTRY[name].MEASURED_FEATURES)
     assert features, f"{name} promises to measure nothing"
     assert features <= set(REGISTRY[name].compile(spec).features)
+
+
+@pytest.mark.parametrize("name", sorted(REGISTRY))
+def test_the_registry_asks_every_archetype_what_this_spec_promises(name):
+    """`required_measurements` is what the pipeline, the CLI and `verify_spec_mesh` all
+    route through, so it — not `MEASURED_FEATURES` — is what a report's *within
+    tolerance* actually means. A module may declare `measured_features(spec)` when its
+    feature list is a function of the grid (the token tray does); the fallback is the
+    fixed tuple, and either way every name it promises has to be one the compiler
+    designed and one the measurer reads back.
+    """
+    spec = example_spec(name)
+    module = REGISTRY[name]
+    promised = set(required_measurements(spec))
+    assert set(module.MEASURED_FEATURES) <= promised, (
+        f"{name} promises less through the registry than its own tuple declares"
+    )
+    result = module.compile(spec)
+    assert promised <= set(result.features), f"{name} promises features it never designs"
+    assert promised <= set(module.measure(result.mesh)), (
+        f"{name} promises features its own measure() does not read back"
+    )
 
 
 def test_every_archetype_names_the_wall_it_builds_with_when_a_spec_does_not():

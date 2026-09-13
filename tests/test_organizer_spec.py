@@ -24,8 +24,10 @@ from pythonsrc.organizer.spec import (
     Divider,
     Lid,
     OrganizerSpec,
+    Pocket,
     Process,
     SpecError,
+    Tray,
     check_wall_floor,
     problem_path,
     problems_with_paths,
@@ -51,6 +53,18 @@ def deck(count=100, sleeving="double", **overrides):
         archetype="deck_box",
         compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
         lid=Lid(),
+    )
+    base.update(overrides)
+    return OrganizerSpec(**base)
+
+
+def token_tray(rows=2, columns=3, **overrides):
+    """A valid token-tray spec — the third archetype, and the plural one."""
+    pocket = Pocket(width_mm=20.0, depth_mm=20.0, height_mm=15.0)
+    base = dict(
+        archetype="token_tray",
+        compartments=tuple(Compartment(pocket) for _ in range(rows * columns)),
+        tray=Tray(columns=columns),
     )
     base.update(overrides)
     return OrganizerSpec(**base)
@@ -99,6 +113,108 @@ def test_the_divider_section_round_trips():
                                         tab_height_mm=12.0, tab_position="left"))
     assert OrganizerSpec.from_dict(spec.to_dict()) == spec
     assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
+def test_the_token_tray_is_a_known_archetype():
+    assert "token_tray" in ARCHETYPES
+
+
+# ── the contents union: a compartment holds cards *or* a pocket (issue #84) ────
+
+def test_a_pocket_compartment_round_trips():
+    spec = token_tray()
+    assert OrganizerSpec.from_dict(spec.to_dict()) == spec
+    assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
+def test_the_tray_section_round_trips_and_carries_the_columns():
+    spec = token_tray(rows=4, columns=2)
+    assert OrganizerSpec.from_dict(spec.to_dict()).tray == Tray(columns=2)
+    assert len(spec.compartments) == 8
+
+
+def test_a_pockets_millimetres_round_to_one_micron_like_every_other():
+    pocket = Pocket(width_mm=20.0000004, depth_mm=12.3456, height_mm=15.0)
+    assert pocket.width_mm == 20.0 and pocket.depth_mm == 12.346
+
+
+def test_a_pocket_carries_its_own_provenance_or_none():
+    assert Pocket(20.0, 20.0, 15.0).source is None
+    assert Pocket(20.0, 20.0, 15.0, source="16 mm d6, +2 mm").source == "16 mm d6, +2 mm"
+    with pytest.raises(SpecError) as exc:
+        Pocket(20.0, 20.0, 15.0, source=16)
+    assert "source" in str(exc.value)
+
+
+@pytest.mark.parametrize("contents, kind", [
+    ({"count": 100, "card": "standard", "sleeving": "double"}, CardStack),
+    ({"width_mm": 20.0, "depth_mm": 20.0, "height_mm": 15.0}, Pocket),
+])
+def test_the_contents_union_is_chosen_by_the_keys_it_carries(contents, kind):
+    """No `kind` discriminator, on purpose: a new field on `CardStack` would move the
+    canonical form and therefore the stored hash of every spec ever written."""
+    spec = OrganizerSpec.from_dict({
+        "archetype": "token_tray" if kind is Pocket else "deck_box",
+        "compartments": [{"contents": contents}],
+        **({"tray": {"columns": 1}} if kind is Pocket else {"lid": {}}),
+        "schema_version": 1,
+    })
+    assert isinstance(spec.compartments[0].contents, kind)
+
+
+@pytest.mark.parametrize("contents, carries", [
+    ({"count": 100, "width_mm": 20.0, "depth_mm": 20.0, "height_mm": 15.0}, "both"),
+    ({"card": "standard"}, "neither"),
+    ({}, "neither"),
+])
+def test_contents_that_are_both_shapes_or_neither_are_refused_naming_both(contents, carries):
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "token_tray", "compartments": [{"contents": contents}],
+            "tray": {"columns": 1}, "schema_version": 1,
+        })
+    named = {p["path"]: p["message"] for p in problems_with_paths(exc.value.problems)}
+    message = named["spec.compartments[0].contents"]
+    assert carries in message
+    assert "cardstack" in message and "pocket" in message
+    assert "count" in message and "width_mm" in message
+
+
+def test_an_unknown_pocket_key_is_refused_like_every_other_leaf():
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "token_tray",
+            "compartments": [{"contents": {"width_mm": 20.0, "depth_mm": 20.0,
+                                           "height_mm": 15.0, "diameter_mm": 16.0}}],
+            "tray": {"columns": 1}, "schema_version": 1,
+        })
+    assert "unknown field(s): diameter_mm" in str(exc.value)
+
+
+def test_a_missing_pocket_dimension_is_refused_as_missing_not_defaulted():
+    """There is no default to fall back to and there must not be one: `dimensions.py`
+    carries no token or dice sizes, so an invented figure would be the fabricated
+    number the schema exists to refuse."""
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "token_tray",
+            "compartments": [{"contents": {"width_mm": 20.0, "depth_mm": 20.0}}],
+            "tray": {"columns": 1}, "schema_version": 1,
+        })
+    assert "missing a required field" in str(exc.value)
+    assert "height_mm" in str(exc.value)
+
+
+@pytest.mark.parametrize("columns", [0, -1, 1.5, "3", True])
+def test_a_bad_column_count_is_refused_by_name(columns):
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "token_tray",
+            "compartments": [{"contents": {"width_mm": 20.0, "depth_mm": 20.0,
+                                           "height_mm": 15.0}}],
+            "tray": {"columns": columns}, "schema_version": 1,
+        })
+    assert "spec.tray.columns" in {p["path"] for p in problems_with_paths(exc.value.problems)}
 
 
 # ── validation: every rule, with the field named ───────────────────────────────
@@ -559,12 +675,26 @@ def test_an_absent_optional_section_is_omitted_from_the_canonical_form():
     section would move them all again. `from_dict` defaults each to None, so nothing is
     lost: the round-trip test above is the other half of this one."""
     d = deck().to_dict()
-    assert "divider" not in d and "lid" in d
-    assert "divider" not in canonical_json(deck())
+    assert "divider" not in d and "tray" not in d and "lid" in d
+    assert "divider" not in canonical_json(deck()) and "tray" not in canonical_json(deck())
     div = card_divider().to_dict()
-    assert "lid" not in div and "divider" in div
+    assert "lid" not in div and "tray" not in div and "divider" in div
+    t = token_tray().to_dict()
+    assert "lid" not in t and "divider" not in t and "tray" in t
     # And a section explicitly set to null on the way in is still absent on the way out.
     assert "lid" not in OrganizerSpec.from_dict({**div, "lid": None}).to_dict()
+
+
+def test_the_third_archetypes_section_moved_no_existing_hash():
+    """The rule above, as the thing it exists to prevent. `tray` is `Optional[...] =
+    None` and in `_OPTIONAL_SECTIONS`, so adding it left the fixed vectors below — and
+    every hash ever stored against them — byte for byte where they were. Had it been a
+    plain field it would have written `"tray":null` into every deck box in the world.
+    """
+    assert spec_hash(deck()) == spec_hash(OrganizerSpec.from_dict(deck().to_dict()))
+    for spec in (deck(), card_divider()):
+        assert "tray" not in canonical_json(spec)
+    assert '"tray":{"columns":3}' in canonical_json(token_tray())
 
 
 def test_the_hash_is_stable_across_processes():
@@ -656,6 +786,53 @@ def test_the_fixed_divider_vector_carries_no_lid():
         '"corner_radius_mm":1.0,"fit_intent":"snug","floor_mm":2.0,'
         '"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":1.2},"schema_version":1}'
     )
+
+
+def test_the_fixed_tray_vector_carries_a_pocket_and_no_card_stack():
+    """The third archetype's own fixed vector. Note what is *not* here: no `count`, no
+    `card`, no `sleeving`, and no `kind` discriminator on either shape — the union is
+    told apart by the keys it carries, which is what kept the two vectors above from
+    moving. `source` is written as null rather than omitted because it is a scalar with
+    a default, like `constraints.max_external_mm`; only *sections* are omitted.
+
+    The three edge scalars issue #80 added — `base_chamfer_mm`, `corner_radius_mm`,
+    `cavity_corner_radius_mm` — are here for the reason `card_divider` states in as
+    many words: a `Process` field this archetype does not read still hashes. A v1 tray
+    is square-pocketed and square-cornered whatever they say; turning them into tray
+    geometry (the internal round is the one that archetype was named for) is its own
+    issue."""
+    assert canonical_json(token_tray(rows=1, columns=2)) == (
+        '{"archetype":"token_tray","compartments":['
+        '{"contents":{"depth_mm":20.0,"height_mm":15.0,"source":null,"width_mm":20.0}},'
+        '{"contents":{"depth_mm":20.0,"height_mm":15.0,"source":null,"width_mm":20.0}}],'
+        '"constraints":{"fit_margin_mm":2.0,"max_external_mm":null},'
+        '"process":{"base_chamfer_mm":0.6,"cavity_clearance_mm":1.5,'
+        '"cavity_corner_radius_mm":0.0,"corner_radius_mm":1.0,"fit_intent":"snug",'
+        '"floor_mm":2.0,"min_feature_mm":1.0,"stack_slack_mm":1.0,"wall_mm":1.6},'
+        '"schema_version":1,"tray":{"columns":2}}'
+    )
+
+
+def test_diff_reports_a_grid_change_which_is_what_makes_f8_mechanical():
+    """"Make it three across" has to be a path — `tray.columns` — for the same reason
+    "make the tab wider" does."""
+    a, b = token_tray(rows=2, columns=3), token_tray(rows=3, columns=3)
+    # Same columns, three more compartments: the diff is the compartments, not the grid,
+    # because the rows are derived from the compartment count rather than stated.
+    added = spec_diff(a, b)
+    assert "tray.columns" not in added
+    assert added["compartments[6].contents.width_mm"] == (None, 20.0)
+    c = token_tray(rows=2, columns=2)
+    assert spec_diff(a, c)["tray.columns"] == (3, 2)
+
+
+def test_diff_reports_a_card_stack_becoming_a_pocket_as_both_sides():
+    """The union's own diff. A `CardStack` and a `Pocket` share no path at all, so the
+    change reads as every card field removed and every pocket field added — which is
+    exactly what happened, and what a saved design's history should say."""
+    d = spec_diff(deck(), token_tray(rows=1, columns=1))
+    assert d["compartments[0].contents.count"] == (100, None)
+    assert d["compartments[0].contents.width_mm"] == (None, 20.0)
 
 
 def test_diff_indexes_into_lists():

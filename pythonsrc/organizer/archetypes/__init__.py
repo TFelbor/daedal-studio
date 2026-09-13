@@ -8,12 +8,18 @@ line here, and `spec.ARCHETYPES` must name it too or the schema refuses it befor
 is reached. `spec.ARCHETYPE_WALL_MM` must name it as well — the wall it builds with when
 a spec does not state one — which `tests/test_archetype_registry.py` binds.
 
-Two archetypes as of issue #65 — the deck box (two bodies, a lip and a lift-off lid)
-and the card divider (one flat plate with a label tab). Nothing outside these modules
-knows the difference: `pipeline.py --spec`, the dispatch through `compile_spec` /
-`verify_spec_mesh` and the CLI took no archetype-specific change to gain the second
-one, which is the property the second archetype existed to test. What a second module
-*did* have to share moved into `common.py` rather than being copied.
+Three archetypes as of issue #84 — the deck box (two bodies, a lip and a lift-off lid),
+the card divider (one flat plate with a label tab) and the token tray (one open body, a
+grid of square pockets). Nothing outside these modules knows the difference:
+`pipeline.py --spec`, the dispatch through `compile_spec` / `verify_spec_mesh` and the
+CLI took no archetype-specific change to gain the second one, which is the property the
+second archetype existed to test. What a second module *did* have to share moved into
+`common.py` rather than being copied.
+
+The third cost this file exactly one thing, and it is `required_measurements`: a tray's
+feature list grows with its grid, so a module may now declare `measured_features(spec)`
+and the registry prefers it over the fixed `MEASURED_FEATURES` tuple. Optional, with the
+old behaviour as the fallback, so the deck box and the divider took no change either.
 """
 from __future__ import annotations
 
@@ -28,11 +34,12 @@ from ..spec import (
     SpecError,
     wall_floor_problems,
 )
-from . import card_divider, deck_box
+from . import card_divider, deck_box, token_tray
 
 REGISTRY: dict[str, ModuleType] = {
     deck_box.ARCHETYPE: deck_box,
     card_divider.ARCHETYPE: card_divider,
+    token_tray.ARCHETYPE: token_tray,
 }
 
 # The schema's list and the registry must agree, or a spec the schema accepts has
@@ -109,8 +116,27 @@ def measure_spec_mesh(spec: OrganizerSpec, mesh) -> dict[str, float]:
 
 
 def required_measurements(spec: OrganizerSpec) -> tuple[str, ...]:
-    """The designed features the spec's archetype promises to read back off geometry."""
-    return tuple(get_archetype(spec.archetype).MEASURED_FEATURES)
+    """The designed features the spec's archetype promises to read back off geometry.
+
+    A module **may** expose `measured_features(spec)` when its feature list is a
+    function of the spec rather than a constant, and this prefers it. The token tray is
+    the first: the three externals, the wall and the floor, plus one width, depth and
+    height per grid position and one thickness per wall including the outer ones — which
+    is 30 features for a 2 × 3 tray and 37 for a 4 × 2 (rows × columns, so the wall
+    counts are `columns + 1` and `rows + 1`, and the two are not each other's mirror). A
+    fixed tuple could only name the handful that do not move — the externals, the wall,
+    the floor — which would leave every pocket in the grid unmeasured while the report
+    still said *within tolerance*.
+
+    `MEASURED_FEATURES` remains the fallback and remains required of every module: it is
+    what `tests/test_archetype_registry.py` checks an example against, and a module with
+    neither would promise nothing.
+    """
+    module = get_archetype(spec.archetype)
+    derive_features = getattr(module, "measured_features", None)
+    if derive_features is not None:
+        return tuple(derive_features(spec))
+    return tuple(module.MEASURED_FEATURES)
 
 
 def verify_spec_mesh(

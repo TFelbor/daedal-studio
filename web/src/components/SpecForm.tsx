@@ -90,6 +90,7 @@ export function SpecForm({
   const byField = problemsByField(problems);
   const set = (patch: Partial<SpecFormState>) => onChange({ ...state, ...patch });
   const isDeckBox = state.archetype === 'deck_box';
+  const isTray = state.archetype === 'token_tray';
 
   return (
     <div className={styles.form}>
@@ -121,45 +122,171 @@ export function SpecForm({
       ) : null}
 
       <div className={styles.grid}>
-        <label className={styles.field}>
-          <span className="label-tight">Cards</span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={state.count}
-            disabled={disabled}
-            onChange={(e) => set({ count: e.target.value })}
-          />
-          {/* One card kind, and it says which rather than offering a dead select:
-              the Japanese size has no sourced sleeve envelope, and inventing a
-              footprint for it is the fabricated number this engine refuses. */}
-          <span className={styles.fieldNote}>{CARD_KINDS[0]} size — 63,5 × 88,9 mm</span>
-          <FieldProblems messages={byField.count} />
-          <FieldProblems messages={byField.card} />
-        </label>
+        {/* A tray holds pockets, not cards, so the two card controls are not merely
+            ignored for it — they are absent. `specFromForm` sends no card stack for a
+            token tray either, and a control that sends nothing is a control that
+            cannot be refused, which is worse than one that is not there. */}
+        {isTray ? null : (
+          <>
+            <label className={styles.field}>
+              <span className="label-tight">Cards</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={state.count}
+                disabled={disabled}
+                onChange={(e) => set({ count: e.target.value })}
+              />
+              {/* One card kind, and it says which rather than offering a dead select:
+                  the Japanese size has no sourced sleeve envelope, and inventing a
+                  footprint for it is the fabricated number this engine refuses. */}
+              <span className={styles.fieldNote}>{CARD_KINDS[0]} size — 63,5 × 88,9 mm</span>
+              <FieldProblems messages={byField.count} />
+              <FieldProblems messages={byField.card} />
+            </label>
 
-        <label className={styles.field}>
-          <span className="label-tight">Sleeves</span>
-          <select
-            className="input"
-            value={state.sleeving}
-            disabled={disabled}
-            onChange={(e) => set({ sleeving: e.target.value })}
-          >
-            {SLEEVINGS.map((sleeving) => (
-              <option key={sleeving} value={sleeving}>
-                {SLEEVING_NOTE[sleeving] ?? sleeving}
-              </option>
-            ))}
-          </select>
-          <span className={styles.fieldNote}>decides the envelope and the pitch per card</span>
-          <FieldProblems messages={byField.sleeving} />
-        </label>
+            <label className={styles.field}>
+              <span className="label-tight">Sleeves</span>
+              <select
+                className="input"
+                value={state.sleeving}
+                disabled={disabled}
+                onChange={(e) => set({ sleeving: e.target.value })}
+              >
+                {SLEEVINGS.map((sleeving) => (
+                  <option key={sleeving} value={sleeving}>
+                    {SLEEVING_NOTE[sleeving] ?? sleeving}
+                  </option>
+                ))}
+              </select>
+              <span className={styles.fieldNote}>decides the envelope and the pitch per card</span>
+              <FieldProblems messages={byField.sleeving} />
+            </label>
+          </>
+        )}
 
-        {isDeckBox ? (
+        {isTray ? (
+          <>
+            <label className={styles.field}>
+              <span className="label-tight">Rows</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={state.rows}
+                disabled={disabled}
+                onChange={(e) => set({ rows: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                one compartment per cell; the grid is regular in v1
+              </span>
+              {/* The one control whose refusals are the browser's own. `rows` is never
+                  sent — `Tray` carries `columns`, and the schema derives the rows from
+                  the compartment count — so no 422 can ever name it, and without
+                  `localProblems` a blank or fractional entry became one compartment in
+                  silence. See `specForm.ts`. */}
+              <FieldProblems messages={byField.rows} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Columns</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={state.columns}
+                disabled={disabled}
+                onChange={(e) => set({ columns: e.target.value })}
+              />
+              <span className={styles.fieldNote}>square pockets, square corners — no fillets yet</span>
+              <FieldProblems messages={byField.columns} />
+            </label>
+
+            {/* The three pocket dimensions are the *input*, not a default: no token or
+                dice size is sourced anywhere in the dimension research, so there is no
+                table to resolve them against and a preset would be a sourced size plus
+                an invented clearance. They open on the example's figures and say so. */}
+            <label className={styles.field}>
+              <span className="label-tight">Pocket width</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.pocketWidthMm}
+                disabled={disabled}
+                onChange={(e) => set({ pocketWidthMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                internal, per pocket; no token or dice size is sourced, so this is yours
+              </span>
+              <FieldProblems messages={byField.pocketWidthMm} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Pocket depth</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.pocketDepthMm}
+                disabled={disabled}
+                onChange={(e) => set({ pocketDepthMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>internal, front to back</span>
+              <FieldProblems messages={byField.pocketDepthMm} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Pocket depth (Z)</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.pocketHeightMm}
+                disabled={disabled}
+                onChange={(e) => set({ pocketHeightMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>how deep the hole is, above the floor</span>
+              <FieldProblems messages={byField.pocketHeightMm} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Wall</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm — blank for the archetype’s own"
+                value={state.wallMm}
+                disabled={disabled}
+                onChange={(e) => set({ wallMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                the outer walls and every divider; thinner than three extrusion widths is
+                refused by the compiler
+              </span>
+              <FieldProblems messages={byField.wallMm} />
+            </label>
+          </>
+        ) : isDeckBox ? (
           <>
             <div className={styles.field}>
               <span className="label-tight">Fit</span>
@@ -300,7 +427,12 @@ export function SpecForm({
 
       <FieldProblems messages={byField.archetype} />
 
-      <StackReadout stacks={stacks} resolving={resolving} unreachable={unreachable} />
+      <StackReadout
+        stacks={stacks}
+        resolving={resolving}
+        unreachable={unreachable}
+        expectsStack={!isTray}
+      />
     </div>
   );
 }
@@ -313,12 +445,35 @@ export function SpecForm({
  * height the stack comes to, and the `basis` sentence naming the measurement each of
  * those rests on. Whether the result fits is a measurement of an exported mesh, taken
  * in Phase 3, and nothing before then may imply it.
+ *
+ * `expectsStack` is false for the token tray, whose compartments are pockets: there is
+ * nothing to resolve, `POST /organizer/resolve` returns `stacks: []` by design, and the
+ * empty state's *fix the fields above* would be telling somebody their input is wrong
+ * when it is not — the same failure `unreachable` was added to stop.
  */
 function StackReadout({
   stacks,
   resolving,
   unreachable,
-}: { stacks: ResolvedStack[]; resolving: boolean; unreachable: boolean }) {
+  expectsStack,
+}: {
+  stacks: ResolvedStack[];
+  resolving: boolean;
+  unreachable: boolean;
+  expectsStack: boolean;
+}) {
+  if (!expectsStack) {
+    return (
+      <div className={styles.stackEmpty}>
+        <Ruler size={13} strokeWidth={1.5} aria-hidden="true" />
+        <span>
+          No stack to resolve — a tray’s pockets are the millimetres you typed. Nothing
+          in the dimension research sources a token or dice size, so there is no table
+          behind these figures and the design does not pretend otherwise.
+        </span>
+      </div>
+    );
+  }
   if (!stacks.length) {
     return (
       <div className={styles.stackEmpty}>

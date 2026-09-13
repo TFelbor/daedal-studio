@@ -59,6 +59,7 @@ import {
 } from '../organizer/spec';
 import {
   DEFAULT_SPEC_FORM,
+  localProblems,
   mergeProblems,
   specFromForm,
   type SpecFormState,
@@ -322,13 +323,30 @@ export function NewJob() {
   /** The spec the configurator currently describes, or null in free-prompt mode. */
   const composedSpec = archetype ? specFromForm({ ...specForm, archetype }) : null;
   /**
+   * What the browser itself refuses — today only a tray's grid, whose row count is the
+   * one control the schema has no path for. A spec carrying one is neither resolved
+   * nor submitted: it does not describe anything, so asking the server what it means
+   * would put a figure on screen for a grid nobody typed. See `localProblems`.
+   */
+  const localSpecProblems = archetype ? localProblems({ ...specForm, archetype }) : [];
+  /**
    * The same thing as a string, because it is an effect dependency: a fresh object
    * every render would re-resolve on every render, and the serialised form is exactly
    * the identity that matters — two edits producing the same spec are one request.
    */
-  const composedSpecJson = composedSpec === null ? null : JSON.stringify(composedSpec);
-  /** Everything the server has said is wrong, live and from the last refused submit. */
-  const specProblems = mergeProblems(resolved?.problems ?? [], submitProblems);
+  const composedSpecJson = composedSpec === null || localSpecProblems.length
+    ? null
+    : JSON.stringify(composedSpec);
+  /**
+   * Everything wrong with the spec: this file's own refusals first, then the server's,
+   * live and from the last refused submit. Merged rather than handed to the form
+   * separately, because a control shows one list and the person reading it does not
+   * care which side of the wire noticed.
+   */
+  const specProblems = mergeProblems(
+    localSpecProblems,
+    mergeProblems(resolved?.problems ?? [], submitProblems),
+  );
 
   /**
    * What the prompt field offers and what a screen reader calls it, in one place.
@@ -753,6 +771,11 @@ export function NewJob() {
   const startJob = async (text: string, spec?: Record<string, unknown>) => {
     const trimmed = text.trim();
     if ((!trimmed && !spec) || loading) return;
+    // A spec this file has already refused never reaches `POST /jobs`. The button is
+    // disabled and the Enter key checks the same list, so this is the third of three;
+    // it is here because `startJob` is the single `createJob` path and the zoomed
+    // prompt calls it directly, and a guard on two of three entrances is none.
+    if (spec && localSpecProblems.length) return;
 
     setLoading(true);
     setSubmitError(null);
@@ -1022,7 +1045,8 @@ export function NewJob() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if ((prompt.trim() || composedSpec) && !loading && printerReady) {
+                        if ((prompt.trim() || composedSpec) && !loading && printerReady
+                          && !localSpecProblems.length) {
                           void handleSubmit();
                         }
                       }
@@ -1262,7 +1286,11 @@ export function NewJob() {
                       spec the schema accepts. `schema_valid === false` and not
                       `!== true`: a resolve that has not answered — or could not — must
                       not dead-end the form. The server refuses what it refuses, and
-                      the 422 comes back onto the fields. */}
+                      the 422 comes back onto the fields.
+                      `localSpecProblems` is the one thing that dead-ends it without a
+                      server answer, and it has to: a tray's row count is never sent, so
+                      a blank one has no 422 coming and the spec that would go instead
+                      describes a grid nobody typed. */}
                   <button
                     type="submit"
                     className={`btn btn-primary blueprint marked-accent ${styles.submitBtn}`}
@@ -1270,7 +1298,7 @@ export function NewJob() {
                       loading
                       || !printerReady
                       || (composedSpec
-                        ? resolved?.schema_valid === false
+                        ? localSpecProblems.length > 0 || resolved?.schema_valid === false
                         : !prompt.trim())
                     }
                   >

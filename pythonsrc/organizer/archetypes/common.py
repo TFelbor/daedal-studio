@@ -1,4 +1,4 @@
-"""The four things every archetype module has that are not about its own shape.
+"""The things every archetype module has that are not about its own shape.
 
 Extracted when the second archetype landed (issue #65), because that is the moment a
 habit becomes an API: `deck_box.py` had a compartment-count rule, a plane-count
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
 from ..compiler import MeasureError, face_planes
-from ..spec import OrganizerSpec
+from ..spec import CardStack, OrganizerSpec
 
 #: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
 EXTERNAL_AXES: tuple[str, str, str] = ("width", "depth", "height")
@@ -98,10 +98,10 @@ def single_compartment_problem(
 ) -> Optional[str]:
     """The problem sentence for an archetype that takes exactly one compartment, or None.
 
-    Both v1 archetypes take one: a deck box holds one deck, a divider labels one group.
-    `Compartment.contents` accepts a `CardStack` only and `compartments` is plural in
-    name alone (roadmap §0.5), so this is the shared rule until the box-insert
-    archetype makes it genuinely plural.
+    The two card archetypes take one: a deck box holds one deck, a divider labels one
+    group. It is no longer the *only* rule available — `token_tray` (issue #84) lays out
+    a grid, and `Compartment.contents` is a `CardStack | Pocket` union — so this is the
+    rule for the archetypes that hold one card stack rather than a fact about specs.
 
     Args:
         spec: The spec to check.
@@ -112,6 +112,55 @@ def single_compartment_problem(
     if count == 1:
         return None
     return f"{subject} holds exactly one compartment ({holds}); got {count}"
+
+
+def card_contents_problem(spec: OrganizerSpec, *, subject: str) -> Optional[str]:
+    """The problem sentence for a card archetype handed a pocket compartment, or None.
+
+    `Compartment.contents` became a union when the token tray landed, so an archetype
+    that resolves its geometry from the dimension table can now be handed millimetres
+    it has no envelope, pitch or sleeving for. `derive()` would reach for
+    `contents.count` and raise an `AttributeError` three frames in; this refuses it by
+    name, with the archetype that *does* build pockets named as the remedy — which is
+    what every other archetype-level rule here does.
+
+    Args:
+        spec: The spec to check.
+        subject: How the archetype names itself in a refusal, e.g. `"deck_box v1"`.
+    """
+    wrong = [i for i, c in enumerate(spec.compartments) if not isinstance(c.contents, CardStack)]
+    if not wrong:
+        return None
+    return (
+        f"{subject} holds card stacks, not pockets; compartments{wrong} carry a pocket. "
+        "Give each compartment a card stack (count, card, sleeving), or use archetype "
+        "'token_tray' for pockets"
+    )
+
+
+def stray_section_problem(
+    spec: OrganizerSpec, *, section: str, subject: str, owner: str
+) -> Optional[str]:
+    """The problem sentence for a spec carrying a section this archetype never reads.
+
+    Ignoring one prints a different part in silence, which is the rule every archetype
+    here already states in its own words for the sections that existed when it was
+    written. It became worth sharing at the third section (`tray`): each archetype now
+    has to refuse two it does not own, and three near-identical sentences in three
+    modules is how two of them end up saying different things.
+
+    Args:
+        spec: The spec to check.
+        section: The field name on `OrganizerSpec`, e.g. `"tray"`.
+        subject: How the archetype names itself, e.g. `"deck_box v1"`.
+        owner: The archetype the section belongs to, e.g. `"token_tray"`.
+    """
+    if getattr(spec, section) is None:
+        return None
+    return (
+        f"{subject} does not lay out a {section}; the {section} section belongs to "
+        f"archetype {owner!r} — remove it or change the archetype"
+    )
 
 
 def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: str) -> list[float]:

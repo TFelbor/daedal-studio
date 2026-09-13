@@ -40,7 +40,16 @@ def test_example_takes_the_archetype_as_a_flag_too(capsys):
 def test_example_with_no_archetype_says_which_ones_there_are(capsys):
     assert main(["example"]) == 2
     err = capsys.readouterr().err
-    assert "card_divider" in err and "deck_box" in err
+    assert "card_divider" in err and "deck_box" in err and "token_tray" in err
+
+
+def test_example_prints_a_valid_token_tray_spec_by_flag(capsys):
+    """The acceptance criterion's own spelling: `example --archetype token_tray`."""
+    assert main(["example", "--archetype", "token_tray"]) == 0
+    spec = OrganizerSpec.from_json(capsys.readouterr().out)
+    assert spec.archetype == "token_tray"
+    assert spec.tray is not None and spec.lid is None and spec.divider is None
+    assert len(spec.compartments) == 6
 
 
 def test_compile_writes_the_mesh_the_features_and_the_canonical_spec(tmp_path, capsys):
@@ -104,6 +113,32 @@ def test_compile_and_measure_run_a_divider_through_the_same_two_commands(tmp_pat
         "plate_width_mm", "plate_height_mm", "thickness_mm",
         "tab_width_mm", "tab_height_mm", "tab_offset_mm", "total_height_mm",
     }
+
+
+def test_compile_and_measure_run_a_tray_through_the_same_two_commands(tmp_path, capsys):
+    """The third archetype through the same loop, with no archetype-specific flag — and
+    with the feature count the *spec* decides rather than a fixed tuple: a 2 × 3 grid is
+    30 features, five of them spec-independent and 25 of them the grid's own."""
+    from pythonsrc.organizer.archetypes import example_spec
+    spec_path = dump_spec(example_spec("token_tray"), tmp_path / "tray.json")
+    out = tmp_path / "tray.stl"
+    features = tmp_path / "features.json"
+    assert main(["compile", str(spec_path), "--out", str(out), "--features", str(features)]) == 0
+    assert json.loads(features.read_text())["parts"] == ["tray"]
+    capsys.readouterr()
+    report = tmp_path / "dimension_report.json"
+    assert main(["measure", str(spec_path), str(out), "--report", str(report)]) == 0
+    table = capsys.readouterr().out
+    assert "30/30 features within ±0.05 mm" in table
+    doc = json.loads(report.read_text())
+    assert doc["within_tolerance"] is True and doc["features_checked"] == 30
+    assert doc["missing"] == []
+    # Every grid position, in all three dimensions, and every wall between and around.
+    for row in range(2):
+        for column in range(3):
+            assert f"pocket_r{row}c{column}_width_mm" in doc["features"]
+    assert {f"wall_x{i}_mm" for i in range(4)} <= set(doc["features"])
+    assert {f"wall_y{j}_mm" for j in range(3)} <= set(doc["features"])
 
 
 def test_measure_can_write_the_dimension_report_beside_the_table(tmp_path, capsys):

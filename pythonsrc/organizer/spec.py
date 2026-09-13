@@ -49,7 +49,7 @@ SCHEMA_VERSION = 1
 #: `web/src/organizer/spec.ts`'s `ARCHETYPES` must be the same set — a strip offering a
 #: shape the engine cannot compile is the same fabrication as an unmeasured fits badge.
 #: `tests/test_archetype_registry.py` binds the three lists.
-ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider")
+ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider", "token_tray")
 
 #: Lid mechanisms the schema knows. Slide, hinged and magnetic lids are later
 #: archetype variants (roadmap M1/M3) and are not accepted until they exist.
@@ -122,6 +122,16 @@ ARCHETYPE_WALL_MM: dict[str, float] = {
     # invented figure, so a spec that carries it claims no wall the plate does not
     # have. `card_divider.USES_PROCESS_WALL_MM` is False and the floor check skips it.
     "card_divider": 1.2,
+    # 1,6 mm = the **top** of the audited insert document's 1,2–1,6 mm band (roadmap
+    # §0.5), four perimeters at a 0,4 mm nozzle. Issue #72 asked for a tray wall
+    # thinner than a deck box's, and this is why it is not thinner still: the same
+    # number is both the outer wall *and* every divider between two pockets, and a
+    # divider carries load from both sides while a deck box wall carries it from one.
+    # The band's own top is the most a document that calls anything under 1,2 mm
+    # flimsy will support, and a lift-out tray full of dice is a part that gets
+    # dropped. It is not the deck box's 2,4 mm because that figure is the lift-off
+    # lid's arithmetic, and this archetype has no lid.
+    "token_tray": 1.6,
 }
 
 
@@ -231,14 +241,64 @@ class CardStack:
 
 
 @dataclass(frozen=True)
-class Compartment:
-    """One pocket of the organizer and what it holds. v1 holds card stacks only."""
+class Pocket:
+    """A rectangular hole of stated internal size: what a compartment holds when it
+    does not hold cards.
 
-    contents: CardStack
+    **The three millimetres are the input, not a lookup.** `dimensions.py` deliberately
+    carries no token or dice sizes — "an invented one is exactly the fabricated number
+    the schema exists to refuse" — and `docs/dimension-kb-research.md` §4 sources die
+    *sizes* without sourcing the clearance a die needs around it, so a 16 mm d6 preset
+    would be a sourced number plus an invented one. A `CardStack` can be resolved
+    against a table because that table has sources; a pocket is typed.
+
+    `source` is free text and carries the provenance of whoever typed them — "16 mm d6,
+    +2 mm, measured" — so the view can say where a number came from instead of
+    presenting it as sourced when it is not. It is the one field here that is not a
+    millimetre, and the only honest way this archetype ships without a KB behind it.
+    Presets join when the dimension KB does (roadmap M2).
+    """
+
+    width_mm: float
+    depth_mm: float
+    height_mm: float
+    source: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.contents, CardStack):
-            raise SpecError([f"contents must be a CardStack, got {type(self.contents).__name__}"])
+        problems: list[str] = []
+        _set(self, "width_mm", _mm(self.width_mm, "width_mm", problems))
+        _set(self, "depth_mm", _mm(self.depth_mm, "depth_mm", problems))
+        _set(self, "height_mm", _mm(self.height_mm, "height_mm", problems))
+        if self.source is not None and not isinstance(self.source, str):
+            problems.append(f"source must be a string or null, got {self.source!r}")
+        _raise_if(problems)
+
+
+@dataclass(frozen=True)
+class Compartment:
+    """One compartment of the organizer and what it holds: a card stack, or a pocket.
+
+    The union is what makes `compartments` plural in more than name (issue #84). Until
+    the token tray, every archetype held exactly one card stack, `contents` was a
+    `CardStack` and nothing else, and "compartments" was a list that had to be one long.
+    A pocket is the first content type whose size is not resolved from the dimension
+    table — see `Pocket` — and a tray is the first archetype that lays out more than one.
+
+    There is no `kind` discriminator, and that is deliberate: adding one would be a new
+    field on `CardStack`, which moves the canonical form and therefore the `spec_hash`
+    of every deck box and divider ever stored. The two shapes are told apart by the
+    fields they carry instead — `count` against `width_mm`/`depth_mm`/`height_mm` — and
+    `_from_mapping` refuses a mapping that looks like both or like neither, naming both
+    shapes. See `_contents_class`.
+    """
+
+    contents: "CardStack | Pocket"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contents, (CardStack, Pocket)):
+            raise SpecError([
+                f"contents must be a CardStack or a Pocket, got {type(self.contents).__name__}"
+            ])
 
 
 @dataclass(frozen=True)
@@ -298,6 +358,32 @@ class Divider:
                 f"tab_position must be one of {list(TAB_POSITIONS)}, got {self.tab_position!r}"
             )
         _raise_if(problems)
+
+
+@dataclass(frozen=True)
+class Tray:
+    """How a token tray's compartments are laid out on the bed: a grid, by columns.
+
+    A section on the spec rather than a constant inside `token_tray.py`, for `Divider`'s
+    reason verbatim: F8 iterates a design by spec *diff*, so "make it three across"
+    must be a path (`tray.columns`) rather than an archetype's private habit.
+
+    **`columns` is the only layout field, and the rows are `len(compartments) //
+    columns`.** Stating both would let a spec state a grid its compartment list cannot
+    fill, which is a contradiction the schema would then have to refuse — and the
+    compartment list is the thing that says what the tray *holds*, so it is the half
+    that must not be derived. Compartments are laid out row-major, compartment 0 at the
+    minimum X and Y corner; `token_tray.validate` refuses a count that does not divide.
+
+    Only `token_tray` reads it; every other archetype refuses a spec that carries one,
+    because ignoring a section prints a different part in silence.
+    """
+
+    columns: int = 1
+
+    def __post_init__(self) -> None:
+        if isinstance(self.columns, bool) or not isinstance(self.columns, int) or self.columns < 1:
+            raise SpecError([f"columns must be an integer ≥ 1, got {self.columns!r}"])
 
 
 @dataclass(frozen=True)
@@ -468,6 +554,7 @@ class OrganizerSpec:
     compartments: Tuple[Compartment, ...]
     lid: Optional[Lid] = None
     divider: Optional[Divider] = None
+    tray: Optional[Tray] = None
     constraints: Constraints = field(default_factory=Constraints)
     process: Process = field(default_factory=Process)
     schema_version: int = SCHEMA_VERSION
@@ -492,6 +579,8 @@ class OrganizerSpec:
             problems.append(
                 f"divider must be a Divider or null, got {type(self.divider).__name__}"
             )
+        if self.tray is not None and not isinstance(self.tray, Tray):
+            problems.append(f"tray must be a Tray or null, got {type(self.tray).__name__}")
         if not isinstance(self.constraints, Constraints):
             problems.append("constraints must be a Constraints object")
         if not isinstance(self.process, Process):
@@ -556,19 +645,65 @@ class OrganizerSpec:
 
 #: Which fields hold nested objects, so `_from_mapping` can descend with a path.
 _NESTED: dict[tuple[type, str], Any] = {
-    (Compartment, "contents"): CardStack,
     (OrganizerSpec, "lid"): Lid,
     (OrganizerSpec, "divider"): Divider,
+    (OrganizerSpec, "tray"): Tray,
     (OrganizerSpec, "constraints"): Constraints,
     (OrganizerSpec, "process"): Process,
 }
 
 #: Optional sections `to_dict` omits when absent — one per archetype family. Each is
 #: `Optional[...] = None` on `OrganizerSpec` and read by one archetype only.
-_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider")
+#:
+#: `tray` joined them for issue #84 and had to, rather than being a plain field: a
+#: section written as null for every spec would move the `spec_hash` of every deck box
+#: and divider ever stored, for a field those specs do not mention. That is the whole
+#: point of this tuple, and `tests/test_organizer_spec.py`'s fixed vectors are what
+#: prove the third archetype did not move the first two.
+_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray")
 _LIST_FIELDS: dict[tuple[type, str], type] = {
     (OrganizerSpec, "compartments"): Compartment,
 }
+
+#: Fields whose value is one of several leaf shapes, told apart by the keys it carries.
+#: `Compartment.contents` is the only one — see `Compartment` for why there is no
+#: `kind` discriminator — and the tuple per member names the keys only that member has.
+_CONTENTS_MARKERS: tuple[tuple[type, tuple[str, ...]], ...] = (
+    (CardStack, ("count",)),
+    (Pocket, ("width_mm", "depth_mm", "height_mm")),
+)
+
+_UNIONS: dict[tuple[type, str], Any] = {
+    (Compartment, "contents"): _CONTENTS_MARKERS,
+}
+
+
+def _union_class(markers: Any, data: Any, path: str, problems: list[str]) -> Optional[type]:
+    """Which leaf class a union field's mapping is, or None with the problem recorded.
+
+    A mapping that carries neither member's keys, or both, is refused **naming both
+    shapes** rather than being guessed at: a compartment is either a stack of cards
+    whose envelope the dimension table resolves or a pocket whose millimetres somebody
+    typed, and picking one of those for a person who wrote something ambiguous would
+    build the other part in silence. The message opens with the path, like every other
+    problem here, so the composer can route it onto the control that caused it.
+    """
+    if not isinstance(data, Mapping):
+        problems.append(f"{path} must be an object, got {type(data).__name__}")
+        return None
+    matched = [cls for cls, keys in markers if any(key in data for key in keys)]
+    if len(matched) == 1:
+        return matched[0]
+    shapes = " or ".join(
+        f"a {cls.__name__.lower()} ({', '.join(keys)})" for cls, keys in markers
+    )
+    saw = ", ".join(sorted(data)) or "no fields at all"
+    problems.append(
+        f"{path} must be {shapes} — it carries "
+        + ("both" if matched else "neither")
+        + f"; got {saw}"
+    )
+    return None
 
 
 def _from_mapping(cls: type, data: Any, path: str, problems: list[str]) -> Any:
@@ -601,6 +736,11 @@ def _from_mapping(cls: type, data: Any, path: str, problems: list[str]) -> Any:
                 for i, item in enumerate(value)
             ]
             kwargs[f.name] = tuple(items)
+        elif (cls, f.name) in _UNIONS:
+            member = _union_class(_UNIONS[(cls, f.name)], value, child_path, problems)
+            kwargs[f.name] = (
+                None if member is None else _from_mapping(member, value, child_path, problems)
+            )
         elif (cls, f.name) in _NESTED:
             if value is None:
                 kwargs[f.name] = None

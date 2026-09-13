@@ -135,16 +135,50 @@ export interface JobStatusResponse {
  * the schema before it is stored — a request may omit `process` and mean its defaults
  * by it, but what lands on the row and in `spec.json` never does.
  *
- * The two archetype-specific *sections* are the exception, and deliberately: an absent
- * one is **omitted** from the canonical form rather than written as null, so that
- * adding an archetype does not move the `spec_hash` of every spec that never mentioned
- * it. So `lid` is present on a deck box and absent on a divider, and `divider` the
- * other way round — read them as optional, not as always-there-and-maybe-null.
+ * The archetype-specific *sections* are the exception, and deliberately: an absent one
+ * is **omitted** from the canonical form rather than written as null, so that adding an
+ * archetype does not move the `spec_hash` of every spec that never mentioned it. So
+ * `lid` is present on a deck box and absent on a divider, `divider` the other way
+ * round, and `tray` on a token tray only — read them as optional, not as
+ * always-there-and-maybe-null.
  */
+
+/** A stack of cards, whose envelope and pitch the dimension table resolves. */
+export interface RawCardStack {
+  count: number;
+  card: string;
+  sleeving: string;
+}
+
+/**
+ * A rectangular hole of stated internal size — a token tray's compartment.
+ *
+ * The three millimetres are typed rather than looked up: no token or dice size is
+ * sourced in `docs/dimension-kb-research.md`, so there is no table to resolve them
+ * against and a preset would be a fabricated clearance. `source` is whatever
+ * provenance the person had, and it is what the spec table prints under the row
+ * instead of implying the figure was measured.
+ */
+export interface RawPocket {
+  width_mm: number;
+  depth_mm: number;
+  height_mm: number;
+  source: string | null;
+}
+
+/**
+ * What one compartment holds. Told apart by the fields it carries rather than by a
+ * `kind` discriminator — adding one would have moved the `spec_hash` of every deck box
+ * and divider ever stored. `'count' in contents` is the narrowing.
+ */
+export type RawContents = RawCardStack | RawPocket;
+
 export interface RawSpec {
   archetype: string;
   schema_version: number;
-  compartments: { contents: { count: number; card: string; sleeving: string } }[];
+  compartments: { contents: RawContents }[];
+  /** `token_tray` only: the grid's column count. The rows are compartments ÷ columns. */
+  tray?: { columns: number } | null;
   lid?: {
     kind: string;
     magnets: boolean;

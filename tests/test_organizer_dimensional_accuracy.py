@@ -7,10 +7,11 @@ can read back off geometry, across its parameter envelope, and then again throug
 3's assert path. The bound is `DEFAULT_TOLERANCE_MM` (0,05 mm). Nothing here is asserted
 from the spec's own arithmetic; every number is read off planes in the mesh.
 
-Two archetypes now have an envelope here, each with its own parametrize — the deck box
-(counts × sleevings × walls × clearances × lid engagement) and the card divider
-(sleevings × tab positions × thicknesses × tab sizes). The generic sweep across *every*
-archetype is issue #85 and is still open; until it lands, a new archetype adds a block.
+Three archetypes now have an envelope here, each with its own parametrize — the deck box
+(counts × sleevings × walls × clearances × lid engagement), the card divider (sleevings ×
+tab positions × thicknesses × tab sizes) and the token tray (grids × pocket sizes × walls
+× floors). The generic sweep across *every* archetype is issue #85 and is still open;
+until it lands, a new archetype adds a block.
 
 Two further tests prove the assertion bites, because a check that cannot fail is not a
 check: a mesh scaled by 0,2 % is caught and the feature named, and a mesh with a face
@@ -25,7 +26,13 @@ import json
 import pytest
 import trimesh
 
-from pythonsrc.organizer.archetypes import card_divider, compile_spec, deck_box, verify_spec_mesh
+from pythonsrc.organizer.archetypes import (
+    card_divider,
+    compile_spec,
+    deck_box,
+    required_measurements,
+    verify_spec_mesh,
+)
 from pythonsrc.organizer.compiler import (
     DEFAULT_TOLERANCE_MM,
     DimensionReport,
@@ -42,8 +49,10 @@ from pythonsrc.organizer.spec import (
     Divider,
     Lid,
     OrganizerSpec,
+    Pocket,
     Process,
     SpecError,
+    Tray,
     wall_floor_mm,
 )
 
@@ -538,4 +547,121 @@ def test_a_divider_scaled_by_a_fifth_of_a_percent_is_caught_and_the_feature_name
 def test_the_default_divider_has_sub_micron_error_on_the_exported_mesh(tmp_path):
     spec = divider()
     result, mesh = exported_and_reloaded(spec, tmp_path / "divider.stl")
+    assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4
+
+
+# ── the token tray's envelope ──────────────────────────────────────────────────
+#
+# Its own parametrize, like the two above (#85, still open). Four axes, and the *grid*
+# is the one that matters: it is the only parameter that changes how many features
+# there are to measure rather than what they measure, which is why this archetype is
+# the one that made `required_measurements` ask the module about the spec. A sweep that
+# checked a fixed tuple would report "within tolerance" for a 4 × 2 tray while never
+# looking at a single pocket in it.
+
+
+def token_tray_spec(rows, columns, pocket, wall, floor):
+    return OrganizerSpec(
+        archetype="token_tray",
+        compartments=tuple(
+            Compartment(Pocket(width_mm=pocket[0], depth_mm=pocket[1], height_mm=pocket[2]))
+            for _ in range(rows * columns)
+        ),
+        tray=Tray(columns=columns),
+        process=Process(wall_mm=wall, floor_mm=floor),
+    )
+
+
+T_GRIDS = ((1, 1), (1, 3), (2, 3), (3, 3), (4, 2))
+T_POCKETS = ((12.0, 12.0, 10.0), (16.0, 16.0, 14.0), (20.0, 20.0, 15.0), (30.0, 45.0, 20.0))
+#: `None` states no wall and takes the archetype's own default (1,6 mm), which is what
+#: almost every real spec compiles with; 1,2 mm is the nozzle floor at 0,4 mm and the
+#: bottom of the audited insert band; 2,4 mm is the deck box's, swept so the tray's
+#: default cannot quietly become it.
+T_WALLS = (None, 1.2, 1.6, 2.4)
+T_FLOORS = (1.2, 2.0)
+
+TRAY_ENVELOPE = list(itertools.product(T_GRIDS, T_POCKETS, T_WALLS, T_FLOORS))
+
+
+@pytest.mark.parametrize("grid,pocket,wall,floor", TRAY_ENVELOPE)
+def test_every_measured_feature_of_an_exported_tray_is_within_tolerance(
+    tmp_path, grid, pocket, wall, floor,
+):
+    rows, columns = grid
+    spec = token_tray_spec(rows, columns, pocket, wall, floor)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "tray.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    # Every grid position and every wall, not just the handful of fixed names.
+    assert set(report.features) == set(required_measurements(spec))
+    assert len(report.features) == 5 + 3 * rows * columns + (columns + 1) + (rows + 1)
+
+
+def test_the_tray_envelope_is_wide_enough_to_mean_something():
+    """Guards this sweep against being quietly narrowed to the one example spec: the
+    unstated wall (what almost every real spec is), the 1 × 1 grid (the only one with no
+    divider at all), a grid with more rows than columns and one with more columns than
+    rows, and a pocket that is not square so a swapped W and D would show."""
+    assert len(TRAY_ENVELOPE) >= 120
+    assert None in T_WALLS
+    assert (1, 1) in T_GRIDS
+    assert any(r > c for r, c in T_GRIDS) and any(c > r for r, c in T_GRIDS)
+    assert any(p[0] != p[1] for p in T_POCKETS)
+    assert len(set(T_FLOORS)) == 2
+
+
+TRAY_CORNERS = list(itertools.product(((1, 1), (2, 3), (4, 2)), (None, 1.2, 2.4)))
+
+
+@pytest.mark.parametrize("grid,wall", TRAY_CORNERS)
+def test_phase_3_assert_path_hands_the_slicer_the_designed_tray(tmp_path, grid, wall):
+    rows, columns = grid
+    spec = token_tray_spec(rows, columns, (20.0, 20.0, 15.0), wall, 2.0)
+    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(
+        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
+        target_mm=None, repair_mode="assert",
+    )
+    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
+    assert report.within_tolerance, report.problems()
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+
+
+def test_a_tray_scaled_by_a_fifth_of_a_percent_is_caught_and_a_pocket_named(tmp_path):
+    """The check bites on the third archetype, and it bites *inside the grid*: a 20 mm
+    pocket drifts 0,04 mm at 0,2 %, which is under the bound, so what catches this is
+    the 66,4 mm external — and the report has to name a feature rather than shrug."""
+    spec = token_tray_spec(2, 3, (20.0, 20.0, 15.0), None, 2.0)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "tray.stl")
+    drifted = mesh.copy()
+    drifted.apply_scale(1.002)
+    report = verify_spec_mesh(spec, result.features, drifted)
+    assert report.within_tolerance is False
+    assert "external_width_mm" in report.out_of_tolerance
+    assert report.max_abs_error_mm > TOL_MM
+
+
+def test_a_single_pocket_out_of_position_is_caught_by_name(tmp_path):
+    """What a fixed feature tuple would have missed. One divider moved 0,5 mm leaves
+    every external and every outer wall exactly right, and is visible only because each
+    grid position and each wall is measured on its own."""
+    spec = token_tray_spec(1, 2, (20.0, 20.0, 15.0), 1.6, 2.0)
+    result, _ = exported_and_reloaded(spec, tmp_path / "tray.stl")
+    designed = dict(result.features)
+    # Shift the divider: the left pocket gains what the right one loses, so the tray's
+    # own outline is untouched and only the per-pocket figures move.
+    designed["pocket_r0c0_width_mm"] += 0.5
+    designed["pocket_r0c1_width_mm"] -= 0.5
+    report = verify_spec_mesh(spec, designed, trimesh.load(str(tmp_path / "tray.stl"), force="mesh"))
+    assert report.within_tolerance is False
+    assert set(report.out_of_tolerance) == {"pocket_r0c0_width_mm", "pocket_r0c1_width_mm"}
+    assert "external_width_mm" not in report.out_of_tolerance
+
+
+def test_the_example_tray_has_sub_micron_error_on_the_exported_mesh(tmp_path):
+    spec = token_tray_spec(2, 3, (20.0, 20.0, 15.0), None, 2.0)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "tray.stl")
     assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4

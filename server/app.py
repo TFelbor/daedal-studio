@@ -46,6 +46,7 @@ from pythonsrc.ip_screen import screen_prompt
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
 from pythonsrc.organizer import (
+    CardStack,
     OrganizerSpec,
     SpecError,
     dump_spec,
@@ -1075,22 +1076,41 @@ def spec_label(spec: Dict[str, Any]) -> str:
     a job is named, and inventing a sentence about a box nobody described would put
     prose in the column the generative path fills with the *actual* input.
 
-    So the label is derived, strictly, from the spec itself — the archetype and the
-    stack that was asked for, nothing else — and the server writes it rather than the
-    client, for the reason the canonical spec is stored rather than the submitted
-    bytes: a second copy of this sentence in the browser would drift from the spec it
-    claims to describe. A person who *does* type a line keeps it; a name somebody
-    chose beats a generated one, and the spec is still the whole input either way.
+    So the label is derived, strictly, from the spec itself — the archetype and what
+    its compartments were asked to hold, nothing else — and the server writes it rather
+    than the client, for the reason the canonical spec is stored rather than the
+    submitted bytes: a second copy of this sentence in the browser would drift from the
+    spec it claims to describe. A person who *does* type a line keeps it; a name
+    somebody chose beats a generated one, and the spec is still the whole input either
+    way.
+
+    A compartment holds a card stack **or** a pocket (`Compartment` in
+    `pythonsrc/organizer/spec.py`, issue #84), so there are two sentences. The pocket
+    one names the grid rather than the count, because six identical 20 mm pockets read
+    as "2 × 3 pockets 20 × 20 × 15 mm" and not as "6 pockets": a tray is the grid.
     """
     archetype = str(spec.get("archetype") or "organizer").replace("_", " ")
     compartments = spec.get("compartments") or []
     contents = (compartments[0] or {}).get("contents") if compartments else None
     if not isinstance(contents, dict):
         return archetype
-    count = contents.get("count")
-    card = contents.get("card", "standard")
-    sleeving = SLEEVING_WORDS.get(str(contents.get("sleeving")), str(contents.get("sleeving")))
-    return f"{archetype} · {count} {sleeving} {card} cards"
+    if "count" in contents:
+        count = contents.get("count")
+        card = contents.get("card", "standard")
+        sleeving = SLEEVING_WORDS.get(str(contents.get("sleeving")), str(contents.get("sleeving")))
+        return f"{archetype} · {count} {sleeving} {card} cards"
+    # A pocket. `tray.columns` is the only layout field and the rows follow from the
+    # compartment count — the same derivation `token_tray.derive` does, and the only
+    # arithmetic in this function, because a label that said "6 pockets" for a 2 × 3
+    # tray would describe a shape the engine does not build.
+    total = len(compartments)
+    columns = (spec.get("tray") or {}).get("columns")
+    grid = f"{total // columns} × {columns}" if isinstance(columns, int) and columns > 0 and not total % columns else str(total)
+    size = " × ".join(
+        f"{contents[key]:g}" if isinstance(contents.get(key), (int, float)) else str(contents.get(key))
+        for key in ("width_mm", "depth_mm", "height_mm")
+    )
+    return f"{archetype} · {grid} pockets {size} mm"
 
 
 class JobRequest(BaseModel):
@@ -3849,8 +3869,10 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
     - **the canonical spec and its hash** — what `POST /jobs` would store, so the
       table under the form shows the defaults the schema resolved (an archetype's
       wall, a fit intent's clearance) rather than blanks or client-side guesses;
-    - **the resolved stack per compartment** — `resolve_stack`'s footprint, pitch,
-      height and its `basis`;
+    - **the resolved stack per card compartment** — `resolve_stack`'s footprint, pitch,
+      height and its `basis`. A pocket compartment (`token_tray`) contributes none:
+      its millimetres were typed, so there is nothing to resolve and no source to
+      name, and the list is empty for a tray rather than carrying a fabricated row;
     - **every problem, with the dotted path it names** — `problems_with_paths`, the
       same shape `POST /jobs`'s 422 carries, so one mapping in the client routes both.
 
@@ -3893,11 +3915,15 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
     canonical = spec.to_dict()
     stacks = []
     for compartment in spec.compartments:
-        stack = resolve_stack(
-            compartment.contents.count,
-            compartment.contents.card,
-            compartment.contents.sleeving,
-        )
+        contents = compartment.contents
+        # A `Pocket` contributes no stack, and deliberately none: its millimetres were
+        # typed, so there is nothing for `resolve_stack` to resolve and no `basis`
+        # sentence to print under it. `stacks` is "the card compartments, resolved",
+        # not "one entry per compartment" — inventing a row for a pocket would put a
+        # figure with no source behind it on the exact readout that exists to carry one.
+        if not isinstance(contents, CardStack):
+            continue
+        stack = resolve_stack(contents.count, contents.card, contents.sleeving)
         stacks.append({
             "count": stack.count,
             "card": stack.card,

@@ -26,9 +26,28 @@
  * and a screenshot of it outlives any caveat in a commit message.
  */
 
-import type { DimensionCheck, JobStatusResponse, RawSpec } from '../api/client';
+import type {
+  DimensionCheck,
+  JobStatusResponse,
+  RawCardStack,
+  RawContents,
+  RawSpec,
+} from '../api/client';
 
 export type { RawSpec };
+
+/**
+ * Whether a compartment holds cards rather than a pocket.
+ *
+ * The same narrowing the schema does — `count` against `width_mm`/`depth_mm`/
+ * `height_mm`, with no `kind` discriminator, because adding one would have moved the
+ * `spec_hash` of every spec ever stored (`Compartment` in
+ * `pythonsrc/organizer/spec.py`). One function rather than an inline `'count' in c` at
+ * each site, so the two halves cannot come apart.
+ */
+export function isCardStack(contents: RawContents): contents is RawCardStack {
+  return 'count' in contents;
+}
 
 /**
  * The archetypes the composer offers — exactly the ones the engine can compile.
@@ -39,14 +58,15 @@ export type { RawSpec };
  * of which existed: a strip cell for a shape the engine would refuse is the same class
  * of fabrication as a fits badge with no measurement behind it — the person picks it,
  * types a prompt, and the product silently gives them something else. The token tray
- * and the box-insert grid are real roadmap items (§0.3 Phase 2 and Phase 3); a cell
- * appears here the day the compiler does.
+ * joined the day its compiler did (issue #84); the box-insert grid is a real roadmap
+ * item (§0.3 Phase 3) and a cell appears here the day that compiler does too.
  *
  * Ordered as the strip presents them.
  */
 export const ARCHETYPES = [
   { id: 'deck_box', label: 'Deck box' },
   { id: 'card_divider', label: 'Card divider' },
+  { id: 'token_tray', label: 'Token tray' },
 ] as const;
 
 export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];
@@ -186,15 +206,39 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
   const spec = job.spec;
   if (!spec) return null;
 
-  const stack = spec.compartments?.[0]?.contents;
+  const contents = spec.compartments?.[0]?.contents;
   const p = spec.process;
   const lid = spec.lid;
   const divider = spec.divider;
+  const tray = spec.tray;
   const dimensions: SpecDimension[] = [];
 
-  if (stack) {
-    const sleeving = SLEEVING_NOTE[stack.sleeving] ?? `${stack.sleeving} sleeved`;
-    dimensions.push(row('card_count', 'Cards', stack.count, 'cards', true, `${stack.card}, ${sleeving}`));
+  if (contents && isCardStack(contents)) {
+    const sleeving = SLEEVING_NOTE[contents.sleeving] ?? `${contents.sleeving} sleeved`;
+    dimensions.push(
+      row('card_count', 'Cards', contents.count, 'cards', true, `${contents.card}, ${sleeving}`),
+    );
+  } else if (contents) {
+    // A pocket. The grid is two of the spec's own fields — the compartment count and
+    // `tray.columns` — and the division between them is the same one `token_tray.derive`
+    // does; nothing else here is computed. The provenance note is `Pocket.source` when
+    // somebody gave one, and says the millimetres were typed when they did not, because
+    // no token or dice size is sourced anywhere and a row that implied otherwise would
+    // be the fabrication this table exists to refuse.
+    const columns = tray?.columns;
+    const count = spec.compartments?.length ?? 0;
+    const provenance = contents.source ?? 'user-given mm — no token or dice size is sourced';
+    if (columns) {
+      dimensions.push(
+        row('columns', 'Columns', columns, 'pockets', true),
+        row('rows', 'Rows', count / columns, 'pockets', false, 'compartments ÷ columns'),
+      );
+    }
+    dimensions.push(
+      row('pocket_width_mm', 'Pocket width', contents.width_mm, 'mm', true, provenance),
+      row('pocket_depth_mm', 'Pocket depth', contents.depth_mm, 'mm', true, provenance),
+      row('pocket_height_mm', 'Pocket depth (Z)', contents.height_mm, 'mm', true, provenance),
+    );
   }
   if (p) {
     dimensions.push(

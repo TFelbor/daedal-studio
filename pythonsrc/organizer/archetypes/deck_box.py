@@ -91,9 +91,11 @@ from ..compiler import (
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Lid, OrganizerSpec, SpecError, spec_hash
 from .common import (
+    card_contents_problem,
     expect_planes,
     external_overshoots,
     single_compartment_problem,
+    stray_section_problem,
     view_row,
 )
 
@@ -189,11 +191,19 @@ def _structural_problems(spec: OrganizerSpec) -> list[str]:
     )
     if one:
         problems.append(one)
+    cards = card_contents_problem(spec, subject=f"deck_box v{ARCHETYPE_VERSION}")
+    if cards:
+        problems.append(cards)
     if spec.divider is not None:
         problems.append(
             f"deck_box v{ARCHETYPE_VERSION} has no divider plate; the divider section "
             "belongs to archetype 'card_divider' — remove it or change the archetype"
         )
+    tray = stray_section_problem(
+        spec, section="tray", subject=f"deck_box v{ARCHETYPE_VERSION}", owner="token_tray"
+    )
+    if tray:
+        problems.append(tray)
     if spec.lid is None:
         problems.append(f"deck_box v{ARCHETYPE_VERSION} needs a lid (lid is null)")
     else:

@@ -95,6 +95,46 @@ def test_a_divider_resolves_the_same_stack_and_carries_no_lid():
     assert body["stacks"][0]["sleeving"] == "single"
 
 
+TRAY = {
+    "archetype": "token_tray",
+    "compartments": [
+        {"contents": {"width_mm": 20.0, "depth_mm": 20.0, "height_mm": 15.0, "source": None}}
+    ] * 6,
+    "tray": {"columns": 3},
+    "schema_version": 1,
+}
+
+
+def test_a_token_tray_resolves_and_carries_no_stack_at_all():
+    """A pocket's millimetres were typed, so there is nothing for `resolve_stack` to
+    resolve and no `basis` sentence to print under it. An invented row here would put a
+    figure with no source behind it on the exact readout that exists to carry one."""
+    body = resolve(TRAY)
+    assert body["schema_valid"] is True
+    assert body["stacks"] == []
+    assert body["spec"]["tray"] == {"columns": 3}
+    assert "lid" not in body["spec"] and "divider" not in body["spec"]
+    # The schema's own defaults came back, including this archetype's own wall.
+    assert body["spec"]["process"]["wall_mm"] == 1.6
+
+
+def test_a_bad_pocket_is_named_on_the_compartment_that_carries_it():
+    body = resolve({**TRAY, "compartments": [
+        {"contents": {"width_mm": "2,4", "depth_mm": 20.0, "height_mm": 15.0}},
+    ]})
+    assert body["schema_valid"] is False
+    named = {p["path"]: p["message"] for p in body["problems"]}
+    assert "2,4" in named["spec.compartments[0].contents.width_mm"]
+
+
+def test_contents_that_are_neither_shape_are_refused_naming_both():
+    body = resolve({**TRAY, "compartments": [{"contents": {}}]})
+    assert body["schema_valid"] is False
+    named = {p["path"]: p["message"] for p in body["problems"]}
+    message = named["spec.compartments[0].contents"]
+    assert "count" in message and "width_mm" in message
+
+
 def test_no_fit_verdict_is_returned():
     """`deck_box.fits_check` imports manifold3d, which this image does not install, so
     there is nothing here that could honestly answer "does it fit". The only verdict
@@ -161,6 +201,20 @@ def test_the_label_is_derived_not_stored():
         compartments=[{"contents": {"count": 60, "card": "standard", "sleeving": "none"}}],
     ))
     assert body["label"] == "deck box · 60 unsleeved standard cards"
+
+
+def test_a_tray_is_titled_by_its_grid_rather_than_by_a_card_count_it_has_not_got():
+    """`spec_label` would have read `contents.count` and said "None cards"; a
+    compartment now holds a card stack *or* a pocket, and there are two sentences."""
+    assert resolve(TRAY)["label"] == "token tray · 2 × 3 pockets 20 × 20 × 15 mm"
+
+
+def test_a_tray_whose_columns_do_not_divide_is_titled_by_its_count():
+    """The schema accepts it — the rule is `token_tray.validate`'s, and that needs the
+    kernel — so the label must still be honest rather than printing a fractional grid."""
+    body = resolve({**TRAY, "compartments": TRAY["compartments"][:5]})
+    assert body["schema_valid"] is True
+    assert body["label"] == "token tray · 5 pockets 20 × 20 × 15 mm"
 
 
 # ── the import rule this endpoint exists under ────────────────────────────────
