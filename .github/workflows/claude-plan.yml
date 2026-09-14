@@ -38,7 +38,13 @@ jobs:
       contains(github.event.issue.labels.*.name, 'tier:fable-plan') &&
       !contains(github.event.issue.labels.*.name, 'plan-ready')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The real cost bound, and it has to clear `--max-turns` below: a turn budget the
+    # job ceiling cannot pay for is a budget that turns into a timeout, and a timeout
+    # kills the run before `Keep the transcript` and the report step, so the evidence
+    # of what went wrong is lost. At the measured pace — 78 turns in 16 min 48 s on run
+    # 34827467742, 85 in 15 min 52 s on 34405884540, so ~13 s a turn at the slower of
+    # the two — 150 turns is about 33 minutes including the job's own half minute.
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -64,12 +70,18 @@ jobs:
           # Read the repo, comment on the issue, add one label. No write tools: this
           # tier exists precisely because it does not touch the tree.
           #
-          # 60 turns is unmeasured — no plan run has completed here yet — and carries the
-          # slack docs/PIPELINE.md asks for: CLAUDE.md alone is 130 KB, and a plan that
-          # reads the code it is about to change needs Read and Grep turns to do it.
+          # Measured, twice. Run 34827467742 planned #86 and finished cleanly at **78
+          # turns** in 16 min 48 s; run 34405884540 was still working on "Card divider
+          # archetype" at **85 turns** in 15 min 52 s when the subscription's usage
+          # limit ended it, so 85 is a floor on that issue rather than its cost. 60 was
+          # below both, and because the action throws *after* the model has finished
+          # (docs/PIPELINE.md § `--max-turns` is a budget assertion, not a limiter) it
+          # failed a run that had posted its Plan and spent the whole quota doing it.
+          # 150 clears the higher observation with the slack a runaway guard wants;
+          # `timeout-minutes` above is the cost control and is sized to match.
           claude_args: |
             --model claude-fable-5-1
-            --max-turns 60
+            --max-turns 150
             --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*)"
 
       - name: Keep the transcript
@@ -81,14 +93,86 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Report a failed plan to the issue
-        # A plan that never posts is an issue that waits for `plan-ready` forever, with
-        # nothing on it saying why. Say so where the person who labelled it will look.
+      - name: Did the plan land?
+        id: landed
+        # A red job is not the same as a missing plan. The action throws *after* the
+        # model has finished when `num_turns` exceeds `--max-turns` (docs/PIPELINE.md
+        # § `--max-turns` is a budget assertion, not a limiter), so run 34827467742
+        # failed with the Plan comment already on #86 and `plan-ready` already set —
+        # and the step below then told #86 that neither had happened. Ask the issue
+        # what is on it rather than inferring it from the job's status.
+        #
+        # Not `set -e`: every probe below falls back to "did not land", so a `gh`
+        # hiccup reports a failure that may not be one rather than swallowing one that
+        # is, and nothing here may fail the step in its own right.
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # shellcheck disable=SC2016  # the backticks below are Markdown, meant literally
+          set -uo pipefail
+          labels=$(gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' || true)
+          # Any author, not just the App's: the question is whether a plan is on the
+          # issue, and this repository already has three live spellings of that login
+          # (tests/test_claude_pipeline_workflows.py § APP_LOGIN_SPELLINGS). The prompt
+          # asks for a comment *titled* "Plan", so match a line that is exactly that
+          # heading — `# Plan`, `## Plan`, `**Plan**` or bare — and nothing else. The
+          # newlines are spelt out because jq's Oniguruma anchors `^`/`$` to the whole
+          # string, not to each line, whatever flags are passed.
+          plan_comments=$(gh issue view "$ISSUE_NUMBER" --json comments \
+            --jq '[.comments[] | select(.body | test("(^|\\n)[[:blank:]]*#{0,6}[[:blank:]]*\\*{0,2}Plan\\*{0,2}[[:blank:]]*\\r?(\\n|$)"; "i"))] | length' || true)
+
+          plan_ready=false
+          grep -qx 'plan-ready' <<<"$labels" && plan_ready=true
+          plan_comment=false
+          [ "${plan_comments:-0}" -gt 0 ] 2>/dev/null && plan_comment=true
+
+          landed=false
+          what='no Plan comment was posted and `plan-ready` was not added, so nothing will implement this issue until it is'
+          if [ "$plan_ready" = true ] && [ "$plan_comment" = true ]; then
+            landed=true
+            what='the Plan comment and `plan-ready` are both on the issue'
+          elif [ "$plan_ready" = true ]; then
+            what='`plan-ready` is on the issue but no Plan comment was posted, so the implementer will start with no plan to read'
+          elif [ "$plan_comment" = true ]; then
+            what='a Plan comment was posted but `plan-ready` was not added, so nothing will implement this issue until it is'
+          fi
+
+          # The job refuses to start while `plan-ready` is on the issue — that is the
+          # third clause of its `if:` — so "remove and re-apply `tier:fable-plan`" is
+          # inert advice on an issue that already carries it. Say which retry works.
+          retry='Remove and re-apply `tier:fable-plan`.'
+          if [ "$plan_ready" = true ]; then
+            retry='Remove `plan-ready` first — this job will not start while it is on the issue — then remove and re-apply `tier:fable-plan`.'
+          fi
+
+          {
+            echo "landed=$landed"
+            echo "what=$what"
+            echo "retry=$retry"
+          } >> "$GITHUB_OUTPUT"
+          echo "plan-ready=$plan_ready, Plan comment=$plan_comment, landed=$landed"
+
+      - name: Report a failed plan to the issue
+        # A plan that never posts is an issue that waits for `plan-ready` forever, with
+        # nothing on it saying why. Say so where the person who labelled it will look —
+        # but only when that is true. `failure()` alone said it to an issue holding a
+        # finished plan. If the step above could not answer, its outputs are empty and
+        # this runs: a report that may be wrong beats a silence that certainly is.
+        if: failure() && steps.landed.outputs.landed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          WHAT: ${{ steps.landed.outputs.what }}
+          RETRY: ${{ steps.landed.outputs.retry }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -uo pipefail
           # shellcheck disable=SC2016  # the backticks are Markdown, meant literally
-          gh issue comment "$ISSUE_NUMBER" --body "$(printf '**claude-plan failed and posted no Plan**, so `plan-ready` was not added and nothing will implement this issue until it is. The transcript is attached to the run as an artifact.\n\nTo retry, remove and re-apply `tier:fable-plan`. Run: %s' "$RUN_URL")" || true
+          what='the run ended before it could say what reached the issue'
+          # shellcheck disable=SC2016
+          retry='Remove `plan-ready` if it is on the issue — this job will not start while it is — then remove and re-apply `tier:fable-plan`.'
+          if [ -n "${WHAT:-}" ]; then what="$WHAT"; fi
+          if [ -n "${RETRY:-}" ]; then retry="$RETRY"; fi
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '**claude-plan failed**: %s. The transcript is attached to the run as an artifact.\n\nTo retry: %s Run: %s' "$what" "$retry" "$RUN_URL")" || true
