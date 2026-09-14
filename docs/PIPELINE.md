@@ -210,6 +210,45 @@ every turn, on the order of 39 000 tokens, against the same budget of turns.
 is what stops it growing back: the contract must stay under 30 KB, and every heading
 that moved must still exist in the new file.
 
+### A red plan job is not a missing plan
+
+The cap above throws *after* the model has finished, which makes the job's status a bad
+proxy for what reached the issue. `Report a failed plan to the issue` used to be gated on
+`if: failure()` alone, so run 34827467742 posted this to #86 twenty-seven seconds after
+its own planner had posted the Plan comment:
+
+> **claude-plan failed and posted no Plan**, so `plan-ready` was not added and nothing
+> will implement this issue until it is.
+
+Three claims, none of them true of that run. The remediation was inert as well: "remove
+and re-apply `tier:fable-plan`" cannot re-trigger a job whose third `if` clause is
+`!contains(github.event.issue.labels.*.name, 'plan-ready')`, and `plan-ready` was by then
+on the issue.
+
+So a `Did the plan land?` step runs first, also on `failure()`, and asks the issue rather
+than the runner: both halves of the handshake — the Plan comment a person reads, and the
+label the implementer triggers on — have to be there before the report is suppressed. It
+emits `landed`, and the report is gated on `failure() && steps.landed.outputs.landed !=
+'true'`. `failure()` stays, because a report that only ran on success would be no report
+at all; the condition is narrowed, not replaced.
+
+Three details that are the whole point of the step:
+
+- **It fails open.** Every probe falls back to "did not land", so a `gh` hiccup posts a
+  report that may be wrong rather than swallowing one that is right, and nothing in the
+  step can fail the job in its own right.
+- **The Plan comment is matched by its heading, from any author.** The prompt asks for a
+  comment titled "Plan"; the query matches a line that is exactly that heading. It does
+  not filter on the App's login, because this repository has three live spellings of it
+  (§ The reviewer's subject is a bot) and a gate that compares the wrong one silently
+  never matches.
+- **The retry it prints depends on what is on the issue.** With `plan-ready` set it says
+  to remove that first — the job will not start otherwise — and only then to re-apply
+  `tier:fable-plan`.
+
+`tests/test_claude_pipeline_workflows.py` binds all of it, and the last test runs the
+step's own shell against a stubbed issue for each of the four combinations.
+
 ### When the fix loop does not ask
 
 `claude-review.yml` posts `@claude please address the review` only when both hold:
