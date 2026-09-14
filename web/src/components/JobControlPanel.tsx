@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { StopCircle } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, YAxis } from 'recharts';
 import { Blueprint } from './Blueprint';
+import { apiFetch } from '../api/http';
 
 interface JobControlPanelProps {
   jobId: string | null;
@@ -56,7 +57,7 @@ export function JobControlPanel({ jobId, currentJob, phases, telemetrySamples }:
     setCancelling(true);
     setStopError(null);
     try {
-      const res = await fetch(`/jobs/${jobId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/jobs/${jobId}`, { method: 'DELETE' });
       if (!res.ok) {
         // The old version swallowed this: a failed cancel left the button re-enabled
         // and the job running, with nothing on screen to say the stop had not landed.

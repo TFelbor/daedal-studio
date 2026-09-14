@@ -1,5 +1,6 @@
 import { Download } from 'lucide-react';
 import { reportUi } from '../api/activity';
+import { downloadAuthed } from '../api/http';
 import styles from './DownloadFormats.module.css';
 
 /**
@@ -37,16 +38,26 @@ export function DownloadFormats({ jobId, source = 'job detail' }: DownloadFormat
     <div className={styles.group} role="group" aria-label="Download this job's files">
       <Download size={14} strokeWidth={1.5} aria-hidden="true" className={styles.icon} />
       {FORMATS.map(({ format, label, hint }) => (
-        <a
+        // A button, not an anchor. The download route is authenticated now, and a
+        // browser follows an `href` with none of our headers on it — the anchor
+        // downloaded a 401 body under the right filename, which is worse than an
+        // error. `downloadAuthed` fetches it with the token and hands the blob to a
+        // synthetic anchor instead.
+        <button
           key={format}
+          type="button"
           className={styles.link}
-          href={`/jobs/${jobId}/download?format=${format}`}
-          download
           title={hint}
-          onClick={() => reportUi(source, `downloaded ${label}`)}
+          onClick={() => {
+            reportUi(source, `downloaded ${label}`);
+            void downloadAuthed(
+              `/jobs/${jobId}/download?format=${format}`,
+              `${jobId}.${format}`,
+            );
+          }}
         >
           {label}
-        </a>
+        </button>
       ))}
     </div>
   );

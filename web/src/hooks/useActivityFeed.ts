@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { closeSocket } from '../api/ws';
+import { withToken } from '../api/http';
 
 /**
  * The server's own activity, live.
@@ -32,7 +33,7 @@ export function useActivityFeed(enabled: boolean = true) {
 
     let mounted = true;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/activity`);
+    const ws = new WebSocket(withToken(`${protocol}//${window.location.host}/ws/activity`));
 
     // The server sends multi-line blocks as one string. Splitting them here keeps the
     // renderer a flat list, which is what makes the tail trim and the scroll simple.

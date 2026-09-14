@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useAuthedObjectUrl } from '../hooks/useAuthedObjectUrl';
 import { StageState } from './StageState';
 
 interface BlueprintPreviewProps {
@@ -59,7 +60,25 @@ export function BlueprintPreview({
   const isRunning = status === 'running' && !loaded;
   const showImage = !!jobId && (status === 'completed' || status === 'complete' || status === 'running');
 
-  const imgSrc = jobId ? `/jobs/${jobId}/blueprint${retryCount > 0 ? `?t=${retryCount}` : ''}` : '';
+  // Fetched with the shared secret rather than pointed at: the browser puts none of
+  // our headers on an `<img src>`, so the route would answer this element a 401. The
+  // retry counter is still part of the URL, which is what makes each attempt a fresh
+  // request rather than a cache hit.
+  const blueprintRoute = jobId
+    ? `/jobs/${jobId}/blueprint${retryCount > 0 ? `?t=${retryCount}` : ''}`
+    : null;
+  const imgSrc = useAuthedObjectUrl(blueprintRoute);
+
+  // Phase 1 can be running before the file exists, so a request for it 404s and the
+  // frame has to ask again. This used to be the `<img onError>` below, which cannot
+  // fire any more: the request is a `fetch` now, and its failure never reaches the
+  // element. Same interval, same forever — a frame that stopped asking would sit
+  // empty through a phase that was about to fill it.
+  useEffect(() => {
+    if (!showImage || imgSrc) return;
+    const timer = setTimeout(() => setRetryCount(c => c + 1), 2000);
+    return () => clearTimeout(timer);
+  }, [showImage, imgSrc, retryCount]);
 
   // Nothing has arrived yet, and phase 1 has not started — so the frame says that.
   if (!jobId || status === 'queued' || status === 'pending') {
@@ -83,7 +102,7 @@ export function BlueprintPreview({
           the real image loads. */}
       {isRunning && <StageState phase={1} status="running" logLines={logLines} fill />}
 
-      {showImage && (
+      {showImage && imgSrc && (
         <img
           src={imgSrc}
           alt={
@@ -93,13 +112,6 @@ export function BlueprintPreview({
           }
           style={{ ...IMAGE, opacity: loaded ? 1 : 0 }}
           onLoad={() => setLoaded(true)}
-          onError={() => {
-            // Phase 1 can be running before the file exists; ask again shortly.
-            setLoaded(false);
-            setTimeout(() => {
-              setRetryCount(c => c + 1);
-            }, 2000);
-          }}
         />
       )}
     </div>
