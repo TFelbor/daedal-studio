@@ -34,7 +34,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import httpx
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
-from pythonsrc.api_token import resolve_api_token
+from pythonsrc.api_token import default_api_token_path, resolve_api_token
 from pythonsrc.ip_screen import screen_prompt
 from pythonsrc.operators import PrinterFactory
 
@@ -1629,6 +1629,18 @@ def startup_event():
         logger.error("Could not initialise the database schema (%s): %s", db.describe, exc)
     check_database_health(db)
     db.close()
+
+    # The *path*, never the value. A token in the log is a token in every log
+    # shipper, screen share and pasted traceback — and this line exists precisely for
+    # the person who does not yet know where to look, so it has to be the one thing
+    # that is safe to print. `make api-token` prints the value, deliberately by hand.
+    if os.environ.get("DS_API_TOKEN", "").strip():
+        logger.info("API authentication: the token comes from $DS_API_TOKEN")
+    else:
+        logger.info(
+            "API authentication: the token is in %s (`make api-token` prints it)",
+            default_api_token_path(),
+        )
 
     strategy = get_resolved_strategy()
     logger.info(f"Resolved execution strategy: {strategy}")

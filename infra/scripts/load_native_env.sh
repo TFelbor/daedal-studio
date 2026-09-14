@@ -69,6 +69,13 @@ PAUSE_ON_FAILURE
 # up deliberately opens it for make start-native too, and one that says nothing
 # leaves the container and the native run alike on loopback.
 DS_API_BIND
+# The shared secret every route but GET /health is checked against. It is a
+# credential, not a path, and it has to be the *same* credential on both sides or a
+# native server and a compose server disagree about what the browser is holding —
+# the person would be asked to paste a new token every time they switched how they
+# start it. Left unset, both fall back to ~/.ds-mvp/.api_token, which is the same
+# file through the bind mount.
+DS_API_TOKEN
 DS_NATIVE_ENV_KEYS
     unset _ds_key _ds_val
 fi
