@@ -34,7 +34,10 @@ export function authHeaders(): Record<string, string> {
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getApiToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  // An explicit header wins: the token gate verifies a *candidate* through this
+  // function, and the stored token — which is the one being replaced — must not
+  // overwrite it.
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
   const response = await fetch(input, { ...init, headers });
   if (response.status === 401) reportUnauthorized();

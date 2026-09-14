@@ -18,13 +18,14 @@ import { authedObjectUrl } from '../api/http';
  * @returns An object URL, or null.
  */
 export function useAuthedObjectUrl(url: string | null): string | null {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  // The source is kept beside the blob so a change of `url` reads as "nothing yet"
+  // during the render that follows it, without the effect having to clear the state
+  // first. Clearing it there would be a setState in an effect body — a cascading
+  // render, and one the linter rightly refuses.
+  const [fetched, setFetched] = useState<{ source: string; objectUrl: string } | null>(null);
 
   useEffect(() => {
-    if (!url) {
-      setObjectUrl(null);
-      return;
-    }
+    if (!url) return;
 
     let live = true;
     let created: string | null = null;
@@ -36,10 +37,11 @@ export function useAuthedObjectUrl(url: string | null): string | null {
           return;
         }
         created = blobUrl;
-        setObjectUrl(blobUrl);
+        setFetched({ source: url, objectUrl: blobUrl });
       })
       .catch(() => {
-        if (live) setObjectUrl(null);
+        // Nothing to show. The callers all have a state for that already — a
+        // blueprint that has not been rendered yet looks the same.
       });
 
     return () => {
@@ -48,5 +50,5 @@ export function useAuthedObjectUrl(url: string | null): string | null {
     };
   }, [url]);
 
-  return objectUrl;
+  return fetched && fetched.source === url ? fetched.objectUrl : null;
 }

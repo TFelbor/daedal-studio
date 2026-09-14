@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { NewJob } from './pages/NewJob';
 import { JobList } from './pages/JobList';
@@ -9,6 +10,8 @@ import { GridTrail } from './components/GridTrail';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Wordmark } from './components/Wordmark';
 import { engineLabel, engineStatusClass, useEngineStatus } from './hooks/useEngineStatus';
+import { TokenGate } from './components/TokenGate';
+import { adoptTokenFromUrl, getApiToken, isTokenRejected, onAuthChange } from './api/auth';
 import styles from './App.module.css';
 
 const NAV_ITEMS = [
@@ -96,7 +99,40 @@ function Attribution() {
   );
 }
 
+/**
+ * The token, and whether the server has refused it.
+ *
+ * Read from the module rather than held in a context: `apiFetch` is called from
+ * places that are not components (`api/client.ts` is plain functions), so the token
+ * cannot live in React state and be reachable from there. The subscription is what
+ * brings a change back into the tree.
+ */
+function useApiToken() {
+  const [state, setState] = useState(() => ({
+    token: getApiToken(),
+    rejected: isTokenRejected(),
+  }));
+
+  useEffect(
+    () => onAuthChange(() => setState({ token: getApiToken(), rejected: isTokenRejected() })),
+    [],
+  );
+
+  return state;
+}
+
+// Before the first render, so a `?token=` link is honoured — and stripped from the
+// address bar — rather than flashing the gate at someone who just followed one.
+adoptTokenFromUrl();
+
 function App() {
+  const { token, rejected } = useApiToken();
+
+  // No token, or one the server has refused: there is nothing to show but the box.
+  // Every page behind this would render its empty state over a wall of 401s, which
+  // reads as "the server has no data" and is the one wrong answer.
+  if (!token || rejected) return <TokenGate rejected={rejected} />;
+
   return (
     <BrowserRouter>
       <Navigation />

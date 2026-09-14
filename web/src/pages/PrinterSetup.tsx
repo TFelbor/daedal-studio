@@ -22,6 +22,7 @@ import {
 } from '../api/config';
 import type { ConfigResponse, SimulatorStatus } from '../api/config';
 import styles from './PrinterSetup.module.css';
+import { ApiTokenField } from '../components/ApiTokenField';
 
 /** What the server sends back in place of a stored secret. */
 const MASK = '••••••••';
@@ -949,6 +950,11 @@ export function PrinterSetup() {
                   <option value="DEBUG">DEBUG</option>
                 </select>
               </div>
+
+              {/* Not a config-store key, and not saved through this page's own
+                  machinery: the token protects `PUT /config`, so it must not be
+                  rotatable *by* `PUT /config`. This edits what the browser sends. */}
+              <ApiTokenField />
             </div>
           </section>
         </div>
