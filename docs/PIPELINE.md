@@ -45,7 +45,7 @@ is created. Phase 1 is: a human reads the PR and merges it.
 
 | File | Model | Trigger | What it does |
 |---|---|---|---|
-| `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 60 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. On failure, says so on the issue. |
+| `.github/workflows/claude-plan.yml` | `claude-fable-5-1`, 150 turns | issue labelled | Posts one **Plan** comment — approach, files, tests, risks, open questions — then adds `plan-ready`. Writes no code. When the plan did not land, says so on the issue (§ A red plan job is not a missing plan). |
 | `.github/workflows/claude-implement.yml` (`implement`) | `claude-opus-5`, 200 turns | issue labelled, or `workflow_dispatch` with an issue number | Builds the CI environment, creates `claude/issue-<n>`, **opens a draft pull request before it implements anything** (§ The draft comes first), implements, runs the tests, marks the pull request ready with the acceptance criteria as a ticked checklist. Whatever happens, keeps the transcript and leaves the work findable (§ When a run fails). |
 | `.github/workflows/claude-implement.yml` (`fix`) | `claude-opus-5`, 200 turns | `@claude` comment on an **open, unmerged** PR — never on an issue | The fix loop. Interactive mode: no `prompt` input, so the comment *is* the request. Same tail as `implement`. |
 | `.github/workflows/claude-review.yml` | `claude-fable-5-1`, 80 turns | PR opened / synchronised / reopened / marked ready; **drafts are skipped** | Reviews against the linked issue and `CLAUDE.md`, posts one review, and **fails the check** when it asks for changes. Keeps the transcript whatever happened, because a review that returns no verdict is red for a reason the log does not carry (§ When a review produces no verdict). |
@@ -172,9 +172,26 @@ denials. Issue #60 — a Size L security issue naming four sub-decisions in a 3 
 `server/app.py` — hit the 80-turn cap at **81 turns**, USD 9,44, 12,5 minutes, with no
 branch pushed, no pull request and no comment. Both `claude-implement` jobs are
 therefore at **200**, with `timeout-minutes: 90` as the actual cost bound (81 turns took
-12,5 minutes of model time; the install is another five). `claude-plan.yml` is at 60 and
-has still never completed a run here, so that number is unmeasured; if it fails this
-way, the error names both figures.
+12,5 minutes of model time; the install is another five).
+
+`claude-plan.yml` is measured now, and it was the third workflow to be failed by its own
+cap. Run [34827467742](https://github.com/Daedal-Studio/ds-mvp/actions/runs/34827467742)
+planned #86 to completion — `is_error: false`, the Plan comment posted, `plan-ready`
+added — in **78 turns** and 16 min 48 s, and the step went red on the 60-turn cap
+regardless. Run
+[34405884540](https://github.com/Daedal-Studio/ds-mvp/actions/runs/34405884540) had
+reached **85 turns** in 15 min 52 s on a different issue when the subscription's usage
+limit ended it without a plan, so 85 is a *floor* on what that issue needed rather than
+its cost. A cap set at the 78 that finished would sit below a case already observed;
+`claude-plan.yml` is therefore at **150**.
+
+**The two numbers move together.** Raising `--max-turns` alone would only move the
+failure: `timeout-minutes` was 20, two minutes and 43 seconds above what that run
+consumed, and a job timeout is strictly worse than a red step — it kills the run before
+`Keep the transcript` uploads the artifact and before the reporting step runs at all, so
+the evidence of where the budget went is lost. At the slower of the two measured paces,
+about 13 seconds a turn, 150 turns is 33 minutes including the job's own half minute;
+`timeout-minutes` is **45**.
 
 Two consequences for whoever labels an issue. A budget is not a substitute for tiering:
 an issue that names a decision to make first, or spans several modules, is
@@ -192,6 +209,45 @@ every turn, on the order of 39 000 tokens, against the same budget of turns.
 `tests/test_claude_md_size.py`
 is what stops it growing back: the contract must stay under 30 KB, and every heading
 that moved must still exist in the new file.
+
+### A red plan job is not a missing plan
+
+The cap above throws *after* the model has finished, which makes the job's status a bad
+proxy for what reached the issue. `Report a failed plan to the issue` used to be gated on
+`if: failure()` alone, so run 34827467742 posted this to #86 twenty-seven seconds after
+its own planner had posted the Plan comment:
+
+> **claude-plan failed and posted no Plan**, so `plan-ready` was not added and nothing
+> will implement this issue until it is.
+
+Three claims, none of them true of that run. The remediation was inert as well: "remove
+and re-apply `tier:fable-plan`" cannot re-trigger a job whose third `if` clause is
+`!contains(github.event.issue.labels.*.name, 'plan-ready')`, and `plan-ready` was by then
+on the issue.
+
+So a `Did the plan land?` step runs first, also on `failure()`, and asks the issue rather
+than the runner: both halves of the handshake — the Plan comment a person reads, and the
+label the implementer triggers on — have to be there before the report is suppressed. It
+emits `landed`, and the report is gated on `failure() && steps.landed.outputs.landed !=
+'true'`. `failure()` stays, because a report that only ran on success would be no report
+at all; the condition is narrowed, not replaced.
+
+Three details that are the whole point of the step:
+
+- **It fails open.** Every probe falls back to "did not land", so a `gh` hiccup posts a
+  report that may be wrong rather than swallowing one that is right, and nothing in the
+  step can fail the job in its own right.
+- **The Plan comment is matched by its heading, from any author.** The prompt asks for a
+  comment titled "Plan"; the query matches a line that is exactly that heading. It does
+  not filter on the App's login, because this repository has three live spellings of it
+  (§ The reviewer's subject is a bot) and a gate that compares the wrong one silently
+  never matches.
+- **The retry it prints depends on what is on the issue.** With `plan-ready` set it says
+  to remove that first — the job will not start otherwise — and only then to re-apply
+  `tier:fable-plan`.
+
+`tests/test_claude_pipeline_workflows.py` binds all of it, and the last test runs the
+step's own shell against a stubbed issue for each of the four combinations.
 
 ### When the fix loop does not ask
 
