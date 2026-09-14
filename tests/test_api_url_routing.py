@@ -156,6 +156,38 @@ def _forwarded(argv: list[str], name: str) -> str | None:
 
 
 @pytest.mark.parametrize("strategy", STRATEGIES)
+def test_the_container_is_handed_the_token_by_name_not_by_value(strategy):
+    """`-e DS_API_TOKEN`, with no `=value` — and the value is in the launch environment.
+
+    The relay route is authenticated, so an address alone gets the container a 401 and
+    the samples fall back to a broadcaster it does not have: the same silence this
+    module was written about, one cause later. And a generated token is in no
+    `env_file`, so compose cannot find it unless this process passes it.
+
+    By *name* because `docker compose run -e NAME=value` puts the shared secret in an
+    argv that every `ps` on the host can read; `-e NAME` makes compose read it out of
+    the launching process's environment instead.
+    """
+    request = app_module.JobRequest(
+        prompt="a vase", printer_id="default", profile="default", skip_visualizer=True,
+    )
+    argv, env = _compose_run(_launches(_job_row(), strategy, request))
+
+    assert _forwarded(argv, "DS_API_TOKEN") is None, (
+        "the shared secret is in the command line, where `ps` can read it"
+    )
+    pairs = list(zip(argv, argv[1:]))
+    assert ("-e", "DS_API_TOKEN") in pairs, (
+        "the pipeline container is not handed the token, so its telemetry relay is "
+        "refused and every sample is lost"
+    )
+    assert env["DS_API_TOKEN"] == app_module.API_TOKEN, (
+        "`-e DS_API_TOKEN` reads the value from this launch's environment, and there "
+        "is nothing there for it to read"
+    )
+
+
+@pytest.mark.parametrize("strategy", STRATEGIES)
 def test_the_container_is_never_handed_a_loopback_api_url(strategy):
     request = app_module.JobRequest(
         prompt="a vase", printer_id="default", profile="default", skip_visualizer=True,

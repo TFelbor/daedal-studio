@@ -44,6 +44,8 @@ def pytest_configure(config):
     _ISOLATED_DIR = tempfile.mkdtemp(prefix="ds-test-")
     os.environ["DS_CONFIG_KEY_PATH"] = os.path.join(_ISOLATED_DIR, ".config_key")
 
+    _install_api_token(_ISOLATED_DIR)
+
     _TEST_PG = TestPostgres()
     try:
         _TEST_PG.start()
@@ -94,6 +96,51 @@ def pytest_configure(config):
     _sim._client_factory = _no_docker_in_tests
 
     _stash_shared_blueprint()
+
+
+#: The shared secret this run's server checks, and every `TestClient` sends.
+TEST_API_TOKEN = "ds-test-api-token"
+
+
+def _install_api_token(isolated_dir: str):
+    """Fix the session's API token, and make every `TestClient` carry it.
+
+    `server/app.py` authenticates every route but `GET /health` and the SPA, so a
+    suite that sends no `Authorization` header would see nothing but 401s. Two moves,
+    for the same reason the database URL is rewritten here rather than in a fixture:
+    thirty test modules build their `TestClient` at *import* time, which happens
+    during collection, before any fixture has run.
+
+    `DS_API_TOKEN` is set so the middleware — constructed when `server.app` is
+    imported — checks a value this file knows, and `DS_API_TOKEN_PATH` is redirected
+    into the throwaway directory so nothing here can read, write or rotate the
+    developer's real `~/.ds-mvp/.api_token`.
+
+    Then `TestClient.__init__` is wrapped to add the bearer header. A test that means
+    to be anonymous passes `headers={}` — an explicit empty mapping is left exactly as
+    it was given, which is how `tests/test_api_auth.py` gets an unauthenticated
+    client out of the same constructor.
+    """
+    os.environ["DS_API_TOKEN"] = TEST_API_TOKEN
+    os.environ["DS_API_TOKEN_PATH"] = os.path.join(isolated_dir, ".api_token")
+
+    from starlette.testclient import TestClient
+
+    if getattr(TestClient, "_ds_token_wrapped", False):
+        return
+
+    original_init = TestClient.__init__
+
+    def init_with_token(self, *args, **kwargs):
+        headers = kwargs.get("headers")
+        if headers is None:
+            kwargs["headers"] = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
+        elif headers and "authorization" not in {k.lower() for k in headers}:
+            kwargs["headers"] = {**headers, "Authorization": f"Bearer {TEST_API_TOKEN}"}
+        original_init(self, *args, **kwargs)
+
+    TestClient.__init__ = init_with_token
+    TestClient._ds_token_wrapped = True
 
 
 #: Where a real `data/inputs/blueprint.png` was moved to for the session, if there was
