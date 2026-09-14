@@ -16,7 +16,11 @@ true after the next edit.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,10 +46,24 @@ PINNED_ACTION = re.compile(rf"^{re.escape(ACTION)}@v\d+\.\d+\.\d+$")
 CLAUDE_APP_LOGINS = {"claude[bot]", "claude-code[bot]"}
 
 #: Turn budgets. Measured: a README-only task (#53) took 32 turns; a Size L security
-#: issue (#60) exhausted 80 without opening a pull request. The cap is a runaway
-#: guard, not a cost control — `timeout-minutes` is the cost control — so it carries
-#: slack rather than tracking a measured figure.
-MIN_TURNS = {"implement": 200, "fix": 200, "plan": 60, "review": 80}
+#: issue (#60) exhausted 80 without opening a pull request. For the planner (#133),
+#: run 34827467742 planned #86 to completion in **78 turns** and 16 min 48 s and the
+#: 60-turn cap failed the step anyway, while run 34405884540 was still working at **85
+#: turns** after 15 min 52 s when the subscription's usage limit ended it — so 85 is a
+#: floor on that issue rather than its cost, and a cap set at the 78 that finished
+#: would sit below a case already seen. The cap is a runaway guard, not a cost control
+#: — `timeout-minutes` is the cost control — so it carries slack rather than tracking a
+#: measured figure.
+MIN_TURNS = {"implement": 200, "fix": 200, "plan": 150, "review": 80}
+
+#: The planner's measured pace, from the slower of those two runs: 1 007 787 ms of model
+#: time over 78 turns. `timeout-minutes` has to be able to pay for `--max-turns` at this
+#: rate, because a job timeout is strictly worse than a red step — it kills the run
+#: before the transcript upload and the reporting step, and takes the evidence with it.
+PLAN_SECONDS_PER_TURN = 1_007_787 / 78 / 1000
+#: The job's own overhead around the model step: 17 min 17 s of job for 16 min 48 s of
+#: model, rounded up to the minute.
+PLAN_JOB_OVERHEAD_MINUTES = 1
 
 #: The safety-net script the implement and fix jobs run after the model, whatever
 #: happened to it.
@@ -266,6 +284,23 @@ def test_plan_carries_a_turn_budget_with_slack() -> None:
     assert _max_turns(step) >= MIN_TURNS["plan"]
 
 
+def test_plan_turn_budget_fits_inside_the_job_timeout() -> None:
+    """The two numbers move together or not at all. Raising `--max-turns` past what
+    `timeout-minutes` can pay for only moves the failure, and moves it somewhere worse:
+    a cancelled job runs neither `Keep the transcript` nor the reporting step, so the
+    run that went over budget is the one that leaves no record of where the budget
+    went."""
+    workflow = _load(PLAN)
+    (step,) = _action_steps(workflow, "plan")
+    timeout = workflow["jobs"]["plan"]["timeout-minutes"]
+    needed = _max_turns(step) * PLAN_SECONDS_PER_TURN / 60 + PLAN_JOB_OVERHEAD_MINUTES
+    assert timeout >= needed, (
+        f"claude-plan allows {_max_turns(step)} turns but stops the job at {timeout} min; "
+        f"at the measured {PLAN_SECONDS_PER_TURN:.1f} s a turn that budget needs "
+        f"{needed:.0f} min, and the run would be killed before it could report"
+    )
+
+
 def test_plan_reports_its_own_failure_to_the_issue() -> None:
     """A plan that never posts is an issue that waits forever for `plan-ready`."""
     steps = _steps(_load(PLAN), "plan")
@@ -274,6 +309,156 @@ def test_plan_reports_its_own_failure_to_the_issue() -> None:
     assert any("gh issue comment" in str(s.get("run", "")) for s in failure_steps), (
         "the failure step must comment on the issue"
     )
+
+
+def _plan_report_step() -> dict:
+    """The step that comments on the issue when the plan did not land."""
+    steps = _steps(_load(PLAN), "plan")
+    reports = [s for s in steps if "gh issue comment" in str(s.get("run", ""))]
+    assert len(reports) == 1, f"expected one step commenting on the issue, found {len(reports)}"
+    return reports[0]
+
+
+def _plan_landed_step() -> dict:
+    """The step the report's condition reads its answer from, found through that
+    condition rather than by name — the name is not what binds them."""
+    condition = str(_plan_report_step().get("if", ""))
+    match = re.search(r"steps\.([\w-]+)\.outputs\.landed\s*!=\s*'true'", condition)
+    assert match, (
+        "the report step's condition does not consult a `landed` output; it is "
+        f"{condition!r}, which is the job's status and not whether a plan landed"
+    )
+    steps = [s for s in _steps(_load(PLAN), "plan") if s.get("id") == match.group(1)]
+    assert steps, f"the report reads steps.{match.group(1)}.outputs.landed, but no step has that id"
+    return steps[0]
+
+
+def test_plan_does_not_report_a_failure_that_posted_a_plan() -> None:
+    """`if: failure()` is the job's status, not the question. The action throws after the
+    model has finished when `num_turns` exceeds `--max-turns`, so run 34827467742 went
+    red with the Plan comment already on #86 and `plan-ready` already set — and this step
+    told #86 that neither had happened, in three sentences all of which were false. The
+    condition has to keep `failure()` (that is what `test_plan_reports_its_own_failure_
+    to_the_issue` requires) and add the part that asks the issue."""
+    condition = str(_plan_report_step().get("if", ""))
+    assert "failure()" in condition, f"the report must still be a failure step; if is {condition!r}"
+    check = _plan_landed_step()
+    assert "failure()" in str(check.get("if", "")), (
+        "the check must not cost a turn on runs that went green; gate it on failure() too"
+    )
+    run = str(check.get("run", ""))
+    assert "--json labels" in run and "plan-ready" in run, "the check does not look for the `plan-ready` label"
+    assert "--json comments" in run, "the check does not look for the Plan comment"
+    assert "landed=" in run and "$GITHUB_OUTPUT" in run, "the check emits no `landed` output"
+
+
+def test_plan_retry_instruction_clears_the_jobs_own_guard() -> None:
+    """The old advice — remove and re-apply `tier:fable-plan` — is inert on an issue that
+    already carries `plan-ready`, because the job's own condition refuses to start while
+    that label is there. Whenever the report can fire on such an issue, the retry it
+    prints has to say to remove it first."""
+    workflow = _load(PLAN)
+    guard = str(workflow["jobs"]["plan"]["if"])
+    assert "'plan-ready'" in guard and "!contains" in guard, (
+        f"this test is about the guard on line 39; the job's if is now {guard!r}"
+    )
+    retries = re.findall(r"^\s*retry=(.+)$", str(_plan_landed_step().get("run", "")), re.MULTILINE)
+    assert len(retries) >= 2, (
+        f"the retry instruction does not depend on whether `plan-ready` is set; found {retries}"
+    )
+    assert any("plan-ready" in r for r in retries), (
+        "no retry instruction tells the reader to remove `plan-ready`, so on an issue "
+        "that carries it the advice re-triggers nothing"
+    )
+
+
+#: `gh issue view <n> --json <fields> --jq <program>`, with the issue replaced by a file.
+#: The stub runs the step's own jq program, so the thing under test is the query the
+#: workflow ships and not a paraphrase of it.
+GH_STUB = """#!/usr/bin/env bash
+set -uo pipefail
+program=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq) program="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+exec jq -r "$program" "$GH_FIXTURE"
+"""
+
+#: The Plan comment #86 actually received, and the report that used to follow it.
+PLAN_COMMENT = "# Plan\n\nOne shared secret, `DS_API_TOKEN`, checked by one ASGI middleware.\n"
+FAILURE_COMMENT = "**claude-plan failed and posted no Plan**, so `plan-ready` was not added.\n"
+
+
+@pytest.mark.skipif(
+    shutil.which("jq") is None or shutil.which("bash") is None,
+    reason="the step's own shell and jq program are what is under test",
+)
+@pytest.mark.parametrize(
+    ("plan_ready", "plan_comment", "landed"),
+    [
+        pytest.param(True, True, True, id="the run that was failed anyway"),
+        pytest.param(False, False, False, id="nothing reached the issue"),
+        pytest.param(True, False, False, id="labelled but unplanned"),
+        pytest.param(False, True, False, id="planned but not handed off"),
+    ],
+)
+def test_plan_landed_check_answers_from_the_issue(
+    tmp_path: Path, plan_ready: bool, plan_comment: bool, landed: bool
+) -> None:
+    """Run the `Did the plan land?` step's shell against an issue it cannot distinguish
+    from the real one. A plan has landed only when both halves of the handshake are there
+    — the comment a person reads and the label the implementer triggers on — and when it
+    has, the report that would have contradicted it does not run."""
+    fixture = tmp_path / "issue.json"
+    fixture.write_text(
+        json.dumps(
+            {
+                "labels": [{"name": "claude"}, {"name": "tier:fable-plan"}]
+                + ([{"name": "plan-ready"}] if plan_ready else []),
+                "comments": [{"body": FAILURE_COMMENT}]
+                + ([{"body": PLAN_COMMENT}] if plan_comment else []),
+            }
+        )
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh").write_text(GH_STUB)
+    (bin_dir / "gh").chmod(0o755)
+    output = tmp_path / "github_output"
+    output.touch()
+
+    result = subprocess.run(
+        ["bash", "-c", str(_plan_landed_step()["run"])],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "GH_FIXTURE": str(fixture),
+            "GH_TOKEN": "stub",
+            "ISSUE_NUMBER": "86",
+            "GITHUB_OUTPUT": str(output),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"the check step failed: {result.stderr}"
+    outputs = dict(line.split("=", 1) for line in output.read_text().splitlines() if "=" in line)
+
+    assert outputs["landed"] == str(landed).lower(), (
+        f"plan-ready={plan_ready}, Plan comment={plan_comment} → landed={outputs['landed']}"
+    )
+    # The report step's condition is `... != 'true'`, so this is what it will read.
+    would_report = outputs["landed"] != "true"
+    assert would_report is not landed
+
+    if would_report:
+        assert ("plan-ready" in outputs["retry"]) is plan_ready, (
+            "the retry must say to remove `plan-ready` exactly when the issue carries it "
+            f"— the job's guard refuses to start otherwise; it says {outputs['retry']!r}"
+        )
+        assert outputs["what"], "the report has nothing to say about what is missing"
 
 
 # --- the review job -----------------------------------------------------------------
