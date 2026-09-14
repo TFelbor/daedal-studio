@@ -289,14 +289,16 @@ services:
       dockerfile: infra/docker/server.Dockerfile
     image: ds-api-server:latest
     ports:
-      # Published on loopback, not on every interface. This server has no
-      # authentication at all, so a bare "8000:8000" put POST /jobs (which spends
-      # EUR 0,32 on a hosted generation), POST /jobs/{id}/print-dispatch (which
-      # heats a nozzle) and PUT /config (which rewrites printer credentials) in
-      # reach of anything that can route to this host: the rest of the LAN, a
-      # guest network, a shared VPN. DS_API_BIND moves the published address —
-      # set it to 0.0.0.0 only when the API is deliberately exposed *and*
-      # authenticated. The bind address must stay in this mapping: without one,
+      # Published on loopback, not on every interface. A bare "8000:8000" put
+      # POST /jobs (which spends EUR 0,32 on a hosted generation),
+      # POST /jobs/{id}/print-dispatch (which heats a nozzle) and PUT /config
+      # (which rewrites printer credentials) in reach of anything that can route
+      # to this host: the rest of the LAN, a guest network, a shared VPN. Every
+      # one of those is authenticated now (DS_API_TOKEN, in the .env this service
+      # already loads — or generated into the ~/.ds-mvp mount below), but a shared
+      # secret is one credential for everyone holding it and there is no per-user
+      # model: DS_API_BIND moves the published address, and 0.0.0.0 stays a
+      # deliberate act. The bind address must stay in this mapping: without one,
       # Docker publishes on every interface again.
       - "${DS_API_BIND:-127.0.0.1}:8000:8000"
     volumes:

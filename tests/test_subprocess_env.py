@@ -4,7 +4,7 @@
 The startup hook copied the whole store into `os.environ` as well, and both
 subprocess launches — `docker compose run pipeline-runner` and `run_operator.py` —
 were built with `os.environ.copy()`. So every stored key was a variable in every
-child process this server spawns, set by an endpoint with no authentication in
+child process this server spawns, set by an endpoint that had no authentication in
 front of it.
 
 `PYTHONPATH` was one of those keys. One request prepended an import path to the
