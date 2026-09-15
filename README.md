@@ -272,9 +272,12 @@ make test-slow                                  # pytest tests/ -v -m "slow and 
 `pytest.ini` carries `-m "not slow"` in its `addopts`, so **`pytest tests/` is already the
 selection CI runs** — it deselects everything that needs weights, a GPU or a printer. That
 is the command that must pass before a PR opens; the two marker-selected runs above are
-opt-in and need hardware this repository cannot assume. Four markers are declared:
+opt-in and need hardware this repository cannot assume. Five markers are declared:
 `integration` (a running FastAPI server, no printer), `slow` (over 30 seconds),
-`real_printer` and `full_pipeline`.
+`real_printer`, `full_pipeline`, and `dimensional_sweep` — which selects nothing on the
+command line and is not meant to. It labels one case of one archetype's declared
+dimensional envelope so `tests/conftest.py` can tally the run per archetype; see **What
+CI runs** below.
 
 The `slow and real_printer` selection is the only place the **real** slicer and a printer
 are exercised; the default selection runs against a CuraEngine stub.
@@ -307,13 +310,30 @@ push and pull request, then the frontend build:
 
 ```bash
 pytest tests/test_licensing_guards.py tests/test_licence_data.py                          # licence guards
-pytest tests/test_organizer_dimensional_accuracy.py tests/test_deck_box.py tests/test_engineer_assert.py  # dimensional accuracy (PRD N1)
+pytest tests/test_organizer_dimensional_accuracy.py tests/test_deck_box.py tests/test_engineer_assert.py tests/test_archetype_registry.py  # dimensional accuracy (PRD N1)
 pytest tests/                                                                             # the whole default selection
 ```
 
 The first two are subsets of the third, named separately so they are legible from the job
 list without opening a log. A licence violation is the one class of defect that cannot be
 fixed after a release, and the ±0,05 mm dimensional claim is the product's promise.
+
+The dimensional step sweeps **every registered archetype** over the envelope its own
+module declares (`envelope()` in each `pythonsrc/organizer/archetypes/*.py`) and ends
+with one line per archetype:
+
+```
+-------------------------- dimensional sweep (PRD N1) --------------------------
+card_divider: 324/324
+deck_box: 495/495
+token_tray: 160/160
+```
+
+A missing line is the failure that matters and the one a total would hide: an archetype
+added without an envelope compiles, is offered in the composer and reaches a printer
+while no mesh it produced has ever been measured. `tests/test_archetype_registry.py`
+joins the step because it refuses that module at the same moment as one missing
+`measure`.
 
 ### What the suite refuses to touch
 

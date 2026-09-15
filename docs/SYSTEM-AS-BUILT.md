@@ -796,15 +796,33 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   which is a failed Phase 3. A spec run that ships a wrong dimension has failed, however
   watertight it is. **The feature set compared is `required_measurements(spec)`**, so a
   tray is checked at every grid position rather than at the five names that do not move.
-  `tests/test_organizer_dimensional_accuracy.py` sweeps 405 specs
-  across the deck box's envelope, 324 across the divider's (sleevings × tab positions
-  × thicknesses × tab sizes) and 160 across the tray's (grids × pocket sizes × walls ×
-  floors) on the exported, reloaded STL, plus a corner set through
-  the assert path for each, and runs as its own CI step. Per-archetype `parametrize`
-  blocks, because the *generic* sweep across every archetype is issue #85 and still open.
-  The deck box's edge treatments get a corner of their own (48 cases from absent to the
-  ceiling of every rule, plus 12 through the assert path) rather than three more axes on
-  405, because they change the *kind* of surface rather than a length.
+  `tests/test_organizer_dimensional_accuracy.py` sweeps **every registered archetype**
+  over the envelope its own module declares (issue #85): one `parametrize`, 979 specs —
+  495 deck boxes (counts × sleevings × walls × clearances × lid engagement), 324
+  dividers (sleevings × tab positions × thicknesses × tab sizes), 160 trays (grids ×
+  pocket sizes × walls × floors) — on the exported, reloaded STL, plus a 90-case corner
+  subset through the assert path. It runs as its own CI step and ends with one line per
+  archetype (`deck_box: 495/495`).
+- **The envelope is declared by the archetype, not by the test**
+  (`envelope() -> tuple[SweepCase, ...]` in each module, dispatched through
+  `archetypes.envelope_for`). The sweep was written for the deck box and then *copied*
+  per archetype, which is a shape that fails silently: a fourth archetype could be
+  registered, compiled, offered in the composer and printed while no mesh it produced
+  had ever been measured, and the run would be green. `envelope_for` therefore raises
+  for a module that declares none, `envelope` is on the archetype API
+  `tests/test_archetype_registry.py` enforces, and the per-archetype summary line makes
+  a missing archetype visible as a missing line rather than as an unchanged total.
+  Being swept is what makes an archetype an archetype rather than a mesh generator.
+  Each case also passes `Engineer.assert_manifold` — the production check, not a
+  restatement — so watertightness, non-manifold edges and kernel acceptance are asserted
+  on the float32 round trip for every spec, and the measured feature set is compared
+  `==` to `required_measurements(spec)` rather than `⊆`, because a report that silently
+  checked five of a tray's thirty features would say *within tolerance* and mean almost
+  nothing. What stays per-archetype is the corner each contributes alone: the deck box's
+  nozzle-derived wall floor (below it nothing compiles, so the coverage is a refusal
+  rather than a measurement), its fit intent, and its edge treatments — 48 cases from
+  absent to the ceiling of every rule, plus 12 through the assert path, rather than
+  three more axes on 495, because they change the *kind* of surface rather than a length.
 - **The compiler is the generation model.** `generation_model = "organizer/deck_box"`,
   `"organizer/card_divider"` or `"organizer/token_tray"`,
   `generation_model_version` = the archetype's own version — `"2"` for a deck box since

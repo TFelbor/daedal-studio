@@ -7,18 +7,28 @@ can read back off geometry, across its parameter envelope, and then again throug
 3's assert path. The bound is `DEFAULT_TOLERANCE_MM` (0,05 mm). Nothing here is asserted
 from the spec's own arithmetic; every number is read off planes in the mesh.
 
-Three archetypes now have an envelope here, each with its own parametrize — the deck box
-(counts × sleevings × walls × clearances × lid engagement), the card divider (sleevings ×
-tab positions × thicknesses × tab sizes) and the token tray (grids × pocket sizes × walls
-× floors). The generic sweep across *every* archetype is issue #85 and is still open;
-until it lands, a new archetype adds a block.
+**The sweep is archetype-generic (issue #85).** Each archetype module declares its own
+envelope — `envelope()`, returning `common.SweepCase`s, the parameter ranges plus the
+corner set that goes on through Phase 3 — and one parametrized test drives every spec
+of every registered archetype through the same five assertions. It used to be written
+for the deck box and then copied per archetype, which meant a fourth archetype could be
+registered, compiled, offered in the composer and printed while nothing had ever
+measured a mesh it produced. A module that declares no envelope now fails by name:
+being swept is what makes an archetype an archetype rather than a mesh generator.
+
+What stays per-archetype below is the corner each one contributes on its own — the deck
+box's nozzle-derived wall floor (no mesh exists below it, so the coverage is a refusal),
+its fit intent and its edge treatments, and the drift cases that prove the check bites
+on each archetype's own geometry, including inside a token tray's grid.
 
 Two further tests prove the assertion bites, because a check that cannot fail is not a
 check: a mesh scaled by 0,2 % is caught and the feature named, and a mesh with a face
 missing is refused before anything is exported.
 
-CI runs this file as its own named step (`.github/workflows/ci.yml`), so a regression in
-dimensional accuracy is legible from the job list without opening a log.
+CI runs this file as its own named step (`.github/workflows/ci.yml`), and the run ends
+with one line per archetype (`deck_box: 495/495`) from the hooks in `tests/conftest.py`,
+so a regression in dimensional accuracy — or an archetype that quietly contributes
+nothing — is legible from the job list without opening a log.
 """
 import itertools
 import json
@@ -26,11 +36,15 @@ import json
 import pytest
 import trimesh
 
+from pythonsrc.engineer import Engineer
 from pythonsrc.organizer.archetypes import (
+    REGISTRY,
     card_divider,
     compile_spec,
     deck_box,
+    envelope_for,
     required_measurements,
+    token_tray,
     verify_spec_mesh,
 )
 from pythonsrc.organizer.compiler import (
@@ -55,8 +69,16 @@ from pythonsrc.organizer.spec import (
     Tray,
     wall_floor_mm,
 )
+from tests.sweep_tally import SweepTally
 
 TOL_MM = DEFAULT_TOLERANCE_MM
+
+
+def exported_and_reloaded(spec, path):
+    """The mesh as a slicer would receive it: written as float32 STL and read back."""
+    result = compile_spec(spec)
+    export_stl(result.mesh, path)
+    return result, trimesh.load(str(path), force="mesh")
 
 
 # ── the check itself ───────────────────────────────────────────────────────────
@@ -106,15 +128,159 @@ def test_the_report_serialises_to_the_json_written_beside_the_mesh():
     assert doc["max_abs_error_mm"] == pytest.approx(0.02)
 
 
-# ── the envelope ───────────────────────────────────────────────────────────────
+# ── the generic sweep (issue #85) ──────────────────────────────────────────────
+#
+# One parametrize over every registered archetype's declared envelope. Collection asks
+# `envelope_for` for each name and tolerates the refusal — an archetype with no envelope
+# must fail as *itself*, naming itself, rather than taking every other archetype's
+# coverage down with a collection error — which is what the first test below is for.
+
+
+def _declared_envelope(name):
+    """This archetype's envelope, or nothing at all if it declares none."""
+    try:
+        return envelope_for(name)
+    except SpecError:
+        return ()
+
+
+SWEEP = [
+    pytest.param(name, case, id=f"{name}-{case.id}")
+    for name in sorted(REGISTRY)
+    for case in _declared_envelope(name)
+]
+PHASE_3_SWEEP = [
+    pytest.param(name, case, id=f"{name}-{case.id}")
+    for name in sorted(REGISTRY)
+    for case in _declared_envelope(name)
+    if case.phase_3
+]
+
+
+@pytest.mark.parametrize("name", sorted(REGISTRY))
+def test_every_registered_archetype_declares_an_envelope(name):
+    """The sweep is the definition of "an archetype exists". A module registered without
+    one compiles, is offered in the composer and reaches a printer with nothing ever
+    having measured a mesh it produced, and the parametrize above would be silently
+    empty for it — so this asks each name on its own and fails naming it."""
+    cases = envelope_for(name)
+    assert cases, f"{name} declares an empty envelope"
+    assert all(case.spec.archetype == name for case in cases)
+    assert len({case.id for case in cases}) == len(cases), f"{name} repeats a case id"
+    assert any(case.phase_3 for case in cases), (
+        f"{name} sends nothing through Phase 3's assert path"
+    )
+
+
+@pytest.mark.dimensional_sweep
+@pytest.mark.parametrize("archetype,case", SWEEP)
+def test_every_spec_in_every_envelope_is_a_solid_within_tolerance(tmp_path, archetype, case):
+    """Five assertions, the same five for every archetype.
+
+    `Engineer.assert_manifold` is the production check rather than a restatement of it:
+    watertight, no boundary edge, no non-manifold edge, consistent winding and positive
+    volume, and acceptance by the `manifold3d` kernel. It runs on the *exported,
+    reloaded* mesh, which is the point of this file — a degenerate triangle along a
+    chamfer seam survives float64 and opens the surface in float32.
+
+    Then the dimensions, and the *set* of them: equality with `required_measurements`
+    rather than containment, because a report that silently checked five of a tray's
+    thirty features would say "within tolerance" and mean almost nothing.
+    """
+    result, mesh = exported_and_reloaded(case.spec, tmp_path / f"{archetype}.stl")
+    findings = Engineer().assert_manifold(mesh)
+    assert findings["watertight"] is True
+    assert findings["nonmanifold_edges"] == 0 and findings["boundary_edges"] == 0
+    assert findings["kernel_status"] == "NoError"
+    report = verify_spec_mesh(case.spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    assert set(report.features) == set(required_measurements(case.spec))
+
+
+@pytest.mark.parametrize("archetype,case", PHASE_3_SWEEP)
+def test_phase_3_assert_path_hands_the_slicer_every_envelope_corner(tmp_path, archetype, case):
+    """A spec run's Phase 3 asserts rather than repairs, so the corner set has to arrive
+    as a solid and leave with the same millimetres: nothing there may rescale a cavity,
+    and nothing may decimate an arc away, which is what `faces_dropped` is for.
+
+    Deliberately *not* marked `dimensional_sweep`: the run summary counts envelope
+    cases, and folding a slower corner set into the same figure would make
+    `deck_box: 495/495` mean two different things depending on which tests ran.
+    """
+    result, _ = exported_and_reloaded(case.spec, tmp_path / "compiled_mesh.stl")
+    eng = Engineer()
+    out = eng.process(
+        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
+        target_mm=None, repair_mode="assert",
+    )
+    report = verify_spec_mesh(case.spec, result.features, trimesh.load(str(out), force="mesh"))
+    assert report.within_tolerance, report.problems()
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+    assert eng.last_report.get("faces_dropped", 0) == 0
+
+
+def test_the_sweep_covers_every_archetype_the_registry_can_compile():
+    """The property the generic sweep exists for: adding an archetype adds its cases
+    here without anybody editing this file. Guards against the parametrize being
+    narrowed to a list of names somebody has to remember to extend."""
+    assert {name for name, _ in ((p.values[0], p.values[1]) for p in SWEEP)} == set(REGISTRY)
+    assert len(SWEEP) == sum(len(envelope_for(name)) for name in REGISTRY)
+
+
+# ── the run summary, one line per archetype ────────────────────────────────────
+#
+# What CI prints and what `tests/conftest.py`'s hooks count. The figures are tested
+# here rather than through a nested pytest run; the binding between this test's marker
+# and the hook that reads it is the last test in the block.
+
+def test_the_summary_prints_one_line_per_archetype_swept():
+    tally = SweepTally()
+    for name in sorted(REGISTRY):
+        tally.record(name, "passed")
+    assert tally.lines() == [f"{name}: 1/1" for name in sorted(REGISTRY)]
+
+
+def test_the_summary_names_a_shortfall_rather_than_leaving_it_to_subtraction():
+    tally = SweepTally()
+    for outcome in ("passed", "passed", "failed", "skipped"):
+        tally.record("deck_box", outcome)
+    assert tally.lines() == ["deck_box: 2/4 (1 failed, 1 skipped)"]
+
+
+def test_a_run_that_swept_nothing_prints_nothing():
+    """A denominator derived from the envelope would say 495/495 for a run that
+    collected no case at all; the tally counts reports, so it stays silent."""
+    tally = SweepTally()
+    assert not tally and tally.lines() == []
+
+
+def test_the_summary_hook_can_find_what_it_counts():
+    """`conftest.pytest_collection_modifyitems` looks for the `dimensional_sweep` marker
+    and reads the `archetype` parameter off the callspec. Both are spelled in this file
+    and read in that one, so nothing else would notice them drifting apart — the summary
+    would simply stop printing."""
+    sweep = test_every_spec_in_every_envelope_is_a_solid_within_tolerance
+    marks = getattr(sweep, "pytestmark", [])
+    assert "dimensional_sweep" in {mark.name for mark in marks}
+    parametrize = next(mark for mark in marks if mark.name == "parametrize")
+    assert parametrize.args[0].split(",")[0].strip() == "archetype"
+
+
+# ── the deck box's own corners ─────────────────────────────────────────────────
+
+COUNTS = deck_box.SWEEP_COUNTS
+SLEEVINGS = deck_box.SWEEP_SLEEVINGS
+
 
 def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0, floor=2.0,
          fit_intent="snug", chamfer=None, radius=None, cavity_radius=None):
     """A deck box spec. `wall=None` states no wall and takes the archetype's default,
     which is what every spec that does not mention one compiles with (issue #72). The
     three edge treatments default to `None`, which likewise leaves `Process`'s own
-    defaults — a 0,6 mm chamfer and a 1,0 mm corner round — in place, so the envelope
-    above sweeps the geometry a real spec gets rather than a square-cornered variant."""
+    defaults — a 0,6 mm chamfer and a 1,0 mm corner round — in place, so what these
+    corners sweep is the geometry a real spec gets rather than a square-cornered
+    variant."""
     edges = {
         name: value
         for name, value in (("base_chamfer_mm", chamfer), ("corner_radius_mm", radius),
@@ -129,69 +295,30 @@ def deck(count=100, sleeving="double", wall=2.8, clearance=0.2, lid_height=15.0,
     )
 
 
-def exported_and_reloaded(spec, path):
-    """The mesh as a slicer would receive it: written as float32 STL and read back."""
-    result = compile_spec(spec)
-    export_stl(result.mesh, path)
-    return result, trimesh.load(str(path), force="mesh")
-
-
-COUNTS = (15, 40, 60, 100, 160)
-SLEEVINGS = ("none", "single", "double")
-#: `None` states no wall at all and takes the archetype's own default (2,4 mm). It is
-#: swept as a value rather than checked once, because it is what almost every real spec
-#: compiles with, and a dimensional claim about a wall nobody typed is worth as much as
-#: one about 2,8 mm. 2.6 − 1.2 lid wall − 0.35 clearance = 1.05 mm lip, above
-#: min_feature; at the 2,4 mm default that same clearance leaves 0.85 mm and the
-#: archetype refuses it, so `_lip_is_buildable` drops the pair rather than sweeping a
-#: box that does not exist.
-WALLS = (None, 2.6, 2.8, 4.0)
-CLEARANCES = (0.1, 0.2, 0.35)
-LID_HEIGHTS = (8.0, 15.0, 30.0)
-
-
 def _wall_mm(wall):
     """The wall a swept case actually builds with; `None` is the archetype's default."""
     return ARCHETYPE_WALL_MM["deck_box"] if wall is None else wall
 
 
-def _lip_is_buildable(wall, clearance):
-    """`deck_box.validate`'s lip rule, restated so the sweep asks only for boxes that
-    exist: the body wall less the lid's wall and clearance must reach `min_feature_mm`."""
-    return _wall_mm(wall) - (Lid().wall_mm + clearance) >= Process().min_feature_mm - 1e-9
-
-
-ENVELOPE = [
-    case for case in itertools.product(COUNTS, SLEEVINGS, WALLS, CLEARANCES, LID_HEIGHTS)
-    if _lip_is_buildable(case[2], case[3])
-]
-
-
-@pytest.mark.parametrize("count,sleeving,wall,clearance,lid_height", ENVELOPE)
-def test_every_measured_feature_of_the_exported_mesh_is_within_tolerance(
-    tmp_path, count, sleeving, wall, clearance, lid_height,
-):
-    spec = deck(count, sleeving, wall, clearance, lid_height)
-    result, mesh = exported_and_reloaded(spec, tmp_path / "deck.stl")
-    report = verify_spec_mesh(spec, result.features, mesh)
-    assert report.within_tolerance, report.problems()
-    assert set(report.features) == set(deck_box.MEASURED_FEATURES)
-
-
-def test_the_envelope_is_wide_enough_to_mean_something():
-    """Guards the sweep against being quietly narrowed to the one example spec, and in
-    particular against losing the unstated wall: `None` is what almost every real spec
-    is, and it is the case a changed archetype default moves."""
-    assert len(ENVELOPE) >= 400
+def test_the_deck_box_envelope_is_wide_enough_to_mean_something():
+    """Guards the module's declared envelope against being quietly narrowed to the one
+    example spec, and in particular against losing the unstated wall: `None` is what
+    almost every real spec is, and it is the case a changed archetype default moves."""
+    cases = envelope_for("deck_box")
+    assert len(cases) >= 400
     assert min(COUNTS) < 20 and max(COUNTS) >= 150
     assert set(SLEEVINGS) == {"none", "single", "double"}
-    assert None in WALLS
-    assert len([c for c in ENVELOPE if c[2] is None]) >= 90
+    assert None in deck_box.SWEEP_WALLS
+    # The default is not also in the tuple as a number, so counting specs that carry it
+    # counts the ones that stated no wall at all.
+    default = ARCHETYPE_WALL_MM["deck_box"]
+    assert default not in deck_box.SWEEP_WALLS
+    assert len([c for c in cases if c.spec.process.wall_mm == default]) >= 90
 
 
 # ── the wall: the archetype's default, and the nozzle's floor (issue #72) ──────
 #
-# The sweep above carries the default as one of its `WALLS`, which proves the
+# The sweep carries the default as one of its `SWEEP_WALLS`, which proves the
 # millimetres. What it cannot carry is the floor: below it nothing compiles, so there
 # is no mesh to measure and the coverage is a refusal instead. Both halves live here —
 # the default is *measured off the mesh*, the floor is *named in the refusal* — and
@@ -256,11 +383,12 @@ def test_the_floor_is_the_same_rule_at_every_nozzle_the_sweep_names():
 
 # ── the easy fit intent's corner (issue #71) ───────────────────────────────────
 #
-# Its own corner rather than a sixth axis on ENVELOPE: `fit_intent` moves exactly two
-# lengths (the cavity's width and height, by 2,5 mm each) and is orthogonal to the wall,
-# the lid and the clearance, so doubling 405 cases would buy repetition rather than
-# coverage. What it must prove is that the wider cavity is *measured back* off the
-# exported mesh, across the counts and sleevings that change the numbers around it.
+# Its own corner rather than a sixth axis on the deck box's envelope: `fit_intent` moves
+# exactly two lengths (the cavity's width and height, by 2,5 mm each) and is orthogonal
+# to the wall, the lid and the clearance, so doubling 495 cases would buy repetition
+# rather than coverage. What it must prove is that the wider cavity is *measured back*
+# off the exported mesh, across the counts and sleevings that change the numbers around
+# it.
 
 INTENT_CORNERS = list(itertools.product(FIT_INTENTS, COUNTS, SLEEVINGS))
 
@@ -291,13 +419,13 @@ def test_both_intents_are_swept_and_they_differ(tmp_path):
 
 # ── the edge treatments' corner (issue #80) ───────────────────────────────────
 #
-# Its own corner rather than three more axes on ENVELOPE, for `fit_intent`'s reason and
-# one more. The reason: a chamfer and a corner round are orthogonal to the wall, the lid
-# and the clearance, so multiplying 405 by 24 would buy repetition. The one more: unlike
-# every other axis here, these two change the *kind* of surface the mesh carries — an
-# arc where there was a plane, a 45° face where there was an edge — so what has to be
-# swept is the span from "absent" to "as large as the rules allow", on both bodies, and
-# through the export the rest of this file measures on.
+# Its own corner rather than three more axes on the envelope, for `fit_intent`'s reason
+# and one more. The reason: a chamfer and a corner round are orthogonal to the wall, the
+# lid and the clearance, so multiplying 495 by 24 would buy repetition. The one more:
+# unlike every other axis there, these two change the *kind* of surface the mesh carries
+# — an arc where there was a plane, a 45° face where there was an edge — so what has to
+# be swept is the span from "absent" to "as large as the rules allow", on both bodies,
+# and through the export the rest of this file measures on.
 #
 # `(0,5, 0,6)` and `(1,0, 1,5)` are in deliberately: a chamfer taller than the corner it
 # runs around is the case `base_chamfer`'s fast construction cannot do, so those two send
@@ -355,33 +483,6 @@ def test_the_edge_corner_spans_absent_and_present_on_every_axis():
     # And one where the lip and the lid cavity get radii of their own rather than
     # clamping to zero, which is the derivation that keeps the closure's fit exact.
     assert any(c[1] > Lid().wall_mm + Lid().clearance_mm for c in EDGE_CORNERS)
-
-
-# ── through Phase 3 ────────────────────────────────────────────────────────────
-
-from pythonsrc.engineer import Engineer  # noqa: E402
-
-CORNERS = list(itertools.product(
-    (15, 60, 160), SLEEVINGS,
-    ((2.6, 0.1, 8.0), (2.8, 0.2, 15.0), (4.0, 0.35, 30.0), (2.6, 0.35, 8.0),
-     (None, 0.2, 15.0)),
-))
-
-
-@pytest.mark.parametrize("count,sleeving,process", CORNERS)
-def test_phase_3_assert_path_hands_the_slicer_the_designed_dimensions(tmp_path, count, sleeving, process):
-    wall, clearance, lid_height = process
-    spec = deck(count, sleeving, wall, clearance, lid_height)
-    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
-    eng = Engineer()
-    out = eng.process(
-        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
-        target_mm=None, repair_mode="assert",
-    )
-    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
-    assert report.within_tolerance, report.problems()
-    assert eng.last_report["repair_method"] == "asserted"
-    assert eng.last_report["scale_applied"] is False
 
 
 EDGE_PHASE_3_CORNERS = [
@@ -457,13 +558,7 @@ def test_the_default_deck_box_has_sub_micron_error_on_the_exported_mesh(tmp_path
     assert report.max_abs_error_mm < 1e-4
 
 
-# ── the card divider's envelope ────────────────────────────────────────────────
-#
-# Its own parametrize rather than the generic sweep (#85, still open). Five axes, and
-# the tab position is one of them because it is the only parameter that changes the
-# *shape* of the outline rather than a length: an edge tab shares a side plane with the
-# plate, which is exactly the case a union got wrong and an extruded outline does not.
-
+# ── the card divider's own corners ─────────────────────────────────────────────
 
 def divider(sleeving="double", thickness=1.4, tab_width=20.0, tab_height=10.0,
             position="centre", count=100):
@@ -475,60 +570,16 @@ def divider(sleeving="double", thickness=1.4, tab_width=20.0, tab_height=10.0,
     )
 
 
-D_SLEEVINGS = ("none", "single", "double")
-D_POSITIONS = ("left", "centre", "right")
-D_THICKNESSES = (1.2, 1.4, 1.6, 2.0)   # the audited 1,2–1,6 mm insert band, plus one over
-D_TAB_WIDTHS = (12.0, 20.0, 30.0)
-D_TAB_HEIGHTS = (6.0, 10.0, 15.0)
-
-DIVIDER_ENVELOPE = list(itertools.product(
-    D_SLEEVINGS, D_POSITIONS, D_THICKNESSES, D_TAB_WIDTHS, D_TAB_HEIGHTS,
-))
-
-
-@pytest.mark.parametrize("sleeving,position,thickness,tab_width,tab_height", DIVIDER_ENVELOPE)
-def test_every_measured_feature_of_an_exported_divider_is_within_tolerance(
-    tmp_path, sleeving, position, thickness, tab_width, tab_height,
-):
-    spec = divider(sleeving, thickness, tab_width, tab_height, position)
-    result, mesh = exported_and_reloaded(spec, tmp_path / "divider.stl")
-    report = verify_spec_mesh(spec, result.features, mesh)
-    assert report.within_tolerance, report.problems()
-    assert set(report.features) == set(card_divider.MEASURED_FEATURES)
-
-
 def test_the_divider_envelope_is_wide_enough_to_mean_something():
-    """Guards this sweep against being quietly narrowed to the one example spec, and
-    pins the three tab positions in particular — dropping `left` and `right` would
-    remove the only cases where the tab's plane is the plate's."""
-    assert len(DIVIDER_ENVELOPE) >= 300
-    assert set(D_POSITIONS) == {"left", "centre", "right"}
-    assert set(D_SLEEVINGS) == {"none", "single", "double"}
-    assert min(D_THICKNESSES) <= 1.2 and max(D_THICKNESSES) >= 2.0
-
-
-DIVIDER_CORNERS = list(itertools.product(
-    D_SLEEVINGS, D_POSITIONS,
-    ((1.2, 12.0, 6.0), (1.4, 20.0, 10.0), (2.0, 30.0, 15.0), (1.2, 30.0, 6.0)),
-))
-
-
-@pytest.mark.parametrize("sleeving,position,divider_params", DIVIDER_CORNERS)
-def test_phase_3_assert_path_hands_the_slicer_the_designed_divider(
-    tmp_path, sleeving, position, divider_params,
-):
-    thickness, tab_width, tab_height = divider_params
-    spec = divider(sleeving, thickness, tab_width, tab_height, position)
-    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
-    eng = Engineer()
-    out = eng.process(
-        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
-        target_mm=None, repair_mode="assert",
-    )
-    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
-    assert report.within_tolerance, report.problems()
-    assert eng.last_report["repair_method"] == "asserted"
-    assert eng.last_report["scale_applied"] is False
+    """Guards the module's declared envelope against being quietly narrowed to the one
+    example spec, and pins the three tab positions in particular — dropping `left` and
+    `right` would remove the only cases where the tab's plane is the plate's, which is
+    the case a union got wrong and an extruded outline does not."""
+    assert len(envelope_for("card_divider")) >= 300
+    assert set(card_divider.SWEEP_POSITIONS) == {"left", "centre", "right"}
+    assert set(card_divider.SWEEP_SLEEVINGS) == {"none", "single", "double"}
+    assert min(card_divider.SWEEP_THICKNESSES) <= 1.2
+    assert max(card_divider.SWEEP_THICKNESSES) >= 2.0
 
 
 def test_a_divider_scaled_by_a_fifth_of_a_percent_is_caught_and_the_feature_named(tmp_path):
@@ -550,14 +601,13 @@ def test_the_default_divider_has_sub_micron_error_on_the_exported_mesh(tmp_path)
     assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4
 
 
-# ── the token tray's envelope ──────────────────────────────────────────────────
+# ── the token tray's own corners ───────────────────────────────────────────────
 #
-# Its own parametrize, like the two above (#85, still open). Four axes, and the *grid*
-# is the one that matters: it is the only parameter that changes how many features
-# there are to measure rather than what they measure, which is why this archetype is
-# the one that made `required_measurements` ask the module about the spec. A sweep that
-# checked a fixed tuple would report "within tolerance" for a 4 × 2 tray while never
-# looking at a single pocket in it.
+# The grid is what this archetype contributes to the generic sweep: it is the only
+# parameter anywhere that changes how many features there are to measure rather than
+# what they measure, which is why the sweep asserts `set(report.features) ==
+# set(required_measurements(spec))` rather than containment. The two tests below are
+# the ones a fixed feature tuple would have passed.
 
 
 def token_tray_spec(rows, columns, pocket, wall, floor):
@@ -572,62 +622,32 @@ def token_tray_spec(rows, columns, pocket, wall, floor):
     )
 
 
-T_GRIDS = ((1, 1), (1, 3), (2, 3), (3, 3), (4, 2))
-T_POCKETS = ((12.0, 12.0, 10.0), (16.0, 16.0, 14.0), (20.0, 20.0, 15.0), (30.0, 45.0, 20.0))
-#: `None` states no wall and takes the archetype's own default (1,6 mm), which is what
-#: almost every real spec compiles with; 1,2 mm is the nozzle floor at 0,4 mm and the
-#: bottom of the audited insert band; 2,4 mm is the deck box's, swept so the tray's
-#: default cannot quietly become it.
-T_WALLS = (None, 1.2, 1.6, 2.4)
-T_FLOORS = (1.2, 2.0)
+def test_the_tray_envelope_is_wide_enough_to_mean_something():
+    """Guards the module's declared envelope against being quietly narrowed to the one
+    example spec: the unstated wall (what almost every real spec is), the 1 × 1 grid
+    (the only one with no divider at all), a grid with more rows than columns and one
+    with more columns than rows, and a pocket that is not square so a swapped W and D
+    would show."""
+    assert len(envelope_for("token_tray")) >= 120
+    assert None in token_tray.SWEEP_WALLS
+    assert (1, 1) in token_tray.SWEEP_GRIDS
+    assert any(r > c for r, c in token_tray.SWEEP_GRIDS)
+    assert any(c > r for r, c in token_tray.SWEEP_GRIDS)
+    assert any(p[0] != p[1] for p in token_tray.SWEEP_POCKETS)
+    assert len(set(token_tray.SWEEP_FLOORS)) == 2
 
-TRAY_ENVELOPE = list(itertools.product(T_GRIDS, T_POCKETS, T_WALLS, T_FLOORS))
 
-
-@pytest.mark.parametrize("grid,pocket,wall,floor", TRAY_ENVELOPE)
-def test_every_measured_feature_of_an_exported_tray_is_within_tolerance(
-    tmp_path, grid, pocket, wall, floor,
-):
+@pytest.mark.parametrize("grid", token_tray.SWEEP_GRIDS)
+def test_the_tray_sweep_measures_every_pocket_and_every_wall_in_the_grid(tmp_path, grid):
+    """The count behind the sweep's `set(report.features) == required_measurements`:
+    five fixed features, three per grid position, and one thickness per wall including
+    the outer ones — `columns + 1` and `rows + 1`, which are not each other's mirror."""
     rows, columns = grid
-    spec = token_tray_spec(rows, columns, pocket, wall, floor)
+    spec = token_tray_spec(rows, columns, (20.0, 20.0, 15.0), None, 2.0)
     result, mesh = exported_and_reloaded(spec, tmp_path / "tray.stl")
     report = verify_spec_mesh(spec, result.features, mesh)
     assert report.within_tolerance, report.problems()
-    # Every grid position and every wall, not just the handful of fixed names.
-    assert set(report.features) == set(required_measurements(spec))
     assert len(report.features) == 5 + 3 * rows * columns + (columns + 1) + (rows + 1)
-
-
-def test_the_tray_envelope_is_wide_enough_to_mean_something():
-    """Guards this sweep against being quietly narrowed to the one example spec: the
-    unstated wall (what almost every real spec is), the 1 × 1 grid (the only one with no
-    divider at all), a grid with more rows than columns and one with more columns than
-    rows, and a pocket that is not square so a swapped W and D would show."""
-    assert len(TRAY_ENVELOPE) >= 120
-    assert None in T_WALLS
-    assert (1, 1) in T_GRIDS
-    assert any(r > c for r, c in T_GRIDS) and any(c > r for r, c in T_GRIDS)
-    assert any(p[0] != p[1] for p in T_POCKETS)
-    assert len(set(T_FLOORS)) == 2
-
-
-TRAY_CORNERS = list(itertools.product(((1, 1), (2, 3), (4, 2)), (None, 1.2, 2.4)))
-
-
-@pytest.mark.parametrize("grid,wall", TRAY_CORNERS)
-def test_phase_3_assert_path_hands_the_slicer_the_designed_tray(tmp_path, grid, wall):
-    rows, columns = grid
-    spec = token_tray_spec(rows, columns, (20.0, 20.0, 15.0), wall, 2.0)
-    result, _ = exported_and_reloaded(spec, tmp_path / "compiled_mesh.stl")
-    eng = Engineer()
-    out = eng.process(
-        input_path=tmp_path / "compiled_mesh.stl", output_path=tmp_path / "engineered.obj",
-        target_mm=None, repair_mode="assert",
-    )
-    report = verify_spec_mesh(spec, result.features, trimesh.load(str(out), force="mesh"))
-    assert report.within_tolerance, report.problems()
-    assert eng.last_report["repair_method"] == "asserted"
-    assert eng.last_report["scale_applied"] is False
 
 
 def test_a_tray_scaled_by_a_fifth_of_a_percent_is_caught_and_a_pocket_named(tmp_path):

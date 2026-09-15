@@ -55,6 +55,7 @@ records what it built (`compile_features.json`).
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -70,7 +71,7 @@ from ..spec import (
     Tray,
     spec_hash,
 )
-from .common import external_overshoots, view_row
+from .common import SweepCase, external_overshoots, view_row
 
 ARCHETYPE = "token_tray"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
@@ -577,3 +578,62 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
 def _provenance(pocket: Pocket) -> str:
     """What a pocket row says under its millimetres."""
     return pocket.source or "user-given mm — no token or dice size is sourced"
+
+
+# ── The dimensional envelope (issue #85) ──────────────────────────────────────
+#
+# See `common.SweepCase` for what an envelope is. Four axes, and the **grid** is the one
+# this archetype contributes: it is the only parameter anywhere in the registry that
+# changes how many features there are to measure rather than what they measure, which is
+# why this module is also the one that made `required_measurements` ask about the spec.
+# A sweep that checked a fixed tuple would report *within tolerance* for a 4 × 2 tray
+# while never looking at a single pocket in it.
+
+#: (rows, columns). 1 × 1 is the only grid with no divider at all; the last two are each
+#: other's transpose on purpose, because the wall counts are `columns + 1` and
+#: `rows + 1` and a swapped axis would otherwise measure the same either way.
+SWEEP_GRIDS: tuple[tuple[int, int], ...] = ((1, 1), (1, 3), (2, 3), (3, 3), (4, 2))
+#: (width, depth, height) per pocket. The last is not square, so a swapped W and D shows.
+SWEEP_POCKETS: tuple[tuple[float, float, float], ...] = (
+    (12.0, 12.0, 10.0), (16.0, 16.0, 14.0), (20.0, 20.0, 15.0), (30.0, 45.0, 20.0),
+)
+#: `None` states no wall and takes this module's own default (1,6 mm), which is what
+#: almost every real spec compiles with; 1,2 mm is the nozzle floor at 0,4 mm and the
+#: bottom of the audited insert band; 2,4 mm is the deck box's, swept so the tray's
+#: default cannot quietly become it.
+SWEEP_WALLS: tuple[float | None, ...] = (None, 1.2, 1.6, 2.4)
+SWEEP_FLOORS: tuple[float, ...] = (1.2, 2.0)
+#: The corner set that goes on through Phase 3's assert path: three grids against three
+#: walls, on the example pocket and a 2 mm floor — every one a point of the product
+#: above, so the corners are a subset of the envelope.
+SWEEP_PHASE_3_GRIDS: tuple[tuple[int, int], ...] = ((1, 1), (2, 3), (4, 2))
+SWEEP_PHASE_3_WALLS: tuple[float | None, ...] = (None, 1.2, 2.4)
+
+
+def envelope() -> tuple[SweepCase, ...]:
+    """Every spec the dimensional sweep drives this archetype over — 160 of them."""
+    cases: list[SweepCase] = []
+    for (rows, columns), pocket, wall, floor in itertools.product(
+        SWEEP_GRIDS, SWEEP_POCKETS, SWEEP_WALLS, SWEEP_FLOORS,
+    ):
+        cases.append(SweepCase(
+            id=(f"{rows}x{columns}-p{pocket[0]:g}x{pocket[1]:g}x{pocket[2]:g}"
+                f"-wall{'default' if wall is None else f'{wall:g}'}-floor{floor:g}"),
+            spec=OrganizerSpec(
+                archetype=ARCHETYPE,
+                compartments=tuple(
+                    Compartment(Pocket(width_mm=pocket[0], depth_mm=pocket[1],
+                                       height_mm=pocket[2]))
+                    for _ in range(rows * columns)
+                ),
+                tray=Tray(columns=columns),
+                process=Process(wall_mm=wall, floor_mm=floor),
+            ),
+            phase_3=(
+                (rows, columns) in SWEEP_PHASE_3_GRIDS
+                and wall in SWEEP_PHASE_3_WALLS
+                and pocket == EXAMPLE_POCKET_MM
+                and floor == 2.0
+            ),
+        ))
+    return tuple(cases)

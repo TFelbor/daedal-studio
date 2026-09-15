@@ -10,6 +10,7 @@ import websockets
 import socketio
 from aiohttp import web
 
+from tests.sweep_tally import SweepTally
 from tests.testing_postgres import TestPostgres
 
 _ISOLATED_DIR: str | None = None
@@ -298,3 +299,46 @@ def printer_configured():
         new=AsyncMock(return_value={"configured": True, "type": "simulator", "running": True}),
     ) as p:
         yield p
+
+
+# ── The dimensional sweep's summary (issue #85) ────────────────────────────────
+#
+# `tests/test_organizer_dimensional_accuracy.py` drives every registered archetype over
+# the envelope its own module declares, and CI runs it as a named step. These three
+# hooks turn that into one line per archetype at the end of the run, so "which
+# archetypes were swept, and how far" is legible from the job list without opening a
+# log. They live in `conftest.py` because pytest only reads reporting hooks from a
+# conftest or a plugin; the counting and the wording are in `tests/sweep_tally.py`,
+# where they can be tested directly.
+
+_SWEEP_TALLY = SweepTally()
+#: nodeid → archetype, built at collection because `pytest_runtest_logreport` is handed
+#: a report rather than an item and cannot reach the parametrized values itself.
+_SWEEP_ARCHETYPES: dict[str, str] = {}
+
+
+def pytest_collection_modifyitems(config, items):
+    """Note which collected cases belong to which archetype's envelope."""
+    for item in items:
+        if item.get_closest_marker("dimensional_sweep") is None:
+            continue
+        callspec = getattr(item, "callspec", None)
+        archetype = callspec.params.get("archetype") if callspec is not None else None
+        if isinstance(archetype, str):
+            _SWEEP_ARCHETYPES[item.nodeid] = archetype
+
+
+def pytest_runtest_logreport(report):
+    if report.when != "call":
+        return
+    archetype = _SWEEP_ARCHETYPES.get(report.nodeid)
+    if archetype is not None:
+        _SWEEP_TALLY.record(archetype, report.outcome)
+
+
+def pytest_terminal_summary(terminalreporter):
+    if not _SWEEP_TALLY:
+        return
+    terminalreporter.write_sep("-", "dimensional sweep (PRD N1)")
+    for line in _SWEEP_TALLY.lines():
+        terminalreporter.write_line(line)

@@ -18,14 +18,33 @@ Every module in the registry must also expose the whole archetype API. That is w
 "adding an archetype is adding a module and a line" means, and it is the property the
 second archetype existed to test: `pipeline.py --spec`, the CLI and Phase 3's assert
 path took no archetype-specific change to gain the divider.
+
+`envelope` joined that API with issue #85, and it is the one verb whose absence nothing
+downstream would notice: a module without it compiles, validates, measures, is offered
+in the composer and reaches a printer, while no mesh it produces has ever been measured.
+`tests/test_organizer_dimensional_accuracy.py` is where that failure is *named*; this is
+where it is refused at the same moment as a missing `measure`.
 """
 import re
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
-from pythonsrc.organizer.archetypes import REGISTRY, example_spec, required_measurements
-from pythonsrc.organizer.spec import ARCHETYPE_WALL_MM, ARCHETYPES, wall_floor_mm
+from pythonsrc.organizer.archetypes import (
+    REGISTRY,
+    compile_spec,
+    envelope_for,
+    example_spec,
+    required_measurements,
+)
+from pythonsrc.organizer.spec import (
+    ARCHETYPE_WALL_MM,
+    ARCHETYPES,
+    SpecError,
+    wall_floor_mm,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_SPEC = REPO_ROOT / "web" / "src" / "organizer" / "spec.ts"
@@ -34,7 +53,7 @@ WEB_SPEC = REPO_ROOT / "web" / "src" / "organizer" / "spec.ts"
 #: them; a module missing one fails at the call site, phases into a run.
 ARCHETYPE_API = (
     "ARCHETYPE", "ARCHETYPE_VERSION", "MEASURED_FEATURES", "USES_PROCESS_WALL_MM",
-    "derive", "validate", "build", "compile", "example",
+    "derive", "validate", "build", "compile", "example", "envelope",
     "measure", "fits_check", "to_view",
 )
 
@@ -115,6 +134,39 @@ def test_every_archetype_names_the_wall_it_builds_with_when_a_spec_does_not():
     assert set(ARCHETYPE_WALL_MM) == set(REGISTRY)
     for name, wall in ARCHETYPE_WALL_MM.items():
         assert isinstance(wall, float) and wall >= wall_floor_mm(), name
+
+
+@pytest.mark.parametrize("name", sorted(REGISTRY))
+def test_every_archetypes_envelope_compiles_and_is_its_own(name):
+    """`envelope_for` is what the dimensional sweep collects, so a case it cannot
+    compile is a sweep that errors rather than measures. Checked here on one case per
+    archetype — the sweep itself compiles all of them, and this is the registry's half:
+    the dispatch answers, the cases name the archetype that declared them, and at least
+    one of them is marked for Phase 3's assert path.
+    """
+    cases = envelope_for(name)
+    assert cases, f"{name} declares an empty envelope"
+    assert {case.spec.archetype for case in cases} == {name}
+    assert any(case.phase_3 for case in cases)
+    assert len({case.id for case in cases}) == len(cases), f"{name} repeats a case id"
+    # One case, compiled: the envelope asks only for parts the archetype accepts, so a
+    # refusal here is a declaration that does not match the module that made it.
+    compile_spec(cases[0].spec)
+
+
+def test_an_archetype_with_no_envelope_is_refused_by_name():
+    """The refusal a person adding the fourth archetype will read. It names the module
+    and points at `SweepCase`, because "declare an envelope" is not guessable from a
+    KeyError."""
+    module = SimpleNamespace(
+        ARCHETYPE="mystery_box", ARCHETYPE_VERSION="1", MEASURED_FEATURES=("a_mm",),
+        USES_PROCESS_WALL_MM=True,
+    )
+    with patch.dict(REGISTRY, {"mystery_box": module}):
+        with pytest.raises(SpecError) as exc:
+            envelope_for("mystery_box")
+    message = str(exc.value)
+    assert "mystery_box" in message and "envelope()" in message and "SweepCase" in message
 
 
 @pytest.mark.parametrize("name", sorted(REGISTRY))

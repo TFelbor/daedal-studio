@@ -214,3 +214,32 @@ def view_row(
     if note:
         out["note"] = note
     return out
+
+
+@dataclass(frozen=True)
+class SweepCase:
+    """One spec in an archetype's declared dimensional envelope (issue #85).
+
+    The envelope is the **domain of the ±0,05 mm claim**: the set of specs an archetype
+    holds itself to, declared by the module that builds them rather than by the test
+    that drives them. `tests/test_organizer_dimensional_accuracy.py` iterates every
+    registered archetype, asks it for these, and asserts the same five things about
+    each — watertight, no non-manifold edge, accepted by the `manifold3d` kernel, every
+    measured feature within `DEFAULT_TOLERANCE_MM`, and the measured set equal to what
+    `required_measurements` promised. A module that declares none fails that test by
+    name: an archetype nothing sweeps has made no accuracy claim, and the claim is what
+    makes it an archetype rather than a mesh generator.
+
+    Attributes:
+        id: Unique within the archetype, and read by a person in a pytest node id, so
+            it names the axes rather than an index — `n100-double-wall2.8-clr0.2-lid15`.
+        spec: The spec to compile. Schema-valid, and buildable: an envelope asks only
+            for parts the archetype would accept, so a refusal is a failure.
+        phase_3: Whether this case also goes through Phase 3's assert path. A corner
+            set rather than the whole envelope, because Phase 3 costs a mesh repair
+            round per case and is orthogonal to the axes the envelope sweeps.
+    """
+
+    id: str
+    spec: OrganizerSpec
+    phase_3: bool = False
