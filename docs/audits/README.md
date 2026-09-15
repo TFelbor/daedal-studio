@@ -1,7 +1,21 @@
 # `docs/audits/` — dated audit runs
 
-One file per run: `YYYY-MM-DD-<kind>-licence.md` for a licence audit, and the same date
-convention for any other recurring review that lands here.
+One file per run **that found something**: `YYYY-MM-DD-<kind>-licence.md` for a licence
+audit, and the same date convention for any other recurring review that lands here.
+
+A run whose digest matches the newest existing note writes no file at all, and says so
+(`[licence-report] no audit note: the digest is identical to …`). This directory is
+therefore a record of the dates on which the tree *moved*, not of the dates on which it
+was looked at — the run log is the record of the looking. It used to be one file per
+run unconditionally, which is how thirteen notes accumulated in three weeks, several of
+them byte-identical apart from the date, and how `licence-data.yml`'s "nothing changed,
+do not commit" guard came to be unreachable: a new date is a new path, so the staged
+diff was never empty. See `audit_note_would_repeat` in
+[`infra/scripts/licence_report.py`](../../infra/scripts/licence_report.py).
+
+A note that already exists is always refreshed in place, whatever its digest says — a
+same-day rerun should update the commit sha it records, and the file may carry a
+person's reasoning that only the generated block may be written over.
 
 The point of the directory is **deltas**. An audit that starts from scratch every week
 re-derives the same forty findings, and the one new thing is indistinguishable from the

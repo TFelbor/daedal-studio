@@ -243,6 +243,15 @@ def _load(path: Path) -> Any | None:
 # ── Report ───────────────────────────────────────────────────────────────────
 
 
+def _utc_now() -> str:
+    """The run's timestamp, in one place so a test can name the date.
+
+    `--audit-out auto` derives the note's *filename* from this, so "two runs on
+    different days over an unchanged tree" is only assertable if the day is injectable.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _git_sha() -> str:
     for env_key in ("GITHUB_SHA", "DS_GIT_SHA"):
         import os
@@ -478,7 +487,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
 
     return {
         "schema": SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": _utc_now(),
         "commit": _git_sha(),
         "project_licence": PROJECT_LICENCE,
         # "incomplete" outranks "allow" but not "deny": a report with no data for one of
@@ -673,6 +682,29 @@ def render_audit(report: dict[str, Any], audits_dir: Path, out_path: Path) -> st
     return "\n".join(body)
 
 
+def audit_note_would_repeat(report: dict[str, Any], out_path: Path) -> str | None:
+    """The name of the previous note this one would only restate, or `None`.
+
+    `_digest` deliberately excludes `generated_at` and `commit` so that a run which
+    found nothing new produces a byte-identical digest. That is what makes this
+    answerable: if the digest matches the newest other dated note, the file about to
+    be written carries no fact that file does not already carry, and writing it adds
+    a ~45 KB duplicate to the repository plus a commit to `main` saying nothing.
+
+    Only ever asked about a note that does not exist yet. A note already on disk is
+    refreshed in place whatever its digest says — it may hold a person's reasoning
+    around the generated block (see `write_audit`), and a same-day rerun should update
+    the commit sha it records rather than be skipped.
+    """
+    if out_path.exists():
+        return None
+    previous = _previous_digest(out_path.parent, exclude=out_path)
+    if previous is None:
+        return None
+    name, old = previous
+    return name if old == _digest(report) else None
+
+
 def write_audit(report: dict[str, Any], out_path: Path) -> None:
     """Write the generated block, preserving anything a person wrote around it.
 
@@ -754,8 +786,19 @@ def main(argv: list[str] | None = None) -> int:
             if args.audit_out == "auto"
             else Path(args.audit_out)
         )
-        write_audit(report, audit_path)
-        print(f"[licence-report] audit note: {audit_path}")
+        # Only the 'auto' path declines to write. An explicit `--audit-out <path>` is
+        # someone naming a file they want; refusing to produce it would be surprising.
+        # 'auto' is the CI and `make licence-audit` path, where the note is a dated
+        # record of a recurring scan and a duplicate of the last one is not a record.
+        repeats = audit_note_would_repeat(report, audit_path) if args.audit_out == "auto" else None
+        if repeats:
+            print(
+                f"[licence-report] no audit note: the digest is identical to {repeats}, "
+                "so a dated note today would restate it. Nothing changed."
+            )
+        else:
+            write_audit(report, audit_path)
+            print(f"[licence-report] audit note: {audit_path}")
 
     totals = report["totals"]
     print(
