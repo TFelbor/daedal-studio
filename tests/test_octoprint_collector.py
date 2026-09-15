@@ -8,7 +8,7 @@ import json
 
 import aiohttp
 
-from pythonsrc.telemetry.db import OperationalError, TelemetryDB
+from pythonsrc.telemetry.db import OperationalError
 from pythonsrc.telemetry.schema import PrintJob
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 
@@ -128,7 +128,7 @@ def patch_session():
 async def test_octoprint_collector_inserts_samples_from_current(memory_db):
     # Test _on_current directly to assert 10 samples
     collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
-    
+
     payload = {
         "currentZ": 5.0,
         "temps": [
@@ -138,15 +138,15 @@ async def test_octoprint_collector_inserts_samples_from_current(memory_db):
             }
         ]
     }
-    
+
     for i in range(10):
         # vary Z slightly
         payload["currentZ"] = 5.0 + (i * 0.2)
         await collector._on_current(payload)
-        
+
     samples = memory_db.get_samples("test-job-123")
     assert len(samples) == 10
-    
+
     # Assert limitations are documented in samples
     for sample in samples:
         assert sample.gcode_line is None, "gcode_line should be None"
@@ -161,9 +161,9 @@ async def test_octoprint_collector_inserts_samples_from_current(memory_db):
 @pytest.mark.asyncio
 async def test_octoprint_collector_updates_job_outcome_on_event(memory_db):
     collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
-    
+
     await collector._on_event({"type": "PrintFailed"})
-    
+
     job = memory_db.get_job("test-job-123")
     assert job.outcome == "failure"
     assert job.completed_at is not None
@@ -171,15 +171,15 @@ async def test_octoprint_collector_updates_job_outcome_on_event(memory_db):
 @pytest.mark.asyncio
 async def test_octoprint_collector_missing_data(memory_db):
     collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
-    
+
     # Missing temps
     payload = {"currentZ": 5.0}
     await collector._on_current(payload)
-    
+
     # Missing currentZ
     payload = {"temps": [{"tool0": {"actual": 200.0, "target": 205.0}}]}
     await collector._on_current(payload)
-    
+
     samples = memory_db.get_samples("test-job-123")
     assert len(samples) == 2
     assert samples[0].hotend_actual_c is None
@@ -188,11 +188,11 @@ async def test_octoprint_collector_missing_data(memory_db):
 @pytest.mark.asyncio
 async def test_octoprint_collector_invalid_payload_structure(memory_db):
     collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
-    
+
     # Intentionally malformed payload (temps is not a list, etc)
     payload = {"temps": "not a list", "currentZ": "not a float"}
     await collector._on_current(payload)
-    
+
     # Event should be handled gracefully (i.e. logged, sample may be partially null)
     # The current code might raise TypeError or ValueError, but the background task shouldn't crash
     # If the _on_current raises, let's see if the collector task handles it.

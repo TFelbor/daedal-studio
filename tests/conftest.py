@@ -2,7 +2,6 @@ import os
 import shutil
 import pytest
 import tempfile
-import asyncio
 import uuid
 from datetime import datetime, timezone
 import json
@@ -233,17 +232,16 @@ def sample_job(tmp_db):
 
 @pytest.fixture
 def sample_samples(tmp_db, sample_job):
-    import time
     with open("tests/fixtures/sample_telemetry.json") as f:
         samples_data = json.load(f)
-    
+
     samples = []
     for data in samples_data:
         data["job_id"] = sample_job.job_id
         sample = TelemetrySample.from_dict(data)
         tmp_db.insert_sample(sample)
         samples.append(sample)
-    
+
     # Ensure there are 60 samples as requested by the test requirements
     if len(samples) < 60:
         for i in range(len(samples), 60):
@@ -273,14 +271,14 @@ async def fake_octoprint_sio(unused_tcp_port):
     sio = socketio.AsyncServer(async_mode='aiohttp')
     app = web.Application()
     sio.attach(app)
-    
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', unused_tcp_port)
     await site.start()
-    
+
     yield f"http://127.0.0.1:{unused_tcp_port}"
-    
+
     await runner.cleanup()
 
 

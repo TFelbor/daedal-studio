@@ -8,7 +8,7 @@ class PrinterConnectionError(Exception):
 
 class BasePrinterOperator(ABC):
     """Abstract base class defining the contract for interacting with a 3D printer.
-    
+
     Subclasses must implement these methods to support specific printer firmwares
     (e.g., OctoPrint, Moonraker).
     """
@@ -19,7 +19,7 @@ class BasePrinterOperator(ABC):
 
         Returns:
             bool: True if connection is successful, False otherwise.
-            
+
         Raises:
             PrinterConnectionError: If connection fails unrecoverably.
         """

@@ -24,8 +24,6 @@ if __name__ == "__main__":
         _os.path.join(_tempfile.mkdtemp(prefix="ds-smoke-"), ".config_key"),
     )
 
-import json
-import asyncio
 from fastapi.testclient import TestClient
 from server.app import app
 from pythonsrc.telemetry.db import TelemetryDB
@@ -61,7 +59,7 @@ def run_tests():
             data = websocket.receive_json()
             assert data["type"] == "job_status", f"Expected job_status, got {data['type']}"
             assert data["data"]["job_id"] == "test_ws_job_123"
-            
+
             # Should also receive telemetry_batch immediately after
             data2 = websocket.receive_json()
             assert data2["type"] == "telemetry_batch"

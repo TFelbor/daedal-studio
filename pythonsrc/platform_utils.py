@@ -59,23 +59,23 @@ def get_phase1_command(prompt: str, output_path: str, steps: int = 4) -> list[st
         A list of command-line arguments to execute Phase 1.
     """
     strategy = get_execution_strategy()
-    
+
     if strategy == "mps_native":
         return ["bash", "run_phase1_native.sh", prompt]
     elif strategy == "nvidia_docker":
         # Docker compose run command with GPU override for the full pipeline
         return [
-            "docker", "compose", 
-            "-f", "infra/docker-compose.yml", 
+            "docker", "compose",
+            "-f", "infra/docker-compose.yml",
             "-f", "infra/docker-compose.gpu.yml",
-            "run", "--rm", "pipeline-runner", 
+            "run", "--rm", "pipeline-runner",
             "python", "pythonsrc/pipeline.py", prompt
         ]
     else:
         # Docker compose run command without GPU override for the full pipeline
         return [
-            "docker", "compose", 
+            "docker", "compose",
             "-f", "infra/docker-compose.yml",
-            "run", "--rm", "pipeline-runner", 
+            "run", "--rm", "pipeline-runner",
             "python", "pythonsrc/pipeline.py", prompt
         ]

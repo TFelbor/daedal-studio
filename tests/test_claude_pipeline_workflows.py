@@ -605,7 +605,7 @@ def test_review_status_comment_does_not_carry_the_fix_loop_s_marker() -> None:
     assert fix not in status and status not in fix, (
         f"one marker contains the other: status={status!r} fix={fix!r}"
     )
-    assert f'contains(\\"${{marker}}\\")' in script or "${marker}" in script, (
+    assert 'contains(\\"${marker}\\")' in script or "${marker}" in script, (
         "the round counter no longer counts the fix-request marker"
     )
 

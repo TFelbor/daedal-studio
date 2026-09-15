@@ -6,7 +6,7 @@ from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
 def test_print_job_serialization():
     dt_start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     dt_end = datetime(2023, 1, 1, 14, 30, 0, tzinfo=timezone.utc)
-    
+
     job = PrintJob(
         job_id="123e4567-e89b-12d3-a456-426614174000",
         prompt="A nice vase",
@@ -18,17 +18,17 @@ def test_print_job_serialization():
         completed_at=dt_end,
         outcome="success"
     )
-    
+
     d = job.to_dict()
     # verify json serialization
     json_str = json.dumps(d)
-    
+
     job_restored = PrintJob.from_dict(json.loads(json_str))
     assert job == job_restored
 
 def test_print_job_serialization_no_completed_at():
     dt_start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-    
+
     job = PrintJob(
         job_id="123e4567-e89b-12d3-a456-426614174000",
         prompt="A nice vase",
@@ -40,10 +40,10 @@ def test_print_job_serialization_no_completed_at():
         completed_at=None,
         outcome="unknown"
     )
-    
+
     d = job.to_dict()
     json_str = json.dumps(d)
-    
+
     job_restored = PrintJob.from_dict(json.loads(json_str))
     assert job == job_restored
 
@@ -62,10 +62,10 @@ def test_telemetry_sample_serialization():
         extrusion_factor_pct=100.0,
         fan_speed_pct=50.0
     )
-    
+
     d = sample.to_dict()
     json_str = json.dumps(d)
-    
+
     sample_restored = TelemetrySample.from_dict(json.loads(json_str))
     assert sample == sample_restored
 
@@ -84,10 +84,10 @@ def test_telemetry_sample_serialization_with_none():
         extrusion_factor_pct=None,
         fan_speed_pct=None
     )
-    
+
     d = sample.to_dict()
     json_str = json.dumps(d)
-    
+
     sample_restored = TelemetrySample.from_dict(json.loads(json_str))
     assert sample == sample_restored
 
@@ -104,10 +104,10 @@ def test_failure_event_serialization():
         notes="Shift detected on X axis",
         snapshot={"samples": [{"job_id": "123e4567-e89b-12d3-a456-426614174000", "sampled_at": "2023-01-01T12:05:00+00:00"}]}
     )
-    
+
     d = event.to_dict()
     json_str = json.dumps(d)
-    
+
     event_restored = FailureEvent.from_dict(json.loads(json_str))
     assert event == event_restored
 

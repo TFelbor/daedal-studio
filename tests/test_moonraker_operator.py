@@ -2,7 +2,7 @@ import pytest
 import responses
 import requests
 import json
-from pythonsrc.operators.moonraker_operator import MoonrakerOperator, PrinterConnectionError
+from pythonsrc.operators.moonraker_operator import MoonrakerOperator
 
 @pytest.fixture
 def operator():
@@ -129,14 +129,14 @@ def test_get_printer_state(operator):
             }
         }
     }
-    
+
     responses.add(
         responses.GET,
         "http://localhost:7125/printer/objects/query?print_stats&toolhead&heater_bed&extruder",
         json=mock_response,
         status=200
     )
-    
+
     state = operator.get_printer_state()
     assert state["state"] == "printing"
     assert state["z_height"] == 5.5
@@ -185,14 +185,14 @@ def test_get_printer_state_partial_response(operator):
             "status": {} # Empty status
         }
     }
-    
+
     responses.add(
         responses.GET,
         "http://localhost:7125/printer/objects/query?print_stats&toolhead&heater_bed&extruder",
         json=mock_response,
         status=200
     )
-    
+
     state = operator.get_printer_state()
     assert state["state"] is None
     assert state["z_height"] is None

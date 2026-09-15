@@ -48,9 +48,9 @@ class MoonrakerOperator(BasePrinterOperator):
         """
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         logger.debug(f"Making {method} request to {url}")
-        
+
         kwargs.setdefault('timeout', self.timeout)
-        
+
         try:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
@@ -178,7 +178,7 @@ class MoonrakerOperator(BasePrinterOperator):
         """Retrieve the current state of the printer.
 
         Returns:
-            A dictionary containing parsed printer state details such as state, 
+            A dictionary containing parsed printer state details such as state,
             z_height, temperatures, and progress.
 
         Raises:
@@ -187,15 +187,15 @@ class MoonrakerOperator(BasePrinterOperator):
         try:
             response = self._request("GET", "/printer/objects/query?print_stats&toolhead&heater_bed&extruder")
             data = response.json()
-            
+
             result = data.get("result", {})
             status = result.get("status", {})
-            
+
             print_stats = status.get("print_stats", {})
             toolhead = status.get("toolhead", {})
             heater_bed = status.get("heater_bed", {})
             extruder = status.get("extruder", {})
-            
+
             z_height = None
             position = toolhead.get("position")
             if position and len(position) >= 3:

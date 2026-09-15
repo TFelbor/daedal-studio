@@ -860,7 +860,8 @@ def test_load_refuses_a_bad_file_with_the_problems(tmp_path):
 def test_the_package_exports_the_schema_without_the_kernel():
     """`pythonsrc.organizer` must stay importable where trimesh is not installed, so its
     `__init__` may import the schema and nothing else."""
-    import ast, importlib.util
+    import ast
+    import importlib.util
     import pythonsrc.organizer as pkg
     assert pkg.OrganizerSpec is OrganizerSpec and pkg.spec_hash is spec_hash
     tree = ast.parse(open(importlib.util.find_spec("pythonsrc.organizer").origin).read())

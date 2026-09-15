@@ -38,7 +38,7 @@ class BambuOperator(BasePrinterOperator):
         self.client.tls_insecure_set(True)
         if self.api_key:
             self.client.username_pw_set("bblp", self.api_key)
-        
+
         try:
             # Strip http/https if present
             host = self.base_url.replace("http://", "").replace("https://", "").split(":")[0]

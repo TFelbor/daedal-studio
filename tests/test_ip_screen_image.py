@@ -23,7 +23,6 @@ No weights are downloaded by this module's tests — the model is stubbed the wa
 `test_licensing_guards.py` stubs upstream's matte model.
 """
 
-import sys
 import types
 
 import pytest

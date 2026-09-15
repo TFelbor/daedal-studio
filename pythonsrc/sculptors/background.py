@@ -204,7 +204,6 @@ class PermissiveBiRefNet:
         if self._model is not None:
             return self._model
 
-        import torch
         from transformers import AutoModelForImageSegmentation
 
         repo, _, revision = self.model_id.partition("@")

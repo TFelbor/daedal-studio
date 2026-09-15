@@ -8,7 +8,6 @@ true of it, and each was once false of a neighbouring path: it must not land in 
 geometry or with hollowing (which cannot honour authored dimensions).
 """
 import argparse
-from pathlib import Path
 
 import pytest
 

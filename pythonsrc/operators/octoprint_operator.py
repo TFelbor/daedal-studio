@@ -181,7 +181,7 @@ class OctoPrintOperator(BasePrinterOperator):
             return True
         except Exception as exc:
             raise PrinterConnectionError(str(exc)) from exc
-            
+
     def _connect_serial(
         self,
         port: str = "VIRTUAL",

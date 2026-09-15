@@ -8,7 +8,6 @@ which is precisely where a mesh silently comes out lying on its side.
 """
 
 import io
-import os
 import types
 
 import numpy as np

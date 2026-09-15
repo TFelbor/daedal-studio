@@ -38,7 +38,6 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 
 import psycopg
-from psycopg import errors as pg_errors
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb

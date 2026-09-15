@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import json
-import os
 import random
 import string
 import aiohttp
@@ -242,7 +241,7 @@ class OctoPrintCollector:
         # Safely extract temperatures handling potentially varying formats
         hotend_actual = None
         hotend_target = None
-        
+
         # If temps[0] directly contains 'actual'/'target' (like the prompt suggested literally)
         if "actual" in temps_data or "target" in temps_data:
             hotend_actual = temps_data.get("actual")

@@ -34,7 +34,7 @@ class MoonrakerCollector:
         self.job_id = job_id
         self.db = db
         self.sample_queue: asyncio.Queue[TelemetrySample] = asyncio.Queue()
-        
+
         self._stop_event = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
         self._claim = CollectorClaim(db, job_id, "MoonrakerCollector")
@@ -118,7 +118,7 @@ class MoonrakerCollector:
                 # wait_for allows checking _stop_event periodically if no messages arrive
                 listen_task = asyncio.create_task(ws.recv())
                 stop_task = asyncio.create_task(self._stop_event.wait())
-                
+
                 done, pending = await asyncio.wait(
                     [listen_task, stop_task],
                     return_when=asyncio.FIRST_COMPLETED
@@ -134,7 +134,7 @@ class MoonrakerCollector:
                 if stop_task in done:
                     # _stop_event was set
                     break
-                
+
                 if listen_task in done:
                     msg = listen_task.result()
                     if isinstance(msg, str):
@@ -152,9 +152,9 @@ class MoonrakerCollector:
             params = data.get("params", [])
             if not params or not isinstance(params, list):
                 return
-                
+
             status = params[0]
-            
+
             # Map fields safely
             print_stats = status.get("print_stats", {})
             toolhead = status.get("toolhead", {})
@@ -175,24 +175,24 @@ class MoonrakerCollector:
             # fan_speed_pct       <- fan.speed * 100
 
             gcode_line = print_stats.get("file_position")
-            
+
             z_height_mm = None
             pos = toolhead.get("position")
             if pos and len(pos) >= 3:
                 z_height_mm = pos[2]
-                
+
             hotend_actual_c = extruder.get("temperature")
             hotend_target_c = extruder.get("target")
-            
+
             bed_actual_c = heater_bed.get("temperature")
             bed_target_c = heater_bed.get("target")
-            
+
             speed_factor = gcode_move.get("speed_factor")
             print_speed_pct = speed_factor * 100 if speed_factor is not None else None
-            
+
             extrude_factor = gcode_move.get("extrude_factor")
             extrusion_factor_pct = extrude_factor * 100 if extrude_factor is not None else None
-            
+
             fan_speed = fan.get("speed")
             fan_speed_pct = fan_speed * 100 if fan_speed is not None else None
 
@@ -200,7 +200,7 @@ class MoonrakerCollector:
             # But the requirement doesn't specify complex merging of states. We'll emit what we get.
             # Usually, Moonraker sends partial updates. For robust telemetry, one might maintain state.
             # However, the instructions say: "On each `notify_status_update` event received, map fields to TelemetrySample as follows:"
-            
+
             sample = TelemetrySample(
                 job_id=self.job_id,
                 sampled_at=datetime.now(timezone.utc),
@@ -225,7 +225,7 @@ class MoonrakerCollector:
                 self.db.insert_sample(sample)
                 # Use put_nowait so we don't block the receive loop
                 self.sample_queue.put_nowait(sample)
-                
+
                 message = {"type": "telemetry", "data": sample.to_dict()}
                 logger.info(f"MoonrakerCollector relaying telemetry for job {self.job_id}: {message['data']}")
                 asyncio.create_task(send_internal_telemetry(self.job_id, message))

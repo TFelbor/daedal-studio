@@ -64,7 +64,7 @@ def run_tests():
         assert data["success"] is False
         assert data["message"] == "MOONRAKER_URL not configured"
         print("POST /config/test-connection - OK")
-        
+
         # 5. Neither startup nor POST /config puts a stored value in os.environ.
         # It used to do both, and both subprocess launches copied that environment
         # wholesale — see tests/test_subprocess_env.py, which is the pytest half of

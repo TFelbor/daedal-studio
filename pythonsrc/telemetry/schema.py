@@ -6,7 +6,7 @@ and failure events, including JSON serialization methods.
 from __future__ import annotations
 import dataclasses
 from datetime import datetime
-from typing import Literal, Dict, Any, Type, TypeVar
+from typing import Literal, Dict, Any, Type
 
 #: Every value `PrintJob.outcome` may hold.
 #:
@@ -59,31 +59,31 @@ VALID_SCALE_AXES = frozenset({"height", "longest"})
 @dataclasses.dataclass
 class PrintJob:
     """Represents a print job in the telemetry system."""
-    
+
     job_id: str
     """UUID string uniquely identifying the print job."""
-    
+
     prompt: str
     """The prompt used to generate or describe the print job."""
-    
+
     printer_id: str
     """The ID of the printer assigned to this job."""
-    
+
     printer_firmware: Literal["klipper", "octoprint", "bambu"]
     """The firmware running on the printer."""
-    
+
     slicer: str
     """The slicer software used (e.g. Cura, PrusaSlicer)."""
-    
+
     profile_name: str
     """The print profile name used for slicing."""
-    
+
     started_at: datetime | None
     """The timestamp when the print job started, or None if not yet started."""
-    
+
     completed_at: datetime | None
     """The timestamp when the print job completed or None if incomplete."""
-    
+
     outcome: Literal["success", "failure", "cancelled", "unknown", "awaiting_verdict"]
     """The final outcome of the print job.
 
@@ -400,37 +400,37 @@ class PrintJob:
 @dataclasses.dataclass
 class TelemetrySample:
     """Represents a single telemetry sample from a print job."""
-    
+
     job_id: str
     """Foreign key linking to the PrintJob."""
-    
+
     sampled_at: datetime
     """The timestamp when this telemetry sample was recorded."""
-    
+
     gcode_line: int | None
     """The current G-code line being executed, if available."""
-    
+
     z_height_mm: float | None
     """The current Z height of the print head in millimeters."""
-    
+
     hotend_actual_c: float | None
     """The actual hotend temperature in Celsius."""
-    
+
     hotend_target_c: float | None
     """The target hotend temperature in Celsius."""
-    
+
     bed_actual_c: float | None
     """The actual bed temperature in Celsius."""
-    
+
     bed_target_c: float | None
     """The target bed temperature in Celsius."""
-    
+
     print_speed_pct: float | None
     """The print speed modifier percentage."""
-    
+
     extrusion_factor_pct: float | None
     """The extrusion factor modifier percentage."""
-    
+
     fan_speed_pct: float | None
     """The part cooling fan speed percentage."""
 
@@ -460,7 +460,7 @@ class TelemetrySample:
                 d[f.name] = data[f.name]
             else:
                 d[f.name] = None
-                
+
         if d.get('sampled_at') and isinstance(d['sampled_at'], str):
             s = d['sampled_at']
             if s.endswith('Z'): s = s[:-1] + '+00:00'
@@ -498,28 +498,28 @@ VALID_FAILURE_TYPES = frozenset({
 @dataclasses.dataclass
 class FailureEvent:
     """Represents a failure event detected during a print job."""
-    
+
     event_id: str
     """UUID string uniquely identifying this failure event."""
-    
+
     job_id: str
     """Foreign key linking to the PrintJob that failed."""
-    
+
     detected_at: datetime
     """The timestamp when the failure was detected."""
-    
+
     gcode_line: int | None
     """The G-code line at which the failure was detected, if known."""
-    
+
     z_height_mm: float | None
     """The Z height at which the failure occurred."""
-    
+
     failure_type: Literal["thermal_runaway", "layer_shift", "clog", "adhesion", "extrusion_issue", "user_cancelled", "unknown"]
     """The categorized type of failure."""
-    
+
     source: Literal["manual", "automated"]
     """Whether the failure was flagged manually or by an automated system."""
-    
+
     notes: str | None
     """Optional human-readable notes regarding the failure."""
 
@@ -569,7 +569,7 @@ class FailureEvent:
                 d[f.name] = data[f.name]
             else:
                 d[f.name] = None
-                
+
         if d.get('detected_at') and isinstance(d['detected_at'], str):
             s = d['detected_at']
             if s.endswith('Z'): s = s[:-1] + '+00:00'

@@ -1,6 +1,5 @@
 """Two collectors must never both write telemetry for the same job."""
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 

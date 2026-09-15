@@ -29,7 +29,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "infra" / "ci" / "claude_resume.py"

@@ -5,7 +5,6 @@ no interpreter path and the exit codes are asserted directly.
 """
 import json
 
-import pytest
 
 from pythonsrc.organizer.__main__ import main
 from pythonsrc.organizer.archetypes import deck_box

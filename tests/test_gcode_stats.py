@@ -13,7 +13,6 @@ import pytest
 from pythonsrc.gcode_stats import (
     DEFAULT_FILAMENT_DIAMETER_MM,
     MATERIAL_DENSITY_G_CM3,
-    SliceStats,
     filament_volume_mm3,
     header_bbox_is_populated,
     parse_gcode_file,

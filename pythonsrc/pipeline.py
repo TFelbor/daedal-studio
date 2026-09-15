@@ -213,7 +213,7 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
     log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".ds-mvp" / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     status_file = log_dir / f"{CURRENT_JOB_ID}.status"
-    
+
     name = _PHASE_NAMES.get(phase_num, "unknown").lower()
     record = {
         "phase": phase_num,
@@ -223,7 +223,7 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
     }
     if error is not None:
         record["error"] = error
-        
+
     with open(status_file, "a") as f:
         f.write(json.dumps(record) + "\n")
         f.flush()
@@ -791,7 +791,7 @@ def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
     print(f"[DS] ═══ PHASE {phase_num} FAIL  ✗ ═══", flush=True)
     print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
     print(f"[DS] ERROR: {exc}", flush=True)
-    print(f"[DS] TRACEBACK:", flush=True)
+    print("[DS] TRACEBACK:", flush=True)
     traceback.print_exc()
     _write_status(phase_num, "error", str(exc))
     sys.exit(1)
@@ -1579,7 +1579,7 @@ def run(args: argparse.Namespace) -> None:
     if getattr(args, "slice", False) or args.print:
         t0 = _phase_start(4)
         try:
-            from slicer import CuraSlicer, SlicerError
+            from slicer import CuraSlicer
 
             slicer = CuraSlicer(
                 cura_engine=args.cura_engine,
@@ -1617,7 +1617,7 @@ def run(args: argparse.Namespace) -> None:
             profile_path = args.profile or "pythonsrc/profiles/ender3.json"
             with open(profile_path, "r") as f:
                 profile_data = json.load(f)
-            
+
             firmware = os.environ.get("DS_FIRMWARE", profile_data.get("firmware", "octoprint"))
             base_url = os.environ.get("DS_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
 
@@ -1676,7 +1676,7 @@ def run(args: argparse.Namespace) -> None:
                     db = TelemetryDB()
                     parsed = urlparse(base_url)
                     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-                    
+
                     # A CLI-launched job may have a row with no start time. Stamp
                     # started_at — not completed_at, which this used to write:
                     # `update_job_outcome`'s second timestamp is the *completion*
@@ -1703,20 +1703,20 @@ def run(args: argparse.Namespace) -> None:
                                 state = op.get_printer_state()
                                 flags = state.get("state", {}).get("flags", {})
                                 state_text = state.get("state", {}).get("text", "").lower()
-                                
+
                                 # If it's ready, operational, or printed and NOT printing, we are done
                                 if (flags.get("ready") or flags.get("operational") or state_text == "operational" or state_text == "printed") and not flags.get("printing"):
                                     logger.info(f"Print job completed! Final state: {state_text}")
                                     break
-                                
+
                                 if flags.get("error") or flags.get("closedOrError") or state_text == "error":
                                     logger.error("Printer reported an error state!")
                                     raise Exception("Printer error state detected during printing.")
-                                    
+
                             except Exception as e:
                                 logger.error(f"Error polling printer state: {e}")
                                 raise e
-                                
+
                             await asyncio.sleep(5)
                     finally:
                         detector_task.cancel()
@@ -1778,7 +1778,7 @@ def _build_parser() -> argparse.ArgumentParser:
              "running Phases 1-2. Implies --skip-visualizer --skip-sculptor --no-scale; "
              "refuses --mesh and --hollow",
     )
-    
+
     # Telemetry
     telemetry = parser.add_argument_group("telemetry")
     telemetry.add_argument("--job-id", metavar="ID", help="Telemetry Job ID for status reporting")

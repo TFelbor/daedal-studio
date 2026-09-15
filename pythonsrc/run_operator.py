@@ -119,7 +119,7 @@ def main():
             logger.info("Starting print...")
             op.start_print(filename)
 
-            
+
             import asyncio
             from pythonsrc.telemetry.db import TelemetryDB
             from pythonsrc.telemetry.detector import attach_detector
@@ -131,7 +131,7 @@ def main():
                 db = TelemetryDB()
                 parsed = urlparse(base_url)
                 port = parsed.port or (443 if parsed.scheme == "https" else 80)
-                
+
                 # Stamp started_at — not completed_at, which this used to write:
                 # `update_job_outcome`'s second timestamp is the *completion*
                 # column, so every print marked its finish at the moment it began.
@@ -156,19 +156,19 @@ def main():
                             state = op.get_printer_state()
                             flags = state.get("state", {}).get("flags", {})
                             state_text = state.get("state", {}).get("text", "").lower()
-                            
+
                             if (flags.get("ready") or flags.get("operational") or state_text == "operational" or state_text == "printed") and not flags.get("printing"):
                                 logger.info(f"Print job completed! Final state: {state_text}")
                                 break
-                            
+
                             if flags.get("error") or flags.get("closedOrError") or state_text == "error":
                                 logger.error("Printer reported an error state!")
                                 raise Exception("Printer error state detected during printing.")
-                                
+
                         except Exception as e:
                             logger.error(f"Error polling printer state: {e}")
                             raise e
-                            
+
                         await asyncio.sleep(5)
                 finally:
                     detector_task.cancel()
