@@ -1,0 +1,54 @@
+# Ruff — the Python linter for this repository. Lint only: no formatter is configured
+# and none is implied, because a formatter rewrites every file it touches and this
+# repository's diffs are read by a model in a pull request review.
+#
+# There is no build backend section here on purpose. `ds-mvp` is not a package — it is
+# run from the checkout (`python -m pythonsrc.pipeline`, `uvicorn server.app:app`) and
+# installed nowhere — so this file exists solely as tool configuration. Adding
+# `[project]` would invite `pip install -e .`, which nothing here supports.
+#
+# Run it with `ruff check .` (or `make lint`, which also runs the web lint).
+# `.github/workflows/ci.yml` runs the same command as a blocking step.
+
+[tool.ruff]
+# The measured habit of the existing code, not an aspiration: over 57 000 lines of
+# Python here, the 99,5th percentile is 102 columns and 99 % sit at or under 95. 100 is
+# the round number that describes what is already written. It governs no rule today —
+# see the E501 note below — but it is what a future `ruff format` would wrap to, so it
+# is recorded now rather than guessed at then.
+line-length = 100
+
+# Directories ruff should not read. `data/` is gitignored runtime state, `web/` is
+# TypeScript (ESLint's job) and `.venv/` is somebody's virtualenv; none of them are
+# this project's Python. Ruff already skips gitignored paths, but `ruff check` is also
+# run with an explicit path in CI and by hand, so the exclusion is stated.
+exclude = [
+    ".venv",
+    "data",
+    "web",
+]
+
+[tool.ruff.lint]
+# Conservative on purpose (issue #81): the defects worth catching before a review round
+# spends a turn on them are the unused import, the shadowed name and the bare `except`.
+#   E, W — pycodestyle errors and warnings
+#   F    — pyflakes: unused imports, undefined and shadowed names
+#   I    — import order
+#   B    — flake8-bugbear: mutable default arguments, `except` that swallows, loop
+#          variables captured by closures
+select = ["E", "F", "W", "I", "B"]
+
+ignore = [
+    # Line length. Not a per-file ignore because it is not a per-file fact: 332 lines
+    # across 100-odd files exceed 100 columns, and reflowing them is a formatter's
+    # work, which this repository has deliberately not adopted. Enforcing E501 here
+    # would either land red or bury the rules that matter under a thousand-line
+    # whitespace diff. `line-length` above stays set so the number is not lost.
+    "E501",
+]
+
+[tool.ruff.lint.isort]
+# `pythonsrc`, `server`, `services` and `tests` are imported as top-level packages from
+# the checkout root; without this ruff reads them as third-party and asks for them to be
+# sorted in with `numpy`.
+known-first-party = ["pythonsrc", "server", "services", "tests"]
