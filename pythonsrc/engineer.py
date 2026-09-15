@@ -7,7 +7,6 @@ Usage:
 
 import logging
 import os
-import sys
 from pathlib import Path
 
 try:
@@ -15,12 +14,12 @@ try:
 except ImportError:  # pragma: no cover - depends on how the caller set sys.path
     from pythonsrc.config import OUTPUTS_DIR  # type: ignore[no-redef]
 
-import numpy as np
 import manifold3d  # Apache-2.0 — guaranteed-manifold kernel; version 3.5.x
+import numpy as np
 import trimesh
-from scipy import ndimage
 import trimesh.repair
 import trimesh.util
+from scipy import ndimage
 
 # ── Repair tuning ────────────────────────────────────────────────────────────
 # Closing a surface is iterative: dropping a non-manifold fin opens a hole, and

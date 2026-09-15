@@ -1,9 +1,11 @@
 import os
 import subprocess
 import time
-import requests
-import pytest
 from pathlib import Path
+
+import pytest
+import requests
+
 
 @pytest.mark.integration
 @pytest.mark.slow
@@ -20,7 +22,7 @@ def test_pipeline_status():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
-    
+
     # Wait for server to start
     base_url = "http://localhost:8001"
     server_started = False
@@ -33,9 +35,9 @@ def test_pipeline_status():
         except requests.exceptions.ConnectionError:
             pass
         time.sleep(0.5)
-        
+
     assert server_started, "Server failed to start in time"
-    
+
     try:
         # POST a job
         response = requests.post(f"{base_url}/jobs", json={
@@ -49,7 +51,7 @@ def test_pipeline_status():
         })
         assert response.status_code == 202
         job_id = response.json()["job_id"]
-        
+
         # Poll until status is completed
         max_retries = 30
         status = "queued"
@@ -63,9 +65,9 @@ def test_pipeline_status():
             if status == "completed":
                 break
             time.sleep(1)
-            
+
         assert status == "completed", f"Job failed to complete within time limit. Last data: {final_data}"
-        
+
         # Verify current_phase is included only if it successfully started phases
         assert "current_phase" in final_data
         if final_data["outcome"] == "success":
@@ -79,13 +81,15 @@ def test_pipeline_status():
         server_process.terminate()
         server_process.wait()
 
-from fastapi.testclient import TestClient
-from server.app import app
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import PrintJob
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
+
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import PrintJob
+from server.app import app
 
 client = TestClient(app)
 
@@ -99,7 +103,7 @@ def test_health_check_empty_db():
                   'telemetry_collector_claim', 'print_job'):
         db.execute(f'DELETE FROM {table}')
     db.close()
-    
+
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -121,7 +125,7 @@ def test_health_check_with_jobs():
     )
     db.insert_job(job)
     db.close()
-    
+
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -138,7 +142,7 @@ def test_get_job_telemetry_empty_samples():
     job = PrintJob(job_id=job_id, prompt="test", printer_id="pid", printer_firmware="octoprint", slicer="cura", profile_name="default", started_at=datetime.now(timezone.utc), completed_at=None, outcome="unknown")
     db.insert_job(job)
     db.close()
-    
+
     response = client.get(f"/jobs/{job_id}/telemetry")
     assert response.status_code == 200
     assert response.json() == []

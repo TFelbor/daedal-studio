@@ -9,8 +9,8 @@ import inspect
 
 import pytest
 
-from pythonsrc.operators.base import BasePrinterOperator
 from pythonsrc.operators.bambu_operator import BambuOperator
+from pythonsrc.operators.base import BasePrinterOperator
 from pythonsrc.operators.moonraker_operator import MoonrakerOperator
 from pythonsrc.operators.octoprint_operator import OctoPrintOperator
 

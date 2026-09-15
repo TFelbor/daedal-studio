@@ -8,21 +8,21 @@ import hashlib
 import json
 import logging
 import os
-import re
-import sys
-import uuid
 import platform
+import re
 import subprocess
-import threading
+import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Mapping, Optional, Any, Dict
+from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import urlparse, urlunparse
 
-from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
+
 # Raised instead of a bare ValueError for one reason: its `ctx` survives into the 422
 # body, so a spec refusal arrives as a list of `{path, message}` the composer can put
 # on the control that caused it — see `JobRequest._spec_is_valid`.
@@ -31,17 +31,12 @@ from pydantic_core import PydanticCustomError
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from pythonsrc.telemetry.db import TelemetryDB, _str_to_dt
+import httpx
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
-from pythonsrc.telemetry.schema import PrintJob, FailureEvent, TelemetrySample, VALID_FAILURE_TYPES
-from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
-from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
-from pythonsrc.telemetry.detector import attach_detector
-from pythonsrc.telemetry.run_context import resolve_git_sha
-from pythonsrc.operators import PrinterFactory
-from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
-from pythonsrc.size_hint import parse_size_hint
+
 from pythonsrc.ip_screen import screen_prompt
+from pythonsrc.operators import PrinterFactory
+
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
@@ -53,25 +48,32 @@ from pythonsrc.organizer import (
     problems_with_paths,
     spec_hash,
 )
+
 # The seed dimensions, for the same reason and under the same rule: `resolve_stack` is
 # arithmetic over a table of sourced millimetres and imports nothing. It is what
 # `POST /organizer/resolve` answers with, and the only figures the composer may show.
 from pythonsrc.organizer.dimensions import resolve_stack
-import httpx
+from pythonsrc.platform_utils import get_execution_strategy
+from pythonsrc.size_hint import parse_size_hint
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.detector import attach_detector
+from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
+from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+from pythonsrc.telemetry.run_context import resolve_git_sha
+from pythonsrc.telemetry.schema import VALID_FAILURE_TYPES, FailureEvent, PrintJob
+from server.activity import activity
 from server.config_store import (
-    BoundCredential,
-    ConfigStore,
     CONFIG_KEYS,
     INTERNAL_CONFIG_KEYS,
     PRINTER_CREDENTIAL_HOSTS,
     SUBPROCESS_ENV_KEYS,
+    BoundCredential,
+    ConfigStore,
     bound_printer_credential,
 )
 from server.job_broadcaster import broadcaster
-from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
-
-from server.activity import activity, rule as activity_rule
 from server.logging_config import configure_logging, is_high_frequency_path
+from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
 # At import time, not in a startup event: uvicorn imports this module and runs
 # module-level code (config store, strategy resolution) before any startup hook
@@ -1605,22 +1607,22 @@ def startup_event():
 
     strategy = get_resolved_strategy()
     logger.info(f"Resolved execution strategy: {strategy}")
-    
+
     docker_available = False
     try:
         res = subprocess.run(["docker", "info"], capture_output=True, timeout=3.0)
         docker_available = res.returncode == 0
     except Exception:
         pass
-        
+
     if not docker_available and strategy in ("nvidia_docker", "cpu_docker"):
         logger.warning(f"Strategy {strategy} requires Docker, but Docker is not available!")
-        
+
     repo_root = Path(__file__).parent.parent
     (repo_root / "data" / "inputs").mkdir(parents=True, exist_ok=True)
     (repo_root / "data" / "outputs").mkdir(parents=True, exist_ok=True)
     (repo_root / "data" / "logs").mkdir(parents=True, exist_ok=True)
-    
+
     # The store is deliberately *not* copied into `os.environ` here. It used to be,
     # and `POST /config` wrote each value there as well, which made every stored key
     # part of both subprocess launches — `PYTHONPATH` among them. Everything that
@@ -2016,9 +2018,9 @@ async def _run_pipeline(job_id: str, request: JobRequest):
     repo_root = Path(__file__).parent.parent
     log_dir = repo_root / "data" / "logs"
     log_file = log_dir / f"{job_id}.log"
-    
+
     strategy = get_resolved_strategy()
-    
+
     skip_viz, skip_sculpt = _phase_skips(request)
     # Phase 1 writes one blueprint per job, not one per machine.
     # `data/inputs/blueprint.png` is a single filename shared by every run, and Phase 1
@@ -2110,10 +2112,10 @@ async def _run_pipeline(job_id: str, request: JobRequest):
             if "localhost" in url or "127.0.0.1" in url:
                 url = url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
             pipeline_env["DS_PRINTER_URL"] = url
-            
+
         if key:
             pipeline_env["DS_PRINTER_KEY"] = key
-            
+
         # `pipeline_env` is the environment of the process this server launches
         # *itself*: on the mps_native path that is the native Phase 1 subprocess,
         # which reaches this server on the host's loopback. The pipeline is a
@@ -2163,7 +2165,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 ])
             if "DS_GIT_SHA" in pipeline_env:
                 docker_env_args.extend(["-e", f"DS_GIT_SHA={pipeline_env['DS_GIT_SHA']}"])
-                
+
             if strategy == "mps_native":
                 if not skip_viz:
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "running", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
@@ -2191,16 +2193,16 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     active_pipelines[job_id] = process1
                     await _stream_output(process1, f, job_id)
                     await process1.wait()
-                    
+
                     if process1.returncode != 0:
                         await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "error", "error": f"Failed with code {process1.returncode}", "ts": datetime.now(timezone.utc).isoformat()}})
                         raise Exception(f"Phase 1 failed with code {process1.returncode}")
-                        
+
                     if not (repo_root / blueprint_rel).exists():
                         raise Exception(
                             f"Phase 1 completed but {blueprint_rel.as_posix()} not found"
                         )
-                        
+
                     await broadcaster.broadcast(job_id, {"type": "phase_update", "data": {"phase": 1, "name": "Visualizer", "status": "complete", "error": None, "ts": datetime.now(timezone.utc).isoformat()}})
 
                     # Park here, before the container that would run Phase 2 is
@@ -2256,7 +2258,7 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                     "python", "pythonsrc/pipeline.py", request.prompt,
                     "--job-id", job_id
                 ] + pipeline_args
-                
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -2360,8 +2362,8 @@ async def _run_pipeline(job_id: str, request: JobRequest):
 async def create_job(request: JobRequest):
     """Create a new print job.
 
-    Validates the job request, generates a unique job ID, inserts a new 'queued' 
-    PrintJob record into the TelemetryDB, and launches the pipeline subprocess 
+    Validates the job request, generates a unique job ID, inserts a new 'queued'
+    PrintJob record into the TelemetryDB, and launches the pipeline subprocess
     in the background.
 
     Args:
@@ -2412,7 +2414,7 @@ async def create_job(request: JobRequest):
     # 202 and disables printing, which is what `"default"` and `"test"` do today.
     try:
         resolve_profile_path(request.profile)
-    except ProfileOutsideProfilesDir:
+    except ProfileOutsideProfilesDir as exc:
         activity.action(
             "job refused",
             [("reason", "profile outside pythonsrc/profiles"),
@@ -2426,7 +2428,7 @@ async def create_job(request: JobRequest):
                 "A printer profile must be a file in pythonsrc/profiles; "
                 f"{request.profile!r} resolves outside it."
             ),
-        )
+        ) from exc
 
     screen = screen_prompt(request.prompt, request.material_colour)
     if screen.action == "block":
@@ -2448,7 +2450,7 @@ async def create_job(request: JobRequest):
     job_id = str(uuid.uuid4())
 
     repo_root = Path(__file__).parent.parent
-    
+
     # Clean up artifacts from previous jobs to prevent the UI from loading old images.
     #
     # `data/inputs/blueprint.png` is deliberately *not* in this list. Deleting it was
@@ -2579,7 +2581,7 @@ async def create_job(request: JobRequest):
     db.close()
 
     asyncio.create_task(_run_pipeline(job_id, request))
-    
+
     return JobResponse(job_id=job_id, status="queued")
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -2617,7 +2619,7 @@ async def get_job(job_id: str):
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     repo_root = Path(__file__).parent.parent
     log_dir = repo_root / "data" / "logs"
     log_file = log_dir / f"{job_id}.log"
@@ -2627,7 +2629,7 @@ async def get_job(job_id: str):
         with open(log_file, "r") as f:
             lines = f.readlines()
             log_tail = [line.rstrip('\n') for line in lines[-20:]]
-            
+
     current_phase = _read_current_phase(job_id)
     # A killed pipeline leaves its `.status` file frozen mid-phase, so a job that has
     # stopped keeps claiming that phase is running — and every client that polls this
@@ -2639,7 +2641,7 @@ async def get_job(job_id: str):
         and job.outcome not in (None, "unknown")
     ):
         current_phase = {**current_phase, "status": "error", "error": "Stopped"}
-            
+
     # Prefer the snapshot frozen when the job was created. Reading the profile file
     # instead means editing a profile retroactively rewrites what old jobs claim to
     # have printed with; the live read stays only as a fallback for rows predating
@@ -2723,7 +2725,7 @@ async def get_printer_info(job_id: str):
     db = TelemetryDB()
     job = db.get_job(job_id)
     db.close()
-    
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -2732,12 +2734,12 @@ async def get_printer_info(job_id: str):
         "klipper": "Klipper",
         "bambu": "Bambu Lab",
     }
-    
+
     machine_name = None
     layer_height_mm = None
     machine_dimensions = None
     profile_path_str = job.profile_name
-    
+
     if profile_path_str and profile_path_str != "default":
         try:
             profile_full_path = profile_path_or_default(profile_path_str)
@@ -2753,7 +2755,7 @@ async def get_printer_info(job_id: str):
                         machine_dimensions = {"width": w, "depth": d, "height": h}
         except Exception:
             pass
-    
+
     firmware = job.printer_firmware or "octoprint"
     connection_status = "unknown"
     stored = config_store.get_all()
@@ -2788,7 +2790,7 @@ async def get_printer_info(job_id: str):
                 connection_status = "unknown"
     except Exception:
         connection_status = "offline"
-    
+
     return {
         "service": firmware,
         "service_label": service_labels.get(firmware, firmware),
@@ -3175,7 +3177,7 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
             raise HTTPException(
                 status_code=500,
                 detail="The decision could not be recorded, so nothing was started.",
-            )
+            ) from exc
 
         activity.action(
             "blueprint " + ("approved" if request.approve else "rejected"),
@@ -3216,7 +3218,7 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
             raise HTTPException(
                 status_code=500,
                 detail="The original request could not be read, so the job cannot continue.",
-            )
+            ) from exc
     finally:
         db.close()
 
@@ -3456,18 +3458,18 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         return {"status": "dispatching", "target": target}
     except Exception as e:
         logger.error(f"Error in print-dispatch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.delete("/jobs/{job_id}")
 async def cancel_job(job_id: str):
     """Cancel the running job and the printer."""
     db = TelemetryDB()
     job = db.get_job(job_id)
-    
+
     if not job:
         db.close()
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     # Mark the job cancelled *before* killing anything. The pipeline's exit is
     # observed by `_run_pipeline`, which would otherwise read the non-zero code as a
     # crash and overwrite this verdict with "failure".
@@ -3514,7 +3516,7 @@ async def cancel_job(job_id: str):
                 "ts": datetime.now(timezone.utc).isoformat(),
             },
         })
-            
+
     # Attempt to cancel printer
     profile_path = str(profile_path_or_default(config_store.get("DEFAULT_PROFILE")))
     try:
@@ -3540,7 +3542,7 @@ async def cancel_job(job_id: str):
         completed_at=datetime.now(timezone.utc),
     )
     db.close()
-    
+
     activity.action(
         "job stopped by user",
         [
@@ -3564,15 +3566,15 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
     db = TelemetryDB()
     job = db.get_job(job_id)
     db.close()
-    
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     profile_path = str(profile_path_or_default(config_store.get("DEFAULT_PROFILE")))
 
     if not os.path.exists(profile_path):
         raise HTTPException(status_code=400, detail="Printer profile not found")
-        
+
     try:
         firmware, base_url, api_key = resolve_printer_target(profile_path)
         from pythonsrc.operators import PrinterFactory
@@ -3581,7 +3583,7 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
             base_url=container_reachable_url(base_url or "http://localhost:5001"),
             api_key=api_key,
         )
-        
+
         if request.action == "pause":
             op.pause_print()
         elif request.action == "resume":
@@ -3609,7 +3611,7 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
             status="fail",
             level="ERROR",
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 class InternalTelemetryRequest(BaseModel):
     type: str
@@ -3661,7 +3663,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
 
     where_clause = ""
     params: list = []
-    
+
     if status == 'running':
         # Parked at the blueprint gate is waiting, not running, and it has its own
         # filter. Left in here it would own the landing page: `NewJob` attaches to the
@@ -3716,7 +3718,7 @@ async def list_jobs(limit: int = 20, offset: int = 0, status: str = 'all'):
     global_counts = db.query(
         "SELECT outcome, COUNT(*) AS count FROM print_job GROUP BY outcome"
     )
-    
+
     stats = {
         "total": 0, "running": 0, "completed": 0, "failed": 0,
         "awaiting_verdict": 0, "dev": 0, "declined": 0,
@@ -3990,7 +3992,7 @@ async def get_job_telemetry(job_id: str) -> List[Dict[str, Any]]:
     if not job:
         db.close()
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     samples = db.get_samples(job_id, limit=100)
     db.close()
     return [s.to_dict() for s in samples]
@@ -4599,7 +4601,7 @@ async def update_config(update: ConfigUpdate):
         outcome="saved, encrypted at rest; live for the next request",
         status="ok",
     )
-    
+
     return {
         "key": update.key,
         "value": display_val,
@@ -4636,11 +4638,11 @@ async def reveal_config(key: str):
     """Reveal a secret configuration value."""
     if key not in CONFIG_KEYS or key in INTERNAL_CONFIG_KEYS:
         raise HTTPException(status_code=400, detail="Invalid config key")
-        
+
     val = config_store.get(key)
     if val is None:
         raise HTTPException(status_code=404, detail="Config key not set")
-        
+
     return {"key": key, "value": val}
 
 @app.post("/config/test-connection")
@@ -4820,12 +4822,12 @@ async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
     db.close()
 
     await websocket.accept()
-    
+
     status_resp = await get_job(job_id)
     await websocket.send_json({"type": "job_status", "data": status_resp.dict()})
-    
+
     await websocket.send_json({"type": "telemetry_batch", "data": [s.to_dict() for s in samples]})
-    
+
     await broadcaster.connect(job_id, websocket)
     activity.event(f"watcher attached · job {job_id[:8]}", source="ws")
     try:
@@ -4955,10 +4957,10 @@ async def get_moonraker_simulator_logs():
     log_file = repo_root / "data" / "logs" / "moonraker_mock.log"
     if not log_file.exists():
         return {"lines": []}
-        
+
     with open(log_file, "r") as f:
         lines = f.readlines()
-        
+
     return {"lines": [line.rstrip() for line in lines[-100:]]}
 
 #: OctoPrint takes roughly half a minute to come up — intermediary server, plugin
@@ -5042,30 +5044,30 @@ async def get_octoprint_simulator_logs():
     log_file = repo_root / "data" / "logs" / "octoprint_mock.log"
     if not log_file.exists():
         return {"lines": []}
-        
+
     with open(log_file, "r") as f:
         lines = f.readlines()
-        
+
     return {"lines": [line.rstrip() for line in lines[-100:]]}
 
 @app.get("/system/info")
 async def system_info():
     detected = get_execution_strategy()
     resolved = get_resolved_strategy()
-    
+
     docker_available = False
     try:
         res = subprocess.run(["docker", "info"], capture_output=True, timeout=3.0)
         docker_available = res.returncode == 0
     except Exception:
         pass
-        
+
     labels = {
         "mps_native": "macOS Apple Silicon (MPS native Phase 1, Docker Phases 2-5)",
         "nvidia_docker": "NVIDIA GPU (full pipeline via Docker with GPU)",
         "cpu_docker": "CPU only (full pipeline via Docker)"
     }
-    
+
     return {
         "detected_strategy": detected,
         "resolved_strategy": resolved,

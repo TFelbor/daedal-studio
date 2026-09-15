@@ -1,17 +1,14 @@
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Callable, Coroutine, Any
 from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
-import websockets
 from websockets.server import serve
 
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import TelemetrySample, PrintJob
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
+from pythonsrc.telemetry.schema import PrintJob
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +18,7 @@ TEST_JOB_ID = "job-123"
 @pytest.fixture
 def in_memory_db(isolated_db):
     db = isolated_db
-    
+
     # Insert a dummy job so foreign key constraints pass
     job = PrintJob(
         job_id=TEST_JOB_ID,
@@ -35,7 +32,7 @@ def in_memory_db(isolated_db):
         outcome="unknown"
     )
     db.insert_job(job)
-    
+
     yield db
     db.close()
 
@@ -55,7 +52,7 @@ class FakeMoonrakerServer:
         if self._server:
             self._server.close()
             await self._server.wait_closed()
-            
+
     async def disconnect_clients(self):
         for ws in self.clients:
             await ws.close()
@@ -91,16 +88,16 @@ async def fake_server():
 async def test_moonraker_collector_subscription_and_samples(fake_server, in_memory_db):
     ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
-    
+
     await collector.start()
-    
+
     # Wait for the client to connect and send the subscription message
     await asyncio.sleep(0.5)
-    
+
     assert len(fake_server.received_messages) > 0
     sub_msg = fake_server.received_messages[0]
     assert sub_msg["method"] == "printer.objects.subscribe"
-    
+
     # Send 10 synthetic messages
     for i in range(10):
         await fake_server.broadcast_status({
@@ -111,15 +108,15 @@ async def test_moonraker_collector_subscription_and_samples(fake_server, in_memo
             "fan": {"speed": 0.5}, # 50%
             "gcode_move": {"speed_factor": 1.0, "extrude_factor": 1.0}
         })
-        
+
     # Wait for messages to be processed
     await asyncio.sleep(0.5)
     await collector.stop()
-    
+
     # Verify samples in memory DB
     samples = in_memory_db.get_samples(TEST_JOB_ID)
     assert len(samples) == 10
-    
+
     for i, sample in enumerate(samples):
         # We process in order, but get_samples returns DESC order, wait
         # get_samples does `ORDER BY sampled_at DESC` but the code says `# Return in ascending chronological order` `return samples[::-1]`
@@ -139,51 +136,51 @@ async def test_moonraker_collector_subscription_and_samples(fake_server, in_memo
 async def test_moonraker_collector_reconnect(fake_server, in_memory_db, caplog):
     ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
-    
+
     with caplog.at_level(logging.WARNING):
         await collector.start()
-        
+
         # Wait for connect
         await asyncio.sleep(0.5)
         assert len(fake_server.clients) == 1
-        
+
         # Disconnect server clients to trigger reconnect
         await fake_server.disconnect_clients()
-        
+
         # Wait for reconnect (exponential backoff starts at 1s)
         # 1.5 seconds should be enough to see the reconnect
         await asyncio.sleep(1.5)
-        
+
         # Verify it reconnected
         assert len(fake_server.clients) == 1
-        
+
         # Verify warning log was generated
         assert any("Moonraker connection error" in record.message for record in caplog.records)
-        
+
     await collector.stop()
 
 @pytest.mark.asyncio
 async def test_moonraker_collector_partial_data(fake_server, in_memory_db):
     ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
-    
+
     await collector.start()
     await asyncio.sleep(0.5)
-    
+
     # Missing fields
     await fake_server.broadcast_status({
         "print_stats": {},
         "toolhead": {}
         # missing extruder, heater_bed, etc.
     })
-    
+
     await asyncio.sleep(0.5)
     await collector.stop()
-    
+
     samples = in_memory_db.get_samples(TEST_JOB_ID)
     assert len(samples) == 1
     sample = samples[0]
-    
+
     assert sample.gcode_line is None
     assert sample.z_height_mm is None
     assert sample.hotend_actual_c is None
@@ -193,18 +190,18 @@ async def test_moonraker_collector_partial_data(fake_server, in_memory_db):
 async def test_moonraker_collector_invalid_json(fake_server, in_memory_db):
     ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
-    
+
     await collector.start()
     await asyncio.sleep(0.5)
-    
+
     # Send invalid JSON
     for ws in fake_server.clients:
         if not ws.closed:
             await ws.send("This is not valid JSON {]")
-            
+
     await asyncio.sleep(0.5)
     await collector.stop()
-    
+
     # Should skip without crashing
     samples = in_memory_db.get_samples(TEST_JOB_ID)
     assert len(samples) == 0
@@ -213,14 +210,14 @@ async def test_moonraker_collector_invalid_json(fake_server, in_memory_db):
 async def test_moonraker_collector_stop_cancels_loop(fake_server, in_memory_db):
     ws_url = f"ws://{fake_server.host}:{fake_server.port}/websocket"
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
-    
+
     await collector.start()
     await asyncio.sleep(0.5)
-    
+
     assert collector._task is not None
     assert not collector._task.done()
-    
+
     await collector.stop()
     await asyncio.sleep(0.5)
-    
+
     assert collector._task is None

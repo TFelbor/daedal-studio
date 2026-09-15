@@ -19,10 +19,9 @@ joined by a row in the database — so this is too, which is what `request_param
 """
 
 import json
-
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from pythonsrc.telemetry.db import TelemetryDB
@@ -361,7 +360,7 @@ def test_a_finished_job_is_not_awaiting_approval():
 
     db = TelemetryDB()
     job_id = "gate-0000-0000-0000-00000000000c"
-    digest = _park(db, job_id)
+    _park(db, job_id)
     db.update_job_outcome_verdict(
         job_id, "success", source="machine", completed_at=datetime.now(timezone.utc),
     )

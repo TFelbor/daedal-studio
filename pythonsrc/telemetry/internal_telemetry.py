@@ -5,7 +5,6 @@ collector processes back to the API server when the collectors are running in a
 separate process or container.
 """
 
-import asyncio
 import logging
 import os
 from typing import Any, Dict

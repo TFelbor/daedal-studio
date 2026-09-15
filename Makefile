@@ -8,6 +8,7 @@
 #   make build                          # Build all Docker images
 #   make up                             # Start the API server
 #   make down                           # Stop all services
+#   make lint                           # Run ruff and the web lint
 #   make test                           # Run the test suite
 #   make phase1-native PROMPT="a vase"  # Run Phase 1 natively (macOS MPS)
 #   make pipeline-mac  PROMPT="a vase"  # Full pipeline on Mac
@@ -22,7 +23,7 @@
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit outputs clean-outputs
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu lint test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit outputs clean-outputs
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,20 @@ outputs:
 # and prints every path first; add DRY_RUN=1 to see the list and delete nothing.
 clean-outputs:
 	python3 -m pythonsrc.outputs --prune $(if $(DAYS),--days $(DAYS),) $(if $(DRY_RUN),--dry-run,)
+
+# ── Linting ───────────────────────────────────────────────────────────────────
+
+# Both linters, in the order CI enforces them.
+#
+# ruff is blocking here because it is blocking there: it landed green (issue #81) and
+# `pyproject.toml` carries a reason for every rule that is off. The web lint is prefixed
+# with `-` so make ignores its exit status, which mirrors `continue-on-error` in
+# ci.yml — `npm run lint` currently reports 27 pre-existing errors, and a `make lint`
+# that can never be green is a `make lint` nobody runs. Drop the `-` when that backlog
+# reaches zero, at the same time as the `continue-on-error` line in the workflow.
+lint:
+	ruff check .
+	-npm --prefix web run lint
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 

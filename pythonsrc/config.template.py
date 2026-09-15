@@ -21,6 +21,7 @@ import os
 import shutil
 from pathlib import Path
 
+
 # ── CuraEngine binary path ────────────────────────────────────────────────
 # Auto-detection order:
 #   1. CURA_ENGINE_PATH environment variable  ← Docker always sets this

@@ -2,6 +2,7 @@
 
 from pythonsrc.operators.base import BasePrinterOperator
 
+
 class PrinterFactory:
     """Factory for instantiating the appropriate printer operator based on firmware type."""
 

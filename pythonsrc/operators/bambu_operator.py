@@ -3,6 +3,7 @@
 import logging
 import ssl
 import time
+
 import paho.mqtt.client as mqtt
 
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
@@ -38,7 +39,7 @@ class BambuOperator(BasePrinterOperator):
         self.client.tls_insecure_set(True)
         if self.api_key:
             self.client.username_pw_set("bblp", self.api_key)
-        
+
         try:
             # Strip http/https if present
             host = self.base_url.replace("http://", "").replace("https://", "").split(":")[0]
@@ -51,7 +52,7 @@ class BambuOperator(BasePrinterOperator):
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Bambu printer MQTT: {e}")
-            raise PrinterConnectionError(f"Bambu MQTT connection failed: {e}")
+            raise PrinterConnectionError(f"Bambu MQTT connection failed: {e}") from e
 
     def upload_file(self, local_path: str, remote_name: str) -> bool:
         """Upload a file to the printer.

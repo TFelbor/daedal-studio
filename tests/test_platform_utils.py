@@ -1,8 +1,10 @@
 import sys
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command, _docker_has_nvidia_runtime
+import pytest
+
+from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
+
 
 @pytest.fixture
 def mock_torch_mps():
@@ -26,11 +28,11 @@ def test_nvidia_docker():
     with patch("sys.platform", "linux"), \
          patch("shutil.which", return_value="/usr/bin/nvidia-smi"), \
          patch("subprocess.run") as mock_run:
-        
+
         mock_result = MagicMock()
         mock_result.stdout = "nvidia runc"
         mock_run.return_value = mock_result
-        
+
         assert get_execution_strategy() == "nvidia_docker"
 
 def test_cpu_docker_fallback_linux_no_nvidia_smi():
@@ -42,11 +44,11 @@ def test_cpu_docker_fallback_linux_no_docker_runtime():
     with patch("sys.platform", "linux"), \
          patch("shutil.which", return_value="/usr/bin/nvidia-smi"), \
          patch("subprocess.run") as mock_run:
-        
+
         mock_result = MagicMock()
         mock_result.stdout = "runc"
         mock_run.return_value = mock_result
-        
+
         assert get_execution_strategy() == "cpu_docker"
 
 def test_cpu_docker_fallback_mac_no_mps(mock_torch_no_mps):
@@ -66,7 +68,7 @@ def test_get_phase1_command_nvidia():
         mock_result = MagicMock()
         mock_result.stdout = "nvidia runc"
         mock_run.return_value = mock_result
-        
+
         cmd = get_phase1_command("a test prompt", "/out/path", 4)
         assert "docker" in cmd
         assert "compose" in cmd

@@ -3,13 +3,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
 from pythonsrc.telemetry.db import (
     TELEMETRY_TABLES,
     DatabaseConfigError,
     TelemetryDB,
     get_database_url,
 )
+from pythonsrc.telemetry.schema import FailureEvent, PrintJob, TelemetrySample
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def test_insert_retrieve_job(temp_db):
         completed_at=None,
         outcome="unknown"
     )
-    
+
     temp_db.insert_job(job)
     retrieved = temp_db.get_job("job_1")
     assert retrieved is not None
@@ -66,10 +66,10 @@ def test_update_job_outcome(temp_db):
         outcome="unknown"
     )
     temp_db.insert_job(job)
-    
+
     dt_end = datetime(2023, 1, 1, 14, 0, 0, tzinfo=timezone.utc)
     temp_db.update_job_outcome("job_2", "success", dt_end)
-    
+
     retrieved = temp_db.get_job("job_2")
     assert retrieved.outcome == "success"
     assert retrieved.completed_at == dt_end
@@ -82,7 +82,7 @@ def test_insert_retrieve_sample(temp_db):
         started_at=dt_start, completed_at=None, outcome="unknown"
     )
     temp_db.insert_job(job)
-    
+
     dt_sample = datetime(2023, 1, 1, 12, 5, 0, tzinfo=timezone.utc)
     sample = TelemetrySample(
         job_id="job_3",
@@ -94,7 +94,7 @@ def test_insert_retrieve_sample(temp_db):
         print_speed_pct=100.0, extrusion_factor_pct=100.0, fan_speed_pct=50.0
     )
     temp_db.insert_sample(sample)
-    
+
     samples = temp_db.get_samples("job_3")
     assert len(samples) == 1
     assert samples[0] == sample
@@ -107,7 +107,7 @@ def test_insert_retrieve_failure_event(temp_db):
         started_at=dt_start, completed_at=None, outcome="unknown"
     )
     temp_db.insert_job(job)
-    
+
     dt_fail = datetime(2023, 1, 1, 12, 10, 0, tzinfo=timezone.utc)
     event = FailureEvent(
         event_id="evt_1",
@@ -121,7 +121,7 @@ def test_insert_retrieve_failure_event(temp_db):
         snapshot={"samples": []}
     )
     temp_db.insert_failure_event(event)
-    
+
     events = temp_db.get_failure_events("job_4")
     assert len(events) == 1
     assert events[0] == event
@@ -144,7 +144,7 @@ async def test_concurrent_inserts(temp_db):
     dt_start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     job = PrintJob(job_id="job_concurrent", prompt="Vase", printer_id="printer_1", printer_firmware="klipper", slicer="Cura", profile_name="Standard", started_at=dt_start, completed_at=None, outcome="unknown")
     temp_db.insert_job(job)
-    
+
     async def insert_one(i):
         sample = TelemetrySample(
             job_id="job_concurrent", sampled_at=datetime.now(timezone.utc), gcode_line=i,
@@ -152,7 +152,7 @@ async def test_concurrent_inserts(temp_db):
             bed_actual_c=60.0, bed_target_c=60.0, print_speed_pct=100.0, extrusion_factor_pct=100.0, fan_speed_pct=50.0
         )
         await asyncio.to_thread(temp_db.insert_sample, sample)
-        
+
     await asyncio.gather(*(insert_one(i) for i in range(50)))
     samples = temp_db.get_samples("job_concurrent", limit=100)
     assert len(samples) == 50

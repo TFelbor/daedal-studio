@@ -1,7 +1,9 @@
 import pytest
-from pythonsrc.operators.printer_factory import PrinterFactory
+
 from pythonsrc.operators.moonraker_operator import MoonrakerOperator
 from pythonsrc.operators.octoprint_operator import OctoPrintOperator
+from pythonsrc.operators.printer_factory import PrinterFactory
+
 
 def test_printer_factory_moonraker():
     operator = PrinterFactory.create("klipper", "http://localhost:7125", "moonraker_key")

@@ -11,16 +11,18 @@ import time
 from pathlib import Path
 
 import torch
-from diffusers import DiffusionPipeline
-
 from config import INPUTS_DIR
+from diffusers import DiffusionPipeline
 
 # Prompt engineering, seed selection and the result record live in a torch-free module
 # so the pipeline, the server and the tests can use them without the Phase 1 stack.
-# Re-exported here because this is where callers expect to find them.
+# Re-exported here because this is where callers expect to find them. `SEED_SPACE` is
+# the one nothing in the tree imports from here today, so the linter reads it as dead;
+# it is part of the re-exported surface either way and deleting it would narrow this
+# module's API, which is not a lint change.
 try:
     from blueprint_spec import (
-        SEED_SPACE,
+        SEED_SPACE,  # noqa: F401
         BlueprintResult,
         engineer_prompt,
         normalise_colour,
@@ -29,7 +31,7 @@ try:
     )
 except ImportError:
     from pythonsrc.blueprint_spec import (
-        SEED_SPACE,
+        SEED_SPACE,  # noqa: F401  — see above
         BlueprintResult,
         engineer_prompt,
         normalise_colour,
@@ -97,7 +99,10 @@ class Visualizer:
     def generate_blueprint(
         self,
         prompt: str,
-        output_path: str | Path = os.path.join(INPUTS_DIR, "blueprint.png"),
+        # B008 is about a default that changes between calls. `INPUTS_DIR` is a
+        # module constant in `config.py`, so this join is the same string every time
+        # and moving it into the body would only hide the default from the signature.
+        output_path: str | Path = os.path.join(INPUTS_DIR, "blueprint.png"),  # noqa: B008
         num_inference_steps: int = 2,
         guidance_scale: float = 3.5,
         seed: int | None = None,

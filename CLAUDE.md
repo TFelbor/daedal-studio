@@ -24,13 +24,16 @@ covers what you are touching.
   `postgres:17-alpine`, or `DS_TEST_DATABASE_URL` pointing at a database the suite may
   administer. Frontend: `npm --prefix web run build`, which is `tsc -b && vite build`
   and therefore the type check as well.
-- **Lint:** `npm --prefix web run lint` (ESLint). It currently **fails on 27
-  pre-existing errors** unrelated to any new change, and CI runs it
-  `continue-on-error`. Do not treat a red lint as a reason to stop; do leave it no
-  redder than you found it.
-  <!-- TODO: no Python linter or formatter is configured — no ruff, flake8, black or
-  pyproject at the root. Pick one, add it to requirements-base.txt and to ci.yml, and
-  replace this note with the command. -->
+- **Lint:** `make lint` runs both. Separately:
+  - Python is `ruff check .` — lint only, no formatter. It is **blocking in CI** and
+    passes on `main`, so a red run is yours: fix it. Rules and their exceptions are in
+    `pyproject.toml` (`E`, `F`, `W`, `I`, `B`; `E501` is off and every per-file ignore
+    states why). If a finding is behavioural rather than mechanical, add a `# noqa`
+    with a one-line reason rather than changing behaviour to appease a linter.
+  - Frontend is `npm --prefix web run lint` (ESLint). It currently **fails on 27
+    pre-existing errors** unrelated to any new change, and CI runs it
+    `continue-on-error`. Do not treat a red web lint as a reason to stop; do leave it
+    no redder than you found it.
 - **Coverage:** measured in CI only, on the full-suite step, and gated at **75 %**:
   `pytest tests/ --cov=pythonsrc --cov=server --cov-report=term-missing:skip-covered
   --cov-fail-under=75`. **Measured 76,6 % on 2026-09-11** (8 470 statements, 1 979

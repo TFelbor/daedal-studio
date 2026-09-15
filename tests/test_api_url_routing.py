@@ -149,7 +149,7 @@ def _compose_run(launches: list[tuple]) -> tuple:
 
 def _forwarded(argv: list[str], name: str) -> str | None:
     """The value of a `-e NAME=value` argument, or None if it was not forwarded."""
-    for flag, pair in zip(argv, argv[1:]):
+    for flag, pair in zip(argv, argv[1:], strict=False):
         if flag == "-e" and pair.startswith(f"{name}="):
             return pair.split("=", 1)[1]
     return None

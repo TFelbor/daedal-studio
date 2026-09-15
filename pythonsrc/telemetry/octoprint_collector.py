@@ -1,14 +1,14 @@
 """Telemetry collection from OctoPrint Socket.IO."""
 
 import asyncio
-import logging
 import json
-import os
+import logging
 import random
 import string
-import aiohttp
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import aiohttp
 
 from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.db import TelemetryDB
@@ -147,7 +147,6 @@ class OctoPrintCollector:
                         self._backoff = 1.0
                         logger.info("OctoPrint SockJS WebSocket connected.")
 
-                        authenticated = False
                         # Receive loop
                         async for msg in ws:
                             if not self._running:
@@ -167,7 +166,6 @@ class OctoPrintCollector:
                                         break
                                     auth_msg = json.dumps({"auth": credentials})
                                     await ws.send_str(json.dumps([auth_msg]))
-                                    authenticated = True
                                 elif data in ('h', ''):  # heartbeat — ignore
                                     pass
                                 elif data.startswith('a'):
@@ -242,7 +240,7 @@ class OctoPrintCollector:
         # Safely extract temperatures handling potentially varying formats
         hotend_actual = None
         hotend_target = None
-        
+
         # If temps[0] directly contains 'actual'/'target' (like the prompt suggested literally)
         if "actual" in temps_data or "target" in temps_data:
             hotend_actual = temps_data.get("actual")

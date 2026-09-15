@@ -26,8 +26,8 @@ from pythonsrc.pipeline import (
     _blueprint_is_stand_in,
     _blueprint_path,
     _install_dev_asset,
-    _should_install_reference_blueprint,
     _job_outputs_dir,
+    _should_install_reference_blueprint,
     _will_use_reference_assets,
 )
 
@@ -290,9 +290,9 @@ def test_the_fixture_flag_reaches_the_running_view():
 
     from fastapi.testclient import TestClient
 
-    from server.app import app
     from pythonsrc.telemetry.db import TelemetryDB
     from pythonsrc.telemetry.schema import PrintJob
+    from server.app import app
 
     job_id = str(uuid.uuid4())
     db = TelemetryDB()

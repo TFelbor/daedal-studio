@@ -35,6 +35,7 @@ def _setup_logging(verbose: bool = False) -> None:
 # ── OctoPrintOperator ─────────────────────────────────────────────────────────
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
 
+
 class OctoPrintOperator(BasePrinterOperator):
     """Thin wrapper around the OctoPrint REST API.
 
@@ -129,11 +130,11 @@ class OctoPrintOperator(BasePrinterOperator):
         """
         try:
             return self.get_version()
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as exc:
             raise RuntimeError(
                 f"Connection refused — cannot reach OctoPrint at {self.base_url}. "
                 "Is the OctoPrint server running? Check the URL and port."
-            )
+            ) from exc
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status == 403:
@@ -181,7 +182,7 @@ class OctoPrintOperator(BasePrinterOperator):
             return True
         except Exception as exc:
             raise PrinterConnectionError(str(exc)) from exc
-            
+
     def _connect_serial(
         self,
         port: str = "VIRTUAL",

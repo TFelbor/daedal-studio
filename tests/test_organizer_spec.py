@@ -634,8 +634,13 @@ def test_from_json_refuses_text_that_is_not_json():
     assert "JSON" in str(exc.value)
 
 
-from pythonsrc.organizer.spec import canonical_json, dump_spec, load_spec, spec_diff, spec_hash  # noqa: E402
-
+from pythonsrc.organizer.spec import (  # noqa: E402
+    canonical_json,
+    dump_spec,
+    load_spec,
+    spec_diff,
+    spec_hash,
+)
 
 # ── canonical form and hash ────────────────────────────────────────────────────
 
@@ -860,7 +865,9 @@ def test_load_refuses_a_bad_file_with_the_problems(tmp_path):
 def test_the_package_exports_the_schema_without_the_kernel():
     """`pythonsrc.organizer` must stay importable where trimesh is not installed, so its
     `__init__` may import the schema and nothing else."""
-    import ast, importlib.util
+    import ast
+    import importlib.util
+
     import pythonsrc.organizer as pkg
     assert pkg.OrganizerSpec is OrganizerSpec and pkg.spec_hash is spec_hash
     tree = ast.parse(open(importlib.util.find_spec("pythonsrc.organizer").origin).read())
@@ -897,7 +904,7 @@ def test_every_schema_problem_starts_with_the_path_it_is_about():
     assert "spec.process" in paths            # the unknown key, on its owner
     assert "spec.constraints.max_external_mm" in paths
     # Every path is dotted from `spec` and names something, never a bare sentence.
-    for problem, pair in zip(exc.value.problems, pairs):
+    for problem, pair in zip(exc.value.problems, pairs, strict=True):
         assert pair["message"] == problem
         assert pair["path"] == problem.split(" ")[0]
         assert pair["path"] == "spec" or pair["path"].startswith("spec.")

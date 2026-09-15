@@ -127,5 +127,12 @@ pytest-asyncio
 # specific version's accounting. MIT; it pulls coverage.py (Apache-2.0). Test-only —
 # no image installs this file. See THIRD-PARTY-NOTICES.md § 2 and `.coveragerc`.
 pytest-cov==7.1.0
+# The Python linter, for CI and for `make lint`. Nothing imports it and no image
+# installs it; it is here because `.github/workflows/ci.yml` installs this file and
+# runs `ruff check .` as a blocking step. Pinned because a linter that floats is a
+# linter that turns an unrelated pull request red on the day a new rule ships. MIT,
+# a single static binary with no runtime downloads — see THIRD-PARTY-NOTICES.md § 2
+# and `pyproject.toml` for the rule set.
+ruff==0.16.7
 responses
 docker

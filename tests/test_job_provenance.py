@@ -7,7 +7,6 @@ what the geometry looked like before it was sliced.
 
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

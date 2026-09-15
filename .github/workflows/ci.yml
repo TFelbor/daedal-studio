@@ -112,8 +112,19 @@ jobs:
         # `data/` is gitignored, so a fresh checkout has none of it.
         run: mkdir -p data/inputs data/outputs data/logs
 
+      - name: Lint
+        # Blocking, and deliberately not `continue-on-error` like the frontend lint
+        # below. That one is reported-only because it landed on a backlog of 27
+        # pre-existing errors; this one landed green, and a gate that is green on the
+        # day it arrives is one a red run actually means something on.
+        #
+        # Runs before the tests because it is the cheapest step in the job — ruff
+        # reads the whole tree in under a second — and an unused import is worth
+        # hearing about without waiting for PostgreSQL.
+        run: ruff check .
+
       - name: Licence guards
-        # Run first and named separately. A licence violation is not an ordinary test
+        # Run before the suite and named separately. A licence violation is not an ordinary test
         # failure — it is the one class of defect that cannot be fixed after a release —
         # so it should be legible from the job list without opening the log.
         #

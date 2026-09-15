@@ -23,7 +23,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -173,7 +172,7 @@ def test_every_compose_service_and_profile_it_names_is_declared():
         # Paired with its predecessor rather than tracked in a variable: the loop body
         # has five `continue`s, and a `previous = token` at the end of it is one edit away
         # from being skipped on whichever branch someone adds next.
-        for previous, token in zip([None, *tokens], tokens):
+        for previous, token in zip([None, *tokens], tokens, strict=False):
             if expect_value:
                 if previous == "--profile":
                     named_profiles.add(token)
@@ -357,8 +356,9 @@ def test_the_artifacts_it_lists_are_the_ones_a_spec_job_writes():
 
 
 def test_the_row_facts_it_promises_are_real_columns_and_real_values():
-    from pythonsrc.telemetry.schema import VALID_SIZE_SOURCES, PrintJob
     import dataclasses
+
+    from pythonsrc.telemetry.schema import VALID_SIZE_SOURCES, PrintJob
 
     columns = {field.name for field in dataclasses.fields(PrintJob)}
     promised = {

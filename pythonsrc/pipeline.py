@@ -25,6 +25,7 @@ Phase 4 (Slicer) converts the engineered .obj → .gcode before upload:
 # all other imports. Phase 2 does not need it: TRELLIS.2 is CUDA-only and never
 # runs on MPS at all.
 import os
+
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 # Phase 2's allocator setting, for the same reason and with a sharper deadline.
@@ -35,15 +36,15 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # it inside the backend would therefore be too late to have any effect.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import sys
-import time
-import json
-import traceback
-import logging
 import argparse
 import asyncio
-from pathlib import Path
+import json
+import logging
+import sys
+import time
+import traceback
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Add the parent directory (project root or /app inside docker) to sys.path
 # This ensures that "import pythonsrc.operators" works even when the script
@@ -213,7 +214,7 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
     log_dir = Path(log_dir_env) if log_dir_env else (Path.home() / ".ds-mvp" / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     status_file = log_dir / f"{CURRENT_JOB_ID}.status"
-    
+
     name = _PHASE_NAMES.get(phase_num, "unknown").lower()
     record = {
         "phase": phase_num,
@@ -223,7 +224,7 @@ def _write_status(phase_num: int, status: str, error: str = None) -> None:
     }
     if error is not None:
         record["error"] = error
-        
+
     with open(status_file, "a") as f:
         f.write(json.dumps(record) + "\n")
         f.flush()
@@ -495,13 +496,13 @@ def _compile_spec_phase(args, outputs_dir: Path):
             below the nozzle-derived floor.
     """
     try:
-        from organizer.spec import load_spec, dump_spec
         from organizer.archetypes import compile_spec
         from organizer.compiler import export_stl
+        from organizer.spec import dump_spec, load_spec
     except ImportError:
-        from pythonsrc.organizer.spec import load_spec, dump_spec
         from pythonsrc.organizer.archetypes import compile_spec
         from pythonsrc.organizer.compiler import export_stl
+        from pythonsrc.organizer.spec import dump_spec, load_spec
 
     spec = load_spec(args.spec)
     result = compile_spec(spec, nozzle_diameter_mm=_profile_nozzle_mm(args))
@@ -777,7 +778,6 @@ def _phase_start(phase_num: int) -> float:
 def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> None:
     """Print a phase pass banner with timing and output path."""
     elapsed = time.time() - start_time
-    name = _PHASE_NAMES.get(phase_num, "Unknown")
     out_info = f" (output: {output_path})" if output_path else ""
     print(f"[DS] ═══ PHASE {phase_num} PASS  ✓{out_info} ═══", flush=True)
     print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
@@ -787,11 +787,10 @@ def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> Non
 def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
     """Print a phase fail banner with traceback, then exit."""
     elapsed = time.time() - start_time
-    name = _PHASE_NAMES.get(phase_num, "Unknown")
     print(f"[DS] ═══ PHASE {phase_num} FAIL  ✗ ═══", flush=True)
     print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
     print(f"[DS] ERROR: {exc}", flush=True)
-    print(f"[DS] TRACEBACK:", flush=True)
+    print("[DS] TRACEBACK:", flush=True)
     traceback.print_exc()
     _write_status(phase_num, "error", str(exc))
     sys.exit(1)
@@ -912,13 +911,13 @@ def _assert_spec_dimensions(compile_result, engineered_path: Path, outputs_dir: 
         FileNotFoundError: If Phase 2's `spec.json` is not in the job directory.
     """
     try:
-        from organizer.spec import load_spec
         from organizer.archetypes import verify_spec_mesh
         from organizer.compiler import MeasureError
+        from organizer.spec import load_spec
     except ImportError:
-        from pythonsrc.organizer.spec import load_spec
         from pythonsrc.organizer.archetypes import verify_spec_mesh
         from pythonsrc.organizer.compiler import MeasureError
+        from pythonsrc.organizer.spec import load_spec
     import trimesh
 
     spec = load_spec(outputs_dir / "spec.json")
@@ -1434,9 +1433,14 @@ def run(args: argparse.Namespace) -> None:
         # the printability report a few lines below.
         achieved = (eng.last_report or {}).get("achieved_extent_mm")
         if achieved and process_profile_limits:
+            # `strict=False`: both operands are read out of a report dict and a JSON
+            # profile, and this list only builds a warning message. A ragged pair must
+            # not raise from inside the code that explains what went wrong.
             over = [
                 f"{axis} {extent:.0f}mm > {limit:.0f}mm"
-                for axis, extent, limit in zip("XYZ", achieved, process_profile_limits)
+                for axis, extent, limit in zip(
+                    "XYZ", achieved, process_profile_limits, strict=False
+                )
                 if extent > limit
             ]
             if over:
@@ -1579,7 +1583,7 @@ def run(args: argparse.Namespace) -> None:
     if getattr(args, "slice", False) or args.print:
         t0 = _phase_start(4)
         try:
-            from slicer import CuraSlicer, SlicerError
+            from slicer import CuraSlicer
 
             slicer = CuraSlicer(
                 cura_engine=args.cura_engine,
@@ -1617,7 +1621,7 @@ def run(args: argparse.Namespace) -> None:
             profile_path = args.profile or "pythonsrc/profiles/ender3.json"
             with open(profile_path, "r") as f:
                 profile_data = json.load(f)
-            
+
             firmware = os.environ.get("DS_FIRMWARE", profile_data.get("firmware", "octoprint"))
             base_url = os.environ.get("DS_PRINTER_URL", profile_data.get("base_url", "http://localhost:5001"))
 
@@ -1666,17 +1670,18 @@ def run(args: argparse.Namespace) -> None:
                 logger.info("Starting print…")
                 op.start_print(gcode_path.name)
 
+                from urllib.parse import urlparse
+
                 from pythonsrc.telemetry.db import TelemetryDB
                 from pythonsrc.telemetry.detector import attach_detector
                 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
-                from urllib.parse import urlparse
 
                 async def monitor_print():
                     logger.info("Starting telemetry collector and polling print status…")
                     db = TelemetryDB()
                     parsed = urlparse(base_url)
                     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-                    
+
                     # A CLI-launched job may have a row with no start time. Stamp
                     # started_at — not completed_at, which this used to write:
                     # `update_job_outcome`'s second timestamp is the *completion*
@@ -1703,20 +1708,20 @@ def run(args: argparse.Namespace) -> None:
                                 state = op.get_printer_state()
                                 flags = state.get("state", {}).get("flags", {})
                                 state_text = state.get("state", {}).get("text", "").lower()
-                                
+
                                 # If it's ready, operational, or printed and NOT printing, we are done
                                 if (flags.get("ready") or flags.get("operational") or state_text == "operational" or state_text == "printed") and not flags.get("printing"):
                                     logger.info(f"Print job completed! Final state: {state_text}")
                                     break
-                                
+
                                 if flags.get("error") or flags.get("closedOrError") or state_text == "error":
                                     logger.error("Printer reported an error state!")
                                     raise Exception("Printer error state detected during printing.")
-                                    
+
                             except Exception as e:
                                 logger.error(f"Error polling printer state: {e}")
                                 raise e
-                                
+
                             await asyncio.sleep(5)
                     finally:
                         detector_task.cancel()
@@ -1778,7 +1783,7 @@ def _build_parser() -> argparse.ArgumentParser:
              "running Phases 1-2. Implies --skip-visualizer --skip-sculptor --no-scale; "
              "refuses --mesh and --hollow",
     )
-    
+
     # Telemetry
     telemetry = parser.add_argument_group("telemetry")
     telemetry.add_argument("--job-id", metavar="ID", help="Telemetry Job ID for status reporting")

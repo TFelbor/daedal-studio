@@ -1,13 +1,13 @@
+import json
 import os
 import shutil
-import pytest
 import tempfile
-import asyncio
 import uuid
 from datetime import datetime, timezone
-import json
-import websockets
+
+import pytest
 import socketio
+import websockets
 from aiohttp import web
 
 from tests.sweep_tally import SweepTally
@@ -84,7 +84,8 @@ def pytest_configure(config):
     # need the singleton monkeypatch the method they care about — so nothing here
     # depends on this ever succeeding. (The test PostgreSQL container is started with
     # the Docker *CLI*, deliberately outside this manager.)
-    from server.simulator_manager import SimulatorAvailabilityError, simulator_manager as _sim
+    from server.simulator_manager import SimulatorAvailabilityError
+    from server.simulator_manager import simulator_manager as _sim
 
     def _no_docker_in_tests():
         raise SimulatorAvailabilityError("Docker is not reachable from the test suite.")
@@ -233,17 +234,16 @@ def sample_job(tmp_db):
 
 @pytest.fixture
 def sample_samples(tmp_db, sample_job):
-    import time
     with open("tests/fixtures/sample_telemetry.json") as f:
         samples_data = json.load(f)
-    
+
     samples = []
     for data in samples_data:
         data["job_id"] = sample_job.job_id
         sample = TelemetrySample.from_dict(data)
         tmp_db.insert_sample(sample)
         samples.append(sample)
-    
+
     # Ensure there are 60 samples as requested by the test requirements
     if len(samples) < 60:
         for i in range(len(samples), 60):
@@ -260,12 +260,12 @@ def sample_samples(tmp_db, sample_job):
 async def fake_moonraker_ws(unused_tcp_port):
     async def handler(websocket):
         try:
-            async for message in websocket:
+            async for _message in websocket:
                 pass
         except websockets.exceptions.ConnectionClosed:
             pass
 
-    async with websockets.serve(handler, "127.0.0.1", unused_tcp_port) as server:
+    async with websockets.serve(handler, "127.0.0.1", unused_tcp_port):
         yield f"ws://127.0.0.1:{unused_tcp_port}/websocket"
 
 @pytest.fixture
@@ -273,14 +273,14 @@ async def fake_octoprint_sio(unused_tcp_port):
     sio = socketio.AsyncServer(async_mode='aiohttp')
     app = web.Application()
     sio.attach(app)
-    
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', unused_tcp_port)
     await site.start()
-    
+
     yield f"http://127.0.0.1:{unused_tcp_port}"
-    
+
     await runner.cleanup()
 
 

@@ -15,7 +15,6 @@ import pytest
 
 from pythonsrc.size_hint import parse_size_hint, strip_size_phrase
 
-
 # ── Reading a size out of prose ───────────────────────────────────────────────
 
 @pytest.mark.parametrize("prompt,mm", [
@@ -116,12 +115,12 @@ def test_vague_size_words_are_deliberately_left_in_place():
 
 # ── The server offers it and nothing more ─────────────────────────────────────
 
-from unittest.mock import AsyncMock, patch          # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402
 
-from fastapi.testclient import TestClient           # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from pythonsrc.telemetry.db import TelemetryDB      # noqa: E402
-from server.app import app                          # noqa: E402
+from pythonsrc.telemetry.db import TelemetryDB  # noqa: E402
+from server.app import app  # noqa: E402
 
 client = TestClient(app)
 

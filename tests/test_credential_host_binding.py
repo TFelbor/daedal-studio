@@ -34,9 +34,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+import server.app as app_module
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
-import server.app as app_module
 from server.app import app
 from server.config_store import (
     INTERNAL_CONFIG_KEYS,
@@ -95,7 +95,7 @@ def store():
 
     for key in written:
         app_module.config_store.delete(key)
-    for credential_key, (host_key, _) in PRINTER_CREDENTIAL_HOSTS.items():
+    for credential_key in PRINTER_CREDENTIAL_HOSTS:
         app_module.config_store.delete(credential_key)
 
 

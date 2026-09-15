@@ -15,10 +15,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server import app as app_module
-from server.app import app
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
+from server import app as app_module
+from server.app import app
 
 client = TestClient(app)
 OUTPUTS = Path(__file__).parent.parent / "data" / "outputs"

@@ -6,17 +6,17 @@ import os
 import uuid
 from collections import deque
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import TelemetrySample, FailureEvent
 from pythonsrc.operators.base import BasePrinterOperator
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import FailureEvent, TelemetrySample
 
 logger = logging.getLogger(__name__)
 
 class AnomalyDetector:
     """Detector that consumes TelemetrySample objects from a queue and applies rule-based anomaly detection.
-    
+
     Firmware applicability:
         - Rule 1 (Thermal runaway): Klipper + OctoPrint
         - Rule 2 (Extrusion stall): Klipper only (requires gcode_line)
@@ -51,7 +51,7 @@ class AnomalyDetector:
         """Fetch current state and progress, with caching to avoid spamming."""
         cache = self._state_cache.setdefault(job_id, {"time": 0, "state": "printing", "progress": 0.0, "prev_state": "printing"})
         now = asyncio.get_event_loop().time()
-        
+
         # Determine state from DB outcome first
         job = self.db.get_job(job_id)
         if job:
@@ -68,7 +68,7 @@ class AnomalyDetector:
             try:
                 from pythonsrc.operators.moonraker_operator import MoonrakerOperator
                 from pythonsrc.operators.octoprint_operator import OctoPrintOperator
-                
+
                 if isinstance(self.operator, MoonrakerOperator):
                     st = await asyncio.to_thread(self.operator.get_printer_state)
                     state_text = st.get("state", "").lower()
@@ -83,12 +83,12 @@ class AnomalyDetector:
                     flags = st.get("state", {}).get("flags", {})
                     if flags.get("error") or flags.get("closedOrError"):
                         cache["state"] = "error"
-                    
+
                     job_st = await asyncio.to_thread(self.operator.get_job_status)
                     cache["progress"] = job_st.get("progress", {}).get("completion", 0.0) or 0.0
             except Exception as e:
                 logger.debug(f"Failed to fetch operator state: {e}")
-                
+
         return cache["state"], cache["progress"]
 
     def _trigger_failure(self, job_id: str, sample: TelemetrySample, failure_type: str, history: List[TelemetrySample]) -> None:
@@ -98,7 +98,7 @@ class AnomalyDetector:
             return  # Already triggered this type of failure for this job
 
         logger.warning(f"Anomaly detected! Job {job_id}, Type: {failure_type}")
-        
+
         event = FailureEvent(
             event_id=str(uuid.uuid4()),
             job_id=job_id,
@@ -112,7 +112,7 @@ class AnomalyDetector:
         )
         self.db.insert_failure_event(event)
         triggered_set.add(failure_type)
-        
+
         # Check environment var for pause
         if os.environ.get("PAUSE_ON_FAILURE", "false").lower() == "true":
             if self.operator:
@@ -158,10 +158,10 @@ class AnomalyDetector:
         """
         if not history:
             return
-            
+
         current = history[-1]
         state, progress = await self._get_state_and_progress(job_id)
-        
+
         self._check_thermal_runaway(job_id, current, history, state)
         self._check_extrusion_stall(job_id, current, history, state, progress)
         self._check_layer_shift(job_id, current, history, state)

@@ -1,14 +1,14 @@
-import pytest
 import asyncio
 import uuid
-import json
 from datetime import datetime, timezone
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from server.app import app, active_collectors
+import pytest
+from fastapi.testclient import TestClient
+
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import TelemetrySample
+from server.app import active_collectors, app
 
 client = TestClient(app)
 
@@ -24,7 +24,7 @@ def clear_db():
     db.execute("DELETE FROM telemetry_collector_claim")
     db.execute("DELETE FROM print_job")
     db.close()
-    
+
     # clear background collectors
     active_collectors.clear()
     yield
@@ -89,7 +89,7 @@ def test_klipper_telemetry(mock_moonraker_start, mock_run_pipeline, printer_conf
             fan_speed_pct=100
         ))
     db.close()
-    
+
     # GET /jobs/{id}/telemetry
     resp_tel = client.get(f"/jobs/{job_id}/telemetry")
     assert resp_tel.status_code == 200
@@ -170,7 +170,7 @@ def test_failure_event_endpoint():
             fan_speed_pct=100
         ))
     db.close()
-    
+
     resp = client.post(f"/jobs/{job_id}/failure", json={
         "failure_type": "adhesion",
         "notes": "came off bed"
@@ -181,7 +181,7 @@ def test_failure_event_endpoint():
     assert data["notes"] == "came off bed"
     assert data["source"] == "manual"
     assert len(data["snapshot"]) == 2
-    
+
     # Check DB
     db = TelemetryDB()
     events = db.get_failure_events(job_id)
@@ -196,10 +196,10 @@ def test_shutdown_stops_collectors(mock_stop):
     from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
     collector = MoonrakerCollector("ws://localhost", "job1", TelemetryDB())
     active_collectors["job1"] = collector
-    
+
     # Trigger shutdown event
     # Using client to trigger lifecycle events
-    with TestClient(app) as lifecycle_client:
+    with TestClient(app):
         pass  # Startup and shutdown are called
-        
+
     mock_stop.assert_called_once()
