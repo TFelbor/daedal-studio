@@ -22,11 +22,9 @@
 # When it runs, and why not on every merge. This regenerates a tree that only changes
 # when a dependency changes, and producing it costs two amd64 image builds plus syft —
 # measured at ~349 billable minutes over 39 runs, the largest single consumer in this
-# repository. It used to run on every push to `main`, and the output of a merge that
-# touched no dependency was two lines: `generated_at` and `commit` in
-# `licenses/report.json`. (The "skipped when nothing changed" guard below does not stop
-# that: each run writes a date-stamped `docs/audits/YYYY-MM-DD-licence.md`, so the
-# staged diff is never empty.) So:
+# repository at the time. It used to run on every push to `main`, and the output of a
+# merge that touched no dependency was two lines: `generated_at` and `commit` in
+# `licenses/report.json`. So:
 #
 #   * `pull_request`, filtered to the files this data is a function of — the only
 #     pre-merge look at a dependency's licence, and it fires on the rare PR that adds
@@ -375,6 +373,17 @@ jobs:
           # report.json carries a timestamp, so it differs on every run. Committing on
           # that alone would put an empty licence commit on main after every run, so
           # the data files decide whether there is anything to record.
+          #
+          # This guard used to be unreachable, which is the shape worth remembering:
+          # it was correct, and something upstream of it made its condition impossible.
+          # `--audit-out auto` wrote `docs/audits/<today>-licence.md` unconditionally,
+          # and a new date is a new path, so the staged diff always held a file that
+          # was not `report.json` and the run always committed. The fix is upstream, in
+          # `licence_report.py`: a note whose digest matches the previous note's is not
+          # written at all (`audit_note_would_repeat`), because the digest already
+          # excludes the timestamp and the sha for exactly this purpose. Nothing here
+          # had to change — so if this ever starts committing on every run again, look
+          # at what is writing into `docs/audits/`, not at the lines below.
           if git diff --cached --quiet -- licenses docs/audits; then
             echo "No licence data changed."
             exit 0

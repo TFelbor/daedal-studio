@@ -580,6 +580,106 @@ def test_audit_note_diffs_against_the_previous_dated_file(licences_dir: Path, tm
     assert "No longer present" in text
 
 
+def test_a_note_that_would_only_restate_the_previous_one_is_not_written(
+    licences_dir: Path, tmp_path: Path
+):
+    """The empty-commit guard in `licence-data.yml` was unreachable, and this is why.
+
+    `--audit-out auto` wrote `docs/audits/<today>-licence.md` on every run. A new date
+    is a new path, so the workflow's staged diff always contained a file that was not
+    `report.json`, and the "only the timestamp changed" branch could never be taken:
+    every scheduled run committed a ~45 KB duplicate note plus a commit to `main`
+    saying nothing. Thirteen notes had accumulated, several byte-identical apart from
+    their dates.
+
+    The fix is here rather than in the workflow's bash, because the digest already
+    excludes `generated_at` and `commit` for exactly this purpose.
+    """
+    audits = tmp_path / "audits"
+    report = report_script.build_report(licences_dir)
+    yesterday = audits / "2026-01-01-licence.md"
+    report_script.write_audit(report, yesterday)
+
+    today = audits / "2026-01-02-licence.md"
+    assert report_script.audit_note_would_repeat(report, today) == "2026-01-01-licence.md"
+
+
+def test_a_note_is_written_as_soon_as_a_finding_moves(licences_dir: Path, tmp_path: Path):
+    audits = tmp_path / "audits"
+    report_script.write_audit(report_script.build_report(licences_dir), audits / "2026-01-01-licence.md")
+
+    (licences_dir / "python.json").write_text(
+        json.dumps(
+            [
+                {"Name": "trimesh", "Version": "4.11.2", "License": "MIT License"},
+                {"Name": "newly-lgpl", "Version": "2.0", "License": "LGPL-3.0"},
+            ]
+        )
+    )
+    today = audits / "2026-01-02-licence.md"
+    assert report_script.audit_note_would_repeat(report_script.build_report(licences_dir), today) is None
+
+
+def test_the_first_note_is_always_written(licences_dir: Path, tmp_path: Path):
+    """Nothing to repeat means nothing to skip — the baseline run must produce a note."""
+    report = report_script.build_report(licences_dir)
+    first = tmp_path / "audits" / "2026-01-01-licence.md"
+    assert report_script.audit_note_would_repeat(report, first) is None
+
+
+def test_an_existing_note_is_refreshed_whatever_its_digest_says(
+    licences_dir: Path, tmp_path: Path
+):
+    """A same-day rerun updates the note it already wrote.
+
+    Skipping it would freeze the commit sha that note records, and the file may carry
+    a person's reasoning around the generated block — `write_audit` preserves that, and
+    this guard must not stand between them.
+    """
+    audits = tmp_path / "audits"
+    report = report_script.build_report(licences_dir)
+    report_script.write_audit(report, audits / "2026-01-01-licence.md")
+    today = audits / "2026-01-02-licence.md"
+    report_script.write_audit(report, today)
+
+    assert today.exists()
+    assert report_script.audit_note_would_repeat(report, today) is None
+
+
+def test_two_auto_runs_over_an_unchanged_tree_leave_one_note(
+    licences_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """End to end through `--audit-out auto`, which is what CI and `make` run.
+
+    The unit tests above pin `audit_note_would_repeat`; this pins that `main` is wired
+    to it, and that the wiring is on the 'auto' path only. Without it the two runs
+    produce two dated notes and `licence-data.yml`'s commit guard stays unreachable.
+    """
+    monkeypatch.setattr(report_script, "REPO_ROOT", tmp_path)
+    audits = tmp_path / "docs" / "audits"
+
+    monkeypatch.setattr(report_script, "_utc_now", lambda: "2026-01-01T00:00:00Z", raising=False)
+    assert report_script.main(["--licences-dir", str(licences_dir), "--audit-out", "auto"]) == 0
+    first = sorted(audits.glob("*-licence.md"))
+    assert len(first) == 1, first
+
+    # A second run on a later date over a tree that did not move.
+    monkeypatch.setattr(report_script, "_utc_now", lambda: "2026-01-02T00:00:00Z", raising=False)
+    assert report_script.main(["--licences-dir", str(licences_dir), "--audit-out", "auto"]) == 0
+    assert sorted(audits.glob("*-licence.md")) == first
+
+    # And an explicit --audit-out still writes whatever it is pointed at: the caller
+    # named a file, so refusing to produce it would be the surprising answer.
+    explicit = tmp_path / "somewhere" / "note.md"
+    assert (
+        report_script.main(
+            ["--licences-dir", str(licences_dir), "--audit-out", str(explicit)]
+        )
+        == 0
+    )
+    assert explicit.exists()
+
+
 def test_the_digest_ignores_the_timestamp_so_an_unchanged_run_is_visibly_unchanged(
     licences_dir: Path,
 ):
