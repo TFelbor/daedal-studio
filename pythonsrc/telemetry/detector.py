@@ -6,11 +6,11 @@ import os
 import uuid
 from collections import deque
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import TelemetrySample, FailureEvent
 from pythonsrc.operators.base import BasePrinterOperator
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import FailureEvent, TelemetrySample
 
 logger = logging.getLogger(__name__)
 

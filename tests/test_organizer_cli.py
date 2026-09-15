@@ -5,7 +5,6 @@ no interpreter path and the exit codes are asserted directly.
 """
 import json
 
-
 from pythonsrc.organizer.__main__ import main
 from pythonsrc.organizer.archetypes import deck_box
 from pythonsrc.organizer.spec import OrganizerSpec, dump_spec
@@ -85,6 +84,7 @@ def test_measure_passes_a_compiled_mesh_and_prints_a_table(tmp_path, capsys):
 
 def test_measure_fails_a_mesh_that_is_not_the_spec(tmp_path, capsys):
     import trimesh
+
     from pythonsrc.organizer.archetypes import example_spec
     spec_path = dump_spec(example_spec("deck_box"), tmp_path / "deck.json")
     wrong = tmp_path / "cube.stl"

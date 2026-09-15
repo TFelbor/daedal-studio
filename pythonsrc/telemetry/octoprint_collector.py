@@ -1,13 +1,14 @@
 """Telemetry collection from OctoPrint Socket.IO."""
 
 import asyncio
-import logging
 import json
+import logging
 import random
 import string
-import aiohttp
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import aiohttp
 
 from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.db import TelemetryDB

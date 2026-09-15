@@ -1,16 +1,17 @@
-import pytest
 import asyncio
+import json
 import logging
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
-from datetime import datetime, timezone
-import json
 
 import aiohttp
+import pytest
 
 from pythonsrc.telemetry.db import OperationalError
-from pythonsrc.telemetry.schema import PrintJob
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+from pythonsrc.telemetry.schema import PrintJob
+
 
 @pytest.fixture
 def memory_db(isolated_db):

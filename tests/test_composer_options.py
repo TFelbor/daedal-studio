@@ -31,8 +31,8 @@ import pytest
 
 from pythonsrc.organizer.dimensions import CARD_KINDS, SLEEVINGS
 from pythonsrc.organizer.spec import (
-    ARCHETYPES,
     ARCHETYPE_WALL_MM,
+    ARCHETYPES,
     FIT_INTENTS,
     LID_KINDS,
     TAB_POSITIONS,

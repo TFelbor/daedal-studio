@@ -20,8 +20,8 @@ that check reports `not_checked` with the reason instead of silently passing.
 from __future__ import annotations
 
 import dataclasses
-import math
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
 

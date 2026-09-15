@@ -1,8 +1,11 @@
-import pytest
-import responses
-import requests
 import json
+
+import pytest
+import requests
+import responses
+
 from pythonsrc.operators.moonraker_operator import MoonrakerOperator
+
 
 @pytest.fixture
 def operator():

@@ -19,10 +19,9 @@ joined by a row in the database — so this is too, which is what `request_param
 """
 
 import json
-
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from pythonsrc.telemetry.db import TelemetryDB

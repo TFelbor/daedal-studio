@@ -1,9 +1,11 @@
 import os
 import subprocess
 import time
-import requests
-import pytest
 from pathlib import Path
+
+import pytest
+import requests
+
 
 @pytest.mark.integration
 @pytest.mark.slow
@@ -79,13 +81,15 @@ def test_pipeline_status():
         server_process.terminate()
         server_process.wait()
 
-from fastapi.testclient import TestClient
-from server.app import app
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import PrintJob
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
+
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import PrintJob
+from server.app import app
 
 client = TestClient(app)
 

@@ -22,9 +22,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import app, _read_current_phase
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
+from server.app import _read_current_phase, app
 
 client = TestClient(app)
 LOGS = Path(__file__).parent.parent / "data" / "logs"

@@ -1,9 +1,10 @@
 """Utility functions for platform and execution strategy detection."""
 
-import sys
 import shutil
 import subprocess
+import sys
 from typing import Literal
+
 
 def _docker_has_nvidia_runtime() -> bool:
     """Check if Docker has the NVIDIA runtime available."""

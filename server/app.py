@@ -8,20 +8,21 @@ import hashlib
 import json
 import logging
 import os
-import re
-import sys
-import uuid
 import platform
+import re
 import subprocess
+import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Mapping, Optional, Any, Dict
+from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import urlparse, urlunparse
 
-from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
+
 # Raised instead of a bare ValueError for one reason: its `ctx` survives into the 422
 # body, so a spec refusal arrives as a list of `{path, message}` the composer can put
 # on the control that caused it — see `JobRequest._spec_is_valid`.
@@ -30,17 +31,12 @@ from pydantic_core import PydanticCustomError
 # Add pythonsrc to sys.path so we can import telemetry modules
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from pythonsrc.telemetry.db import TelemetryDB
+import httpx
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
-from pythonsrc.telemetry.schema import PrintJob, FailureEvent, VALID_FAILURE_TYPES
-from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
-from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
-from pythonsrc.telemetry.detector import attach_detector
-from pythonsrc.telemetry.run_context import resolve_git_sha
-from pythonsrc.operators import PrinterFactory
-from pythonsrc.platform_utils import get_execution_strategy
-from pythonsrc.size_hint import parse_size_hint
+
 from pythonsrc.ip_screen import screen_prompt
+from pythonsrc.operators import PrinterFactory
+
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
@@ -52,25 +48,32 @@ from pythonsrc.organizer import (
     problems_with_paths,
     spec_hash,
 )
+
 # The seed dimensions, for the same reason and under the same rule: `resolve_stack` is
 # arithmetic over a table of sourced millimetres and imports nothing. It is what
 # `POST /organizer/resolve` answers with, and the only figures the composer may show.
 from pythonsrc.organizer.dimensions import resolve_stack
-import httpx
+from pythonsrc.platform_utils import get_execution_strategy
+from pythonsrc.size_hint import parse_size_hint
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.detector import attach_detector
+from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
+from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+from pythonsrc.telemetry.run_context import resolve_git_sha
+from pythonsrc.telemetry.schema import VALID_FAILURE_TYPES, FailureEvent, PrintJob
+from server.activity import activity
 from server.config_store import (
-    BoundCredential,
-    ConfigStore,
     CONFIG_KEYS,
     INTERNAL_CONFIG_KEYS,
     PRINTER_CREDENTIAL_HOSTS,
     SUBPROCESS_ENV_KEYS,
+    BoundCredential,
+    ConfigStore,
     bound_printer_credential,
 )
 from server.job_broadcaster import broadcaster
-from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
-
-from server.activity import activity
 from server.logging_config import configure_logging, is_high_frequency_path
+from server.simulator_manager import SimulatorAvailabilityError, simulator_manager
 
 # At import time, not in a startup event: uvicorn imports this module and runs
 # module-level code (config store, strategy resolution) before any startup hook

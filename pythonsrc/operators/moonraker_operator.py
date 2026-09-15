@@ -3,8 +3,9 @@
 import argparse
 import json
 import logging
+
 import requests
-from requests.exceptions import RequestException, ConnectionError
+from requests.exceptions import ConnectionError, RequestException
 
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
 

@@ -7,10 +7,10 @@ numbers alone; each feature is measured from the mesh's own planes and compared.
 """
 import hashlib
 
+import manifold3d
 import numpy as np
 import pytest
 import trimesh
-import manifold3d
 
 from pythonsrc.organizer.compiler import (
     MeasureError,
@@ -19,7 +19,6 @@ from pythonsrc.organizer.compiler import (
     manifold_to_trimesh,
     plane_set,
 )
-
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +62,13 @@ def test_assert_features_within_refuses_a_missing_measurement():
         assert_features_within({"a_mm": 10.0}, {}, tol_mm=0.05)
 
 
+from pythonsrc.organizer.archetypes import (  # noqa: E402  # noqa: E402
+    card_divider,
+    compile_spec,
+    deck_box,
+    example_spec,
+    get_archetype,
+)
 from pythonsrc.organizer.spec import (  # noqa: E402
     ARCHETYPE_WALL_MM,
     CardStack,
@@ -76,8 +82,6 @@ from pythonsrc.organizer.spec import (  # noqa: E402
     canonical_json,
     wall_floor_mm,
 )
-from pythonsrc.organizer.archetypes import compile_spec, example_spec, get_archetype  # noqa: E402
-from pythonsrc.organizer.archetypes import card_divider, deck_box  # noqa: E402
 
 
 def deck(count=100, sleeving="double", **overrides):

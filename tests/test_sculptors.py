@@ -809,7 +809,7 @@ def test_kill_switch_is_checked_before_the_api_key(clean_env):
 
 def test_decimation_target_is_capped_by_default(clean_env):
     """The endpoint defaults to 500k faces; a real job died on 462k."""
-    from pythonsrc.sculptors.pixazo import PixazoBackend, DEFAULT_DECIMATION_TARGET
+    from pythonsrc.sculptors.pixazo import DEFAULT_DECIMATION_TARGET, PixazoBackend
 
     clean_env.setenv("PIXAZO_API_KEY", "key-123")
     clean_env.delenv("DS_DISABLE_PAID_BACKENDS", raising=False)

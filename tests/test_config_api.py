@@ -25,9 +25,12 @@ if __name__ == "__main__":
     )
 
 import os
+
 from fastapi.testclient import TestClient
+
 from server.app import app
 from server.config_store import CONFIG_KEYS, INTERNAL_CONFIG_KEYS
+
 
 def run_tests():
     with TestClient(app) as client:

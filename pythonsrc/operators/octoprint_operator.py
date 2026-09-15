@@ -35,6 +35,7 @@ def _setup_logging(verbose: bool = False) -> None:
 # ── OctoPrintOperator ─────────────────────────────────────────────────────────
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError
 
+
 class OctoPrintOperator(BasePrinterOperator):
     """Thin wrapper around the OctoPrint REST API.
 

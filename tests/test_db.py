@@ -3,13 +3,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
 from pythonsrc.telemetry.db import (
     TELEMETRY_TABLES,
     DatabaseConfigError,
     TelemetryDB,
     get_database_url,
 )
+from pythonsrc.telemetry.schema import FailureEvent, PrintJob, TelemetrySample
 
 
 @pytest.fixture

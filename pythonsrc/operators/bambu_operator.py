@@ -3,6 +3,7 @@
 import logging
 import ssl
 import time
+
 import paho.mqtt.client as mqtt
 
 from pythonsrc.operators.base import BasePrinterOperator, PrinterConnectionError

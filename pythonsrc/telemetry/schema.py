@@ -4,9 +4,10 @@ This module provides data structures to define print jobs, telemetry samples,
 and failure events, including JSON serialization methods.
 """
 from __future__ import annotations
+
 import dataclasses
 from datetime import datetime
-from typing import Literal, Dict, Any, Type
+from typing import Any, Dict, Literal, Type
 
 #: Every value `PrintJob.outcome` may hold.
 #:

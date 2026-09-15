@@ -29,7 +29,6 @@ import pytest
 
 from pythonsrc import ip_screen_image
 
-
 # ── The licence guard ─────────────────────────────────────────────────────────
 
 def test_the_default_checkpoint_is_a_permissive_one():

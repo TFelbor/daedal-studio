@@ -25,6 +25,7 @@ Phase 4 (Slicer) converts the engineered .obj → .gcode before upload:
 # all other imports. Phase 2 does not need it: TRELLIS.2 is CUDA-only and never
 # runs on MPS at all.
 import os
+
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 # Phase 2's allocator setting, for the same reason and with a sharper deadline.
@@ -35,15 +36,15 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # it inside the backend would therefore be too late to have any effect.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import sys
-import time
-import json
-import traceback
-import logging
 import argparse
 import asyncio
-from pathlib import Path
+import json
+import logging
+import sys
+import time
+import traceback
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Add the parent directory (project root or /app inside docker) to sys.path
 # This ensures that "import pythonsrc.operators" works even when the script
@@ -495,13 +496,13 @@ def _compile_spec_phase(args, outputs_dir: Path):
             below the nozzle-derived floor.
     """
     try:
-        from organizer.spec import load_spec, dump_spec
         from organizer.archetypes import compile_spec
         from organizer.compiler import export_stl
+        from organizer.spec import dump_spec, load_spec
     except ImportError:
-        from pythonsrc.organizer.spec import load_spec, dump_spec
         from pythonsrc.organizer.archetypes import compile_spec
         from pythonsrc.organizer.compiler import export_stl
+        from pythonsrc.organizer.spec import dump_spec, load_spec
 
     spec = load_spec(args.spec)
     result = compile_spec(spec, nozzle_diameter_mm=_profile_nozzle_mm(args))
@@ -912,13 +913,13 @@ def _assert_spec_dimensions(compile_result, engineered_path: Path, outputs_dir: 
         FileNotFoundError: If Phase 2's `spec.json` is not in the job directory.
     """
     try:
-        from organizer.spec import load_spec
         from organizer.archetypes import verify_spec_mesh
         from organizer.compiler import MeasureError
+        from organizer.spec import load_spec
     except ImportError:
-        from pythonsrc.organizer.spec import load_spec
         from pythonsrc.organizer.archetypes import verify_spec_mesh
         from pythonsrc.organizer.compiler import MeasureError
+        from pythonsrc.organizer.spec import load_spec
     import trimesh
 
     spec = load_spec(outputs_dir / "spec.json")
@@ -1666,10 +1667,11 @@ def run(args: argparse.Namespace) -> None:
                 logger.info("Starting print…")
                 op.start_print(gcode_path.name)
 
+                from urllib.parse import urlparse
+
                 from pythonsrc.telemetry.db import TelemetryDB
                 from pythonsrc.telemetry.detector import attach_detector
                 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
-                from urllib.parse import urlparse
 
                 async def monitor_print():
                     logger.info("Starting telemetry collector and polling print status…")

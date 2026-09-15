@@ -40,7 +40,6 @@ from pythonsrc.telemetry.db import (
     redact_dsn,
 )
 
-
 # ── The map ───────────────────────────────────────────────────────────────────
 # Every write to print_job, in the order a job encounters them. Kept as data
 # rather than prose so the renderer, the coverage summary and the --json output

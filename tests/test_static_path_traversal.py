@@ -21,10 +21,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server import app as app_module
-from server.app import app, resolve_job_artifact, resolve_job_profile
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
+from server import app as app_module
+from server.app import app, resolve_job_artifact, resolve_job_profile
 
 client = TestClient(app)
 

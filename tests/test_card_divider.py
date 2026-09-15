@@ -26,6 +26,7 @@ import pytest
 import trimesh
 
 from pythonsrc.organizer.archetypes import (
+    card_divider,
     compile_spec,
     example_spec,
     fits_for,
@@ -35,7 +36,6 @@ from pythonsrc.organizer.archetypes import (
     verify_spec_mesh,
     view_for,
 )
-from pythonsrc.organizer.archetypes import card_divider
 from pythonsrc.organizer.compiler import MeasureError, assert_features_within, export_stl
 from pythonsrc.organizer.spec import (
     CardStack,

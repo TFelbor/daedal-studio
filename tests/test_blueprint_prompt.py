@@ -64,9 +64,9 @@ def test_thick_solid_geometry_is_still_requested():
 #
 # This changes the blueprint only. It is not colour printing.
 
-import pytest                                                        # noqa: E402
+import pytest  # noqa: E402
 
-from pythonsrc.blueprint_spec import engineer_prompt as _wrap        # noqa: E402
+from pythonsrc.blueprint_spec import engineer_prompt as _wrap  # noqa: E402
 
 
 def test_a_named_colour_reaches_the_prompt():

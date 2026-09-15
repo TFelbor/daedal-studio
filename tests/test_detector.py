@@ -1,14 +1,16 @@
 import asyncio
 import os
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from pythonsrc.telemetry.detector import AnomalyDetector
-from pythonsrc.telemetry.schema import TelemetrySample, FailureEvent
+import pytest
+
 from pythonsrc.operators.base import BasePrinterOperator
 from pythonsrc.operators.moonraker_operator import MoonrakerOperator
 from pythonsrc.operators.octoprint_operator import OctoPrintOperator
+from pythonsrc.telemetry.detector import AnomalyDetector
+from pythonsrc.telemetry.schema import FailureEvent, TelemetrySample
+
 
 @pytest.fixture
 def mock_db():

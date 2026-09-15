@@ -30,7 +30,13 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from ..compiler import DEFAULT_TOLERANCE_MM, CompileResult, DimensionReport, FitsResult, check_dimensions
+from ..compiler import (
+    DEFAULT_TOLERANCE_MM,
+    CompileResult,
+    DimensionReport,
+    FitsResult,
+    check_dimensions,
+)
 from ..spec import (
     ARCHETYPE_WALL_MM,
     ARCHETYPES,

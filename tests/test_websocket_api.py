@@ -24,11 +24,14 @@ if __name__ == "__main__":
         _os.path.join(_tempfile.mkdtemp(prefix="ds-smoke-"), ".config_key"),
     )
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
-from server.app import app
+
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import PrintJob
-from datetime import datetime, timezone
+from server.app import app
+
 
 def setup_db():
     db = TelemetryDB()

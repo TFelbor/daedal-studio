@@ -356,8 +356,9 @@ def test_the_artifacts_it_lists_are_the_ones_a_spec_job_writes():
 
 
 def test_the_row_facts_it_promises_are_real_columns_and_real_values():
-    from pythonsrc.telemetry.schema import VALID_SIZE_SOURCES, PrintJob
     import dataclasses
+
+    from pythonsrc.telemetry.schema import VALID_SIZE_SOURCES, PrintJob
 
     columns = {field.name for field in dataclasses.fields(PrintJob)}
     promised = {

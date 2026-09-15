@@ -11,9 +11,8 @@ import time
 from pathlib import Path
 
 import torch
-from diffusers import DiffusionPipeline
-
 from config import INPUTS_DIR
+from diffusers import DiffusionPipeline
 
 # Prompt engineering, seed selection and the result record live in a torch-free module
 # so the pipeline, the server and the tests can use them without the Phase 1 stack.

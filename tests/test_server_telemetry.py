@@ -1,13 +1,14 @@
-import pytest
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from server.app import app, active_collectors
+import pytest
+from fastapi.testclient import TestClient
+
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import TelemetrySample
+from server.app import active_collectors, app
 
 client = TestClient(app)
 

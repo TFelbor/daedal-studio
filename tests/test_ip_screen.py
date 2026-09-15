@@ -15,9 +15,9 @@ artifact-cleanup loop in `create_job`, which unconditionally deletes the shared
 destroys the previous job's artifacts to reject a job that never existed.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from pythonsrc.ip_screen import screen_prompt

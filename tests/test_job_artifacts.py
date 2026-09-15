@@ -11,14 +11,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from pythonsrc.telemetry.db import TelemetryDB
+from pythonsrc.telemetry.schema import PrintJob
 from server.app import (
     DOWNLOAD_FORMATS,
     app,
     resolve_job_artifact,
     stale_flat_artifacts,
 )
-from pythonsrc.telemetry.db import TelemetryDB
-from pythonsrc.telemetry.schema import PrintJob
 
 client = TestClient(app)
 REPO_ROOT = Path(__file__).parent.parent

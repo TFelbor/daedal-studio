@@ -1,12 +1,13 @@
+import json
 import os
 import shutil
-import pytest
 import tempfile
 import uuid
 from datetime import datetime, timezone
-import json
-import websockets
+
+import pytest
 import socketio
+import websockets
 from aiohttp import web
 
 from tests.sweep_tally import SweepTally
@@ -83,7 +84,8 @@ def pytest_configure(config):
     # need the singleton monkeypatch the method they care about — so nothing here
     # depends on this ever succeeding. (The test PostgreSQL container is started with
     # the Docker *CLI*, deliberately outside this manager.)
-    from server.simulator_manager import SimulatorAvailabilityError, simulator_manager as _sim
+    from server.simulator_manager import SimulatorAvailabilityError
+    from server.simulator_manager import simulator_manager as _sim
 
     def _no_docker_in_tests():
         raise SimulatorAvailabilityError("Docker is not reachable from the test suite.")

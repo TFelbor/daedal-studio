@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+
 class PrinterConnectionError(Exception):
     """Exception raised for unrecoverable errors connecting to the printer."""
     pass

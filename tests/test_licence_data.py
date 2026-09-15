@@ -17,11 +17,10 @@ somewhere in this repo:
 import importlib.util
 import json
 import re
-
-import yaml
 from pathlib import Path
 
 import pytest
+import yaml
 
 from pythonsrc.licence_policy import (
     ALLOW,

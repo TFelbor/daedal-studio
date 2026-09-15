@@ -7,8 +7,8 @@ import pytest
 import pytest_asyncio
 from websockets.server import serve
 
-from pythonsrc.telemetry.schema import PrintJob
 from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
+from pythonsrc.telemetry.schema import PrintJob
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,10 @@
-import pytest
 import json
 from datetime import datetime, timezone
-from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent
+
+import pytest
+
+from pythonsrc.telemetry.schema import FailureEvent, PrintJob, TelemetrySample
+
 
 def test_print_job_serialization():
     dt_start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)

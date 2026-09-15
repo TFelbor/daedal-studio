@@ -43,7 +43,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from pythonsrc.telemetry.schema import PrintJob, TelemetrySample, FailureEvent, JobEvent
+from pythonsrc.telemetry.schema import FailureEvent, JobEvent, PrintJob, TelemetrySample
 
 logger = logging.getLogger(__name__)
 

@@ -634,8 +634,13 @@ def test_from_json_refuses_text_that_is_not_json():
     assert "JSON" in str(exc.value)
 
 
-from pythonsrc.organizer.spec import canonical_json, dump_spec, load_spec, spec_diff, spec_hash  # noqa: E402
-
+from pythonsrc.organizer.spec import (  # noqa: E402
+    canonical_json,
+    dump_spec,
+    load_spec,
+    spec_diff,
+    spec_hash,
+)
 
 # ── canonical form and hash ────────────────────────────────────────────────────
 
@@ -862,6 +867,7 @@ def test_the_package_exports_the_schema_without_the_kernel():
     `__init__` may import the schema and nothing else."""
     import ast
     import importlib.util
+
     import pythonsrc.organizer as pkg
     assert pkg.OrganizerSpec is OrganizerSpec and pkg.spec_hash is spec_hash
     tree = ast.parse(open(importlib.util.find_spec("pythonsrc.organizer").origin).read())

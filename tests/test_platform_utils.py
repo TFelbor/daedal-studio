@@ -1,8 +1,10 @@
 import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from pythonsrc.platform_utils import get_execution_strategy, get_phase1_command
+
 
 @pytest.fixture
 def mock_torch_mps():

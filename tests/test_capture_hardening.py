@@ -12,11 +12,11 @@ import pytest
 
 from pythonsrc.telemetry.db import IntegrityError, TelemetryDB
 from pythonsrc.telemetry.schema import (
-    PrintJob,
-    TelemetrySample,
+    JOB_EVENT_KINDS,
     FailureEvent,
     JobEvent,
-    JOB_EVENT_KINDS,
+    PrintJob,
+    TelemetrySample,
 )
 
 

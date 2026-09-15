@@ -8,9 +8,9 @@ from typing import Optional
 
 import websockets
 
+from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.internal_telemetry import send_internal_telemetry
-from pythonsrc.telemetry.collector_claim import CollectorClaim
 from pythonsrc.telemetry.schema import TelemetrySample
 
 logger = logging.getLogger(__name__)

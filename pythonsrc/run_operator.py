@@ -1,8 +1,8 @@
 import argparse
 import json
 import logging
-import sys
 import os
+import sys
 from pathlib import Path
 
 # The repository root, so `pythonsrc` is importable however this file was started.
@@ -121,10 +121,11 @@ def main():
 
 
             import asyncio
+            from urllib.parse import urlparse
+
             from pythonsrc.telemetry.db import TelemetryDB
             from pythonsrc.telemetry.detector import attach_detector
             from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
-            from urllib.parse import urlparse
 
             async def monitor_print():
                 logger.info("Starting telemetry collector and polling print status...")
