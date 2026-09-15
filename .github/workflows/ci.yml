@@ -42,10 +42,25 @@
 #   * `postgres:17-alpine`, the service container below, publishes linux/arm64.
 #   * The CuraEngine stand-in is a bash script, so it has no architecture.
 #
-# What this trades. arm64 is 17 % cheaper per minute, so it is a saving only while the
-# job is not more than 17 % slower. If a later measurement shows it is, the honest move
-# is back to `ubuntu-latest` with the number recorded — the arch is one token per job
-# and nothing else in this file depends on it.
+# What this trades, and what the trial measured. arm64 is 17 % cheaper per minute, so
+# it would be a saving only while the job is not more than 17 % slower. Measured on the
+# first run of this change (run 35022036721) against the eight x64 runs of 2026-09-15,
+# it is not slower — it is faster, so the two compound:
+#
+#              x64 (mean of 8)   arm64      billed
+#   Python tests    324 s        264 s      6 min → 5 min   (-18,5 %)
+#   Frontend         41 s         34 s      1 min → 1 min   (-17 %)
+#
+# 3 664 passed, 9 deselected, coverage 78,94 % — identical to the x64 run, and the
+# `postgres:17-alpine` service came up as `aarch64-unknown-linux-musl`, so the database
+# half is genuinely running on the new arch rather than being emulated. Seven billed
+# minutes at 0,006 become six at 0,005: **USD 0,042 → 0,030 per CI run, −29 %.**
+#
+# If a later measurement inverts this, the honest move is back to `ubuntu-latest` with
+# the number recorded — the arch is one token per job and nothing else here depends on
+# it. Note what would *not* be a reason to move: a dependency that ships no aarch64
+# wheel. That is a reason to check whether it ships one at all, since the survey above
+# found every current pin covered.
 name: CI
 
 on:
