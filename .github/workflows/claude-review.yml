@@ -22,6 +22,21 @@ permissions:
   # this it fails with "Could not fetch an OIDC token" before reaching the model.
   id-token: write
 
+# One review per pull request at a time, and a newer push supersedes an in-flight one.
+#
+# This is also the answer to issue #125's "claude-review re-runs on every synchronize".
+# Measured over every September 2026 run: 331 billed minutes of 2 448, 13,5 % — fourth
+# behind `ci.yml` (729), `claude-implement` (677) and `licence-data` (597). The proposed
+# saving was to review the incremental diff rather than the whole one, which buys a
+# fraction of 13,5 % by making every review after the first read less than the change it
+# is approving. **Declined**: this check is what gates a merge, and a reviewer that has
+# not seen the whole diff is not the thing branch protection is asserting.
+#
+# What is taken instead is the free half: a fix pushed three times in a minute collapses
+# to one review here, because `cancel-in-progress` cancels the superseded runs. That
+# costs no review quality at all — the cancelled run was reviewing a diff that no longer
+# exists. 40,7 of those 331 minutes are per-job rounding on runs too short to bill a
+# full minute, which nothing in this workflow can recover.
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
