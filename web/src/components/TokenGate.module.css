@@ -1,0 +1,80 @@
+/* The token gate. Framed like the other gates in the app — a decision panel on the
+   bare surface — because it is one, and because it is the first thing a new install
+   shows: it has to look like part of the same machine, not like a login page bolted
+   in front of it. */
+.gate {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+}
+
+.title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.blurb {
+  margin: 0;
+  color: var(--ink-mute);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface-sunken, var(--surface));
+  color: var(--ink);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Kept visually quieter than the field, and never removed: someone who has just
+   generated a token is exactly the person who does not know where it went. */
+.where {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-mute);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.whereTitle {
+  display: block;
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.where ul {
+  margin: 0;
+  padding-left: 16px;
+}

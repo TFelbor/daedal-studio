@@ -34,6 +34,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import httpx
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
+from pythonsrc.api_token import default_api_token_path, resolve_api_token
 from pythonsrc.ip_screen import screen_prompt
 from pythonsrc.operators import PrinterFactory
 
@@ -62,6 +63,7 @@ from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.telemetry.run_context import resolve_git_sha
 from pythonsrc.telemetry.schema import VALID_FAILURE_TYPES, FailureEvent, PrintJob
 from server.activity import activity
+from server.auth import SharedSecretAuth, public
 from server.config_store import (
     CONFIG_KEYS,
     INTERNAL_CONFIG_KEYS,
@@ -83,6 +85,20 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Daedal Studio API", version="1.0.0")
+
+#: The shared secret every route but `GET /health` and the SPA is checked against, and
+#: the one this server hands the pipeline container and the dispatch operator. Resolved
+#: once, at import, so the middleware that checks it and `subprocess_env` — which sends
+#: it — cannot disagree: re-resolving in each place would read the file twice and, on
+#: the first start of a host where the token had to be generated in memory because the
+#: path was unwritable, would come back with two different answers.
+API_TOKEN = resolve_api_token(create=True)
+
+# Before `log_requests`, and that ordering is load-bearing: Starlette builds the stack
+# inner-first, so the middleware added first runs *inside* the ones added after it. A
+# 401 therefore still reaches the request log and the activity feed, which is where an
+# operator would look to find out that something is knocking.
+app.add_middleware(SharedSecretAuth, fastapi_app=app, token=API_TOKEN)
 
 
 @app.middleware("http")
@@ -1489,6 +1505,13 @@ def subprocess_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
     to police. Forwarding it here and withholding it in `resolve_printer_target`
     would have left the key reaching the printer by the other route.
 
+    `DS_API_TOKEN` is set here from this process's own `API_TOKEN` rather than being
+    left to inheritance. Every child talks back to this server — the pipeline's
+    collectors and the operator's both relay through `POST /jobs/{id}/internal-telemetry`
+    — and that route is authenticated now, so a child without the token relays nothing.
+    Inheritance covers only the case where the token came from `.env`; when the server
+    generated one, it is in no environment but this function's answer.
+
     Args:
         base: The environment to start from. Defaults to this process's.
 
@@ -1496,6 +1519,8 @@ def subprocess_env(base: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
         A fresh mapping, safe for the caller to add its own `DS_*` variables to.
     """
     env = dict(os.environ if base is None else base)
+    if API_TOKEN:
+        env["DS_API_TOKEN"] = API_TOKEN
     for key in SUBPROCESS_ENV_KEYS:
         if key in PRINTER_CREDENTIAL_HOSTS:
             bound = bound_printer_credential(key, config_store.get)
@@ -1604,6 +1629,18 @@ def startup_event():
         logger.error("Could not initialise the database schema (%s): %s", db.describe, exc)
     check_database_health(db)
     db.close()
+
+    # The *path*, never the value. A token in the log is a token in every log
+    # shipper, screen share and pasted traceback — and this line exists precisely for
+    # the person who does not yet know where to look, so it has to be the one thing
+    # that is safe to print. `make api-token` prints the value, deliberately by hand.
+    if os.environ.get("DS_API_TOKEN", "").strip():
+        logger.info("API authentication: the token comes from $DS_API_TOKEN")
+    else:
+        logger.info(
+            "API authentication: the token is in %s (`make api-token` prints it)",
+            default_api_token_path(),
+        )
 
     strategy = get_resolved_strategy()
     logger.info(f"Resolved execution strategy: {strategy}")
@@ -2154,6 +2191,14 @@ async def _run_pipeline(job_id: str, request: JobRequest):
                 docker_env_args.extend([
                     "-e", f"DS_API_URL={_container_api_url(pipeline_env['DS_API_URL'])}",
                 ])
+            if "DS_API_TOKEN" in pipeline_env:
+                # By *name*, not `NAME=value`: `docker compose run -e DS_API_TOKEN`
+                # reads the value out of this process's environment — which is
+                # `pipeline_env` — instead of writing the shared secret into an argv
+                # that every `ps` on the host can read. The container needs it because
+                # the route its collectors relay to is authenticated, and a generated
+                # token is in no `env_file` for compose to find.
+                docker_env_args.extend(["-e", "DS_API_TOKEN"])
             # Forward the paid-backend kill switch across the container boundary.
             # Phase 2's hosted backend bills per call and runs *inside* the container,
             # so a guard that only exists in this process cannot stop it. `compose run`
@@ -3949,8 +3994,13 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
 
 
 @app.get("/health")
+@public
 async def health_check():
     """Health check endpoint.
+
+    One of the two routes reachable without the shared secret: it is polled by things
+    that hold no credential — a container healthcheck, a load balancer — and it reads
+    no database, spends nothing and touches no printer. See `server/auth.py`.
 
     `database` reports the verdict of the most recent health check rather than
     making a round trip to Supabase: this endpoint is polled, and a database that
@@ -5195,8 +5245,14 @@ async def get_mesh(job_id: str):
 
 # --- Serve SPA ---
 @app.get("/{full_path:path}")
+@public
 async def serve_spa(full_path: str):
     """Catch-all route to serve the React SPA and its static assets.
+
+    The second of the two routes reachable without the shared secret, and it has to be:
+    this is the bundle a person loads *in order to* type the token. It serves files
+    under `web/dist` and nothing else — `contained_path` is what makes that true, and
+    is why an exempt catch-all is not an exempt arbitrary read.
 
     `full_path` is the percent-decoded request target and is matched by the `:path`
     converter, so it arrives with its slashes and its dot segments intact — this is the

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, ArrowRight, RotateCcw } from 'lucide-react';
 import { decideBlueprint } from '../api/client';
 import type { BlueprintGateSubject } from '../api/client';
+import { useAuthedObjectUrl } from '../hooks/useAuthedObjectUrl';
 import { Marks } from './Blueprint';
 import { SpecPanel } from './SpecPanel';
 import { NO_SPEC_REASON, type OrganizerSpec } from '../organizer/spec';
@@ -54,6 +55,11 @@ export function BlueprintGate({ jobId, subject, spec = null, onApproved, onRejec
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The server resolves the URL; the browser would request it with none of our
+  // headers on it, and the route is authenticated. The bytes are fetched here
+  // instead — nothing may be approved that could not be displayed.
+  const previewSrc = useAuthedObjectUrl(subject?.url ?? null);
+
   const decide = async (approve: boolean) => {
     if (busy) return;
     setBusy(approve ? 'approve' : 'reject');
@@ -90,8 +96,8 @@ export function BlueprintGate({ jobId, subject, spec = null, onApproved, onRejec
           stays the thing being approved. */}
       <SpecPanel spec={spec} unavailableReason={NO_SPEC_REASON} />
 
-      {subject ? (
-        <img className={styles.preview} src={subject.url} alt="The generated blueprint awaiting approval" />
+      {subject && previewSrc ? (
+        <img className={styles.preview} src={previewSrc} alt="The generated blueprint awaiting approval" />
       ) : (
         <p className={styles.blurb}>The blueprint is not available to display.</p>
       )}

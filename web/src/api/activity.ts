@@ -10,6 +10,8 @@
  * help diagnose would become the thing causing the problem.
  */
 
+import { apiFetch } from './http';
+
 interface UiEvent {
   action: string;
   detail?: string;
@@ -30,7 +32,7 @@ function flush() {
 
   // `keepalive` so a report queued as the tab closes still goes out, and a silent
   // catch because a failed diagnostic must never surface as an error to the user.
-  fetch('/activity/ui', {
+  apiFetch('/activity/ui', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ events }),

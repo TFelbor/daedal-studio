@@ -1,9 +1,11 @@
 """The static-file routes must not hand out files from outside their own directory.
 
-`server/app.py` has no end-user authentication, and the api-server process is the one
-with `~/.ds-mvp/.config_key` bind-mounted — the Fernet key for the encrypted config
-store that holds printer API keys. So an unauthenticated read of an arbitrary path is a
-credential disclosure, not merely an information leak.
+The api-server process is the one with `~/.ds-mvp/.config_key` bind-mounted — the
+Fernet key for the encrypted config store that holds printer API keys. So a read of an
+arbitrary path is a credential disclosure, not merely an information leak, and it is an
+*unauthenticated* one even now: `serve_spa` is one of the two routes `server/auth.py`
+exempts, because it serves the bundle a person needs in order to type the token. What
+keeps that from being an anonymous arbitrary read is this file.
 
 Nothing in the stack collapses dot segments before a handler sees the path: uvicorn
 percent-decodes into `scope["path"]`, Starlette's `{...:path}` converter matches slashes

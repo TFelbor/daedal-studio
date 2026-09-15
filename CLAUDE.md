@@ -104,10 +104,15 @@ covers what you are touching.
   `docs/PIPELINE.md` § Skills are vendored, not installed.
 - Never touch these unless the issue explicitly says so:
   - **Credentials and secrets** — `server/config_store.py` (the Fernet-encrypted store),
-    `.env.template`, `pythonsrc/operators/` (printer API keys),
-    `supabase/README.md`'s security posture. There is no end-user authentication in
-    this repository yet; these are the paths that hold secrets, and they are what
-    "auth" means here. In CI, **`CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret**
+    `server/auth.py` and `pythonsrc/api_token.py` (the API's one shared secret,
+    `DS_API_TOKEN`), `.env.template`, `pythonsrc/operators/` (printer API keys),
+    `supabase/README.md`'s security posture. Authentication here is that one shared
+    token, checked on every route but `GET /health` and the SPA; there is no per-user
+    model. **A new route is authenticated by writing nothing** — `@public` is what
+    exempts one, and `tests/test_api_auth.py` asserts the exempt set from the router,
+    so marking a third is a security decision and reads as one in the diff. The token
+    is deliberately not a `CONFIG_KEYS` entry: `PUT /config` must not be able to
+    rotate the credential protecting `PUT /config`. In CI, **`CLAUDE_CODE_OAUTH_TOKEN` is the only auth secret**
     and every `.github/workflows/claude-*.yml` uses it; `ANTHROPIC_API_KEY` does not
     exist here and must not be named in a workflow, because the action renders an
     unset secret as an empty credential rather than as no credential. See
@@ -156,7 +161,8 @@ each entry below names the file it is about.
     assert-and-measure mode, the two edge primitives every archetype shares
     (`rounded_rect_prism`, `base_chamfer`) and why a chamfer is built with its wall
     rather than cut into a finished solid, and what is not built.
-  - **Server (`server/app.py`)** — the REST and WebSocket surface, the job lifecycle,
+  - **Server (`server/app.py`)** — the shared-secret middleware and what is exempt,
+    the REST and WebSocket surface, the job lifecycle,
     `contained_path` and the profile confinement, the config store and `subprocess_env`,
     `POST /organizer/resolve` and the prompt a spec job is titled with.
   - **Data Flow** — the five steps from `POST /jobs` to live telemetry on the socket.

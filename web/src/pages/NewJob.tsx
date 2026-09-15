@@ -65,6 +65,7 @@ import {
   type SpecFormState,
 } from '../organizer/specForm';
 import styles from './NewJob.module.css';
+import { apiFetch, withToken } from '../api/http';
 
 interface PhaseStatus {
   phase: number;
@@ -380,7 +381,7 @@ export function NewJob() {
 
     const checkPrinter = async () => {
       try {
-        const res = await fetch('/system/printer/status');
+        const res = await apiFetch('/system/printer/status');
         if (res.ok) {
           setPrinter((await res.json()) as PrinterProbe);
         }
@@ -480,7 +481,7 @@ export function NewJob() {
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/jobs/${id}`;
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(withToken(wsUrl));
     wsRef.current = ws;
 
     ws.onopen = () => {

@@ -1,3 +1,5 @@
+import { apiFetch } from './http';
+
 export interface PrintJob {
   job_id: string;
   prompt: string;
@@ -557,7 +559,7 @@ function readError(status: number, body: unknown, fallback: string): ApiError {
 }
 
 export async function createJob(request: JobRequest): Promise<JobResponse> {
-  const res = await fetch('/jobs', {
+  const res = await apiFetch('/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
@@ -618,7 +620,7 @@ export interface SpecResolveResponse {
  * panel is honest, a stale one is not.
  */
 export async function resolveSpec(spec: Record<string, unknown>): Promise<SpecResolveResponse> {
-  const res = await fetch('/organizer/resolve', {
+  const res = await apiFetch('/organizer/resolve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ spec }),
@@ -651,7 +653,7 @@ export interface SizeHint {
  */
 export async function fetchSizeHint(prompt: string): Promise<SizeHint | null> {
   try {
-    const res = await fetch('/prompt/size-hint', {
+    const res = await apiFetch('/prompt/size-hint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt }),
@@ -664,13 +666,13 @@ export async function fetchSizeHint(prompt: string): Promise<SizeHint | null> {
 }
 
 export async function getJob(jobId: string): Promise<JobStatusResponse> {
-  const res = await fetch(`/jobs/${jobId}`);
+  const res = await apiFetch(`/jobs/${jobId}`);
   if (!res.ok) throw new Error('Failed to fetch job status');
   return res.json();
 }
 
 export async function getPrinterInfo(jobId: string): Promise<PrinterInfo> {
-  const res = await fetch(`/jobs/${jobId}/printer-info`);
+  const res = await apiFetch(`/jobs/${jobId}/printer-info`);
   if (!res.ok) throw new Error('Failed to fetch printer info');
   return res.json();
 }
@@ -690,7 +692,7 @@ export interface PaginatedJobs {
 }
 
 export async function listJobs(limit = 20, offset = 0, status = 'all'): Promise<PaginatedJobs> {
-  const res = await fetch(`/jobs?limit=${limit}&offset=${offset}&status=${status}`);
+  const res = await apiFetch(`/jobs?limit=${limit}&offset=${offset}&status=${status}`);
   if (!res.ok) throw new Error('Failed to list jobs');
   return res.json();
 }
@@ -722,7 +724,7 @@ export async function decideBlueprint(
   approve: boolean,
   sha256?: string | null,
 ): Promise<{ decision: string; blueprint_gate_state: string }> {
-  const res = await fetch(`/jobs/${jobId}/blueprint-approval`, {
+  const res = await apiFetch(`/jobs/${jobId}/blueprint-approval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ confirmed: true, approve, sha256: sha256 ?? null }),
@@ -744,7 +746,7 @@ export async function dispatchPrint(
   jobId: string,
   target?: DispatchTarget | null,
 ): Promise<{ status: string; target: DispatchTarget }> {
-  const res = await fetch(`/jobs/${jobId}/print-dispatch`, {
+  const res = await apiFetch(`/jobs/${jobId}/print-dispatch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -767,20 +769,20 @@ export async function dispatchPrint(
 }
 
 export async function getJobPrintability(jobId: string): Promise<PrintabilityResult | null> {
-  const res = await fetch(`/jobs/${jobId}/printability`);
+  const res = await apiFetch(`/jobs/${jobId}/printability`);
   if (res.status === 404) return null;   // not every job reaches the Engineer
   if (!res.ok) throw new Error(`The server answered ${res.status} for this report`);
   return res.json();
 }
 
 export async function getJobTelemetry(jobId: string): Promise<TelemetrySample[]> {
-  const res = await fetch(`/jobs/${jobId}/telemetry`);
+  const res = await apiFetch(`/jobs/${jobId}/telemetry`);
   if (!res.ok) throw new Error('Failed to fetch telemetry');
   return res.json();
 }
 
 export async function reportFailure(jobId: string, request: FailureRequest): Promise<FailureEvent> {
-  const res = await fetch(`/jobs/${jobId}/failure`, {
+  const res = await apiFetch(`/jobs/${jobId}/failure`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
@@ -795,7 +797,7 @@ export async function reportFailure(jobId: string, request: FailureRequest): Pro
 // machine, so the whole point of this surface is that answering costs one tap.
 
 export async function listPendingFeedback(): Promise<{ count: number; jobs: PendingFeedbackJob[] }> {
-  const res = await fetch('/feedback/pending');
+  const res = await apiFetch('/feedback/pending');
   if (!res.ok) throw new Error('Failed to fetch pending feedback');
   return res.json();
 }
@@ -807,7 +809,7 @@ export async function listPendingFeedback(): Promise<{ count: number; jobs: Pend
  * response rate.
  */
 export async function markOutcomePromptShown(jobId: string): Promise<void> {
-  await fetch(`/jobs/${jobId}/outcome/prompt-shown`, { method: 'POST' });
+  await apiFetch(`/jobs/${jobId}/outcome/prompt-shown`, { method: 'POST' });
 }
 
 /**
@@ -819,17 +821,17 @@ export async function markOutcomePromptShown(jobId: string): Promise<void> {
  * data point and must never disturb the view it was measuring.
  */
 export async function markPreviewReached(jobId: string): Promise<void> {
-  await fetch(`/jobs/${jobId}/events/preview-reached`, { method: 'POST' });
+  await apiFetch(`/jobs/${jobId}/events/preview-reached`, { method: 'POST' });
 }
 
 /** Record a skip. A declined prompt is data; only a prompt never shown is silence. */
 export async function dismissOutcomePrompt(jobId: string): Promise<void> {
-  const res = await fetch(`/jobs/${jobId}/outcome/dismiss`, { method: 'POST' });
+  const res = await apiFetch(`/jobs/${jobId}/outcome/dismiss`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to dismiss prompt');
 }
 
 export async function reportOutcome(jobId: string, request: OutcomeRequest): Promise<OutcomeResponse> {
-  const res = await fetch(`/jobs/${jobId}/outcome`, {
+  const res = await apiFetch(`/jobs/${jobId}/outcome`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
@@ -842,19 +844,19 @@ export async function reportOutcome(jobId: string, request: OutcomeRequest): Pro
 }
 
 export async function getFeedbackStats(): Promise<FeedbackStats> {
-  const res = await fetch('/feedback/stats');
+  const res = await apiFetch('/feedback/stats');
   if (!res.ok) throw new Error('Failed to fetch feedback stats');
   return res.json();
 }
 
 export async function getJobProvenance(jobId: string): Promise<JobProvenance> {
-  const res = await fetch(`/jobs/${jobId}/provenance`);
+  const res = await apiFetch(`/jobs/${jobId}/provenance`);
   if (!res.ok) throw new Error('Failed to fetch job provenance');
   return res.json();
 }
 
 export async function printerAction(jobId: string, action: 'pause' | 'resume' | 'cancel'): Promise<any> {
-  const res = await fetch(`/jobs/${jobId}/action`, {
+  const res = await apiFetch(`/jobs/${jobId}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action })

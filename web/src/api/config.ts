@@ -5,6 +5,9 @@
  * on its own stops the key being sent. Only the three printer credentials carry
  * this; every other key answers null.
  */
+
+import { apiFetch } from './http';
+
 export interface HostBinding {
   /** The host the stored key was saved for, or null when nothing is bound. */
   bound_to: string | null;
@@ -65,13 +68,13 @@ async function errorDetail(res: Response, fallback: string): Promise<string> {
 }
 
 export async function getConfig(): Promise<ConfigResponse> {
-  const res = await fetch('/config');
+  const res = await apiFetch('/config');
   if (!res.ok) throw new Error('Failed to fetch config');
   return res.json();
 }
 
 export async function setConfig(key: string, value: string): Promise<void> {
-  const res = await fetch('/config', {
+  const res = await apiFetch('/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, value })
@@ -80,19 +83,19 @@ export async function setConfig(key: string, value: string): Promise<void> {
 }
 
 export async function deleteConfig(key: string): Promise<void> {
-  const res = await fetch(`/config/${key}`, { method: 'DELETE' });
+  const res = await apiFetch(`/config/${key}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete config');
 }
 
 export async function revealConfig(key: string): Promise<string> {
-  const res = await fetch(`/config/${key}/reveal`);
+  const res = await apiFetch(`/config/${key}/reveal`);
   if (!res.ok) throw new Error('Failed to reveal config');
   const data = await res.json();
   return data.value;
 }
 
 export async function testConnection(service: string): Promise<ConnectionTestResult> {
-  const res = await fetch('/config/test-connection', {
+  const res = await apiFetch('/config/test-connection', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ service })
@@ -102,17 +105,17 @@ export async function testConnection(service: string): Promise<ConnectionTestRes
 }
 
 export async function getSimulatorStatus(): Promise<SimulatorStatus> {
-  const res = await fetch('/simulators/status');
+  const res = await apiFetch('/simulators/status');
   if (!res.ok) throw new Error('Failed to fetch simulator status');
   return res.json();
 }
 
 export async function startSimulator(service: string): Promise<void> {
-  const res = await fetch(`/simulators/${service}/start`, { method: 'POST' });
+  const res = await apiFetch(`/simulators/${service}/start`, { method: 'POST' });
   if (!res.ok) throw new Error(await errorDetail(res, 'Could not start the simulator.'));
 }
 
 export async function stopSimulator(service: string): Promise<void> {
-  const res = await fetch(`/simulators/${service}/stop`, { method: 'POST' });
+  const res = await apiFetch(`/simulators/${service}/stop`, { method: 'POST' });
   if (!res.ok) throw new Error(await errorDetail(res, 'Could not stop the simulator.'));
 }

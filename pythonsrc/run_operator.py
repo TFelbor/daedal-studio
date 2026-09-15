@@ -36,7 +36,7 @@ def printer_from_env(profile_data: dict, environ) -> tuple:
     The mixing is what had to stop. `OCTOPRINT_API_KEY` was read here and paired with
     `OCTOPRINT_URL`, and the dispatch gate wrote `target["base_url"]` into that
     variable — so on a klipper or bambu profile the OctoPrint key was carried to the
-    Moonraker or Bambu address. The store is written by an unauthenticated request and
+    Moonraker or Bambu address. The store is written by an HTTP request and
     the profile is a file on disk; either may name an address, and neither may lend a
     credential to the other one's.
 

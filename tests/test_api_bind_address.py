@@ -1,11 +1,17 @@
 """The API server is published on loopback, and these tests keep it there.
 
-There is no end-user authentication anywhere in this server. `POST /jobs` spends
-EUR 0,32 on a hosted generation, `POST /jobs/{id}/print-dispatch` heats a nozzle for
-hours, and `PUT /config` rewrites the printer credentials the server then ships to
-whatever host it is pointed at. `ports: - "8000:8000"` published all of that on every
-interface of the machine, so anything that could route to the host — the rest of the
-LAN, a guest network, a shared VPN — could drive the printer.
+`POST /jobs` spends EUR 0,32 on a hosted generation,
+`POST /jobs/{id}/print-dispatch` heats a nozzle for hours, and `PUT /config` rewrites
+the printer credentials the server then ships to whatever host it is pointed at.
+`ports: - "8000:8000"` published all of that on every interface of the machine, so
+anything that could route to the host — the rest of the LAN, a guest network, a shared
+VPN — could drive the printer.
+
+Those routes are authenticated now (`server/auth.py`), and that does not retire this
+file. The token is one shared secret with no per-user model, no revocation short of
+rotating it for everybody, and no TLS under it; the bind address is the other half,
+and it is the half that decides who may *try*. Two mechanisms, and this one is the one
+that is a single token in a single mapping.
 
 The bind address is one token in one mapping. Deleting it is invisible in a diff and
 total at runtime: the port still publishes, the app still answers on localhost, and

@@ -23,7 +23,7 @@
 COMPOSE_FILE := infra/docker-compose.yml
 COMPOSE_GPU  := infra/docker-compose.gpu.yml
 
-.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu lint test test-slow health start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit outputs clean-outputs
+.PHONY: build up down logs phase1-native pipeline-mac pipeline-gpu lint test test-slow health api-token start-native worker-build worker-up worker-down worker-logs worker-health licences licence-audit outputs clean-outputs
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
@@ -44,11 +44,11 @@ up:
 # those into a host process points it at a directory that does not exist.
 #
 # The bind address is loopback by default, the same as the container's published
-# port, and moves with the same variable: DS_API_BIND. This server has no
-# authentication, so --host 0.0.0.0 offered POST /jobs, the dispatch gate and
-# PUT /config to the whole LAN. A native run binds the host interface directly —
-# there is no container hop here, so this is the address that decides who can
-# reach it.
+# port, and moves with the same variable: DS_API_BIND. Every route but GET /health
+# is authenticated now (DS_API_TOKEN), but a shared secret is one credential for
+# everyone who holds it and there is no per-user model — so --host 0.0.0.0 is still
+# a deliberate act. A native run binds the host interface directly: there is no
+# container hop here, so this is the address that decides who can reach it.
 start-native:
 	@echo "Starting API server natively on host to enable MPS acceleration..."
 	@echo "Make sure you have installed the requirements: pip install -r requirements.txt"
@@ -171,8 +171,19 @@ licence-audit:
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 # Check API server health (requires running server)
+# The one route that needs no token, which is why it can be a bare curl.
 health:
 	curl -s http://localhost:8000/health | python3 -m json.tool
+
+# Print the shared API secret this machine's server uses.
+# The answer to "the app is asking me for a token" — .env if you set one there,
+# otherwise the file the server generated on its first start. Resolved by the same
+# code the server uses, so it cannot disagree with what is being checked.
+api-token:
+	@. infra/scripts/load_native_env.sh; \
+	python3 -c "from pythonsrc.api_token import resolve_api_token; \
+	t = resolve_api_token(); \
+	print(t if t else 'No token yet — start the server once and it will make one.')"
 
 # Create data directories (first-time setup)
 init:

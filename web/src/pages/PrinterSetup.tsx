@@ -22,6 +22,7 @@ import {
 } from '../api/config';
 import type { ConfigResponse, SimulatorStatus } from '../api/config';
 import styles from './PrinterSetup.module.css';
+import { ApiTokenField } from '../components/ApiTokenField';
 
 /** What the server sends back in place of a stored secret. */
 const MASK = '••••••••';
@@ -929,8 +930,8 @@ export function PrinterSetup() {
             {/* The PYTHONPATH override that used to sit here is gone, and so is the
                 key behind it. Every value saved on this page is handed to the
                 pipeline container and to the operator, and an import path is one
-                the image sets — not one anyone should be able to set over an
-                unauthenticated HTTP request. */}
+                the image sets — not one anybody should be able to set over HTTP,
+                shared secret or no shared secret. */}
             <div className={styles.devGrid}>
               <div className="field">
                 <div className={styles.fieldHead}>
@@ -949,6 +950,11 @@ export function PrinterSetup() {
                   <option value="DEBUG">DEBUG</option>
                 </select>
               </div>
+
+              {/* Not a config-store key, and not saved through this page's own
+                  machinery: the token protects `PUT /config`, so it must not be
+                  rotatable *by* `PUT /config`. This edits what the browser sends. */}
+              <ApiTokenField />
             </div>
           </section>
         </div>

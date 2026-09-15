@@ -6,6 +6,7 @@ import { cssToken, prefersReducedMotion } from '../theme';
 import { StageState } from './StageState';
 import { stageStatus } from './stageStatus';
 import styles from './MeshViewer.module.css';
+import { apiFetch } from '../api/http';
 
 interface PhaseLike {
   phase: number;
@@ -122,7 +123,7 @@ export function MeshViewer({ jobId, phases, logLines }: MeshViewerProps) {
 
     const fetchMesh = (retries: number) => {
       if (!isActive) return;
-      fetch(`/jobs/${jobId}/mesh?t=${Date.now()}`)
+      apiFetch(`/jobs/${jobId}/mesh?t=${Date.now()}`)
         .then((res) => {
           if (!res.ok) throw new Error('Mesh not ready');
           return res.text();

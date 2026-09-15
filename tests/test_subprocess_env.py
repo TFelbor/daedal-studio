@@ -4,7 +4,7 @@
 The startup hook copied the whole store into `os.environ` as well, and both
 subprocess launches — `docker compose run pipeline-runner` and `run_operator.py` —
 were built with `os.environ.copy()`. So every stored key was a variable in every
-child process this server spawns, set by an endpoint with no authentication in
+child process this server spawns, set by an endpoint that had no authentication in
 front of it.
 
 `PYTHONPATH` was one of those keys. One request prepended an import path to the
@@ -214,7 +214,11 @@ def test_subprocess_env_forwards_nothing_else_from_the_store():
         env = subprocess_env(base=base)
 
     added = set(env) - set(base)
-    assert added == set(SUBPROCESS_ENV_KEYS)
+    # `DS_API_TOKEN` is the one addition that does not come from the store, and it
+    # cannot: it is this server's own shared secret, set so the child can talk back
+    # through the authenticated relay route. A store that answered `DS_API_TOKEN`
+    # would not be consulted for it.
+    assert added == set(SUBPROCESS_ENV_KEYS) | {"DS_API_TOKEN"}
     assert "PYTHONPATH" not in env
     assert NOT_FORWARDED not in env
 
@@ -381,3 +385,43 @@ def test_the_operator_launch_carries_the_allowlist_and_no_other_stored_key(
     assert "OCTOPRINT_API_KEY" not in env
     assert env.get(NOT_FORWARDED) != "DEBUG"
     assert "PYTHONPATH" not in set(env) - set(os.environ)
+
+
+# ── The shared secret rides along, because the relay route is authenticated now ──
+
+def test_subprocess_env_hands_the_child_the_shared_secret():
+    """Every child talks back to this server, and that conversation is authenticated.
+
+    The pipeline's collectors and the operator's both relay through
+    `POST /jobs/{id}/internal-telemetry`, which is no longer open to anything that can
+    reach the port. Inheritance alone covers only a token that came from `.env`; when
+    the server generated one, this assignment is the only thing that puts it in a
+    child's environment.
+    """
+    env = subprocess_env(base={"PATH": "/usr/bin"})
+
+    assert env["DS_API_TOKEN"] == app_module.API_TOKEN
+    assert env["DS_API_TOKEN"], "a child with no token relays nothing"
+
+
+def test_the_operator_launch_carries_the_shared_secret(
+    sliced_job_with_gcode, printer_configured, stored,
+):
+    """The dispatch operator's own collector relays through the same closed route."""
+    stored("OCTOPRINT_URL", "http://printer.local:5001")
+
+    captured = {}
+    fake_process = AsyncMock()
+    fake_process.returncode = 0
+
+    async def fake_exec(*cmd, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return fake_process
+
+    with patch("asyncio.create_subprocess_exec", new=fake_exec), \
+         patch("server.app._stream_output", new=AsyncMock()):
+        resp = client.post(
+            f"/jobs/{sliced_job_with_gcode}/print-dispatch", json={"confirmed": True},
+        )
+    assert resp.status_code == 200, resp.text
+    assert captured["env"]["DS_API_TOKEN"] == app_module.API_TOKEN

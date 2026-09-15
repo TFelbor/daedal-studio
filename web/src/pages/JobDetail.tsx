@@ -20,7 +20,9 @@ import { SpecPanel } from '../components/SpecPanel';
 import { NO_SPEC_REASON, specFromJob } from '../organizer/spec';
 import { getConfig, testConnection } from '../api/config';
 import { useJobWebSocket } from '../hooks/useJobWebSocket';
+import { useAuthedObjectUrl } from '../hooks/useAuthedObjectUrl';
 import styles from './JobDetail.module.css';
+import { apiFetch } from '../api/http';
 
 /** A job in one of these states will not change again on its own. */
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
@@ -93,13 +95,17 @@ export function JobDetail() {
 
   const { telemetrySamples, printerState, printerMeta } = useJobWebSocket(job ? job.job_id : null);
 
+  // The blueprint route needs the shared secret, and the browser sends no headers of
+  // ours on an `<img src>` — so the bytes are fetched here and shown as a blob.
+  const blueprintSrc = useAuthedObjectUrl(job ? `/jobs/${job.job_id}/blueprint` : null);
+
   const fetchJob = async () => {
     if (!id) return;
     try {
       const data = await getJob(id);
       setJob(data);
       if (data.outcome === 'failure' || data.outcome === 'cancelled') {
-        fetch(`/jobs/${id}/failure`)
+        apiFetch(`/jobs/${id}/failure`)
           .then(res => res.json())
           .then((events: FailureEvent[]) => setFailureEvents(events))
           .catch(() => {});
@@ -420,10 +426,10 @@ export function JobDetail() {
               <div className={styles.figure}>
                 <span className={`label ${styles.blockLabel}`}>Blueprint</span>
                 <Blueprint tone="accent" className={styles.frame}>
-                  {blueprintOk ? (
+                  {blueprintOk && blueprintSrc ? (
                     <img
                       className={styles.frameImage}
-                      src={`/jobs/${job.job_id}/blueprint`}
+                      src={blueprintSrc}
                       alt={`Blueprint for “${job.prompt}”`}
                       onError={() => setBlueprintOk(false)}
                     />

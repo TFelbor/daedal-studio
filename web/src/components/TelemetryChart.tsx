@@ -4,6 +4,7 @@ import type { TelemetrySample } from '../api/client';
 import { Blueprint } from './Blueprint';
 import { DeadChannel } from './DeadChannel';
 import styles from './TelemetryChart.module.css';
+import { apiFetch } from '../api/http';
 
 export interface TelemetryChartProps {
   jobId?: string;
@@ -47,7 +48,7 @@ export function TelemetryChart({ jobId, data = [] }: TelemetryChartProps) {
     let cancelled = false;
     const fetchTelemetry = async () => {
       try {
-        const res = await fetch(`/jobs/${jobId}/telemetry`);
+        const res = await apiFetch(`/jobs/${jobId}/telemetry`);
         if (!res.ok) throw new Error('Failed to fetch telemetry');
         const json = await res.json();
         if (!cancelled) {

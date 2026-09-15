@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TelemetrySample } from '../api/client';
 import { closeSocket } from '../api/ws';
+import { withToken } from '../api/http';
 
 export interface PrinterMeta {
   service: string | null;
@@ -36,7 +37,9 @@ export function useJobWebSocket(jobId: string | null) {
       ? `${protocol}//localhost:8000/ws/jobs/${jobId}`
       : `${protocol}//${window.location.host}/ws/jobs/${jobId}`;
     console.info(`[WS] connecting to ${wsUrl}`);
-    const ws = new WebSocket(wsUrl);
+    // The upgrade is refused without the shared secret, and a browser cannot put a
+    // header on it — see `withToken`. Not logged above: that line carries the URL.
+    const ws = new WebSocket(withToken(wsUrl));
 
     ws.onopen = () => {
       if (mounted) setWsConnected(true);

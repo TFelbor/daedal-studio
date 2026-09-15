@@ -4,6 +4,7 @@ import { dispatchPrint } from '../api/client';
 import type { DispatchTarget, JobStatusResponse } from '../api/client';
 import { Marks } from './Blueprint';
 import { reportUi } from '../api/activity';
+import { downloadAuthed } from '../api/http';
 import styles from './DispatchGate.module.css';
 
 interface DispatchGateProps {
@@ -152,15 +153,19 @@ export function DispatchGate({ jobId, job, onDispatched }: DispatchGateProps) {
           <Printer size={16} strokeWidth={1.5} aria-hidden="true" />
           {busy ? 'Sending' : 'Send to printer'}
         </button>
-        {/* The other real choice. Taking the file is not declining the job. */}
-        <a
+        {/* The other real choice. Taking the file is not declining the job.
+            A button rather than an anchor: the route is authenticated, and the
+            browser sends none of our headers when it follows an `href`. */}
+        <button
+          type="button"
           className={`btn btn-secondary ${styles.download}`}
-          href={`/jobs/${jobId}/download`}
-          download
-          onClick={() => reportUi('dispatch gate', 'downloaded instead of printing')}
+          onClick={() => {
+            reportUi('dispatch gate', 'downloaded instead of printing');
+            void downloadAuthed(`/jobs/${jobId}/download`, `${jobId}.gcode`);
+          }}
         >
           <Download size={15} strokeWidth={1.5} aria-hidden="true" /> Download G-code
-        </a>
+        </button>
         {!target?.base_url && (
           <span className="hint">No printer address resolved — choose one in Settings.</span>
         )}

@@ -5,6 +5,7 @@ import { cssToken } from '../theme';
 import { reportUi } from '../api/activity';
 import { useTheme } from '../hooks/useTheme';
 import styles from './GCodeViewer.module.css';
+import { apiFetch } from '../api/http';
 
 /**
  * Build volume used when the printer profile does not declare one.
@@ -195,7 +196,7 @@ export function GCodeViewer({
     const load = () => {
       // preview=1: this fetch renders the toolpath, it is not a person keeping
       // the file — without the flag every mount booked a download event.
-      fetch(`/jobs/${jobId}/download?preview=1`)
+      apiFetch(`/jobs/${jobId}/download?preview=1`)
         .then(res => {
           if (!res.ok) throw new Error('not ready');
           return res.text();
