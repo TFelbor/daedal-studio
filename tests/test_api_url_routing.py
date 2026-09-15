@@ -176,7 +176,9 @@ def test_the_container_is_handed_the_token_by_name_not_by_value(strategy):
     assert _forwarded(argv, "DS_API_TOKEN") is None, (
         "the shared secret is in the command line, where `ps` can read it"
     )
-    pairs = list(zip(argv, argv[1:]))
+    # `strict=False`: the pairwise idiom, where the second operand is shorter by
+    # one by construction. `strict=True` would raise on every well-formed argv.
+    pairs = list(zip(argv, argv[1:], strict=False))
     assert ("-e", "DS_API_TOKEN") in pairs, (
         "the pipeline container is not handed the token, so its telemetry relay is "
         "refused and every sample is lost"
