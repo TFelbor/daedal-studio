@@ -556,8 +556,8 @@
   "Author": "Miguel Grinberg <miguel.grinberg@gmail.com>",
   "License": "MIT",
   "Name": "python-socketio",
-  "URL": "https://github.com/miguelgrinberg/python-socketio",
-  "Version": "5.16.4"
+  "URL": "https://code.miguelgrinberg.com/miguelgrinberg/python-socketio",
+  "Version": "5.17.0"
  },
  {
   "Author": "Kirill Simonov",
