@@ -49,6 +49,7 @@ geometric. The sleeving, which fixes the envelope, is the field that matters.
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,6 +59,7 @@ from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trim
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Divider, OrganizerSpec, SpecError, spec_hash
 from .common import (
+    SweepCase,
     card_contents_problem,
     expect_planes,
     external_overshoots,
@@ -411,3 +413,53 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         "dimensions": dimensions,
         "fits": fits_check(spec).to_dict(),
     }
+
+
+# ── The dimensional envelope (issue #85) ──────────────────────────────────────
+#
+# See `common.SweepCase` for what an envelope is and `deck_box.envelope` for the axis
+# that made the sweep generic. Five axes here, and the **tab position** is the one this
+# archetype contributes that no other has: it is the only parameter that changes the
+# *shape* of the outline rather than a length. An edge tab shares a side plane with the
+# plate, which is exactly the case a union got wrong and an extruded outline does not,
+# so dropping `left` and `right` would leave the sweep looking parametrized while the
+# only interesting outline went unbuilt.
+
+#: One count, not an axis: the plate's footprint comes from the sleeve envelope, and
+#: `SWEEP_SLEEVINGS` already moves it. A second count would move nothing else.
+SWEEP_COUNT: int = 100
+SWEEP_SLEEVINGS: tuple[str, ...] = ("none", "single", "double")
+SWEEP_POSITIONS: tuple[str, ...] = ("left", "centre", "right")
+#: The audited 1,2–1,6 mm insert band, plus one over it.
+SWEEP_THICKNESSES: tuple[float, ...] = (1.2, 1.4, 1.6, 2.0)
+SWEEP_TAB_WIDTHS: tuple[float, ...] = (12.0, 20.0, 30.0)
+SWEEP_TAB_HEIGHTS: tuple[float, ...] = (6.0, 10.0, 15.0)
+#: The corner set that goes on through Phase 3's assert path, as (thickness, tab width,
+#: tab height) triples swept against every sleeving and every position — each one a
+#: point of the product above, so the corners are a subset of the envelope.
+SWEEP_PHASE_3_TABS: tuple[tuple[float, float, float], ...] = (
+    (1.2, 12.0, 6.0), (1.4, 20.0, 10.0), (2.0, 30.0, 15.0), (1.2, 30.0, 6.0),
+)
+
+
+def envelope() -> tuple[SweepCase, ...]:
+    """Every spec the dimensional sweep drives this archetype over — 324 of them."""
+    cases: list[SweepCase] = []
+    for sleeving, position, thickness, tab_width, tab_height in itertools.product(
+        SWEEP_SLEEVINGS, SWEEP_POSITIONS, SWEEP_THICKNESSES, SWEEP_TAB_WIDTHS,
+        SWEEP_TAB_HEIGHTS,
+    ):
+        cases.append(SweepCase(
+            id=(f"{sleeving}-{position}-t{thickness:g}"
+                f"-tab{tab_width:g}x{tab_height:g}"),
+            spec=OrganizerSpec(
+                archetype=ARCHETYPE,
+                compartments=(
+                    Compartment(CardStack(count=SWEEP_COUNT, sleeving=sleeving)),
+                ),
+                divider=Divider(thickness_mm=thickness, tab_width_mm=tab_width,
+                                tab_height_mm=tab_height, tab_position=position),
+            ),
+            phase_3=(thickness, tab_width, tab_height) in SWEEP_PHASE_3_TABS,
+        ))
+    return tuple(cases)

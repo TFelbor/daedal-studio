@@ -16,8 +16,13 @@ CLI took no archetype-specific change to gain the second one, which is the prope
 second archetype existed to test. What a second module *did* have to share moved into
 `common.py` rather than being copied.
 
-The third cost this file exactly one thing, and it is `required_measurements`: a tray's
-feature list grows with its grid, so a module may now declare `measured_features(spec)`
+`envelope_for` is the fifth thing an archetype has to satisfy, after the schema, the
+registry, `ARCHETYPE_WALL_MM` and the composer's strip: the specs the dimensional sweep
+drives it over. It is a dispatch like the rest, and it raises for a module that declares
+none — see its docstring for why that is a refusal rather than a default.
+
+The third archetype cost this file exactly one thing, and it is `required_measurements`:
+a tray's feature list grows with its grid, so a module may now declare `measured_features(spec)`
 and the registry prefers it over the fixed `MEASURED_FEATURES` tuple. Optional, with the
 old behaviour as the fallback, so the deck box and the divider took no change either.
 """
@@ -35,6 +40,7 @@ from ..spec import (
     wall_floor_problems,
 )
 from . import card_divider, deck_box, token_tray
+from .common import SweepCase
 
 REGISTRY: dict[str, ModuleType] = {
     deck_box.ARCHETYPE: deck_box,
@@ -137,6 +143,40 @@ def required_measurements(spec: OrganizerSpec) -> tuple[str, ...]:
     if derive_features is not None:
         return tuple(derive_features(spec))
     return tuple(module.MEASURED_FEATURES)
+
+
+def envelope_for(name: str) -> tuple[SweepCase, ...]:
+    """The specs an archetype holds itself to at `DEFAULT_TOLERANCE_MM` (issue #85).
+
+    The dimensional sweep used to be written for the deck box and then copied per
+    archetype, which meant a third archetype could be registered, compiled, offered in
+    the composer and printed while nothing had ever measured a mesh it produced. A
+    module now declares its own envelope — `common.SweepCase`, the parameter ranges and
+    the corner set that goes on through Phase 3 — and
+    `tests/test_organizer_dimensional_accuracy.py` sweeps whatever this returns for
+    every name in `REGISTRY`.
+
+    So this raises rather than returning nothing for a module that declares none: an
+    archetype nothing sweeps has made no accuracy claim, and the claim is the difference
+    between an archetype and a mesh generator. The refusal names the module, because the
+    person who hits it is the person who just added it.
+
+    Raises:
+        SpecError: For an archetype with no `envelope()`, or one whose envelope is empty.
+    """
+    module = get_archetype(name)
+    declare = getattr(module, "envelope", None)
+    if declare is None:
+        raise SpecError([
+            f"archetype {name!r} declares no envelope(): every registered archetype owes "
+            f"the dimensional sweep the specs it holds itself to at "
+            f"{DEFAULT_TOLERANCE_MM} mm — see pythonsrc/organizer/archetypes/common.py "
+            f"SweepCase"
+        ])
+    cases = tuple(declare())
+    if not cases:
+        raise SpecError([f"archetype {name!r} declares an empty envelope()"])
+    return cases
 
 
 def verify_spec_mesh(

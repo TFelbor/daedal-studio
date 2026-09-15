@@ -73,6 +73,7 @@ decision defers; what is borrowed is its measure/align discipline.
 """
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 from typing import Any
@@ -89,8 +90,18 @@ from ..compiler import (
     tilted_face_extent,
 )
 from ..dimensions import ResolvedStack, resolve_stack
-from ..spec import CardStack, Compartment, Lid, OrganizerSpec, SpecError, spec_hash
+from ..spec import (
+    ARCHETYPE_WALL_MM,
+    CardStack,
+    Compartment,
+    Lid,
+    OrganizerSpec,
+    Process,
+    SpecError,
+    spec_hash,
+)
 from .common import (
+    SweepCase,
     card_contents_problem,
     expect_planes,
     external_overshoots,
@@ -679,3 +690,77 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         "dimensions": dimensions,
         "fits": fits_check(spec).to_dict(),
     }
+
+
+# ── The dimensional envelope (issue #85) ──────────────────────────────────────
+#
+# The domain of this archetype's ±0,05 mm claim, declared beside the geometry that has
+# to honour it rather than inside the test that drives it. The sweep used to be written
+# for the deck box and then copied per archetype; a module now says which specs it holds
+# itself to, `tests/test_organizer_dimensional_accuracy.py` sweeps whatever every
+# registered module declares, and a new archetype that declares nothing fails by name.
+#
+# Five axes, and the wall is the one worth reading twice: `None` states no wall at all
+# and takes this module's own default, which is what almost every real spec compiles
+# with, so it is swept as a value rather than checked once — a dimensional claim about a
+# wall nobody typed is worth as much as one about 2,8 mm.
+
+#: Card counts, from a starter pile to a double-sleeved Commander deck.
+SWEEP_COUNTS: tuple[int, ...] = (15, 40, 60, 100, 160)
+SWEEP_SLEEVINGS: tuple[str, ...] = ("none", "single", "double")
+#: `None` is "no wall stated" — `ARCHETYPE_WALL_MM["deck_box"]`, 2,4 mm. 2.6 − 1.2 lid
+#: wall − 0.35 clearance = 1.05 mm of lip, above `min_feature_mm`; at the 2,4 mm default
+#: that same clearance leaves 0.85 mm and `validate` refuses it, so `_lip_is_buildable`
+#: drops the pair rather than sweeping a box that does not exist.
+SWEEP_WALLS: tuple[float | None, ...] = (None, 2.6, 2.8, 4.0)
+SWEEP_CLEARANCES: tuple[float, ...] = (0.1, 0.2, 0.35)
+SWEEP_LID_HEIGHTS: tuple[float, ...] = (8.0, 15.0, 30.0)
+#: The corner set that goes on through Phase 3's assert path: three counts against five
+#: (wall, clearance, lid height) triples, every one of them a point of the product above
+#: so the corners are a *subset* of the envelope rather than a second list to maintain.
+SWEEP_PHASE_3_COUNTS: tuple[int, ...] = (15, 60, 160)
+SWEEP_PHASE_3_PROCESSES: tuple[tuple[float | None, float, float], ...] = (
+    (2.6, 0.1, 8.0), (2.8, 0.2, 15.0), (4.0, 0.35, 30.0), (2.6, 0.35, 8.0),
+    (None, 0.2, 15.0),
+)
+
+
+def _lip_is_buildable(wall: float | None, clearance: float) -> bool:
+    """`validate`'s lip rule, restated so the envelope asks only for boxes that exist:
+    the body wall less the lid's wall and clearance must reach `min_feature_mm`."""
+    body_wall = ARCHETYPE_WALL_MM[ARCHETYPE] if wall is None else wall
+    return body_wall - (Lid().wall_mm + clearance) >= Process().min_feature_mm - 1e-9
+
+
+def envelope() -> tuple[SweepCase, ...]:
+    """Every spec the dimensional sweep drives this archetype over — 495 of them.
+
+    Nothing here states a floor, a fit intent or an edge treatment, so every case
+    carries `Process`'s own defaults and the sweep measures the geometry a real spec
+    gets. The three axes that are *not* here have corners of their own in the test,
+    because each is orthogonal to these five and multiplying 495 by them would buy
+    repetition rather than coverage: the fit intent moves two lengths (issue #71), the
+    edge treatments change the kind of surface rather than a length (issue #80), and the
+    nozzle-derived wall floor has no mesh to measure at all — below it nothing compiles.
+    """
+    cases: list[SweepCase] = []
+    for count, sleeving, wall, clearance, lid_height in itertools.product(
+        SWEEP_COUNTS, SWEEP_SLEEVINGS, SWEEP_WALLS, SWEEP_CLEARANCES, SWEEP_LID_HEIGHTS,
+    ):
+        if not _lip_is_buildable(wall, clearance):
+            continue
+        cases.append(SweepCase(
+            id=(f"n{count}-{sleeving}-wall{'default' if wall is None else f'{wall:g}'}"
+                f"-clr{clearance:g}-lid{lid_height:g}"),
+            spec=OrganizerSpec(
+                archetype=ARCHETYPE,
+                compartments=(Compartment(CardStack(count=count, sleeving=sleeving)),),
+                lid=Lid(height_mm=lid_height, clearance_mm=clearance),
+                process=Process(wall_mm=wall),
+            ),
+            phase_3=(
+                count in SWEEP_PHASE_3_COUNTS
+                and (wall, clearance, lid_height) in SWEEP_PHASE_3_PROCESSES
+            ),
+        ))
+    return tuple(cases)
