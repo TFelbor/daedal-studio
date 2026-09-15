@@ -79,7 +79,7 @@ identifier.
 ### Python libraries
 
 **Permissive — Q1 yes, Q2 yes, Q3 no restriction, all [d]:**
-torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore, lxml (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · pytest-cov **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache, coverage **[v]** (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
+torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, httpx, httpcore, lxml (BSD) · trimesh, pyyaml, python-socketio, python-engineio, simple-websocket, h11, charset-normalizer, annotated-types, pluggy, fast-simplification, mflux **[v]** (MIT) · pytest-cov **[v]** (MIT) · ruff **[v]** (MIT) · mlx (MIT) · manifold3d, transformers, diffusers, accelerate, safetensors, tokenizers, huggingface_hub, aiohttp, requests, docker, responses, python-multipart, yarl, frozenlist, multidict, propcache, coverage **[v]** (Apache-2.0) · lucide-react-style ISC and PSF items (aiohappyeyeballs) · fastapi, pydantic, starlette, uvicorn, pillow, cryptography, urllib3, attrs, click, idna, packaging, pytest and the remaining standard toolchain (MIT / BSD-3 / Apache-2.0 / HPND per upstream)
 
 **Weak copyleft — permitted, obligations only on distribution:**
 
@@ -513,6 +513,7 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | Pillow | MIT-CMU |
 | pytest-cov (dev only) | MIT |
 | coverage.py (dev only, via pytest-cov) | Apache-2.0 |
+| ruff (dev only) | MIT |
 
 **lxml is there for one exporter, and it is declared rather than inherited.**
 trimesh's 3MF writer streams the model XML through `lxml.etree.xmlfile` and imports
@@ -532,6 +533,19 @@ pulls **coverage.py (Apache-2.0)**, which is a pure-Python package with an optio
 tracer built from its own sources — no vendored third-party code, no runtime download.
 Both are permissive, so neither would impose an obligation even if an image did carry
 them.
+
+**ruff is a development dependency on the same terms.** It is the Python linter
+(`ruff check .`, configured in `pyproject.toml`); `.github/workflows/ci.yml` runs it as
+a blocking step and `make lint` runs it locally. It is in `requirements-base.txt` for
+the same reason pytest-cov is — that is the file CI installs — and no Dockerfile
+installs it, so nothing distributed contains it. It ships as a single self-contained
+binary wheel: no Python dependencies, no runtime download, no weights. The wheel is
+MIT, and its `LICENSE` reproduces the notices of the fourteen tools whose rules were
+ported from Python into it — autoflake, autotyping, Flake8, flake8-eradicate,
+flake8-pyi, flake8-simplify, isort, pygrep-hooks, pycodestyle, pydocstyle, Pyflakes,
+Pyright, pyupgrade and RustPython — **all of which are themselves permissive (MIT)**,
+which was checked because a ported rule set is vendored source, not a dependency edge.
+Read from the wheel's own licence text at 0.16.7 **[v]**.
 
 ### Frontend (`web/`)
 

@@ -18,6 +18,11 @@
 # is recorded now rather than guessed at then.
 line-length = 100
 
+# What CI runs (`.github/workflows/ci.yml` pins `python-version: "3.11"`). Without it
+# ruff guesses, and the guess decides whether `tomllib` is stdlib or a third-party
+# import — which is an `I001` on a file that is correct.
+target-version = "py311"
+
 # Directories ruff should not read. `data/` is gitignored runtime state, `web/` is
 # TypeScript (ESLint's job) and `.venv/` is somebody's virtualenv; none of them are
 # this project's Python. Ruff already skips gitignored paths, but `ruff check` is also
