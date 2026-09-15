@@ -10,6 +10,42 @@
 # What this deliberately does not do: run Phase 1 or Phase 2. Both need weights and one
 # needs an NVIDIA GPU, and `pytest.ini` already deselects the `slow` markers that reach
 # them. What is left is everything a hosted runner can honestly check.
+#
+# Why both jobs run on arm64 (issue #125). Measured over every September 2026 run, this
+# workflow is the largest single consumer of the Actions allowance — 729 billed minutes
+# of 2 448, 29,8 %, ahead of `claude-implement` (677) and `licence-data` (597, and 333
+# of those are `push` runs that PR #124 has already removed). The issue's own table had
+# `licence-data` first at 39 %; that was true before #124 and is not any more, so the
+# lever moved here.
+#
+# `ubuntu-24.04-arm` is a *standard* runner, not a larger one, so private-repository
+# minutes still draw the included allowance first and are then billed per minute — at
+# USD 0,005 against `ubuntu-latest`'s 0,006. That is **17 % cheaper, not the ~30 %**
+# issue #125 assumed: 30 % is the public list-price gap of 0,008 → 0,005, and this
+# organisation's billing shows 0,006 for `Actions Linux`. The allowance is denominated
+# in currency (September: 2 448 minutes, 469 of them past the allowance and billed), so
+# a cheaper minute is directly more CI per allowance rather than a discount on a bill.
+#
+# What made it safe to try — all checked before the first run, none of it assumed:
+#
+#   * Every pinned requirement in `requirements-base.txt` resolves on linux aarch64 for
+#     cp311: 80 are pure-Python wheels, 28 ship `manylinux…_aarch64` (numpy, scipy,
+#     numba, llvmlite, lxml, opencv-python-headless, tokenizers, safetensors,
+#     cryptography, sentencepiece, rpds-py, and the two the issue singled out —
+#     `manifold3d` 3.5.2 and `psycopg-binary`). `trimesh` is pure Python. The one
+#     sdist-only distribution, `antlr4-python3-runtime`, is pure source with no
+#     extension to compile.
+#   * `torch` resolves from PyTorch's CPU index, which carries
+#     `torch-*+cpu-cp311-cp311-manylinux_2_28_aarch64.whl`. On aarch64 there is no CUDA
+#     build to avoid, but the index is kept so this mirrors the documented Linux no-GPU
+#     install rather than quietly diverging from it.
+#   * `postgres:17-alpine`, the service container below, publishes linux/arm64.
+#   * The CuraEngine stand-in is a bash script, so it has no architecture.
+#
+# What this trades. arm64 is 17 % cheaper per minute, so it is a saving only while the
+# job is not more than 17 % slower. If a later measurement shows it is, the honest move
+# is back to `ubuntu-latest` with the number recorded — the arch is one token per job
+# and nothing else in this file depends on it.
 name: CI
 
 on:
@@ -27,7 +63,7 @@ concurrency:
 jobs:
   python:
     name: Python tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
 
     # The telemetry database is PostgreSQL (Supabase) everywhere, so the suite runs
@@ -171,7 +207,7 @@ jobs:
 
   web:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
 
     defaults:

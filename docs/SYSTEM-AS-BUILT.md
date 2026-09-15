@@ -96,6 +96,16 @@ curl -s http://<gpu-host>:8100/health | python -m json.tool   # check before sub
 # executes it — verified, since the suite passes with a stub that exits 70 if invoked.
 # `npm run lint` runs non-blocking: it has 27 pre-existing errors, and a gate that is
 # red the day it lands teaches everyone to ignore the red.
+#
+# Both CI jobs run on `ubuntu-24.04-arm` (issue #125). CI is the largest single consumer
+# of the Actions allowance — 729 billed minutes of September 2026's 2 448, 29,8 % — and
+# an arm64 standard runner is USD 0,005 a minute against 0,006, so the allowance buys
+# ~17 % more of it. Every pinned requirement resolves on linux aarch64 (80 pure-Python,
+# 28 `manylinux…_aarch64`, torch from PyTorch's CPU index), `postgres:17-alpine` is
+# multi-arch, and the CuraEngine stand-in is a bash script. **The Docker images are
+# unaffected and stay `linux/amd64`** — `ci.yml` builds none, and `licence-data.yml`,
+# which does, stays on an x64 runner for that reason. The full reasoning, including what
+# would justify moving back, is in `ci.yml`'s own header.
 
 # Makefile shortcuts
 make build                     # docker compose build
