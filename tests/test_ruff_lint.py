@@ -25,12 +25,13 @@ fails silently:
 Everything except the first test is static: no file is written and the linter is run
 exactly once.
 
-**The two CI tests are red until a person applies the workflow patch.** GitHub refuses
-any push from an App that creates or updates a file under `.github/workflows/`, so the
-run that wrote the rest of this could not add the step — see `docs/PIPELINE.md` § A
-pipeline run cannot change this pipeline, which is why the patch is in the pull
-request body instead. They are deliberately not skipped or xfailed: a gate nobody can
-see missing is the failure mode this whole file exists to prevent.
+**The two CI tests were red when this file arrived, deliberately.** GitHub refuses any
+push from an App that creates or updates a file under `.github/workflows/`, so the run
+that wrote the rest of this could not add the step — see `docs/PIPELINE.md` § A pipeline
+run cannot change this pipeline — and it put the patch in the pull request body instead.
+They were not skipped or xfailed while they waited: a gate nobody can see missing is the
+failure mode this whole file exists to prevent. A person applied the patch in `b04f779`
+and they have been green since.
 """
 
 from __future__ import annotations

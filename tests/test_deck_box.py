@@ -62,7 +62,7 @@ def test_assert_features_within_refuses_a_missing_measurement():
         assert_features_within({"a_mm": 10.0}, {}, tol_mm=0.05)
 
 
-from pythonsrc.organizer.archetypes import (  # noqa: E402  # noqa: E402
+from pythonsrc.organizer.archetypes import (  # noqa: E402
     card_divider,
     compile_spec,
     deck_box,
