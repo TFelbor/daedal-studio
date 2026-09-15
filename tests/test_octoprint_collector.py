@@ -246,9 +246,10 @@ async def test_octoprint_collector_reconnects_with_backoff(memory_db, patch_sess
     collector = OctoPrintCollector("localhost", 5000, "key", "test-job-123", memory_db)
     attempts = []
 
-    factory = lambda: FakeClientSession(
-        error=aiohttp.ClientError("connection refused"), on_connect=attempts.append
-    )
+    def factory():
+        return FakeClientSession(
+            error=aiohttp.ClientError("connection refused"), on_connect=attempts.append
+        )
     with patch_session(factory):
         await collector.start()
         await asyncio.sleep(0.05)

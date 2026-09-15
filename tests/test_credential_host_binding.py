@@ -95,7 +95,7 @@ def store():
 
     for key in written:
         app_module.config_store.delete(key)
-    for credential_key, (host_key, _) in PRINTER_CREDENTIAL_HOSTS.items():
+    for credential_key in PRINTER_CREDENTIAL_HOSTS:
         app_module.config_store.delete(credential_key)
 
 

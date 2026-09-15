@@ -199,7 +199,7 @@ def test_shutdown_stops_collectors(mock_stop):
 
     # Trigger shutdown event
     # Using client to trigger lifecycle events
-    with TestClient(app) as lifecycle_client:
+    with TestClient(app):
         pass  # Startup and shutdown are called
 
     mock_stop.assert_called_once()

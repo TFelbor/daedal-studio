@@ -260,12 +260,12 @@ def sample_samples(tmp_db, sample_job):
 async def fake_moonraker_ws(unused_tcp_port):
     async def handler(websocket):
         try:
-            async for message in websocket:
+            async for _message in websocket:
                 pass
         except websockets.exceptions.ConnectionClosed:
             pass
 
-    async with websockets.serve(handler, "127.0.0.1", unused_tcp_port) as server:
+    async with websockets.serve(handler, "127.0.0.1", unused_tcp_port):
         yield f"ws://127.0.0.1:{unused_tcp_port}/websocket"
 
 @pytest.fixture

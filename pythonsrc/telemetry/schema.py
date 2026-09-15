@@ -464,7 +464,8 @@ class TelemetrySample:
 
         if d.get('sampled_at') and isinstance(d['sampled_at'], str):
             s = d['sampled_at']
-            if s.endswith('Z'): s = s[:-1] + '+00:00'
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
             d['sampled_at'] = datetime.fromisoformat(s)
         return cls(**d)
 #: Every value `FailureEvent.failure_type` may hold.
@@ -573,7 +574,8 @@ class FailureEvent:
 
         if d.get('detected_at') and isinstance(d['detected_at'], str):
             s = d['detected_at']
-            if s.endswith('Z'): s = s[:-1] + '+00:00'
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
             d['detected_at'] = datetime.fromisoformat(s)
         return cls(**d)
 

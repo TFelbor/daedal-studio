@@ -463,7 +463,7 @@ def _min_wall_thickness(mesh: trimesh.Trimesh, profile: ProcessProfile) -> tuple
     # to be refined to a fine pitch, so raise its iteration budget and fall back to
     # coarser grids rather than silently reporting no measurement at all.
     solid = None
-    for attempt in range(3):
+    for _attempt in range(3):
         try:
             voxels = mesh.voxelized(pitch=pitch, max_iter=200).fill()
             solid = np.pad(np.asarray(voxels.matrix, dtype=bool), 1)

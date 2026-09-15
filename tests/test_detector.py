@@ -43,7 +43,7 @@ async def test_rule1_thermal_runaway(mock_db):
     detector = AnomalyDetector(queue, mock_db, operator=None)
 
     # Needs to be > 150C target and actual < target - 25 for 5 samples
-    for i in range(5):
+    for _i in range(5):
         s = make_sample(hotend_target=200, hotend_actual=170)
         await queue.put(s)
 
@@ -62,7 +62,7 @@ async def test_rule1_thermal_runaway_no_false_positive(mock_db):
     detector = AnomalyDetector(queue, mock_db, operator=None)
 
     # 4 samples bad, 1 sample good -> no trigger
-    for i in range(4):
+    for _i in range(4):
         s = make_sample(hotend_target=200, hotend_actual=170)
         await queue.put(s)
     s_good = make_sample(hotend_target=200, hotend_actual=190)
@@ -83,7 +83,7 @@ async def test_rule2_extrusion_stall(mock_db):
     detector._state_cache["job_1"] = {"time": 0, "state": "printing", "progress": 10.0, "prev_state": "printing"}
 
     # 10 samples with same gcode_line
-    for i in range(10):
+    for _i in range(10):
         s = make_sample(gcode_line=500)
         await queue.put(s)
 
@@ -101,7 +101,7 @@ async def test_rule2_extrusion_stall_gcode_none(mock_db):
     detector = AnomalyDetector(queue, mock_db, operator=None)
     detector._state_cache["job_1"] = {"time": 0, "state": "printing", "progress": 10.0, "prev_state": "printing"}
 
-    for i in range(10):
+    for _i in range(10):
         s = make_sample(gcode_line=None)
         await queue.put(s)
 
@@ -165,7 +165,7 @@ async def test_integration_moonraker_mock(mock_db):
 
     detector = AnomalyDetector(queue, mock_db, operator=moon_op)
 
-    for i in range(5):
+    for _i in range(5):
         s = make_sample(hotend_target=210, hotend_actual=180)
         await queue.put(s)
 
@@ -191,7 +191,7 @@ async def test_integration_octoprint_mock(mock_db):
 
     detector = AnomalyDetector(queue, mock_db, operator=octo_op)
 
-    for i in range(5):
+    for _i in range(5):
         s = make_sample(hotend_target=210, hotend_actual=180)
         await queue.put(s)
 
@@ -246,7 +246,7 @@ async def test_db_less_than_10_samples(mock_db):
 
     # 5 samples -> no clogged detection (requires 10)
     detector._state_cache["job_1"] = {"time": 0, "state": "printing", "progress": 10.0, "prev_state": "printing"}
-    for i in range(5):
+    for _i in range(5):
         s = make_sample(gcode_line=500)
         await queue.put(s)
 

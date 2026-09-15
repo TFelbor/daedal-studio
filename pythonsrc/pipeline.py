@@ -778,7 +778,6 @@ def _phase_start(phase_num: int) -> float:
 def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> None:
     """Print a phase pass banner with timing and output path."""
     elapsed = time.time() - start_time
-    name = _PHASE_NAMES.get(phase_num, "Unknown")
     out_info = f" (output: {output_path})" if output_path else ""
     print(f"[DS] ═══ PHASE {phase_num} PASS  ✓{out_info} ═══", flush=True)
     print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
@@ -788,7 +787,6 @@ def _phase_pass(phase_num: int, start_time: float, output_path: str = "") -> Non
 def _phase_fail(phase_num: int, start_time: float, exc: Exception) -> None:
     """Print a phase fail banner with traceback, then exit."""
     elapsed = time.time() - start_time
-    name = _PHASE_NAMES.get(phase_num, "Unknown")
     print(f"[DS] ═══ PHASE {phase_num} FAIL  ✗ ═══", flush=True)
     print(f"[DS] Phase {phase_num} duration: {elapsed:.1f}s", flush=True)
     print(f"[DS] ERROR: {exc}", flush=True)

@@ -143,7 +143,7 @@ def test_an_unavailable_model_abstains_rather_than_failing_the_job(monkeypatch):
 def test_a_confident_match_flags_and_names_the_term(monkeypatch):
     """The scoring path, with the model stubbed — no weights, no network."""
     labels = ip_screen_image.candidate_labels()
-    target = next(i for i, l in enumerate(labels) if "pikachu" in l.lower())
+    target = next(i for i, label in enumerate(labels) if "pikachu" in label.lower())
     scores = [0.001] * len(labels)
     scores[target] = 0.97
 
@@ -163,7 +163,7 @@ def test_a_control_label_winning_is_a_pass(monkeypatch):
     """An ordinary object must not be flagged because some term scored least-wrong."""
     labels = ip_screen_image.candidate_labels()
     control = next(
-        i for i, l in enumerate(labels) if l in ip_screen_image.CONTROL_LABELS
+        i for i, label in enumerate(labels) if label in ip_screen_image.CONTROL_LABELS
     )
     scores = [0.001] * len(labels)
     scores[control] = 0.9

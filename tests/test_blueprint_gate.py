@@ -360,7 +360,7 @@ def test_a_finished_job_is_not_awaiting_approval():
 
     db = TelemetryDB()
     job_id = "gate-0000-0000-0000-00000000000c"
-    digest = _park(db, job_id)
+    _park(db, job_id)
     db.update_job_outcome_verdict(
         job_id, "success", source="machine", completed_at=datetime.now(timezone.utc),
     )

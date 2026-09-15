@@ -147,7 +147,6 @@ class OctoPrintCollector:
                         self._backoff = 1.0
                         logger.info("OctoPrint SockJS WebSocket connected.")
 
-                        authenticated = False
                         # Receive loop
                         async for msg in ws:
                             if not self._running:
@@ -167,7 +166,6 @@ class OctoPrintCollector:
                                         break
                                     auth_msg = json.dumps({"auth": credentials})
                                     await ws.send_str(json.dumps([auth_msg]))
-                                    authenticated = True
                                 elif data in ('h', ''):  # heartbeat — ignore
                                     pass
                                 elif data.startswith('a'):
