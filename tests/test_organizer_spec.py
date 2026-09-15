@@ -904,7 +904,7 @@ def test_every_schema_problem_starts_with_the_path_it_is_about():
     assert "spec.process" in paths            # the unknown key, on its owner
     assert "spec.constraints.max_external_mm" in paths
     # Every path is dotted from `spec` and names something, never a bare sentence.
-    for problem, pair in zip(exc.value.problems, pairs):
+    for problem, pair in zip(exc.value.problems, pairs, strict=True):
         assert pair["message"] == problem
         assert pair["path"] == problem.split(" ")[0]
         assert pair["path"] == "spec" or pair["path"].startswith("spec.")

@@ -2414,7 +2414,7 @@ async def create_job(request: JobRequest):
     # 202 and disables printing, which is what `"default"` and `"test"` do today.
     try:
         resolve_profile_path(request.profile)
-    except ProfileOutsideProfilesDir:
+    except ProfileOutsideProfilesDir as exc:
         activity.action(
             "job refused",
             [("reason", "profile outside pythonsrc/profiles"),
@@ -2428,7 +2428,7 @@ async def create_job(request: JobRequest):
                 "A printer profile must be a file in pythonsrc/profiles; "
                 f"{request.profile!r} resolves outside it."
             ),
-        )
+        ) from exc
 
     screen = screen_prompt(request.prompt, request.material_colour)
     if screen.action == "block":
@@ -3177,7 +3177,7 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
             raise HTTPException(
                 status_code=500,
                 detail="The decision could not be recorded, so nothing was started.",
-            )
+            ) from exc
 
         activity.action(
             "blueprint " + ("approved" if request.approve else "rejected"),
@@ -3218,7 +3218,7 @@ async def blueprint_approval(job_id: str, request: BlueprintApprovalRequest | No
             raise HTTPException(
                 status_code=500,
                 detail="The original request could not be read, so the job cannot continue.",
-            )
+            ) from exc
     finally:
         db.close()
 
@@ -3458,7 +3458,7 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         return {"status": "dispatching", "target": target}
     except Exception as e:
         logger.error(f"Error in print-dispatch: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.delete("/jobs/{job_id}")
 async def cancel_job(job_id: str):
@@ -3611,7 +3611,7 @@ async def printer_action(job_id: str, request: PrinterActionRequest):
             status="fail",
             level="ERROR",
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 class InternalTelemetryRequest(BaseModel):
     type: str

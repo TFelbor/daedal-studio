@@ -172,7 +172,7 @@ def test_every_compose_service_and_profile_it_names_is_declared():
         # Paired with its predecessor rather than tracked in a variable: the loop body
         # has five `continue`s, and a `previous = token` at the end of it is one edit away
         # from being skipped on whichever branch someone adds next.
-        for previous, token in zip([None, *tokens], tokens):
+        for previous, token in zip([None, *tokens], tokens, strict=False):
             if expect_value:
                 if previous == "--profile":
                     named_profiles.add(token)

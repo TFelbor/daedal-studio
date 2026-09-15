@@ -52,7 +52,7 @@ class BambuOperator(BasePrinterOperator):
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Bambu printer MQTT: {e}")
-            raise PrinterConnectionError(f"Bambu MQTT connection failed: {e}")
+            raise PrinterConnectionError(f"Bambu MQTT connection failed: {e}") from e
 
     def upload_file(self, local_path: str, remote_name: str) -> bool:
         """Upload a file to the printer.

@@ -79,7 +79,7 @@ def external_overshoots(
     assert stated is not None  # effective_max_external_mm() returned a tuple
     margin = spec.constraints.fit_margin_mm
     out: list[Overshoot] = []
-    for axis, extent, limit, stated_limit in zip(EXTERNAL_AXES, extents, limits, stated):
+    for axis, extent, limit, stated_limit in zip(EXTERNAL_AXES, extents, limits, stated, strict=True):
         if extent <= limit + 1e-9:
             continue
         how = f" (max_external {stated_limit:g} − {margin:g} margin)" if margin else ""

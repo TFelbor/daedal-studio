@@ -314,14 +314,14 @@ def render(jobs: list[JobOutputs], flat: tuple[str, ...], now: float) -> str:
     lines = [
         "  ".join(
             ["AGE".rjust(5), "SIZE".rjust(6)]
-            + [h.upper().center(w) for h, w in zip(headers, widths)]
+            + [h.upper().center(w) for h, w in zip(headers, widths, strict=True)]
             + ["JOB"]
         )
     ]
     for job in jobs:
         cells = [
             ("✓" if job.has(name) else "·").center(w)
-            for (name, _), w in zip(ARTIFACT_COLUMNS, widths)
+            for (name, _), w in zip(ARTIFACT_COLUMNS, widths, strict=True)
         ]
         notes = []
         if job.is_empty:

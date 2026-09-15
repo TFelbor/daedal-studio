@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from pythonsrc.telemetry.db import TelemetryDB
 from server import app as app_module
@@ -174,7 +175,7 @@ def test_no_chosen_axis_leaves_the_pipeline_default_alone():
 
 def test_an_unknown_scale_axis_is_refused_by_the_request_model():
     """Only the two axes `Engineer.SCALE_AXES` implements may be requested."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         _request(target_mm=80.0, scale_axis="tallest")
 
 

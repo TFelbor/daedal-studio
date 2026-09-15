@@ -47,6 +47,35 @@ ignore = [
     "E501",
 ]
 
+# One entry per finding that is a statement about this code rather than a defect in it.
+# Each says why; none of them is "we could not be bothered".
+[tool.ruff.lint.per-file-ignores]
+# E402 — an import below module-level code. In all three files the placement is load
+# bearing or at least deliberate, and hoisting an import is an import-order change, not
+# a whitespace one: `octoprint_operator` imports its base class below its own helpers
+# and `pythonsrc.operators.__init__` imports it back; `conftest` imports the telemetry
+# package below the session fixtures that administer the database it talks to; and
+# `test_server`'s second half is a separate suite that was appended to the first.
+"pythonsrc/operators/octoprint_operator.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+"tests/test_server.py" = ["E402"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's parameter markers are *meant* to be called in a default — that call is how a
+# multipart field or a form field is declared, and moving it into the body removes the
+# parameter from the OpenAPI schema. Ruff already exempts `Depends` and `Query`; the
+# sculptor worker's `/sculpt` uses `File` and `Form`, and the rest are listed so the next
+# endpoint does not have to rediscover this.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Security",
+]
+
 [tool.ruff.lint.isort]
 # `pythonsrc`, `server`, `services` and `tests` are imported as top-level packages from
 # the checkout root; without this ruff reads them as third-party and asks for them to be

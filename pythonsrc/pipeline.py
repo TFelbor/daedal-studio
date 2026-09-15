@@ -1433,9 +1433,14 @@ def run(args: argparse.Namespace) -> None:
         # the printability report a few lines below.
         achieved = (eng.last_report or {}).get("achieved_extent_mm")
         if achieved and process_profile_limits:
+            # `strict=False`: both operands are read out of a report dict and a JSON
+            # profile, and this list only builds a warning message. A ragged pair must
+            # not raise from inside the code that explains what went wrong.
             over = [
                 f"{axis} {extent:.0f}mm > {limit:.0f}mm"
-                for axis, extent, limit in zip("XYZ", achieved, process_profile_limits)
+                for axis, extent, limit in zip(
+                    "XYZ", achieved, process_profile_limits, strict=False
+                )
                 if extent > limit
             ]
             if over:

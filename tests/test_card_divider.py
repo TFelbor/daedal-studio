@@ -395,7 +395,7 @@ def test_the_outline_carries_no_zero_length_edge(position):
     d = card_divider.derive(divider(divider=Divider(tab_position=position)))
     points = card_divider.outline(d)
     assert len(points) == (8 if position == "centre" else 7)
-    for a, b in zip(points, points[1:] + points[:1]):
+    for a, b in zip(points, points[1:] + points[:1], strict=True):
         assert a != b
 
 

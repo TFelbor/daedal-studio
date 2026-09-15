@@ -232,7 +232,7 @@ def test_an_invalid_divider_section_is_refused_with_its_path(mock_run, printer_c
 
 def test_a_client_cannot_claim_spec_as_a_size_source():
     """Only the server derives it, from the presence of a spec."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         _request(target_mm=80.0, size_source="spec")
 
 

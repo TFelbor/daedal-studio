@@ -130,11 +130,11 @@ class OctoPrintOperator(BasePrinterOperator):
         """
         try:
             return self.get_version()
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as exc:
             raise RuntimeError(
                 f"Connection refused — cannot reach OctoPrint at {self.base_url}. "
                 "Is the OctoPrint server running? Check the URL and port."
-            )
+            ) from exc
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status == 403:

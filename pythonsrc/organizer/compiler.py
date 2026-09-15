@@ -309,7 +309,7 @@ def _chamfered_trims(
     prism = section.extrude(h)
     normals, offsets = _edge_planes(section)
     root_two = math.sqrt(2.0)
-    for (nx, ny), p in zip(normals, offsets):
+    for (nx, ny), p in zip(normals, offsets, strict=True):
         prism = prism.trim_by_plane([-nx, -ny, 1.0], -(p - c) / root_two)
     return prism.hull()
 

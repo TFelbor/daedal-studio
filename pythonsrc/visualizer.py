@@ -99,7 +99,10 @@ class Visualizer:
     def generate_blueprint(
         self,
         prompt: str,
-        output_path: str | Path = os.path.join(INPUTS_DIR, "blueprint.png"),
+        # B008 is about a default that changes between calls. `INPUTS_DIR` is a
+        # module constant in `config.py`, so this join is the same string every time
+        # and moving it into the body would only hide the default from the signature.
+        output_path: str | Path = os.path.join(INPUTS_DIR, "blueprint.png"),  # noqa: B008
         num_inference_steps: int = 2,
         guidance_scale: float = 3.5,
         seed: int | None = None,
