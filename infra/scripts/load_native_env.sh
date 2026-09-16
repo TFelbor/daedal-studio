@@ -37,7 +37,17 @@
 
 if [ -f .env ]; then
     while IFS= read -r _ds_key; do
-        [ -n "$_ds_key" ] || continue
+        # Blank lines and the comments below are not keys. Without this, every comment
+        # line in the here-doc was read as one and interpolated straight into the `sed`
+        # expression: the DS_API_BIND note contains `it is an interface, not a
+        # filesystem location`, and the `/` in a later line closed the substitution
+        # early — `sed: -e expression #1, char 56: unknown option to 's'` on every
+        # `make start-native` and every `make api-token`. Harmless only by luck: prose
+        # matches no `.env` line, so nothing was exported. A comment that happened to
+        # read `KEY=value` would have been.
+        case "$_ds_key" in
+            '' | \#*) continue ;;
+        esac
         # `tail -1` so a duplicated key behaves the way a shell assignment would:
         # the last occurrence wins, rather than silently concatenating.
         _ds_val=$(sed -n "s/^${_ds_key}=//p" .env | tail -1)
