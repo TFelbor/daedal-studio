@@ -92,7 +92,35 @@ class ProcessProfile:
     """Minimum first-layer footprint; below this, adhesion failures dominate."""
 
     build_volume_mm: Optional[List[float]] = None
-    """Printer build volume as [width, depth, height], or None if unknown."""
+    """Printer build volume as [width, depth, height], or None if the profile does not
+    say. Never a partial answer: `__post_init__` rejects any other length, so the two
+    checks that zip it against a three-element extent can do so `strict=True`."""
+
+    def __post_init__(self) -> None:
+        """Reject a build volume that is neither absent nor all three axes.
+
+        Raises:
+            ValueError: `build_volume_mm` is present and not of length 3.
+
+        The readers of this field — `max_size_mm` and the `build_volume_fit` check —
+        zip it against a three-element extent, so a shorter list used to drop the axes
+        it did not reach and **fail open**: a part taller than the machine passed a
+        check whose one job is to say it does not fit, and the derived maximum size was
+        computed without the Z ceiling. Neither said an axis had gone unexamined.
+
+        The invariant lives here rather than in the readers because neither producer
+        can mean a partial answer: `from_printer_profile` builds the list only when all
+        three machine keys are present, and `server.app._profile_build_volume` treats
+        "the profile does not say" as `None`. A two-entry volume is a malformed profile,
+        and it fails at the boundary that names itself rather than silently downgrading
+        a check three phases later.
+        """
+        if self.build_volume_mm is not None and len(self.build_volume_mm) != 3:
+            raise ValueError(
+                "build_volume_mm must be [width, depth, height] or None; got "
+                f"{len(self.build_volume_mm)} value(s): {self.build_volume_mm!r}. "
+                "A partial build volume would drop an axis from the fit check."
+            )
 
     @classmethod
     def from_printer_profile(cls, profile: Dict[str, Any]) -> "ProcessProfile":
