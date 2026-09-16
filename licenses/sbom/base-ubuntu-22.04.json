@@ -6534,8 +6534,6 @@
   "bugReportURL": "https://bugs.launchpad.net/ubuntu/",
   "homeURL": "https://www.ubuntu.com/",
   "id": "ubuntu",
-/",
-  "id": "ubuntu",
   "idLike": [
    "debian"
   ],
@@ -6543,7 +6541,8 @@
   "prettyName": "Ubuntu 22.04.5 LTS",
   "privacyPolicyURL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
   "supportURL": "https://help.ubuntu.com/",
-  "version": "22.04.5 LTS (Jammy Jellename": "jammy",
+  "version": "22.04.5 LTS (Jammy Jellyfish)",
+  "versionCodename": "jammy",
   "versionID": "22.04"
  },
  "schema": {
@@ -6580,8 +6579,5 @@
   "name": "ubuntu",
   "type": "image",
   "version": "22.04"
- }
-}
-ersion": "22.04"
  }
 }

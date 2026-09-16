@@ -128,7 +128,7 @@ jobs:
         # syft's raw output for this image is 16 MB, almost all of it per-package file
         # manifests. The normaliser keeps the licence-relevant fields.
         run: |
-          syft ds-mvp-pipeline:latest -o syft-json --file licenses/sbom/ds-mvp-pipeline.json
+          syft ds-mvp-pipeline:latest -o syft-json > licenses/sbom/ds-mvp-pipeline.json
           python3 infra/scripts/normalise_licence_data.py licenses/sbom/ds-mvp-pipeline.json
 
       - name: Drop the pipeline image before building the next one
@@ -152,13 +152,28 @@ jobs:
 
       - name: SBOM the api-server image
         run: |
-          syft ds-api-server:latest -o syft-json --file licenses/sbom/ds-api-server.json
+          syft ds-api-server:latest -o syft-json > licenses/sbom/ds-api-server.json
           python3 infra/scripts/normalise_licence_data.py licenses/sbom/ds-api-server.json
 
+      # Each of these four jobs uploads **only the files it wrote**, never `licenses/`
+      # as a directory. A job's checkout already contains the committed copy of every
+      # licence file, so `path: licenses/` put a full tree in all four artifacts — and
+      # the report job below merges them into one directory with `merge-multiple`.
+      # Every regenerated file therefore existed in four artifacts at once, three of
+      # them stale, and two writers of the same path is how #129's corruption got in:
+      # `sbom/base-ubuntu-22.04.json` came back byte-identical to its previous
+      # committed version except for one window where a 22-byte run was duplicated and
+      # a matching run dropped — content written twice at skewed offsets, not a
+      # generator emitting bad JSON. Listing outputs explicitly means no path appears
+      # in two artifacts, so there is nothing to race.
       - uses: actions/upload-artifact@v4
         with:
           name: licence-data-images
-          path: licenses/
+          path: |
+            licenses/python.json
+            licenses/python-api-server.json
+            licenses/sbom/ds-mvp-pipeline.json
+            licenses/sbom/ds-api-server.json
           retention-days: 14
 
   # ── The web app's production tree ───────────────────────────────────────────
@@ -204,7 +219,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: licence-data-node
-          path: licenses/
+          path: |
+            licenses/node.json
+            licenses/node-dev.json
           retention-days: 14
 
   # ── Base images, from the registry: on the schedule, or on request ──────────
@@ -229,7 +246,7 @@ jobs:
           scan() {
             name="$2"
             echo "── $1"
-            syft "registry:$1" -o syft-json --file "licenses/sbom/base-$name.json"
+            syft "registry:$1" -o syft-json > "licenses/sbom/base-$name.json"
             python3 infra/scripts/normalise_licence_data.py "licenses/sbom/base-$name.json"
           }
           scan ubuntu:22.04 ubuntu-22.04
@@ -240,7 +257,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: licence-data-base-images
-          path: licenses/
+          path: licenses/sbom/base-*.json
           retention-days: 14
 
   # ── The macOS-native dev path — on request only ────────────────────────────
@@ -292,7 +309,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: licence-data-mac
-          path: licenses/
+          path: licenses/python-mac.json
           retention-days: 14
 
   # ── Score everything, and commit it on main ────────────────────────────────
@@ -356,6 +373,14 @@ jobs:
             licenses/
             docs/audits/
           retention-days: 90
+
+      # Nothing unparseable is ever committed. The race above is fixed at its source,
+      # but "fixed at its source" is what the last ten regenerations looked like from
+      # here too, and a corrupt licence artifact on `main` is an audit that cannot be
+      # reproduced. This runs after the report has been scored and uploaded — the
+      # report names the bad file, and is worth keeping precisely when this fails.
+      - name: Refuse to commit an unparseable licence artifact
+        run: python3 infra/scripts/check_licence_json.py
 
       - name: Commit the data to main
         # `push` is gone (see the header); `workflow_dispatch` is added so a dependency
