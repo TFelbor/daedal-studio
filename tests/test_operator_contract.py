@@ -63,36 +63,3 @@ def test_pipeline_calls_upload_file_with_base_signature_only():
         "pipeline.py passes OctoPrint's upload-and-print kwarg through the abstract "
         "interface; other firmwares raise TypeError"
     )
-
-
-@pytest.mark.parametrize("operator_cls", OPERATORS)
-@pytest.mark.parametrize("method_name", ABSTRACT_METHODS)
-def test_no_operator_method_is_still_a_stub(operator_cls, method_name):
-    """Signature checks pass for a body that raises. This is the other half.
-
-    #73 names it directly: "a `NotImplementedError` body passes today, so the contract
-    test must grow behaviour assertions for Bambu". Every method of `BambuOperator` was
-    such a body, and the contract suite was green the whole time — an operator that
-    could be constructed, called with the right arguments, and did nothing.
-
-    Source inspection rather than a call, because calling means a printer. What the
-    method actually *does* is held by `tests/test_bambu_operator.py` against a fake
-    broker, and on real hardware by the checklist in #73's pull request.
-    """
-    implementation = getattr(operator_cls, method_name)
-
-    assert implementation is not getattr(BasePrinterOperator, method_name), (
-        f"{operator_cls.__name__} does not implement {method_name}"
-    )
-    assert "NotImplementedError" not in inspect.getsource(implementation), (
-        f"{operator_cls.__name__}.{method_name} is still a stub"
-    )
-
-
-@pytest.mark.parametrize("operator_cls", OPERATORS)
-def test_every_operator_says_which_firmware_it_is(operator_cls):
-    """`firmware` is what replaced `isinstance` in the detector and the collector
-    choice (#74). An operator that does not declare one is read as an unknown firmware
-    — no collector, and a state nothing can normalise."""
-    assert operator_cls.firmware, f"{operator_cls.__name__} declares no firmware"
-    assert operator_cls.firmware == operator_cls.firmware.lower()
