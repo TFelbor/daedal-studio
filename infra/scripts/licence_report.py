@@ -68,7 +68,7 @@ from pythonsrc.licence_policy import (  # noqa: E402  (path set above)
     worst_severity,
 )
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: The files CI produces, and what each one is. `in_process` is the licensing question,
 #: not a description of the file: it decides whether strong copyleft in that tree is a
@@ -125,7 +125,21 @@ KNOWN_SOURCES: dict[str, dict[str, Any]] = {
 #: Which files must exist for the report to be considered complete. A missing one is
 #: recorded in `missing_sources` rather than quietly reducing the package count — an
 #: audit that cannot tell "no findings" from "no data" is worse than no audit.
-EXPECTED_SOURCES = ("python.json", "python-api-server.json", "node.json")
+#:
+#: The two image SBOMs are here because leaving them out is how #129 survived ten
+#: regenerations: `sbom/ds-mvp-pipeline.json` was corrupt on six of them, and because
+#: no entry named it, an unreadable file scored 458 packages fewer and still reported
+#: `missing_sources: []` — the word for complete. The base-image SBOMs are deliberately
+#: not listed: that job runs on a schedule of its own, so their absence from a given
+#: run is routine rather than a gap. An unreadable one is still loud, through
+#: `unreadable_sources` below, which does not ask to have been expected.
+EXPECTED_SOURCES = (
+    "python.json",
+    "python-api-server.json",
+    "node.json",
+    "sbom/ds-mvp-pipeline.json",
+    "sbom/ds-api-server.json",
+)
 
 #: Package types an image SBOM reports that are *linked into* something this project
 #: runs. A wheel inside the pipeline image is the same in-process risk as one named in
@@ -233,6 +247,14 @@ def _read_sbom(payload: Any) -> Iterator[dict[str, Any]]:
 
 
 def _load(path: Path) -> Any | None:
+    """Parse one source file, or `None` if it is there and cannot be read.
+
+    Every caller reaches this through `_iter_source_files`, which globs files that
+    exist — so `None` never means "absent", it means "present and unusable", and
+    `_rows_for` is what carries that distinction on to the report. The stderr line is
+    kept, but it is no longer the only place the failure is recorded: one line in a
+    workflow log is a line nobody reads.
+    """
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -316,15 +338,23 @@ def _iter_source_files(licences_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
     return found
 
 
-def _rows_for(path: Path, descriptor: dict[str, Any]) -> list[dict[str, Any]]:
+def _rows_for(path: Path, descriptor: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    """The rows one source file contributes, and whether it could be read at all.
+
+    The flag is the whole point: an unparseable file used to return the same empty list
+    as a file that genuinely declares nothing, and the report had no way to tell them
+    apart afterwards. A source that declares nothing is a fact about the tree; a source
+    that will not parse is a fact about the audit, and only one of them means the
+    counts below are wrong.
+    """
     payload = _load(path)
     if payload is None:
-        return []
+        return [], False
     if descriptor["ecosystem"] == "image":
-        return list(_read_sbom(payload))
+        return list(_read_sbom(payload)), True
     if descriptor["tool"] == "license-checker" or isinstance(payload, dict):
-        return list(_read_license_checker(payload))
-    return list(_read_pip_licenses(payload))
+        return list(_read_license_checker(payload)), True
+    return list(_read_pip_licenses(payload)), True
 
 
 def build_report(licences_dir: Path) -> dict[str, Any]:
@@ -336,7 +366,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
     total_packages = 0
 
     for path, descriptor in _iter_source_files(licences_dir):
-        rows = _rows_for(path, descriptor)
+        rows, readable = _rows_for(path, descriptor)
         source_name = str(path.relative_to(licences_dir))
         source_histogram: Counter[str] = Counter()
 
@@ -467,15 +497,22 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
                 "in_process": bool(descriptor["in_process"]),
                 "linked": bool(descriptor.get("linked", True)),
                 "isolation": descriptor.get("isolation", ""),
-                "status": "ok" if rows else "empty",
+                # Three states, not two. "empty" is a source that parsed and declared
+                # nothing; "unreadable" is one that did not parse. Collapsing them is
+                # what let a corrupt SBOM read as an honest zero.
+                "status": "ok" if rows else "empty" if readable else "unreadable",
                 "packages": len(rows) - self_declared,
                 "private_packages_skipped": self_declared,
                 "top_licences": dict(source_histogram.most_common(10)),
             }
         )
 
+    # `present` counts an unreadable file as present on purpose: it is not missing, and
+    # reporting it as both would be two names for one fault. It is loud under its own
+    # heading instead, and both headings feed the same `incomplete` verdict.
     present = {source["name"] for source in sources}
     missing = [name for name in EXPECTED_SOURCES if name not in present]
+    unreadable = [source["name"] for source in sources if source["status"] == "unreadable"]
 
     findings.sort(
         key=lambda f: (
@@ -497,7 +534,7 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
             worst_severity(f["severity"] for f in findings)
             if any(f["severity"] == DENY for f in findings)
             else "incomplete"
-            if missing
+            if missing or unreadable
             else worst_severity(f["severity"] for f in findings)
             if findings
             else ALLOW
@@ -513,6 +550,11 @@ def build_report(licences_dir: Path) -> dict[str, Any]:
         },
         "licence_histogram": dict(histogram.most_common()),
         "missing_sources": missing,
+        # Present, and did not parse. Separate from `missing_sources` because the
+        # remedies differ — one file has to be produced, the other has to be produced
+        # *correctly* — and because a reader who sees an empty `missing_sources` and
+        # stops is the reader this field exists for.
+        "unreadable_sources": unreadable,
         "sources": sources,
         "findings": findings,
     }
@@ -537,6 +579,9 @@ def _digest(report: dict[str, Any]) -> dict[str, Any]:
         "deny": report["totals"]["deny"],
         "flag": report["totals"]["flag"],
         "missing_sources": report["missing_sources"],
+        # In the digest, so a source falling over writes an audit note the day it
+        # happens rather than on the next run that also moved a finding.
+        "unreadable_sources": report["unreadable_sources"],
         # An aggregate row is keyed by its class and count, not by its licence
         # histogram: a base-image bump that reshuffles which GPL packages are present
         # without changing how many is not a new finding, and keying on the histogram
@@ -646,6 +691,13 @@ def render_audit(report: dict[str, Any], audits_dir: Path, out_path: Path) -> st
             "- **Incomplete:** no data for "
             + ", ".join(f"`{name}`" for name in report["missing_sources"])
             + " — treat the counts as a floor."
+        )
+    if report["unreadable_sources"]:
+        body.append(
+            "- **Unreadable:** "
+            + ", ".join(f"`{name}`" for name in report["unreadable_sources"])
+            + " could not be parsed. The file is there and its packages are not in the "
+            "counts below — this is a broken generator, not a clean tree."
         )
     body += ["", "## Delta", ""]
     body += _delta_lines(digest, previous)
@@ -810,6 +862,14 @@ def main(argv: list[str] | None = None) -> int:
             "[licence-report] missing sources: "
             + ", ".join(report["missing_sources"])
             + " — counts are a floor, not a total."
+        )
+    if report["unreadable_sources"]:
+        # stdout, not stderr. The stderr line in `_load` is where this used to end, and
+        # ending there is why six corrupt SBOMs were committed without anyone noticing.
+        print(
+            "[licence-report] UNREADABLE sources: "
+            + ", ".join(report["unreadable_sources"])
+            + " — present but unparseable; their packages are in no count above."
         )
     for finding in report["findings"]:
         if finding["severity"] == DENY:
