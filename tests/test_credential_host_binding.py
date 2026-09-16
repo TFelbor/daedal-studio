@@ -391,9 +391,13 @@ def test_resolve_printer_target_withholds_a_key_bound_elsewhere(
 def test_a_profile_key_is_never_paired_with_a_stored_address(store, tmp_path):
     """A profile's own credential belongs to the profile's own address.
 
-    `pythonsrc/profiles/bambu_test.json` carries an `api_key`, and the store's
+    `pythonsrc/profiles/bambu_test.json` used to carry an `api_key`, and the store's
     address is settable by an unauthenticated request — so pairing the two was the
-    same confused deputy by another route, with the key coming off disk.
+    same confused deputy by another route, with the key coming off disk. That file was
+    deleted in #73 and no bundled profile carries a credential now
+    (`test_no_bundled_profile_carries_a_connection_secret`), but the rule is about the
+    shape rather than about that file: a profile is a place a key *can* be written, so
+    this builds one and checks the pairing directly.
     """
     profile = tmp_path / "profile.json"
     profile.write_text(
@@ -471,7 +475,7 @@ def test_subprocess_env_still_forwards_a_bound_key_over_an_inherited_one(store):
 PROFILE_FOR_SERVICE = {
     "octoprint": "pythonsrc/profiles/ender3.json",
     "moonraker": "pythonsrc/profiles/klipper_test.json",
-    "bambu": "pythonsrc/profiles/bambu_test.json",
+    "bambu": "pythonsrc/profiles/bambu_p1s.json",
 }
 
 
@@ -700,9 +704,10 @@ def test_the_operator_sends_no_key_when_the_server_withheld_one():
 def test_a_profile_key_travels_only_with_the_profiles_own_address():
     """`resolve_printer_target`'s rule, which has to hold on this side too.
 
-    `pythonsrc/profiles/bambu_test.json` carries an `api_key`. The store's address is
-    settable by an unauthenticated request; the profile is a file on disk. Pairing one
-    with the other is the same confused deputy with the key coming off disk.
+    `pythonsrc/profiles/bambu_test.json` used to carry an `api_key`; it was deleted in
+    #73 and no bundled profile carries a credential now. The store's address is still
+    settable by an unauthenticated request and a profile is still a file on disk, so
+    the rule stands on its own and the dict below supplies the shape.
     """
     from pythonsrc.run_operator import printer_from_env
 
