@@ -832,15 +832,12 @@ def size_feasibility(
     # reporting even when the wall measurement abstains. Positional: no rotation
     # search, matching the build_volume_fit check.
     #
-    # `strict=False` and not `strict=True`: `build_volume_mm` comes out of a JSON
-    # profile and nothing validates its length, so a two-entry list drops the Z ratio
-    # here rather than raising. That silent drop is a real defect and it is older than
-    # the linter — fixing it means validating the profile, which is a behaviour change
-    # and belongs in its own change, not in the one that turned ruff on.
+    # `strict=True`: `ProcessProfile.__post_init__` guarantees three axes or None, so a
+    # length mismatch here is a broken invariant and not a volume to compute around.
     if profile.build_volume_mm and (extents > 0).all():
         ratios = [
             limit / float(extent)
-            for limit, extent in zip(profile.build_volume_mm, extents, strict=False)
+            for limit, extent in zip(profile.build_volume_mm, extents, strict=True)
         ]
         result["max_size_mm"] = round(reference * min(ratios), 4)
 
@@ -1130,12 +1127,11 @@ def evaluate_printability(
     ))
 
     if profile.build_volume_mm:
-        # `strict=False` for the reason given at `max_size_mm` above: a short
-        # `build_volume_mm` silently drops an axis from this check, and turning that
-        # into an exception is a behaviour change, not a lint fix.
+        # `strict=True`: three axes or None is an invariant of the profile, so every
+        # axis the machine declares is one this check examined.
         fits = all(
             e <= limit
-            for e, limit in zip(extents, profile.build_volume_mm, strict=False)
+            for e, limit in zip(extents, profile.build_volume_mm, strict=True)
         )
         checks.append(CheckResult(
             check="build_volume_fit",
