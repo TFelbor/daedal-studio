@@ -346,10 +346,36 @@ jobs:
           # Full history: the audit note diffs against the previous dated note.
           fetch-depth: 0
 
+      # Four steps, not one `pattern:` with `merge-multiple: true`. Steps run one after
+      # another by definition, so nothing here can write the same file twice at once —
+      # which is what corrupted the SBOMs in #129. Each artifact's destination is also
+      # its own: `upload-artifact` roots an artifact at the least common ancestor of the
+      # files it matched, so `licence-data-base-images` (all of it under `licenses/sbom/`)
+      # arrives rooted at `sbom` and has to be unpacked there, while the other three
+      # root at `licenses`. Getting that wrong moves the base SBOMs up a directory,
+      # where `_iter_source_files` would read them as unlabelled top-level sources.
+      #
+      # `continue-on-error` on each: `base-images` and `mac` only run on request, so a
+      # missing artifact is routine. A collector that ran and *failed* leaves its file
+      # absent, and the report says `incomplete` — see `EXPECTED_SOURCES`.
       - uses: actions/download-artifact@v4
         with:
-          pattern: licence-data-*
-          merge-multiple: true
+          name: licence-data-images
+          path: licenses
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: licence-data-node
+          path: licenses
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: licence-data-base-images
+          path: licenses/sbom
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: licence-data-mac
           path: licenses
         continue-on-error: true
 

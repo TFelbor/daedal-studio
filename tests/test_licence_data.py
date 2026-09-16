@@ -15,6 +15,7 @@ somewhere in this repo:
 """
 
 import importlib.util
+import itertools
 import json
 import re
 from pathlib import Path
@@ -904,6 +905,73 @@ def test_the_workflow_produces_every_expected_source():
     workflow = WORKFLOW.read_text()
     for filename in report_script.EXPECTED_SOURCES:
         assert f"licenses/{filename}" in workflow, f"CI never writes licenses/{filename}"
+
+
+def test_no_two_collector_artifacts_can_carry_the_same_file():
+    """#129's corruption, bound where it came from.
+
+    All four collectors used to upload `path: licenses/`. Every job's checkout already
+    holds the committed copy of every licence file, so each artifact carried a full
+    tree and three copies of each regenerated file were stale — and the report job
+    unpacked all four into one directory at once. Two writers of one path is how a
+    committed SBOM came back with three 22-byte regions duplicated and dropped.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    uploads: dict[str, set[Path]] = {}
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            if "upload-artifact" not in step.get("uses", ""):
+                continue
+            name = step["with"]["name"]
+            if not name.startswith("licence-data-"):
+                continue
+            uploads[name] = {
+                path
+                for pattern in str(step["with"]["path"]).split()
+                for path in REPO_ROOT.glob(pattern)
+            }
+
+    assert sorted(uploads) == [
+        "licence-data-base-images",
+        "licence-data-images",
+        "licence-data-mac",
+        "licence-data-node",
+    ]
+    for name, files in uploads.items():
+        assert files, f"{name} uploads a path that matches nothing in the tree"
+
+    for first, second in itertools.combinations(sorted(uploads), 2):
+        shared = uploads[first] & uploads[second]
+        assert not shared, (
+            f"{first} and {second} both carry "
+            + ", ".join(sorted(str(p.relative_to(REPO_ROOT)) for p in shared))
+            + " — two artifacts writing one path is #129."
+        )
+
+
+def test_the_report_job_unpacks_each_artifact_on_its_own():
+    """Sequential steps, each unpacked where that artifact's own root puts it."""
+    steps = yaml.safe_load(WORKFLOW.read_text())["jobs"]["report"]["steps"]
+    downloads = [step for step in steps if "download-artifact" in step.get("uses", "")]
+
+    assert len(downloads) == 4
+    for step in downloads:
+        assert "merge-multiple" not in step["with"], (
+            "`merge-multiple` extracts every matched artifact into one directory at "
+            "once. That concurrency is what #129 corrupted the SBOMs with."
+        )
+        assert "pattern" not in step["with"], "a pattern is how several arrive together"
+
+    # `upload-artifact` roots an artifact at the least common ancestor of the files it
+    # matched. The base SBOMs are all under `licenses/sbom/`, so that artifact arrives
+    # rooted at `sbom` and must be unpacked there; unpacking it into `licenses` would
+    # move them up a directory, where `_iter_source_files` reads them as unlabelled
+    # top-level sources rather than as image SBOMs.
+    destination = {step["with"]["name"]: step["with"]["path"] for step in downloads}
+    assert destination["licence-data-base-images"] == "licenses/sbom"
+    assert destination["licence-data-images"] == "licenses"
+    assert destination["licence-data-node"] == "licenses"
+    assert destination["licence-data-mac"] == "licenses"
 
 
 def test_the_workflow_runs_the_scripts_that_score_and_normalise():
