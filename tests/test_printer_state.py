@@ -49,6 +49,12 @@ TABLE = [
     ("octoprint", octoprint("Printed", operational=True, ready=True), COMPLETE),
     ("octoprint", octoprint("Error", error=True), ERROR),
     ("octoprint", octoprint("Offline", closedOrError=True), ERROR),
+    # The same answer with the flags missing must read the same way. Raised in review:
+    # these mapped to IDLE, which `is_finished` treats as done, so a printer that fell
+    # off the bus mid-print reported a completed job.
+    ("octoprint", octoprint("Offline"), ERROR),
+    ("octoprint", octoprint("Closed"), ERROR),
+    ("octoprint", octoprint("Closed", closedOrError=True), ERROR),
     ("octoprint", octoprint("Something New", operational=True), IDLE),
     ("octoprint", octoprint("Something New"), UNKNOWN),
     # Moonraker / Klipper — the shape that used to raise.
@@ -110,6 +116,17 @@ def test_a_monitor_does_not_stop_on_these(state):
 @pytest.mark.parametrize("state", [COMPLETE, CANCELLED, ERROR, IDLE])
 def test_a_monitor_stops_on_these(state):
     assert is_finished(state)
+
+
+@pytest.mark.parametrize("text", ["Offline", "Closed"])
+def test_a_printer_that_dropped_off_the_bus_is_not_a_finished_print(text):
+    """Raised in review. `is_finished(IDLE)` is True, so mapping a lost connection to
+    IDLE reported a completed print — and the monitor would have logged "Print job
+    completed!" for a machine it could no longer see."""
+    state = normalise_printer_state("octoprint", octoprint(text))
+
+    assert state == ERROR
+    assert state != IDLE
 
 
 def test_idle_is_finished_only_because_of_who_is_asking():

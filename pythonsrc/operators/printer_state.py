@@ -54,8 +54,13 @@ _OCTOPRINT_TEXT = {
     "operational": IDLE,
     "ready": IDLE,
     "error": ERROR,
-    "closed": IDLE,
-    "offline": IDLE,
+    # Not IDLE. A printer that has dropped its serial connection has not finished a
+    # print — and `is_finished` folds IDLE into "done", so mapping these to IDLE made a
+    # lost printer read as a completed job. The flagged form of the same answer
+    # (`closedOrError`) is already ERROR a few lines below, so IDLE here also made the
+    # two halves of one OctoPrint reply disagree with each other. Raised in review.
+    "closed": ERROR,
+    "offline": ERROR,
 }
 
 #: Klipper's `print_stats.state`, which Moonraker passes through verbatim.
