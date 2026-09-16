@@ -44,6 +44,13 @@ CONFIG_KEYS = {
     },
     "BAMBU_IP": {"label": "Bambu Lab IP Address", "secret": False, "required": False, "description": "e.g. 192.168.1.150"},
     "BAMBU_CODE": {"label": "Bambu Lab LAN Access Code", "secret": True, "required": False, "description": "From printer Settings > Network > LAN Mode"},
+    # Not a secret: it is printed on the machine and it is in the printer's own TLS
+    # certificate, so treating it as one would only stop the UI showing a person the
+    # value they are checking against the screen. It is required for control, though —
+    # every Bambu MQTT topic is `device/<serial>/...`, so without it the printer can be
+    # reached and not addressed.
+    "BAMBU_SERIAL": {"label": "Bambu Lab Serial Number", "secret": False, "required": False, "description": "On the printer screen beside the access code; every MQTT topic is keyed on it"},
+    "BAMBU_MODEL": {"label": "Bambu Lab Model", "secret": False, "required": False, "description": "P1S, P1P, X1C, A1 or A1 mini — decides bed size and nozzle"},
     "LOG_LEVEL": {"label": "Log Level", "secret": False, "required": False, "description": "INFO | DEBUG"},
     # The host each printer credential above was saved for. Written by `set()` when
     # the credential is written, never by a person — see `PRINTER_CREDENTIAL_HOSTS`.

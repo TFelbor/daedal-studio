@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "data" / "outputs"
 
 KLIPPER_PROFILE = "pythonsrc/profiles/klipper_test.json"
-BAMBU_PROFILE = "pythonsrc/profiles/bambu_test.json"
+BAMBU_PROFILE = "pythonsrc/profiles/bambu_p1s.json"
 
 MOONRAKER_URL = "http://klipper.local:7125"
 OCTOPRINT_URL = "http://octoprint.local:5000"

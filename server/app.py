@@ -37,6 +37,9 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from pythonsrc.api_token import default_api_token_path, resolve_api_token
 from pythonsrc.ip_screen import screen_prompt
 from pythonsrc.operators import PrinterFactory
+from pythonsrc.operators.bambu_operator import BambuOperator
+from pythonsrc.operators.base import PrinterConnectionError
+from pythonsrc.operators.printer_state import canonical_firmware
 
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
@@ -3451,6 +3454,14 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         if target.get("base_url"):
             env["DS_PRINTER_URL"] = container_reachable_url(target["base_url"])
             env["DS_DISPATCH_URL"] = target["base_url"]
+        # Bambu keys every MQTT topic on the serial, so without it the operator can
+        # reach the printer and not address it. Not a credential — it is printed on the
+        # machine and sits in the printer's own TLS certificate — but it is per-printer,
+        # so it comes from the store rather than from the profile, which is committed.
+        if canonical_firmware(target["firmware"]) == "bambu":
+            serial = config_store.get("BAMBU_SERIAL")
+            if serial:
+                env["DS_PRINTER_SERIAL"] = serial
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
         # The operator runs beside this process — in this container, or on this host
@@ -4786,23 +4797,26 @@ async def test_connection(req: TestConnectionRequest):
                     # this address, and that is the whole answer.
                     return answer(False, credential.reason)
 
-                host = host.replace("mqtts://", "").replace("https://", "").split("/")[0].split(":")[0]
+                # A real authentication check, not a TCP connect. This used to open a
+                # socket to 8883 and report reachability, which proved the printer was
+                # on the network and said nothing about the access code — so a wrong
+                # code passed the connection test and failed at dispatch, which is the
+                # worst place to find out. `check_credentials` reads the MQTT CONNACK,
+                # which is the only thing that carries the authentication result, and
+                # needs no serial: a person setting a printer up has typed an address
+                # and a code and wants to hear whether those two are right.
+                operator = BambuOperator(host, credential.value)
                 try:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, 8883), timeout=5.0
-                    )
-                    writer.close()
-                    await writer.wait_closed()
-                except (asyncio.TimeoutError, OSError) as exc:
-                    return answer(
-                        False,
-                        f"No answer from {host}:8883 — is the printer on and in LAN mode? ({exc})",
-                    )
+                    await asyncio.to_thread(operator.check_credentials)
+                except PrinterConnectionError as exc:
+                    # `BambuOperator` phrases these for a person and distinguishes
+                    # refused-code from unreachable; repeating that here in other words
+                    # is how the two drift apart.
+                    return answer(False, str(exc))
 
                 return answer(
                     True,
-                    f"{host} is reachable on port 8883. The access code is not verified "
-                    "until a print is sent.",
+                    f"{host} accepted the LAN access code on port 8883.",
                     int((time.time() - start_time) * 1000),
                 )
 

@@ -164,9 +164,48 @@ class BambuOperator(BasePrinterOperator):
 
         Raises:
             PrinterConnectionError: The printer did not answer, did not send a CONNACK
-                within `CONNACK_TIMEOUT_S`, or refused the access code — which is
-                reported as its own sentence, because "check the access code" is
-                something a person can act on and "connection failed" is not.
+                within `CONNACK_TIMEOUT_S`, refused the access code, or there is no
+                serial to build the topic from.
+        """
+        # The serial is checked before the socket, so "I do not know this printer's
+        # serial" is not reported as a network problem after a ten-second timeout.
+        topic = self.report_topic
+        self._open_session()
+        self.client.subscribe(topic)
+        logger.info("Subscribed to %s", topic)
+        return True
+
+    def check_credentials(self) -> bool:
+        """Does this address accept this access code? Nothing more.
+
+        The connection test in Printer Setup asks exactly this, and it must be able to
+        ask it *before* a serial is known — a person setting a printer up has typed an
+        IP and a code and wants to hear whether they are right. So this opens the
+        session, reads the CONNACK and closes; it never subscribes, and it needs no
+        serial.
+
+        Returns:
+            True when the printer accepted the credentials.
+
+        Raises:
+            PrinterConnectionError: Unreachable, silent, or the code was refused — and
+                the three say so differently, which is the whole point of the check.
+        """
+        try:
+            self._open_session()
+        finally:
+            self.disconnect()
+        return True
+
+    def _open_session(self) -> None:
+        """Connect, authenticate, and leave the client running.
+
+        Raises:
+            PrinterConnectionError: with a sentence a person can act on. "Check the
+                access code" and "the printer is not answering" are different problems
+                and the previous implementation could report neither, because paho's
+                `connect()` returns once TCP and TLS are up — before the CONNACK that
+                carries the authentication result.
         """
         host = printer_host(self.base_url)
         self._connack.clear()
@@ -211,10 +250,6 @@ class BambuOperator(BasePrinterOperator):
                 f"The Bambu printer refused the MQTT connection (CONNACK "
                 f"{self._connack_code})."
             )
-
-        client.subscribe(self.report_topic)
-        logger.info("Subscribed to %s", self.report_topic)
-        return True
 
     def disconnect(self) -> bool:
         """Close the session. Safe to call when there is none."""
