@@ -14,6 +14,16 @@ class BasePrinterOperator(ABC):
     (e.g., OctoPrint, Moonraker).
     """
 
+    #: Which firmware this operator speaks, in `PrinterFactory.create`'s vocabulary —
+    #: so `klipper` rather than `moonraker`, and `canonical_firmware` folds the alias.
+    #:
+    #: It exists because callers were asking with `isinstance`. `AnomalyDetector`
+    #: imported two operator classes to decide how to read a state dict, which made a
+    #: telemetry module depend on the operator *classes* to answer a question about
+    #: their *data*, and left the third firmware silently unhandled. An attribute the
+    #: operator declares about itself is the same answer without the import.
+    firmware: str = ""
+
     @abstractmethod
     def connect(self) -> bool:
         """Establish a connection to the printer.

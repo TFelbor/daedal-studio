@@ -19,6 +19,9 @@ class MoonrakerOperator(BasePrinterOperator):
     printer state information from a Moonraker instance.
     """
 
+    firmware = "klipper"
+
+
     def __init__(self, base_url: str, api_key: str | None = None):
         """Initialize the MoonrakerOperator.
 

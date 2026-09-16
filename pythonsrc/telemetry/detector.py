@@ -9,10 +9,34 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from pythonsrc.operators.base import BasePrinterOperator
+from pythonsrc.operators.printer_state import (
+    CANCELLED,
+    COMPLETE,
+    ERROR,
+    PRINTING,
+    canonical_firmware,
+    normalise_printer_state,
+)
 from pythonsrc.telemetry.db import TelemetryDB
 from pythonsrc.telemetry.schema import FailureEvent, TelemetrySample
 
 logger = logging.getLogger(__name__)
+
+#: The detector's own words for what the printer is doing, which are not quite the
+#: printer's: it says `success` where a printer says `complete`, because the rules below
+#: sit beside `job.outcome` and that column's vocabulary is the one they share.
+#:
+#: `IDLE` and `UNKNOWN` are deliberately absent. A printer that is healthy and not
+#: printing tells this detector nothing it should act on — mid-run it is the gap between
+#: two states — so the cached state is left alone rather than overwritten, which is what
+#: the OctoPrint branch did by omission before and what the Moonraker branch did by
+#: listing the four states it accepted.
+_DETECTOR_STATE = {
+    PRINTING: "printing",
+    ERROR: "error",
+    CANCELLED: "cancelled",
+    COMPLETE: "success",
+}
 
 class AnomalyDetector:
     """Detector that consumes TelemetrySample objects from a queue and applies rule-based anomaly detection.
@@ -65,31 +89,55 @@ class AnomalyDetector:
         # Update from operator every 2 seconds
         if now - cache["time"] > 2.0 and self.operator:
             cache["time"] = now
+            firmware = getattr(self.operator, "firmware", "")
             try:
-                from pythonsrc.operators.moonraker_operator import MoonrakerOperator
-                from pythonsrc.operators.octoprint_operator import OctoPrintOperator
-
-                if isinstance(self.operator, MoonrakerOperator):
-                    st = await asyncio.to_thread(self.operator.get_printer_state)
-                    state_text = st.get("state", "").lower()
-                    if state_text in ("printing", "error", "cancelled", "complete"):
-                        if state_text == "complete":
-                            cache["state"] = "success"
-                        else:
-                            cache["state"] = state_text
-                    cache["progress"] = st.get("progress", 0.0) * 100.0
-                elif isinstance(self.operator, OctoPrintOperator):
-                    st = await asyncio.to_thread(self.operator.get_printer_state)
-                    flags = st.get("state", {}).get("flags", {})
-                    if flags.get("error") or flags.get("closedOrError"):
-                        cache["state"] = "error"
-
-                    job_st = await asyncio.to_thread(self.operator.get_job_status)
-                    cache["progress"] = job_st.get("progress", {}).get("completion", 0.0) or 0.0
+                raw = await asyncio.to_thread(self.operator.get_printer_state)
+            except NotImplementedError:
+                # The firmware cannot report state yet — Bambu, until #73. Before, no
+                # `isinstance` matched it and the poll simply never happened; now it is
+                # said rather than implied.
+                logger.debug("%s cannot report printer state yet", firmware or "operator")
+                raw = None
             except Exception as e:
                 logger.debug(f"Failed to fetch operator state: {e}")
+                raw = None
+
+            if raw is not None:
+                # One reader for all three shapes. This used to be two `isinstance`
+                # branches that each parsed a different dict by hand, which is how the
+                # OctoPrint branch came to track only `error` while the Moonraker one
+                # tracked four states, and how the third firmware went unhandled.
+                state = normalise_printer_state(firmware, raw)
+                if state in _DETECTOR_STATE:
+                    cache["state"] = _DETECTOR_STATE[state]
+
+                try:
+                    cache["progress"] = await self._progress(firmware, raw)
+                except Exception as e:
+                    logger.debug(f"Failed to fetch print progress: {e}")
 
         return cache["state"], cache["progress"]
+
+    async def _progress(self, firmware: str, state: dict) -> float:
+        """Completion percentage, which is the one thing the firmwares do not share.
+
+        Moonraker carries it in the state document; OctoPrint keeps it on the *job* and
+        needs a second request. So this stays a branch where the state reading no longer
+        is — but it branches on the firmware the operator declares, not on its class.
+
+        `or 0.0` on the Moonraker side: `print_stats.info.progress` is absent until the
+        first layer, so `get_printer_state` returns `progress: None` and `None * 100.0`
+        raised a `TypeError` on every poll until then. The caller logged it at debug and
+        carried on, and the cached progress was 0.0 regardless — so this changes the
+        reading in one case only, when a real figure has already been recorded and the
+        printer then reports `None`. What it mostly removes is an exception raised and
+        swallowed on a normal code path, which is the kind of noise that hides the
+        failure you did want to hear about.
+        """
+        if canonical_firmware(firmware) == "octoprint":
+            job_state = await asyncio.to_thread(self.operator.get_job_status)
+            return (job_state.get("progress", {}) or {}).get("completion", 0.0) or 0.0
+        return (state.get("progress") or 0.0) * 100.0
 
     def _trigger_failure(self, job_id: str, sample: TelemetrySample, failure_type: str, history: List[TelemetrySample]) -> None:
         """Helper to create and insert a FailureEvent, and optionally pause."""

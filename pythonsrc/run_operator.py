@@ -18,7 +18,15 @@ from pathlib import Path
 # `import operators`, not for `import pythonsrc.operators`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pythonsrc.operators import PrinterFactory
+from urllib.parse import urlparse, urlunparse  # noqa: E402  (after the sys.path line)
+
+from pythonsrc.operators import PrinterFactory  # noqa: E402
+from pythonsrc.operators.printer_state import (  # noqa: E402
+    ERROR,
+    canonical_firmware,
+    is_finished,
+    normalise_printer_state,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("run_operator")
@@ -59,6 +67,47 @@ def printer_from_env(profile_data: dict, environ) -> tuple:
         profile_data.get("base_url", "http://localhost:5001"),
         profile_data.get("api_key"),
     )
+
+
+def moonraker_ws_url(base_url: str) -> str:
+    """Moonraker's WebSocket endpoint, derived from its HTTP base URL.
+
+    `MoonrakerCollector` takes a WebSocket URL where `OctoPrintCollector` takes a host
+    and a port, so the two cannot be constructed from one expression — which is half of
+    why the collector was hardcoded rather than chosen.
+    """
+    parsed = urlparse(base_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    return urlunparse((scheme, parsed.netloc, "/websocket", "", "", ""))
+
+
+def collector_for(firmware, base_url, api_key, job_id, db, gcode_filename):
+    """The telemetry collector for this firmware, or None when there is not one.
+
+    None is a real answer and not a failure: Bambu has no collector until #73, and a
+    print with no sample stream still runs, still records its dispatch and still waits
+    for a person's verdict. What it must not do is pretend — the caller logs the gap
+    rather than opening a socket that stays silent.
+
+    Imported inside, per firmware. `run_operator.py` must not name OctoPrint at module
+    top level (#74's fourth criterion), and importing all three unconditionally would
+    make every dispatch pay for `websockets` whether it needs it or not.
+    """
+    name = canonical_firmware(firmware)
+    if name == "octoprint":
+        from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
+
+        parsed = urlparse(base_url)
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        return OctoPrintCollector(
+            parsed.hostname or "localhost", port, api_key or "",
+            job_id, db, gcode_filename=gcode_filename,
+        )
+    if name == "klipper":
+        from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
+
+        return MoonrakerCollector(moonraker_ws_url(base_url), job_id, db)
+    return None
 
 
 def main():
@@ -121,17 +170,13 @@ def main():
 
 
             import asyncio
-            from urllib.parse import urlparse
 
             from pythonsrc.telemetry.db import TelemetryDB
             from pythonsrc.telemetry.detector import attach_detector
-            from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 
             async def monitor_print():
                 logger.info("Starting telemetry collector and polling print status...")
                 db = TelemetryDB()
-                parsed = urlparse(base_url)
-                port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
                 # Stamp started_at — not completed_at, which this used to write:
                 # `update_job_outcome`'s second timestamp is the *completion*
@@ -141,43 +186,63 @@ def main():
                     import datetime
                     db.update_job_start_time(args.job_id, datetime.datetime.now(datetime.timezone.utc))
 
-                collector = OctoPrintCollector(
-                    parsed.hostname or "localhost", port, api_key or "",
-                    args.job_id, db, gcode_filename=filename,
+                collector = collector_for(
+                    firmware, base_url, api_key, args.job_id, db, filename,
                 )
-                await collector.start()
-
-                # Consume the samples so automated failure detection runs.
-                detector_task = attach_detector(collector, db, op)
+                detector_task = None
+                if collector is None:
+                    # Said once, loudly. A dispatch with no sample stream is a real
+                    # state — Bambu has no collector until #73 — and the print is
+                    # running either way; what must not happen is a live socket with
+                    # nothing on it and nothing saying so.
+                    logger.warning(
+                        "No telemetry collector for firmware %r: the print is running "
+                        "and unmonitored, and the row waits for a human verdict.",
+                        firmware,
+                    )
+                else:
+                    await collector.start()
+                    # Consume the samples so automated failure detection runs.
+                    detector_task = attach_detector(collector, db, op)
 
                 try:
                     await asyncio.sleep(5)
                     while True:
                         try:
-                            state = op.get_printer_state()
-                            flags = state.get("state", {}).get("flags", {})
-                            state_text = state.get("state", {}).get("text", "").lower()
-
-                            if (flags.get("ready") or flags.get("operational") or state_text == "operational" or state_text == "printed") and not flags.get("printing"):
-                                logger.info(f"Print job completed! Final state: {state_text}")
-                                break
-
-                            if flags.get("error") or flags.get("closedOrError") or state_text == "error":
-                                logger.error("Printer reported an error state!")
-                                raise Exception("Printer error state detected during printing.")
-
+                            raw_state = op.get_printer_state()
+                        except NotImplementedError:
+                            # A statement about the firmware, not a fault. Failing here
+                            # would fail a dispatch that has already started a print,
+                            # which is the whole shape of bug #74 is about.
+                            logger.warning(
+                                "%s cannot report printer state yet — the print was "
+                                "started; stopping the monitor.", firmware,
+                            )
+                            break
                         except Exception as e:
                             logger.error(f"Error polling printer state: {e}")
-                            raise e
+                            raise
+
+                        state = normalise_printer_state(firmware, raw_state)
+                        if state == ERROR:
+                            logger.error("Printer reported an error state!")
+                            raise RuntimeError(
+                                "Printer error state detected during printing."
+                            )
+                        if is_finished(state):
+                            logger.info(f"Print job completed! Final state: {state}")
+                            break
 
                         await asyncio.sleep(5)
                 finally:
-                    detector_task.cancel()
-                    try:
-                        await detector_task
-                    except asyncio.CancelledError:
-                        pass
-                    await collector.stop()
+                    if detector_task is not None:
+                        detector_task.cancel()
+                        try:
+                            await detector_task
+                        except asyncio.CancelledError:
+                            pass
+                    if collector is not None:
+                        await collector.stop()
                     db.close()
 
             asyncio.run(monitor_print())

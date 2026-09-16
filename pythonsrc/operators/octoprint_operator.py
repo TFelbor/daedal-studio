@@ -48,6 +48,9 @@ class OctoPrintOperator(BasePrinterOperator):
         timeout: HTTP request timeout in seconds.
     """
 
+    firmware = "octoprint"
+
+
     def __init__(self, base_url: str, api_key: str, *, timeout: int = 30) -> None:
         """Initialize the OctoPrint operator.
 

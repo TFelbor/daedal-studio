@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 class BambuOperator(BasePrinterOperator):
     """Printer operator for Bambu Lab 3D printers via MQTT."""
 
+    firmware = "bambu"
+
+
     def __init__(self, base_url: str, api_key: str | None = None):
         """Initialize the Bambu operator.
 

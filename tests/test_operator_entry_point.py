@@ -32,6 +32,7 @@ in the repository root with `pythonsrc` importable for its own reasons.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -77,3 +78,67 @@ def test_it_imports_whatever_the_working_directory_is(where):
     # failed dispatch.
     for flag in ("--job-id", "--gcode-path", "--profile"):
         assert flag in finished.stdout, f"{flag} is gone from the operator's interface"
+
+
+#: Every firmware name that may not appear in a module-level import. OctoPrint is the
+#: one #74 names, because it is the one that was there; the rest are here because the
+#: criterion's *point* is that this module stays firmware-agnostic until it has read
+#: `DS_FIRMWARE`, and a guard that only forbids yesterday's mistake is not a guard.
+FIRMWARE_NAMES = ("octoprint", "moonraker", "klipper", "bambu")
+
+
+def _module_level_imports(path: Path) -> list[str]:
+    """Every name imported at module level — not inside a function, not conditionally."""
+    names: list[str] = []
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names.append(node.module or "")
+            names += [alias.name for alias in node.names]
+    return names
+
+
+def test_no_firmware_specific_import_at_module_top_level():
+    """#74's fourth criterion, asserted rather than inspected.
+
+    `run_operator.py` is launched once per dispatch and learns which printer it is
+    talking to from `DS_FIRMWARE` at runtime. A firmware-specific import at module level
+    is the shape the defect had: `OctoPrintCollector` imported unconditionally, and
+    therefore used unconditionally, whatever firmware the gate had resolved.
+
+    Walked with `ast` rather than grepped, so a name inside a function body — which is
+    where `collector_for` legitimately imports all three — does not trip it.
+    """
+    offenders = [
+        name
+        for name in _module_level_imports(OPERATOR)
+        if any(firmware in name.lower() for firmware in FIRMWARE_NAMES)
+    ]
+
+    assert offenders == [], (
+        f"{OPERATOR.name} imports {offenders} at module level. The firmware is not "
+        "known until DS_FIRMWARE is read; import inside the branch that needs it."
+    )
+
+
+def test_the_guard_would_catch_the_import_it_exists_for(tmp_path: Path):
+    """The guard's own regression test. An assertion over a list that is empty for the
+    wrong reason — a walk that finds nothing — passes just as quietly."""
+    offender = tmp_path / "run_operator.py"
+    offender.write_text(
+        "from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector\n"
+        "def f():\n"
+        "    from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector\n"
+    )
+
+    found = [
+        name
+        for name in _module_level_imports(offender)
+        if any(firmware in name.lower() for firmware in FIRMWARE_NAMES)
+    ]
+
+    # The top-level one is caught; the one inside `f` is not, which is the distinction
+    # `collector_for` depends on.
+    assert any("octoprint" in name.lower() for name in found)
+    assert not any("moonraker" in name.lower() for name in found)
