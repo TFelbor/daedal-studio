@@ -203,6 +203,62 @@ def test_oversized_mesh_fails_build_volume():
     assert report.verdict == "unprintable"
 
 
+def test_a_build_volume_is_three_axes_or_none_at_all():
+    """#139: the field both size readers zip against cannot be a partial answer.
+
+    Neither producer can mean one — `from_printer_profile` builds the list only when
+    all three machine keys are present — so a shorter list is a malformed profile and
+    says so at construction rather than three phases later.
+    """
+    assert ProcessProfile().build_volume_mm is None
+    assert ProcessProfile(build_volume_mm=[220.0, 220.0, 250.0]).build_volume_mm == [220.0, 220.0, 250.0]
+
+    for short_or_long in ([], [220.0], [220.0, 220.0], [220.0, 220.0, 250.0, 250.0]):
+        with pytest.raises(ValueError, match="width, depth, height"):
+            ProcessProfile(build_volume_mm=short_or_long)
+
+
+def test_a_part_taller_than_the_machine_cannot_pass_the_fit_check(fdm):
+    """#139, asserted where it used to fail open.
+
+    A two-entry build volume zipped against a three-element extent dropped Z, so
+    `all(...)` ran over width and depth only and a part taller than the machine
+    **passed** a check whose one job is to say it does not fit. The volume that did
+    that is now unconstructible, and the axis it used to drop is the one that fails.
+    """
+    tall = on_bed(trimesh.creation.box(extents=[10, 10, 40]))    # inside W and D, over Z
+
+    with pytest.raises(ValueError, match="width, depth, height"):
+        ProcessProfile(build_volume_mm=[220.0, 220.0])
+
+    report = evaluate_printability(tall, ProcessProfile(build_volume_mm=[220.0, 220.0, 20.0]))
+    fit = check(report, "build_volume_fit")
+    assert fit.status == "fail"
+    assert report.verdict == "unprintable"      # the check is critical, weight 2.0
+
+
+def test_the_z_ceiling_constrains_the_derived_maximum_size():
+    """#139's other reader: `max_size_mm` over a short volume was too large.
+
+    `min(ratios)` over a two-entry zip took the minimum of width and depth only, so
+    the machine's height never constrained the size the UI offers. Here Z is the
+    binding ratio by a factor of 44, which is precisely the amount that dropping it
+    used to overstate the answer by.
+    """
+    from pythonsrc.printability import size_feasibility
+
+    tall = trimesh.creation.box(extents=[10, 10, 40])
+
+    with pytest.raises(ValueError, match="width, depth, height"):
+        ProcessProfile(build_volume_mm=[220.0, 220.0])
+
+    profile = ProcessProfile(build_volume_mm=[220.0, 220.0, 20.0])
+    feasibility = size_feasibility(tall, profile, scale_axis="longest")
+
+    # 40mm reference x min(22, 22, 0.5). Dropping Z would answer 880.
+    assert feasibility["max_size_mm"] == pytest.approx(20.0, rel=1e-3)
+
+
 def test_profile_derives_limits_from_printer_profile():
     profile = ProcessProfile.from_printer_profile(json.load(open("pythonsrc/profiles/ender3.json")))
     assert profile.build_volume_mm == [220.0, 220.0, 250.0]
