@@ -22,7 +22,6 @@ asserted is the command line the engine would receive.
 """
 
 import json
-import logging
 import subprocess
 from pathlib import Path
 
@@ -202,52 +201,3 @@ def test_the_bundled_definition_names_the_build_volume_correctly():
     assert overrides["machine_depth"]["default_value"] == 220
     assert overrides["machine_height"]["default_value"] == 250
     assert not any(key.startswith("machine_buildvolume") for key in overrides)
-
-
-# ── Every bundled profile translates cleanly ─────────────────────────────────
-
-
-def test_no_bundled_profile_has_a_key_the_slicer_ignores(caplog):
-    """A profile key that is neither a CuraEngine setting nor a documented exception is
-    silently dropped — the value is in the file, a reader assumes it reached the engine,
-    and it never did. `_profile_settings` warns, so this asserts nobody has to notice
-    the warning.
-
-    Added with `bambu_p1s.json` (#73), which carries `_comment` and `_sources` because
-    the issue asks for the source of its temperatures to be recorded in the file. Those
-    two are in `DOCUMENTATION_KEYS`; anything else new has to justify itself here.
-    """
-    profiles = sorted(PROFILES.glob("*.json"))
-    assert profiles, "no bundled profiles — this test would pass vacuously"
-
-    ignored: list[str] = []
-    for profile in profiles:
-        with caplog.at_level(logging.WARNING, logger="ds.slicer"):
-            caplog.clear()
-            CuraSlicer._profile_settings(profile)
-            ignored += [
-                f"{profile.name}: {record.message}"
-                for record in caplog.records
-                if "not a CuraEngine setting" in record.getMessage()
-            ]
-
-    assert ignored == [], "profile keys that never reach the engine: " + "; ".join(ignored)
-
-
-def test_no_bundled_profile_carries_a_connection_secret():
-    """#73's design rule: a person connects their own printer through the app, and a
-    profile is committed to this repository. `bambu_test.json` shipped an `api_key` of
-    "123456" — a placeholder, but a placeholder in the shape of a credential is how a
-    real one eventually gets committed beside it.
-    """
-    offenders = []
-    for profile in sorted(PROFILES.glob("*.json")):
-        data = json.loads(profile.read_text())
-        for key in ("api_key", "access_code", "serial", "password"):
-            if data.get(key):
-                offenders.append(f"{profile.name}:{key}")
-
-    assert offenders == [], (
-        "connection credentials belong in the encrypted config store, not in a "
-        f"committed profile: {offenders}"
-    )

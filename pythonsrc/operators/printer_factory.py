@@ -7,9 +7,7 @@ class PrinterFactory:
     """Factory for instantiating the appropriate printer operator based on firmware type."""
 
     @staticmethod
-    def create(
-        firmware: str, base_url: str, api_key: str | None = None, serial: str | None = None
-    ) -> BasePrinterOperator:
+    def create(firmware: str, base_url: str, api_key: str | None = None) -> BasePrinterOperator:
         """Create a printer operator instance for the given firmware.
 
         Args:
@@ -17,10 +15,6 @@ class PrinterFactory:
                 'octoprint', or 'bambu'). Case-insensitive.
             base_url: The base URL of the printer's API.
             api_key: The optional API key for authentication.
-            serial: The printer's serial number. Bambu only, and Bambu genuinely needs
-                it — every MQTT topic is `device/<serial>/...`, so a Bambu printer can
-                be reached and not addressed. Ignored by the other two rather than
-                rejected, so a caller that has one need not know which firmwares care.
 
         Returns:
             An instance of a subclass of BasePrinterOperator.
@@ -42,6 +36,6 @@ class PrinterFactory:
             return OctoPrintOperator(base_url, api_key)
         elif firmware == "bambu":
             from pythonsrc.operators.bambu_operator import BambuOperator
-            return BambuOperator(base_url, api_key, serial=serial)
+            return BambuOperator(base_url, api_key)
         else:
             raise ValueError(f"Unknown firmware type: {firmware}")

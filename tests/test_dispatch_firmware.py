@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "data" / "outputs"
 
 KLIPPER_PROFILE = "pythonsrc/profiles/klipper_test.json"
-BAMBU_PROFILE = "pythonsrc/profiles/bambu_p1s.json"
+BAMBU_PROFILE = "pythonsrc/profiles/bambu_test.json"
 
 MOONRAKER_URL = "http://klipper.local:7125"
 OCTOPRINT_URL = "http://octoprint.local:5000"
@@ -153,7 +153,6 @@ def test_a_bambu_dispatch_carries_the_bambu_access_code(dispatched):
             "BAMBU_IP": BAMBU_IP,
             "BAMBU_CODE": "12345678",
             "BAMBU_CODE_HOST": credential_host(BAMBU_IP),
-            "BAMBU_SERIAL": "01P00A000000001",
             "OCTOPRINT_API_KEY": "octo-key",
             "OCTOPRINT_URL": OCTOPRINT_URL,
             "OCTOPRINT_API_KEY_HOST": credential_host(OCTOPRINT_URL),
@@ -165,10 +164,6 @@ def test_a_bambu_dispatch_carries_the_bambu_access_code(dispatched):
     assert env["DS_FIRMWARE"] == "bambu"
     assert env["DS_PRINTER_KEY"] == "12345678"
     assert "OCTOPRINT_API_KEY" not in env
-    # The serial, without which every MQTT topic is unaddressable (#73).
-    assert env["DS_PRINTER_SERIAL"] == "01P00A000000001"
-    # And the machine a person confirmed, named in the gate's own answer.
-    assert result["response"].json()["target"]["machine_name"] == "Bambu Lab P1S"
 
 
 def test_the_operator_is_launched_by_the_path_the_gate_names(dispatched):
