@@ -266,6 +266,47 @@ export interface JobSpecResponse {
   } | null;
   /** The same document as `dimension_check`, read from the job's own artifact. */
   dimension_report: DimensionCheck | null;
+  /** The annotated preview's document — `view.json`, written by Phase 2. */
+  view: ViewDocument | null;
+}
+
+/**
+ * One dimension line the mesh viewer draws, in the frame `ViewFrame` describes.
+ *
+ * Nothing in a browser computes a millimetre. `value_mm` is a designed feature the
+ * compiler published — and one `required_measurements` promises Phase 3 measures back,
+ * which is why a callout can never name a figure the dimension report has no verdict
+ * for. `from`/`to` are exactly `value_mm` apart and axis-aligned; `offset` is the free
+ * space beside the line, which the viewer nudges along and fades by when it turns away
+ * from the camera.
+ */
+export interface ViewCallout {
+  feature: string;
+  label: string;
+  value_mm: number;
+  /** Which body of the compiled plate the line lies on — `body`, `lid`, `tray`, … */
+  part: string;
+  from: [number, number, number];
+  to: [number, number, number];
+  offset: [number, number, number];
+  /** 1 = the internal figures a phone shows; 2 = the externals, desktop only. */
+  tier: number;
+}
+
+/** The millimetre frame `ViewCallout` coordinates are stated in. */
+export interface ViewFrame {
+  units: string;
+  up: string;
+  bounds_mm: { min: [number, number, number]; max: [number, number, number] };
+}
+
+/** `view.json`: the composer's labelled table, plus what the preview draws over it. */
+export interface ViewDocument {
+  archetype: string;
+  archetypeVersion: string;
+  hash: string;
+  frame: ViewFrame;
+  callouts: ViewCallout[];
 }
 
 export interface DispatchTarget {
@@ -772,6 +813,21 @@ export async function getJobPrintability(jobId: string): Promise<PrintabilityRes
   const res = await apiFetch(`/jobs/${jobId}/printability`);
   if (res.status === 404) return null;   // not every job reaches the Engineer
   if (!res.ok) throw new Error(`The server answered ${res.status} for this report`);
+  return res.json();
+}
+
+/**
+ * The un-polled parametric record, `GET /jobs/{id}/spec`.
+ *
+ * Null for a job with no spec, on the `getJobPrintability` precedent: a prompt job 404s
+ * here because an empty 200 would read as "compiled, and every number is missing". The
+ * viewer treats that null as *no annotations* and says nothing about it — the spec panel
+ * is where a missing spec is explained, and explaining it twice invents a reason.
+ */
+export async function getJobSpec(jobId: string): Promise<JobSpecResponse | null> {
+  const res = await apiFetch(`/jobs/${jobId}/spec`);
+  if (res.status === 404) return null;   // a prompt job has no spec to carry
+  if (!res.ok) throw new Error(`The server answered ${res.status} for this spec`);
   return res.json();
 }
 

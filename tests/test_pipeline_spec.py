@@ -92,7 +92,7 @@ from pythonsrc.organizer.spec import (  # noqa: E402
 from pythonsrc.pipeline import _compile_spec_phase  # noqa: E402
 
 
-def test_the_compile_step_writes_the_three_artifacts_and_returns_the_mesh(tmp_path):
+def test_the_compile_step_writes_the_four_artifacts_and_returns_the_mesh(tmp_path):
     spec = example_spec("deck_box")
     spec_path = dump_spec(spec, tmp_path / "in" / "deck.json")
     outputs = tmp_path / "out"
@@ -104,6 +104,27 @@ def test_the_compile_step_writes_the_three_artifacts_and_returns_the_mesh(tmp_pa
     assert features["spec_sha256"] == spec_hash(spec) == result.spec_hash
     assert features["parts"] == ["body", "lid"]
     assert features["features"]["cavity_width_mm"] == 68.5
+
+
+def test_the_view_document_is_written_beside_the_features(tmp_path):
+    """`view.json` is Phase 2's fourth artifact and is `view_for` verbatim.
+
+    Written here because the api-server image has no geometry kernel: a view the server
+    derived on demand is a view the server cannot derive at all (issue #88).
+    """
+    from pythonsrc.organizer.archetypes import view_for
+
+    spec = example_spec("deck_box")
+    spec_path = dump_spec(spec, tmp_path / "in" / "deck.json")
+    outputs = tmp_path / "out"
+    _, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    view = json.loads((outputs / "view.json").read_text())
+    assert view == view_for(spec, result)
+    assert view["frame"]["units"] == "mm" and view["frame"]["up"] == "z"
+    assert [c["feature"] for c in view["callouts"] if c["tier"] == 1] == [
+        "cavity_width_mm", "cavity_depth_mm", "cavity_height_mm",
+        "lip_height_mm", "lid_cavity_height_mm",
+    ]
 
 
 def test_a_bad_spec_is_a_spec_error_not_a_crash(tmp_path):
@@ -241,6 +262,46 @@ def test_the_dimension_check_fails_phase_3_on_drift_and_still_writes_the_report(
     assert "cavity_width_mm" in written["out_of_tolerance"]
     out = capsys.readouterr().out
     assert "✗ cavity_width_mm" in out
+
+
+def test_every_callout_matches_the_measured_mesh_to_the_stated_tolerance(tmp_path):
+    """Issue #88's acceptance criterion, asserted where the pipeline can see it.
+
+    `view.json` carries *designed* millimetres and `dimension_report.json` carries the
+    same features measured off the engineered mesh. The preview's promise is that a
+    number drawn over the part is the part's: every callout is therefore compared
+    against its own measured feature at ±0,05 mm, the tolerance the whole parametric
+    path claims.
+    """
+    outputs, result, engineered, _ = _compiled_and_engineered(tmp_path)
+    report = _assert_spec_dimensions(result, engineered, outputs)
+    view = json.loads((outputs / "view.json").read_text())
+    assert view["callouts"]
+    for c in view["callouts"]:
+        measured = report["features"][c["feature"]]["measured_mm"]
+        assert abs(c["value_mm"] - measured) <= report["tolerance_mm"], (
+            f"{c['feature']}: the preview says {c['value_mm']} mm, the mesh measures "
+            f"{measured} mm"
+        )
+
+
+def test_phase_3_only_translates_so_the_viewer_can_reconcile_the_frame(tmp_path):
+    """The assumption the viewer's callouts rest on, made checkable.
+
+    `view.json`'s frame states the *compiled* plate's bounds; the mesh the viewer is
+    served is Phase 3's, which `orient_for_print` XY-centres and sits on Z = 0 —
+    a translation and nothing else, since `--target-mm` is refused in assert mode. So
+    the two differ by one vector and the extents are identical, which is exactly what
+    the viewer checks before it draws a callout. If Phase 3 ever rotates or scales a
+    spec mesh, this test names the change and the viewer draws nothing rather than
+    annotating a part with another part's millimetres.
+    """
+    outputs, _, engineered, _ = _compiled_and_engineered(tmp_path)
+    frame = json.loads((outputs / "view.json").read_text())["frame"]["bounds_mm"]
+    designed = [hi - lo for lo, hi in zip(frame["min"], frame["max"], strict=True)]
+    served = trimesh.load(str(engineered), force="mesh")
+    measured = (served.bounds[1] - served.bounds[0]).tolist()
+    assert measured == pytest.approx(designed, abs=0.05)
 
 
 def test_the_dimension_check_reads_the_spec_phase_2_recorded_not_the_argument(tmp_path):

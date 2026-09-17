@@ -877,8 +877,35 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   row's, which is the only answer available before Phase 2. The output directory is
   read **only** when the row says "spec job" and carries no spec.
   `GET /jobs/{id}/spec` is the un-polled sibling (`/provenance` precedent), adding
-  `compile_features.json` and `dimension_report.json`; `SPEC_ARTIFACTS` is where
-  `view.json` joins when the annotated preview lands.
+  `compile_features.json`, `dimension_report.json` and `view.json`.
+- **`view.json` is the annotated preview's document, and Phase 2 writes it** (issue
+  #88). `_compile_spec_phase` writes it from `archetypes.view_for` beside
+  `compile_features.json`, because that is the only place in the system holding the
+  spec, the kernel and the `CompileResult` at once — the api-server image carries no
+  geometry kernel, so a view derived on demand is a view that cannot be derived. It is
+  also what "a spec diff re-annotates without re-measuring" means: every millimetre on
+  it is a *designed* feature, and changing the spec is the only thing that moves one.
+  Two keys beyond the composer's table:
+  - `frame` — `units`, `up` and the compiled plate's own `bounds_mm`.
+  - `callouts` — one dimension line each, from `common.callout`. `feature` **must** be
+    a name in `required_measurements(spec)`, which is the anti-fabrication contract in
+    one rule: a callout naming an unmeasured feature would put a number on screen the
+    dimension report has no verdict for. `value_mm` is `result.features[feature]`
+    verbatim, never re-derived; `from`/`to` are axis-aligned and exactly `value_mm`
+    apart, on planes `measure()` reads that feature off (`callout` refuses a line whose
+    length disagrees with its label, and `tests/test_view_callouts.py` sweeps both);
+    `offset` is the free space beside the line, across it rather than along it; `tier`
+    is 1 for the internals a phone shows and 2 for the externals it drops.
+  - **The frame is reconciled, not assumed.** The viewer compares the served mesh's
+    extents with `frame.bounds_mm` at ±0,05 mm per axis and translates the callouts by
+    the difference. That holds because Phase 3's assert path *translates only* —
+    `orient_for_print` XY-centres and sits the part on Z = 0, and `--target-mm` is
+    refused in assert mode — and `tests/test_pipeline_spec.py` asserts it rather than
+    remembering it. A mismatch draws **no** callouts: a stale artifact or a rescaled
+    mesh must cost the annotations, not their honesty.
+  - The deck box carries all twelve; the divider and the tray carry a deliberately
+    small set, and the tray annotates the **first pocket only** — a regular grid would
+    otherwise put 24 lines on a 66 mm part, which is a picture nobody can read.
 - **The UI's only fit verdict is the measured one.** `specFromJob` projects the four
   fields onto `web/src/organizer/spec.ts`'s display shape, and every row in it is a
   field of the spec itself — no stack height, no internal depth. Those are `derive()`'s
@@ -900,8 +927,7 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   day the compiler does, which is what `Token tray` did in issue #84 and what
   `box_insert` will do in Phase 3. That test also asserts every registry module exposes the whole
   archetype API, which is what "adding an archetype is a module and a line" means.
-- **Not built, and where it is:** the annotated mm preview (`archetypes.view_for` is
-  written; nothing serves it), the *generic* envelope sweep across every archetype
+- **Not built, and where it is:** the *generic* envelope sweep across every archetype
   (#85 — there are three, each with its own `parametrize`), the box-insert archetype
   and with it ragged grids, per-pocket heights and explicit compartment positions,
   finger cutouts and rounded corners (their own issues; the tray says "square pockets"
@@ -2268,7 +2294,38 @@ once, at the frame they draw, so `var(--ink)` cannot reach them. `theme.ts` expo
 exposes the theme as React state for an effect dependency. `GCodeViewer` re-colours **in
 place** via the preview's setters rather than rebuilding — a rebuild tears down the WebGL
 context, re-downloads the G-code and snaps the camera back to the top — and `MeshViewer`
-holds refs to its scene and material for the same reason.
+holds refs to its scene, its material and its dimension-line materials for the same
+reason. The callout *labels* need none of it: they are DOM nodes styled from the ink
+tokens, so a theme change reaches them the way it reaches everything else on the page.
+
+**The mesh preview is in millimetres, and its numbers come out of the pipeline**
+(2026-09-17, issue #88). `MeshViewer` normalised every mesh to 80 scene units, which
+made any annotation a lie waiting to happen: a figure in mm over a mesh whose size came
+from a ratio. Four decisions:
+
+- **Scene units are millimetres.** Nothing is scaled; the camera is framed from the
+  bounding box instead — `distance = (extent / 2) / tan(fov / 2) × 1.7`, with `near`,
+  `far`, `minDistance` and `maxDistance` all derived from it. A 200 mm tray and a 50 mm
+  divider are now genuinely different sizes at the same zoom, which is the point.
+  `GCodeViewer` keeps its own camera, so the slice tab still shows the part at a
+  different size than the mesh tab does.
+- **One group carries both view transforms.** The mesh and the callouts hang off a
+  `THREE.Group` that holds the Z-up → Y-up convention and the centre-and-floor
+  translation, rather than those being baked into the geometry. An anchor cannot drift
+  from the surface it names, because there is no second transform to drift through.
+- **No millimetre is computed in a browser.** Every figure is `ViewCallout.value_mm` from
+  `view.json`, rendered with a comma decimal; the viewer has one formatter and one call
+  site, which `tests/test_job_spec_endpoint.py` pins. It reconciles the served mesh
+  against the document's frame first and draws nothing when they disagree.
+- **A prompt job is told nothing.** `hasSpec` is false, so the viewer fetches nothing and
+  draws nothing extra — no message, no reason string. The three absences already have
+  three sentences in `SpecPanel`, and a fourth written by a viewer would be one it
+  invented. Below **720 px**, the phone step of the one breakpoint ladder, only tier 1
+  is drawn: the cavity and the closure, which is what a misparse costs an eight-hour
+  print over. Labels are `CSS2DObject`s (`three`'s own — no new dependency) over a
+  `pointer-events: none` layer, faded to 0,22 when their `offset` turns away from the
+  camera. That fade is a stand-in for occlusion, not occlusion: labels on a near-square
+  part can still overlap, and true label layout is not in scope.
 
 **The composer's parametric path** (2026-09-11, issue #76). The redesigned composer said
 "your words become a spec" and had no path from a person to one: the archetype strip

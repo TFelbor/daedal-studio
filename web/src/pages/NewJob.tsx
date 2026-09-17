@@ -1630,6 +1630,7 @@ export function NewJob() {
                   status={currentJob?.status || 'queued'}
                   phases={phases}
                   logLines={currentJob?.log_tail}
+                  hasSpec={Boolean(currentJob?.spec)}
                 />
               )}
               {activeTab === 'slice' && (

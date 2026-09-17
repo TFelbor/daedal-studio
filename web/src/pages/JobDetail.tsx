@@ -463,6 +463,7 @@ export function JobDetail() {
                       status={job.status}
                       phases={phases}
                       logLines={job.log_tail}
+                      hasSpec={Boolean(job.spec)}
                     />
                   </div>
                 </Blueprint>

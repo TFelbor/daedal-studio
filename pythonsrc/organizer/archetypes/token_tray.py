@@ -71,7 +71,14 @@ from ..spec import (
     Tray,
     spec_hash,
 )
-from .common import SweepCase, external_overshoots, view_row
+from .common import (
+    CALLOUT_TIER_EXTERNAL,
+    SweepCase,
+    callout,
+    external_overshoots,
+    view_frame,
+    view_row,
+)
 
 ARCHETYPE = "token_tray"
 #: Bumped when the geometry a given spec produces changes. Recorded on every job.
@@ -520,9 +527,55 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     return FitsResult(fits=fits, line=line, basis=basis, remedy=remedy)
 
 
+def callouts(spec: OrganizerSpec) -> list[dict[str, Any]]:
+    """The dimension lines the viewer draws on a tray, in the plate frame.
+
+    **The first pocket only.** A regular grid has one width per column, one depth per row
+    and one height, so a 4 × 2 tray would otherwise carry 24 pocket lines over a part
+    66 mm wide — a picture nobody can read, which is worse than no picture. Row 0,
+    column 0 is the position every other one is a copy of on at least one axis, and the
+    view's own table (`dimensions`) is where a person reads the whole grid. Annotating
+    every pocket is its own issue if anyone wants it.
+
+    Tier 1 is that pocket's three internal figures, which is what a token or a die has
+    to fit into. Tier 2 is the externals, the wall and the floor.
+    """
+    d = derive(spec)
+    x0, y0 = d.pocket_origin(0, 0)
+    w0, d0 = d.widths[0], d.depths[0]
+    W, D, H = d.external_w, d.external_d, d.external_h
+    up, front, left = (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0)
+    inward = (0.0, 1.0, 0.0)
+    return [
+        callout("pocket_r0c0_width_mm", "Pocket width", w0, part="tray",
+                frm=(x0, y0 + d0 / 2.0, H), to=(x0 + w0, y0 + d0 / 2.0, H), offset=up),
+        callout("pocket_r0c0_depth_mm", "Pocket depth", d0, part="tray",
+                frm=(x0 + w0 / 2.0, y0, H), to=(x0 + w0 / 2.0, y0 + d0, H), offset=up),
+        callout("pocket_r0c0_height_mm", "Pocket depth (Z)", d.height, part="tray",
+                frm=(x0 + w0 / 2.0, y0, d.floor), to=(x0 + w0 / 2.0, y0, H),
+                offset=inward),
+        callout("external_width_mm", "External width", W, part="tray",
+                frm=(0.0, 0.0, 0.0), to=(W, 0.0, 0.0), offset=front,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("external_depth_mm", "External depth", D, part="tray",
+                frm=(0.0, 0.0, 0.0), to=(0.0, D, 0.0), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("external_height_mm", "External height", H, part="tray",
+                frm=(0.0, D / 2.0, 0.0), to=(0.0, D / 2.0, H), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("wall_mm", "Wall", d.wall, part="tray",
+                frm=(0.0, y0 + d0 / 2.0, H), to=(d.wall, y0 + d0 / 2.0, H), offset=up,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("floor_mm", "Floor", d.floor, part="tray",
+                frm=(W / 2.0, 0.0, 0.0), to=(W / 2.0, 0.0, d.floor), offset=front,
+                tier=CALLOUT_TIER_EXTERNAL),
+    ]
+
+
 def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
     """The spec as `web/src/organizer/spec.ts` declares it: labelled millimetres, a fits
-    verdict, and the hash the gate binds to.
+    verdict, the hash the gate binds to, and the annotated preview's `frame` and
+    `callouts` (issue #88).
 
     Every pocket row says where its millimetres came from — `Pocket.source` when the
     person gave one, and *user-given mm* when they did not. Neither is presented as
@@ -568,6 +621,8 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         "hash": result.spec_hash,
         "dimensions": dimensions,
         "fits": fits_check(spec).to_dict(),
+        "frame": view_frame(result),
+        "callouts": callouts(spec),
         # Square corners, stated rather than implied: the primitives exist since issue
         # #80 but this archetype does not call them, and a preview that drew a radius
         # would show a part the compiler does not build.

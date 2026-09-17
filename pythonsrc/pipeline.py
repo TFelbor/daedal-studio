@@ -471,11 +471,21 @@ def _profile_nozzle_mm(args) -> float:
 def _compile_spec_phase(args, outputs_dir: Path):
     """Phase 2 for a spec run: compile the spec into the job directory.
 
-    Writes three files beside each other so the job directory explains itself:
+    Writes four files beside each other so the job directory explains itself:
     `compiled_mesh.stl` (what Phase 3 receives), `spec.json` (the spec in canonical,
-    sorted form — the saved object, F11) and `compile_features.json` (every designed
-    dimension, the part list, the archetype and version, the spec hash). Nothing here
-    is a fixture, so the caller's `outputs_dir` is the real namespace.
+    sorted form — the saved object, F11), `compile_features.json` (every designed
+    dimension, the part list, the archetype and version, the spec hash) and `view.json`
+    (the same document the composer renders, plus the annotated preview's frame and
+    dimension lines — issue #88). Nothing here is a fixture, so the caller's
+    `outputs_dir` is the real namespace.
+
+    `view.json` is written **here** rather than after Phase 3 for two reasons. The
+    api-server image carries no geometry kernel, so a view the server derived on demand
+    is a view the server cannot derive at all; and the document is a function of the
+    spec, which is what "a spec diff re-annotates without re-measuring" means — every
+    millimetre on it is a designed feature, never a measured one. Phase 3's
+    `dimension_report.json` is the measured half, and the two are compared by eye in the
+    UI rather than folded together here.
 
     The printer profile's nozzle is handed to the compiler, which is the whole of
     issue #72's plumbing: `process.wall_mm` is held to three extrusion widths of *this*
@@ -496,11 +506,11 @@ def _compile_spec_phase(args, outputs_dir: Path):
             below the nozzle-derived floor.
     """
     try:
-        from organizer.archetypes import compile_spec
+        from organizer.archetypes import compile_spec, view_for
         from organizer.compiler import export_stl
         from organizer.spec import dump_spec, load_spec
     except ImportError:
-        from pythonsrc.organizer.archetypes import compile_spec
+        from pythonsrc.organizer.archetypes import compile_spec, view_for
         from pythonsrc.organizer.compiler import export_stl
         from pythonsrc.organizer.spec import dump_spec, load_spec
 
@@ -511,6 +521,9 @@ def _compile_spec_phase(args, outputs_dir: Path):
     dump_spec(spec, outputs_dir / "spec.json")
     (outputs_dir / "compile_features.json").write_text(
         json.dumps(result.features_document(), indent=2, sort_keys=True) + "\n"
+    )
+    (outputs_dir / "view.json").write_text(
+        json.dumps(view_for(spec, result), indent=2, sort_keys=True) + "\n"
     )
     print(
         f"[DS] Compiled {result.archetype} v{result.archetype_version} "

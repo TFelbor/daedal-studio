@@ -4301,12 +4301,13 @@ async def get_job_provenance(job_id: str) -> Dict[str, Any]:
 #: spec comes off the row (see `job_spec_summary`), and reading the file as well would
 #: give one response two answers to the same question.
 #:
-#: `view.json` — the annotated preview's projection, from `archetypes.view_for` — will
-#: join this list when it is written. Nothing here needs changing for it: one entry and
-#: the endpoint serves it.
+#: `view.json` — the annotated preview's frame and dimension lines, from
+#: `archetypes.view_for` — is written by Phase 2 and served here (issue #88). It is not
+#: derived on demand and cannot be: this image carries no geometry kernel.
 SPEC_ARTIFACTS = {
     "compile_features": "compile_features.json",
     "dimension_report": "dimension_report.json",
+    "view": "view.json",
 }
 
 
@@ -4316,18 +4317,21 @@ async def get_job_spec(job_id: str) -> Dict[str, Any]:
 
     The un-polled sibling of `GET /jobs/{id}`, on the `/provenance` precedent. The
     detail endpoint carries the four values the spec panel and the Fits Check render
-    on every tick; this one adds the two documents that are read once and are far
-    larger — `compile_features.json` (every designed dimension the compiler produced)
-    and `dimension_report.json` (every one of them measured back off the exported
-    mesh, with its error). Putting those on the polled endpoint would send a few
-    kilobytes of unchanging JSON every second for the whole of a job's life.
+    on every tick; this one adds the three documents that are read once and are far
+    larger — `compile_features.json` (every designed dimension the compiler produced),
+    `dimension_report.json` (every one of them measured back off the exported mesh,
+    with its error) and `view.json` (the labelled table the composer renders, plus the
+    frame and dimension lines the annotated preview draws). Putting those on the polled
+    endpoint would send a few kilobytes of unchanging JSON every second for the whole
+    of a job's life.
 
     Args:
         job_id: The unique identifier of the job.
 
     Returns:
-        The summary from `job_spec_summary` plus a `compile_features` and a
-        `dimension_report` key, each None until the phase that writes it has run.
+        The summary from `job_spec_summary` plus a `compile_features`, a
+        `dimension_report` and a `view` key, each None until the phase that writes it
+        has run.
 
     Raises:
         HTTPException: 404 if the job does not exist, or if it has no spec — a

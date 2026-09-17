@@ -66,6 +66,24 @@ COMPILE_FEATURES = {
     "features": {"external_width_mm": 76.0, "wall_mm": 2.8},
 }
 
+#: `view.json` as Phase 2 writes it, trimmed to one callout. The annotated preview reads
+#: it and nothing else: the api-server image has no geometry kernel, so a view the server
+#: derived on demand is a view the server cannot derive at all (issue #88).
+VIEW = {
+    "archetype": "deck_box",
+    "archetypeVersion": "v2",
+    "hash": spec_hash(OrganizerSpec.from_dict(SPEC)),
+    "dimensions": [],
+    "fits": {"fits": True, "line": "…", "basis": "…"},
+    "frame": {"units": "mm", "up": "z",
+              "bounds_mm": {"min": [0.0, 0.0, 0.0], "max": [162.0, 76.0, 95.5]}},
+    "callouts": [{
+        "feature": "cavity_width_mm", "label": "Internal width", "value_mm": 70.4,
+        "part": "body", "from": [2.8, 38.0, 95.5], "to": [73.2, 38.0, 95.5],
+        "offset": [0.0, 0.0, 1.0], "tier": 1,
+    }],
+}
+
 
 @pytest.fixture
 def spec_job(printer_configured):
@@ -251,13 +269,14 @@ def test_the_endpoint_offers_no_unmeasured_fit_verdict(spec_job):
 
 # ── GET /jobs/{id}/spec ───────────────────────────────────────────────────────
 
-def test_the_spec_endpoint_carries_both_documents(spec_job):
+def test_the_spec_endpoint_carries_all_three_documents(spec_job):
     job_id = spec_job()
     _compile(job_id)
     _measure(job_id)
     outputs = _outputs(job_id)
     (outputs / "compile_features.json").write_text(json.dumps(COMPILE_FEATURES))
     (outputs / "dimension_report.json").write_text(json.dumps(DIMENSION_CHECK))
+    (outputs / "view.json").write_text(json.dumps(VIEW))
 
     body = client.get(f"/jobs/{job_id}/spec").json()
     assert body["job_id"] == job_id
@@ -265,6 +284,7 @@ def test_the_spec_endpoint_carries_both_documents(spec_job):
     assert body["compile_features"] == COMPILE_FEATURES
     assert body["dimension_report"] == DIMENSION_CHECK
     assert body["dimension_check"] == DIMENSION_CHECK
+    assert body["view"] == VIEW
 
 
 def test_the_spec_endpoint_answers_before_the_documents_exist(spec_job):
@@ -272,6 +292,9 @@ def test_the_spec_endpoint_answers_before_the_documents_exist(spec_job):
     assert body["spec"] == CANONICAL
     assert body["compile_features"] is None
     assert body["dimension_report"] is None
+    # Null rather than absent, and never an empty frame: the viewer draws no callouts
+    # for a view it does not have, and would draw wrong ones for a fabricated one.
+    assert body["view"] is None
 
 
 def test_the_spec_endpoint_404s_for_a_prompt_job(prompt_job):
@@ -293,15 +316,22 @@ def test_an_unreadable_artifact_is_null_not_a_500(spec_job):
     assert body.json()["dimension_report"] is None
 
 
-def test_the_polled_endpoint_carries_neither_large_document(spec_job):
-    """`compile_features.json` and `dimension_report.json` are read once and are far
-    larger than the four values the panels re-render on every tick. The `/provenance`
-    precedent: what is polled stays small."""
+def test_the_polled_endpoint_carries_none_of_the_large_documents(spec_job):
+    """`compile_features.json`, `dimension_report.json` and `view.json` are read once
+    and are far larger than the four values the panels re-render on every tick. The
+    `/provenance` precedent: what is polled stays small."""
     job_id = spec_job()
     _compile(job_id)
     body = client.get(f"/jobs/{job_id}").json()
-    assert "compile_features" not in body
-    assert "dimension_report" not in body
+    for key in SPEC_ARTIFACTS:
+        assert key not in body
+
+
+def test_a_prompt_job_is_offered_no_view_to_annotate_with(prompt_job):
+    """Acceptance criterion 2, on the server side. A generative job has no spec, so the
+    endpoint that would carry its callouts 404s — there is no empty view to draw from
+    and nothing to explain its absence with."""
+    assert client.get(f"/jobs/{prompt_job}/spec").status_code == 404
 
 
 def test_the_served_artifacts_are_the_ones_a_spec_run_writes():
@@ -424,3 +454,85 @@ def test_the_fit_badge_can_say_what_it_actually_checked():
     stack was measured against a cavity, which nothing did."""
     assert "fits.verdict ??" in FITS_TSX.read_text()
     assert "Dimensions verified" in SPEC_TS.read_text()
+
+
+# ── the annotated preview (issue #88) ─────────────────────────────────────────
+#
+# Read as text for the reason the block above is: there is no frontend test runner here,
+# and `web/e2e/viewports.spec.ts` covers what a browser knows — that the labels are
+# there, that a phone drops tier 2 — while these cover what a browser cannot be asked:
+# that the viewer has not grown a second way to arrive at a millimetre.
+
+MESH_VIEWER_TSX = REPO_ROOT / "web" / "src" / "components" / "MeshViewer.tsx"
+
+
+def test_the_client_declares_the_view_document_the_server_sends():
+    text = CLIENT_TS.read_text()
+    assert re.search(r"\n  view\??:", _interface(text, "JobSpecResponse")), (
+        "`view` is on the spec endpoint in the server and not in the client."
+    )
+    for key in ("feature", "value_mm", "part", "from", "to", "offset", "tier"):
+        assert re.search(rf"\n  {key}\??:", _interface(text, "ViewCallout")), (
+            f"ViewCallout no longer declares `{key}`, which view.json carries."
+        )
+    assert "export async function getJobSpec" in text
+    assert "if (res.status === 404) return null" in text, (
+        "getJobSpec no longer treats a prompt job's 404 as 'no spec' — it would throw, "
+        "and the viewer would report an error where there is simply nothing to annotate."
+    )
+
+
+def test_the_viewer_never_scales_the_mesh():
+    """Scene units are millimetres. The 80-unit normalisation this replaced is what made
+    every callout a lie waiting to happen: a number in mm over a mesh whose size came
+    from a ratio. The camera is framed from the bounding box instead."""
+    text = MESH_VIEWER_TSX.read_text()
+    assert "geometry.scale(" not in text, (
+        "MeshViewer scales the geometry again. A millimetre on screen must be a "
+        "millimetre, or the callouts are decoration."
+    )
+    assert "80 / maxDim" not in text
+    assert "frameCamera" in text
+
+
+def test_the_viewer_computes_no_millimetre_of_its_own():
+    """Every number drawn comes off `view.json`, which the compiler wrote. A browser
+    deriving a dimension from the spec is a second derivation that agrees with itself
+    and drifts from the mesh — the failure the whole parametric path is built against."""
+    text = MESH_VIEWER_TSX.read_text()
+    # One formatter, one argument, one source. Anything else drawn as a millimetre would
+    # have to go through a second call, and there is exactly one.
+    assert re.findall(r"(?<!function )formatMm\(([^)]*)\)", text) == ["callout.value_mm"], (
+        "Something other than `view.json`'s own designed value is being rendered as a "
+        "millimetre."
+    )
+    # Comma decimal, as everything else in this UI states a millimetre.
+    assert "replace('.', ',')" in text
+
+
+def test_the_viewer_explains_nothing_about_a_missing_spec():
+    """Acceptance criterion 2. A generative job draws no annotations, and that is all it
+    does — the three absences already have three sentences, in `SpecPanel`, and a fourth
+    written by the viewer would be a reason it invented."""
+    text = MESH_VIEWER_TSX.read_text()
+    for reason in ("NO_SPEC_REASON", "UNCOMPOSED_SPEC_REASON", "UNMEASURED_FIT_REASON"):
+        assert reason not in text, (
+            f"MeshViewer names {reason}. Explaining a missing spec is the spec panel's "
+            "job; the viewer's is to draw nothing."
+        )
+    assert "hasSpec" in text
+
+
+def test_the_dimension_lines_are_re_coloured_in_place_when_the_ground_moves():
+    """Acceptance criterion 3, and docs/SYSTEM-AS-BUILT.md § Frontend's rule that a drawn
+    surface must be told when the ground moves. It reaches the callout materials too:
+    rebuilding them instead would re-fetch the view document and reset the orbit camera
+    every time somebody toggled the theme."""
+    text = MESH_VIEWER_TSX.read_text()
+    effect = re.search(r"\}, \[theme\]\);", text)
+    assert effect, "MeshViewer no longer has a theme effect."
+    body = text[text.rindex("useEffect", 0, effect.start()):effect.start()]
+    assert "materialRef.current?.color.set" in body, "The mesh is no longer re-coloured."
+    assert "calloutsRef.current" in body and "material.color.set" in body, (
+        "The theme effect does not re-colour the dimension lines."
+    )

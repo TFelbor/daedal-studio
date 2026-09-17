@@ -10,6 +10,10 @@ joined them for the same reason and one more: `constraints.fit_margin_mm` is a r
 about *specs*, so two archetypes subtracting it in two places is one refactor away from
 two archetypes subtracting it differently.
 
+The annotated preview's two builders (issue #88) joined for the third reason: `callout`
+refuses a line whose length disagrees with the number printed on it, and a rule that
+keeps a drawn millimetre honest is worth exactly one implementation.
+
 It lives here rather than in `compiler.py` (the kernel bridge and the measurers) or in
 `archetypes/__init__.py` (which imports the archetype modules, so a helper there is a
 circular import). Each function is deliberately thin and takes its wording as an
@@ -21,11 +25,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from ..compiler import MeasureError, face_planes
+from ..compiler import CompileResult, MeasureError, face_planes
 from ..spec import CardStack, OrganizerSpec
 
 #: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
 EXTERNAL_AXES: tuple[str, str, str] = ("width", "depth", "height")
+
+#: The tier a callout the viewer shows on a phone belongs to (issue #88). Tier 1 is the
+#: internal figures a misparse costs an eight-hour print over — the cavity a deck goes
+#: into, the engagement a lid closes on; tier 2 is the externals and the material
+#: thicknesses, which a person reads off the fits line anyway. The 720 px step of the
+#: app's one breakpoint ladder (`tests/test_layout_ladder.py`) shows tier 1 only.
+CALLOUT_TIER_INTERNAL = 1
+CALLOUT_TIER_EXTERNAL = 2
 
 
 @dataclass(frozen=True)
@@ -214,6 +226,103 @@ def view_row(
     if note:
         out["note"] = note
     return out
+
+
+def view_frame(result: CompileResult) -> dict[str, Any]:
+    """The frame `callouts` are stated in: millimetres, Z up, and the plate's own bounds.
+
+    The viewer reconciles this against the mesh it was served before it draws a single
+    number (issue #88). Phase 3's assert path only *translates* a compiled plate — it is
+    XY-centred and sat on Z = 0, and `--target-mm` is refused in assert mode — so the
+    served mesh differs from these bounds by one vector and the callouts follow it. If
+    that ever stops being true the extents stop matching, and the viewer draws nothing
+    rather than annotating a part with another part's millimetres.
+
+    `min` is not assumed to be the origin even though every archetype here builds from
+    it: a frame that states its own minimum is a frame the reconciliation can subtract.
+    """
+    low, high = result.mesh.bounds
+    return {
+        "units": "mm",
+        "up": "z",
+        "bounds_mm": {
+            "min": [round(float(v), 3) for v in low],
+            "max": [round(float(v), 3) for v in high],
+        },
+    }
+
+
+def callout(
+    feature: str,
+    label: str,
+    value_mm: float,
+    *,
+    part: str,
+    frm: tuple[float, float, float],
+    to: tuple[float, float, float],
+    offset: tuple[float, float, float],
+    tier: int = CALLOUT_TIER_INTERNAL,
+) -> dict[str, Any]:
+    """One dimension line the viewer draws in millimetres, anchored to the geometry.
+
+    A callout is **not allowed to carry a number of its own**. `value_mm` is a designed
+    feature the archetype already publishes under `feature`, and the endpoints are where
+    that length physically is on the part — so a spec diff re-annotates by changing the
+    spec, and nothing in a browser ever computes a millimetre. The one check made here is
+    the one that makes the anchor honest: the endpoints have to be `value_mm` apart, or
+    the line drawn on screen would disagree with the number printed beside it.
+
+    The line is axis-aligned by construction — exactly one coordinate differs — which is
+    what lets `tests/test_view_callouts.py` assert that both ends sit on face planes of
+    the part named. That is the assertion which catches a cavity callout drawn on the
+    outer wall: the number would be right and the line would be somewhere else.
+
+    Args:
+        feature: A key of the archetype's designed features, and a name
+            `archetypes.required_measurements` promises Phase 3 measures back.
+        label: What a person reads, e.g. `"Internal width"`.
+        value_mm: The designed value, taken verbatim from the feature — never re-derived.
+        part: Which body of the compile result the line lies on, e.g. `"body"`.
+        frm: The line's start, mm, in the plate frame `view_frame` describes.
+        to: The line's end, in the same frame.
+        offset: The free-space direction beside the line — a unit vector **across** it,
+            which the viewer nudges the line along to clear the surface and fades the
+            label by when it turns away from the camera. Across rather than along,
+            because an offset parallel to the line would shorten the thing it labels.
+        tier: `CALLOUT_TIER_INTERNAL` or `CALLOUT_TIER_EXTERNAL`.
+
+    Raises:
+        MeasureError: If the endpoints are not `value_mm` apart, are not on one axis, or
+            the offset runs along the line rather than across it.
+    """
+    span = [b - a for a, b in zip(frm, to, strict=True)]
+    moved = [i for i, v in enumerate(span) if abs(v) > 1e-9]
+    if len(moved) != 1:
+        raise MeasureError(
+            f"callout {feature!r} runs along {len(moved)} axes; a dimension line is "
+            f"axis-aligned: {list(frm)} → {list(to)}"
+        )
+    length = abs(span[moved[0]])
+    if abs(length - float(value_mm)) > 1e-6:
+        raise MeasureError(
+            f"callout {feature!r} is labelled {value_mm} mm and drawn {length:.6f} mm "
+            f"long ({list(frm)} → {list(to)}); the line and the number must agree"
+        )
+    if offset[moved[0]] or not any(offset):
+        raise MeasureError(
+            f"callout {feature!r} is offset {list(offset)}, which runs along the line "
+            f"rather than across it; the nudge would shorten what it labels"
+        )
+    return {
+        "feature": feature,
+        "label": label,
+        "value_mm": round(float(value_mm), 3),
+        "part": part,
+        "from": [round(float(v), 3) for v in frm],
+        "to": [round(float(v), 3) for v in to],
+        "offset": [float(v) for v in offset],
+        "tier": int(tier),
+    }
 
 
 @dataclass(frozen=True)

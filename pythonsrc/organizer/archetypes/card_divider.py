@@ -59,12 +59,15 @@ from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trim
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import CardStack, Compartment, Divider, OrganizerSpec, SpecError, spec_hash
 from .common import (
+    CALLOUT_TIER_EXTERNAL,
     SweepCase,
+    callout,
     card_contents_problem,
     expect_planes,
     external_overshoots,
     single_compartment_problem,
     stray_section_problem,
+    view_frame,
     view_row,
 )
 
@@ -374,9 +377,47 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     return FitsResult(fits=fits, line=line, basis=s.basis, remedy=remedy)
 
 
+def callouts(spec: OrganizerSpec) -> list[dict[str, Any]]:
+    """The dimension lines the viewer draws on a divider, in the plate frame.
+
+    A divider has no inside, so its **tier 1** is the three figures that decide whether
+    it fits the box it stands in — the plate's width and height, and the thickness that
+    is the one number a person is likely to have asked for by feel. The tab is tier 2:
+    it is the part you can see the size of.
+
+    Every anchor sits on the top face (`Z = thickness`), which is the face a viewer
+    looking down at a flat plate can actually see. `tab_offset_mm` gets no line: it is a
+    position rather than a length, and a dimension line from the plate's edge to the
+    tab's would be indistinguishable from one measuring a tab twice as wide.
+    """
+    d = derive(spec)
+    t, top = d.thickness, d.plate_h + d.tab_h
+    x0 = d.tab_offset
+    up, front = (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)
+    return [
+        callout("plate_width_mm", "Plate width", d.plate_w, part="divider",
+                frm=(0.0, 0.0, t), to=(d.plate_w, 0.0, t), offset=up),
+        callout("plate_height_mm", "Plate height", d.plate_h, part="divider",
+                frm=(0.0, 0.0, t), to=(0.0, d.plate_h, t), offset=up),
+        callout("thickness_mm", "Thickness", d.thickness, part="divider",
+                frm=(d.plate_w / 2.0, 0.0, 0.0), to=(d.plate_w / 2.0, 0.0, t),
+                offset=front),
+        callout("tab_width_mm", "Tab width", d.tab_w, part="divider",
+                frm=(x0, top, t), to=(x0 + d.tab_w, top, t), offset=up,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("tab_height_mm", "Tab height", d.tab_h, part="divider",
+                frm=(x0, d.plate_h, t), to=(x0, top, t), offset=up,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("total_height_mm", "Total height", d.total_h, part="divider",
+                frm=(x0, 0.0, t), to=(x0, top, t), offset=up,
+                tier=CALLOUT_TIER_EXTERNAL),
+    ]
+
+
 def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
     """The spec as `web/src/organizer/spec.ts` declares it: labelled millimetres, a fits
-    verdict, and the hash the gate binds to.
+    verdict, the hash the gate binds to, and the annotated preview's `frame` and
+    `callouts` (issue #88).
 
     `tab_position` is a word, and `SpecDimension.value` is a number, so the position
     rides as the offset row's note rather than as a row of its own. The tab's own
@@ -412,6 +453,8 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         "hash": result.spec_hash,
         "dimensions": dimensions,
         "fits": fits_check(spec).to_dict(),
+        "frame": view_frame(result),
+        "callouts": callouts(spec),
     }
 
 

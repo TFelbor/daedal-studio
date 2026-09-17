@@ -101,12 +101,15 @@ from ..spec import (
     spec_hash,
 )
 from .common import (
+    CALLOUT_TIER_EXTERNAL,
     SweepCase,
+    callout,
     card_contents_problem,
     expect_planes,
     external_overshoots,
     single_compartment_problem,
     stray_section_problem,
+    view_frame,
     view_row,
 )
 
@@ -635,10 +638,95 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     return FitsResult(fits=fits, line=line, basis=s.basis, remedy=remedy)
 
 
+def callouts(spec: OrganizerSpec) -> list[dict[str, Any]]:
+    """The dimension lines the viewer draws on a deck box, in the plate frame.
+
+    Twelve of them, and the five **tier 1** lines are the ones the annotated preview
+    exists for (issue #88, PRD §8): the cavity a deck goes into on all three axes, the
+    lip the lid closes on, and the lid's own engagement. Those are the figures a misparse
+    costs an eight-hour print over, and they are exactly the ones a person cannot check
+    by holding callipers to the outside of the rendered box. Tier 2 is the externals, the
+    wall and the floor — worth having on a desktop, dropped on a phone.
+
+    Every line is anchored to the *geometry*: `cavity_width_mm` runs along the cavity's
+    own top rim from `X = wall` to `X = wall + cavity_w`, both of which are planes the
+    body actually has (`measure` reads the same two), so a wrong anchor is a test failure
+    rather than a plausible-looking picture. The lid's anchors carry the plate offset
+    `W + PLATE_GAP_MM`, because the lid is compiled beside the body rather than on it.
+
+    `offset` is the free space beside each line, which is where a dimension line is
+    legible from: the two lines across the cavity's mouth are nudged up out of the
+    opening, and the two vertical ones lie against an inner wall and are nudged into the
+    cavity they measure.
+    """
+    d = derive(spec)
+    p = spec.process
+    lid = spec.lid
+    assert lid is not None
+    W, D, bh = d.external_w, d.external_d, d.body_h
+    wall, floor = p.wall_mm, p.floor_mm
+    # The cavity's minimum corner and its mid-lines, which every internal anchor uses.
+    cx, cy = wall + d.cavity_w / 2.0, wall + d.cavity_d / 2.0
+    lx = W + PLATE_GAP_MM  # the lid's own origin on the plate
+    up, front, left = (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0)
+    right, inward = (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)
+
+    return [
+        # ── tier 1: the millimetres the deck has to fit into ──────────────────
+        callout("cavity_width_mm", "Internal width", d.cavity_w, part="body",
+                frm=(wall, cy, bh), to=(wall + d.cavity_w, cy, bh), offset=up),
+        callout("cavity_depth_mm", "Internal depth", d.cavity_d, part="body",
+                frm=(cx, wall, bh), to=(cx, wall + d.cavity_d, bh), offset=up),
+        callout("cavity_height_mm", "Internal height", d.cavity_h, part="body",
+                frm=(cx, wall, floor), to=(cx, wall, bh), offset=inward),
+        callout("lip_height_mm", "Lip height", lid.height_mm, part="body",
+                frm=(W - d.lip_inset, D / 2.0, bh - lid.height_mm),
+                to=(W - d.lip_inset, D / 2.0, bh), offset=right),
+        callout("lid_cavity_height_mm", "Lid engagement", lid.height_mm, part="lid",
+                frm=(lx + W / 2.0, lid.wall_mm, lid.top_mm),
+                to=(lx + W / 2.0, lid.wall_mm, lid.top_mm + lid.height_mm),
+                offset=inward),
+        # ── tier 2: the outside, and what it is made of ───────────────────────
+        callout("external_width_mm", "External width", d.external_w, part="body",
+                frm=(0.0, 0.0, 0.0), to=(W, 0.0, 0.0), offset=front,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("external_depth_mm", "External depth", d.external_d, part="body",
+                frm=(0.0, 0.0, 0.0), to=(0.0, D, 0.0), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("body_height_mm", "Body height", d.body_h, part="body",
+                frm=(0.0, D / 2.0, 0.0), to=(0.0, D / 2.0, bh), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("wall_mm", "Wall", p.wall_mm, part="body",
+                frm=(0.0, cy, bh), to=(wall, cy, bh), offset=up,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("floor_mm", "Floor", p.floor_mm, part="body",
+                frm=(0.0, D / 2.0, 0.0), to=(0.0, D / 2.0, floor), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("lid_height_mm", "Lid height", d.lid_h, part="lid",
+                frm=(lx, D / 2.0, 0.0), to=(lx, D / 2.0, d.lid_h), offset=left,
+                tier=CALLOUT_TIER_EXTERNAL),
+        callout("lid_wall_mm", "Lid wall", lid.wall_mm, part="lid",
+                frm=(lx, D / 2.0, d.lid_h), to=(lx + lid.wall_mm, D / 2.0, d.lid_h),
+                offset=up, tier=CALLOUT_TIER_EXTERNAL),
+    ]
+
+
+#: The five figures the phone step of the viewer shows, and the acceptance criterion
+#: this archetype is measured against: the cavity on three axes, the lip, the lid's
+#: engagement. Declared here so `tests/test_view_callouts.py` asserts the set rather
+#: than counting rows.
+TIER_1_FEATURES: tuple[str, ...] = (
+    "cavity_width_mm", "cavity_depth_mm", "cavity_height_mm",
+    "lip_height_mm", "lid_cavity_height_mm",
+)
+
+
 def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
     """The spec as `web/src/organizer/spec.ts` declares it: labelled millimetres, a fits
-    verdict, and the hash the gate binds to. Not wired to the server in M0; it exists so
-    that wiring is one field rather than a second derivation."""
+    verdict, the hash the gate binds to — and, since issue #88, the annotated preview's
+    own two keys, `frame` and `callouts`. Phase 2 writes the whole document to
+    `view.json`; the api-server image has no kernel, so this is the only place that has
+    the spec, the kernel and the compile result in one frame."""
     d = derive(spec)
     s = d.stack
     p = spec.process
@@ -689,6 +777,8 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         "hash": result.spec_hash,
         "dimensions": dimensions,
         "fits": fits_check(spec).to_dict(),
+        "frame": view_frame(result),
+        "callouts": callouts(spec),
     }
 
 

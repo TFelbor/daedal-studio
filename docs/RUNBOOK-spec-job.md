@@ -246,6 +246,8 @@ python -m json.tool < "data/outputs/$JOB/dimension_report.json"
 
 - `spec.json` — the spec in canonical form (one spec, one string, one hash)
 - `compile_features.json` — every designed dimension, the part list, the spec hash
+- `view.json` — the labelled table the composer renders, plus the frame and the
+  dimension lines the mesh preview draws over the part in millimetres
 - `compiled_mesh.stl` — Phase 2's output, what Phase 3 received
 - `engineered_mesh.obj` / `.stl` / `.3mf` — the viewer's, CuraEngine's, and the handoff
   copy, which is the only one of the three that records `unit="millimeter"`

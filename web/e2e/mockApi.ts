@@ -74,6 +74,80 @@ const PRINTABILITY = {
   features: {},
 }
 
+/**
+ * A spec job, and the two documents the annotated preview needs.
+ *
+ * Kept off `COMPLETED_JOB` on purpose: the five layout pages and their committed
+ * screenshots are issue #87's, and changing what `job-detail` renders for all of them to
+ * test a viewer would be a diff nobody asked for. `attach: 'spec'` is the only mode that
+ * serves these.
+ */
+const SPEC = {
+  archetype: 'deck_box',
+  compartments: [{ contents: { count: 100, card: 'standard', sleeving: 'double' } }],
+  lid: { kind: 'lift_off', magnets: false, height_mm: 15, wall_mm: 1.2, clearance_mm: 0.2, top_mm: 2 },
+  process: { wall_mm: 2.4, floor_mm: 2 },
+  schema_version: 1,
+}
+
+const SPEC_JOB = {
+  ...RUNNING_JOB,
+  status: 'completed',
+  dispatch_state: 'awaiting_confirmation',
+  completed_at: '2026-09-17T09:41:00Z',
+  spec: SPEC,
+  spec_hash: 'f3c1d0a99b2e4471',
+  archetype: 'deck_box',
+  archetype_version: '2',
+}
+
+/**
+ * `view.json`, trimmed to four lines — two internal, two external — so the smoke can see
+ * a tier drop without rendering a dozen labels into a 375px frame.
+ *
+ * The frame is the compiled plate's own bounds; `MESH_OBJ` below is the same box after
+ * the translation Phase 3 applies, so the viewer's reconciliation succeeds exactly as it
+ * does against a real run. Move one and not the other and the callouts vanish, which is
+ * the behaviour under test.
+ */
+const VIEW = {
+  archetype: 'deck_box',
+  archetypeVersion: 'v2',
+  hash: 'f3c1d0a99b2e4471',
+  frame: { units: 'mm', up: 'z', bounds_mm: { min: [0, 0, 0], max: [70, 40, 30] } },
+  callouts: [
+    {
+      feature: 'cavity_width_mm', label: 'Internal width', value_mm: 65.2, part: 'body',
+      from: [2.4, 20, 30], to: [67.6, 20, 30], offset: [0, 0, 1], tier: 1,
+    },
+    {
+      feature: 'cavity_height_mm', label: 'Internal height', value_mm: 28, part: 'body',
+      from: [35, 2.4, 2], to: [35, 2.4, 30], offset: [0, 1, 0], tier: 1,
+    },
+    {
+      feature: 'external_width_mm', label: 'External width', value_mm: 70, part: 'body',
+      from: [0, 0, 0], to: [70, 0, 0], offset: [0, -1, 0], tier: 2,
+    },
+    {
+      feature: 'external_depth_mm', label: 'External depth', value_mm: 40, part: 'body',
+      from: [0, 0, 0], to: [0, 40, 0], offset: [-1, 0, 0], tier: 2,
+    },
+  ],
+}
+
+/**
+ * The mesh `GET /jobs/{id}/mesh` serves: a 70 × 40 × 30 mm box, Z-up, XY-centred and sat
+ * on Z = 0 — which is `orient_for_print`'s output for a plate built from the origin, and
+ * therefore `VIEW`'s frame plus one translation and nothing else.
+ */
+const MESH_OBJ = [
+  'v -35 -20 0', 'v 35 -20 0', 'v 35 20 0', 'v -35 20 0',
+  'v -35 -20 30', 'v 35 -20 30', 'v 35 20 30', 'v -35 20 30',
+  'f 1 3 2', 'f 1 4 3', 'f 5 6 7', 'f 5 7 8',
+  'f 1 2 6', 'f 1 6 5', 'f 2 3 7', 'f 2 7 6',
+  'f 3 4 8', 'f 3 8 7', 'f 4 1 5', 'f 4 5 8',
+].join('\n')
+
 const CONFIG = {
   DEFAULT_PROFILE: { value: 'pythonsrc/profiles/anycubic_mega.json', is_secret: false },
   PRINTER_FIRMWARE: { value: 'moonraker', is_secret: false },
@@ -91,11 +165,16 @@ const CONFIG = {
  * whether `/` is the composer or the running view is a property of the *server's*
  * answer, not of the URL. That is the app's design (`docs/SYSTEM-AS-BUILT.md`
  * § Frontend), and it means the smoke has to choose here rather than navigate.
+ *
+ * `'spec'` is the third mode and is not about that choice at all: it answers every job
+ * route with a compiled deck box, so the mesh viewer has a `view.json` to annotate with
+ * (issue #88).
  */
-export type Attach = 'none' | 'running'
+export type Attach = 'none' | 'running' | 'spec'
 
 /** Path → body. Longest prefix wins, so `/jobs/{id}` beats `/jobs`. */
 function responses(attach: Attach): [RegExp, unknown][] {
+  const job = attach === 'running' ? RUNNING_JOB : attach === 'spec' ? SPEC_JOB : COMPLETED_JOB
   return [
     // Arrays, not envelopes. `getJobTelemetry` returns `TelemetrySample[]` and calls
     // `.filter` on it — a `{ samples: [] }` here is a `TypeError` at render, a blank
@@ -106,7 +185,7 @@ function responses(attach: Attach): [RegExp, unknown][] {
     [/\/jobs\/[^/]+\/printability$/, PRINTABILITY],
     [/\/jobs\/[^/]+\/provenance$/, null],
     [/\/jobs\/[^/]+\/printer-info$/, { service: 'moonraker', machine_name: 'voron-trident-350' }],
-    [/\/jobs\/[^/]+$/, attach === 'running' ? RUNNING_JOB : COMPLETED_JOB],
+    [/\/jobs\/[^/]+$/, job],
     [
       /\/jobs\?.*status=running/,
       attach === 'running' ? { jobs: [RUNNING_JOB], total: 1 } : { jobs: [], total: 0 },
@@ -141,6 +220,20 @@ export async function mockApi(page: Page, attach: Attach = 'none'): Promise<void
     if (!API.test(url.pathname + url.search)) return route.fallback()
 
     const target = url.pathname + url.search
+    // The one route that is not JSON. `MeshViewer` parses the body as an OBJ, so a
+    // `{}` here is a mesh with no vertices — a viewer that renders, reports nothing
+    // wrong, and shows an empty frame.
+    if (/\/jobs\/[^/]+\/mesh/.test(target)) {
+      return route.fulfill({ status: 200, contentType: 'text/plain', body: MESH_OBJ })
+    }
+    // The other special case, and it has to be a real 404: a job with no spec is how the
+    // viewer learns it has nothing to annotate with, and an empty 200 would read as
+    // "compiled, and every number is missing" — which is why the server 404s it too.
+    if (/\/jobs\/[^/]+\/spec$/.test(target)) {
+      return attach === 'spec'
+        ? route.fulfill({ status: 200, json: { ...SPEC_JOB, view: VIEW } })
+        : route.fulfill({ status: 404, json: { detail: 'Job has no spec' } })
+    }
     const match = table.find(([pattern]) => pattern.test(target))
     if (!match) return route.fulfill({ status: 200, json: {} })
     return route.fulfill({ status: 200, json: match[1] as object })

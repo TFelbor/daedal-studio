@@ -155,6 +155,66 @@ test.describe('375px', () => {
   })
 })
 
+/**
+ * The annotated preview (issue #88).
+ *
+ * The one part of it no source assertion can reach: whether the labels are *there*, and
+ * whether the phone step drops the ones it is meant to. Everything about what a callout
+ * says is fixed in Python — `tests/test_view_callouts.py` binds the value to the designed
+ * feature and the line to the planes the part has — so this asserts only what a browser
+ * knows: a spec job draws them, a prompt job does not, and 375px shows tier 1 alone.
+ *
+ * It needs a real WebGL context, because a label only exists once the scene has been
+ * built. Playwright's Chromium falls back to SwiftShader, which is enough.
+ */
+test.describe('the mm callouts', () => {
+  test.use({ viewport: { width: 1280, height: 900 } })
+
+  test('a spec job is annotated in millimetres, with a comma decimal', async ({ page }) => {
+    await mockApi(page, 'spec')
+    await page.goto(`/dashboard/${JOB_ID}`)
+    const width = page.locator('[data-callout="cavity_width_mm"]')
+    await width.waitFor({ timeout: 15_000 })
+    // The value comes off `view.json` and is rendered, not computed: 65,2 mm is the
+    // fixture's own figure, and a viewer that rounded, converted or recomputed it would
+    // show something else here.
+    await expect(width).toContainText('65,2 mm')
+    await expect(width).toContainText('Internal width')
+    // Both tiers, above the phone step.
+    await expect(page.locator('[data-tier="2"]').first()).toBeVisible()
+  })
+
+  test('a prompt job gets no annotations and no explanation of their absence', async ({ page }) => {
+    await mockApi(page, 'none')
+    await page.goto(`/dashboard/${JOB_ID}`)
+    await page.locator('text=Record').first().waitFor({ timeout: 15_000 })
+    // Given time to have drawn them if it were going to: the mesh route answers for
+    // every job, so an unguarded viewer would annotate this one with the fixture's
+    // millimetres.
+    await page.waitForTimeout(1500)
+    await expect(page.locator('[data-callout]')).toHaveCount(0)
+    // And nothing stands in for them. The spec panel is where a missing spec is
+    // explained; the viewer inventing a second sentence is the fabrication this
+    // criterion forbids.
+    await expect(page.getByText(/no dimensions|not annotated|no spec/i)).toHaveCount(0)
+  })
+})
+
+test.describe('375px', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('a phone shows the internal figures and drops the externals', async ({ page }) => {
+    await mockApi(page, 'spec')
+    await page.goto(`/dashboard/${JOB_ID}`)
+    await page.locator('[data-callout="cavity_width_mm"]').waitFor({ timeout: 15_000 })
+    // Tier 1 is the cavity and the closure — what a misparse costs a print over, and
+    // what a person cannot check by looking at the outside of the rendered box. Tier 2
+    // is the externals, which the fits line already states in words.
+    await expect(page.locator('[data-tier="1"]').first()).toBeVisible()
+    await expect(page.locator('[data-tier="2"]').first()).toBeHidden()
+  })
+})
+
 test.describe('1280px', () => {
   test.use({ viewport: { width: 1280, height: 900 } })
 

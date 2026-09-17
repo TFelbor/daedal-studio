@@ -25,6 +25,65 @@
   height: 100%;
 }
 
+/* The CSS2D layer, over the canvas. `pointer-events: none` is load-bearing: without it
+   a drag that started on a label would not orbit the part, and the labels sit exactly
+   where a person's finger goes. `.viewport` clips it, so a callout at the edge of the
+   frame is cut rather than escaping the figure. */
+.labels {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* One dimension label: the millimetres, and what they are the millimetres of. Styled
+   from the ink tokens rather than drawn into the scene, so it follows the theme with no
+   help from the renderer and stays crisp at any device pixel ratio. */
+.callout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 6px;
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--raised) 86%, transparent);
+  color: var(--ink);
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: center;
+  /* The label is a flag on a point, not a box centred on it: CSS2DRenderer puts the
+     element's own centre on the anchor, and a value sitting on top of the line it
+     measures is the one place it cannot be read. */
+  transform: translateY(-50%);
+}
+
+.calloutValue {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.calloutLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+/* The phone step of the app's one breakpoint ladder. The viewer has already dropped to
+   tier 1 by here, so the remaining labels can afford to be a step larger — the figure is
+   narrower and there are fewer of them to collide. */
+@media (max-width: 720px) {
+  .calloutValue {
+    font-size: 13px;
+  }
+
+  .calloutLabel {
+    font-size: 9.5px;
+  }
+}
+
 /* Only reached when the mesh genuinely cannot be loaded. Every other case is a phase
    state, which `StageState` draws, which is why there is one variant here. */
 .placeholder {

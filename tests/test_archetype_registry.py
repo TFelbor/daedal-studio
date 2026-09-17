@@ -19,6 +19,12 @@ Every module in the registry must also expose the whole archetype API. That is w
 second archetype existed to test: `pipeline.py --spec`, the CLI and Phase 3's assert
 path took no archetype-specific change to gain the divider.
 
+`callouts` joined it with issue #88, and its absence is invisible in a different way: the
+preview still draws the mesh, so nothing fails — it just stops saying what size anything
+is, which is the whole of what that preview is for. What each archetype's callouts have
+to be true of is `tests/test_view_callouts.py`; this is where a module that has none is
+refused.
+
 `envelope` joined that API with issue #85, and it is the one verb whose absence nothing
 downstream would notice: a module without it compiles, validates, measures, is offered
 in the composer and reaches a printer, while no mesh it produces has ever been measured.
@@ -54,7 +60,7 @@ WEB_SPEC = REPO_ROOT / "web" / "src" / "organizer" / "spec.ts"
 ARCHETYPE_API = (
     "ARCHETYPE", "ARCHETYPE_VERSION", "MEASURED_FEATURES", "USES_PROCESS_WALL_MM",
     "derive", "validate", "build", "compile", "example", "envelope",
-    "measure", "fits_check", "to_view",
+    "measure", "fits_check", "to_view", "callouts",
 )
 
 
