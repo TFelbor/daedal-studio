@@ -373,7 +373,8 @@
 
 /* ── Responsive ───────────────────────────────────────────────────────────────
    Under 900px the index unsticks and lays out as a horizontal strip above the
-   sections; under 700px every field grid becomes one column. */
+   sections; under 720px every field grid becomes one column. Both are the app's two
+   steps — see `tests/test_layout_ladder.py`. */
 
 @media (max-width: 900px) {
   .page {
@@ -416,7 +417,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 720px) {
   .fieldGrid,
   .simGrid,
   .devGrid {

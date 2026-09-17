@@ -294,7 +294,7 @@
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 34px;
@@ -311,7 +311,7 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .figures {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -223,8 +223,9 @@
 }
 
 /* Three 24px figures stop fitting side by side long before the page does, and the
-   page body must never scroll sideways. */
-@media (max-width: 540px) {
+   page body must never scroll sideways. On the phone step, so the card folds at the
+   same width as everything around it rather than 180px later. */
+@media (max-width: 720px) {
   .figures {
     grid-template-columns: minmax(0, 1fr);
   }

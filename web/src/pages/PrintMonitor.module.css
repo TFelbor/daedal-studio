@@ -141,7 +141,7 @@
   min-width: 0;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .emptyFrame,
   .jobGrid {
     grid-template-columns: 1fr;

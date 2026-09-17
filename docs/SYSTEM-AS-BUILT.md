@@ -2306,9 +2306,19 @@ spec sent beside `target_mm`, so a height control there could not be obeyed — 
 prompt field becomes the job's name, captioned with what it is: the spec decides every
 dimension, and nothing reads that line back into the geometry.
 
-Four layout rules are load-bearing enough to name, because breaking them is invisible in a
+Five layout rules are load-bearing enough to name, because breaking them is invisible in a
 diff and obvious on screen:
 
+- **There is one breakpoint ladder and it has two steps: 900px and 720px**
+  (`tests/test_layout_ladder.py`). 900 is where a split becomes a stack; 720 is the phone.
+  `global.css` stepped `--gutter` at exactly those two from the beginning and the pages did
+  not — they collapsed at 900, 1000, 820, 700, 640, 560 and 540, so a tablet at 960px got
+  `JobDetail`'s single column *and* `JobList`'s six columns at once, and `PrintabilityCard`
+  held three 24px figures side by side for 180px after the page around it had folded. **375px
+  is a test viewport, not a step**: the phone layout is whatever 720 produced, and a rule that
+  seems to want its own width at 375 belongs at 720. A third step is a scene that folds where
+  nothing else does, which is found on a device rather than in a diff — hence the test, and
+  its `EXCEPTIONS` table wanting a reason rather than an entry.
 - **`--gutter` and `--rail` are the page's symmetry lines** (`global.css`). Every full-width
   edge — nav, footer, `.sheet`, the split cells, the job header, the stage, the rail, the
   verdict banner, the dispatch gate — uses `var(--gutter)`, so the logo, the hero and the

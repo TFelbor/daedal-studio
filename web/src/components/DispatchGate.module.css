@@ -160,3 +160,16 @@
     border-left: none;
   }
 }
+
+/* On a phone even two figures is one too many: the labels are 10px tracked caps and
+   the values carry units, so the pair wraps mid-word rather than fitting. */
+@media (max-width: 720px) {
+  .figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cell:nth-child(n) {
+    padding-left: 0;
+    border-left: none;
+  }
+}
