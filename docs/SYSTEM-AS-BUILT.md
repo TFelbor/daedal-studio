@@ -2364,6 +2364,43 @@ of every effect, so this fired on every dev page load and read like a dead backe
 `api/ws.ts`'s `closeSocket` waits for the upgrade before closing; use it instead of
 `ws.close()` in effect cleanups.
 
+**The app is installable, and the service worker is an allowlist** (`web/src/sw.ts`,
+`web/public/manifest.webmanifest`). Every route but `GET /health` and the bundle is
+authenticated with one shared secret held in the page's `localStorage`; a worker cannot
+read it and must never need to, because a worker that answered `/jobs/{id}` from a cache
+would serve one person's job record to whoever next opened the app on that device, and one
+that replayed a `POST` would dispatch a print. So the worker handles navigations
+(network-first, cached shell as the fallback), `/assets/*` and an **enumerated** list of
+root files, and declines everything else *by not listing it* — it returns from `fetch`
+without calling `respondWith`, which hands the request back to the browser untouched.
+`/jobs`, `/ws`, `/config` and every prefix added after the file was written therefore reach
+the network exactly as they would with no worker installed. The list is enumerated rather
+than prefixed because `/` is shared with the API: "anything at the root that looks static"
+is one endpoint away from caching `/health`. `tests/test_pwa_shell.py` holds the worker's
+set and `vite.config.ts`'s proxy prefixes apart, and fails when they intersect.
+
+Four smaller facts hang off that one. The worker is a **second Rollup input** emitted as
+an unhashed `/sw.js`, not a hand-written file in `public/`: a worker's scope is the
+directory it is served from, so `assets/sw-a1b2c3.js` would control `/assets/` and nothing
+else — and as a build input `tsc -b` checks the one file that can brick the app for a
+returning visitor. Its cache name carries a **build id** (`__SW_BUILD__`) so `activate`
+deletes every other cache; without it a deploy leaves the previous shell installed and the
+cure is a person unregistering a worker they cannot see. Registration is guarded by
+`import.meta.env.PROD`, because a cached shell in front of `npm run dev` is a dev server
+whose edits stop appearing. And **no server route was added**: the `@public` SPA catch-all
+already serves anything in `web/dist`, so there is no third `@public` exemption — only
+`mimetypes.add_type("application/manifest+json", ".webmanifest")` beside `DIST_DIR`,
+because CPython learned that extension in 3.11 and the server image is 3.10, where the
+guess is `None`, Starlette falls back to `text/plain` and Safari — unlike Chrome — declines
+to install.
+
+Installing is offered rather than nagged: an **Install section in Printer setup**
+(`hooks/useInstallPrompt.ts`), the `beforeinstallprompt` button on Chromium and the
+Share → Add to Home Screen sentence on iOS, hidden under `display-mode: standalone`. No
+banner. One consequence is worth knowing before it is reported as a bug: **an iOS
+standalone window has its own `localStorage`, so the API token is entered once more there**
+than in Safari.
+
 ## Configuration
 
 System config (`.env` template at `.env.template`) is loaded by Docker Compose; `DS_DATABASE_URL` in it is the one required value. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry database (`app_config` table, PostgreSQL on Supabase). The Fernet key file lives at `~/.ds-mvp/.config_key` (`$DS_CONFIG_KEY_PATH`), is gitignored and auto-generated on first use.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 /**
  * A media query as React state.
@@ -11,26 +11,38 @@ import { useEffect, useState } from 'react';
  *
  * `matchMedia` rather than a resize listener on `innerWidth`: the browser already knows
  * when the answer changed and says so once, instead of once per frame of a drag.
+ *
+ * `useSyncExternalStore` rather than `useState` + `useEffect`: the viewport is an
+ * external store, and this is the hook for one. It also closes the gap the effect
+ * version had to patch by hand — a rotation between the first render and the
+ * subscription — because React re-reads the snapshot after subscribing rather than
+ * needing a `setState` in an effect body to catch up (`react-hooks/set-state-in-effect`).
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false,
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        return () => {};
+      }
+      const list = window.matchMedia(query);
+      list.addEventListener('change', onStoreChange);
+      return () => list.removeEventListener('change', onStoreChange);
+    },
+    [query],
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const list = window.matchMedia(query);
-    // Read once on attach as well: the query can have changed between the initial
-    // state and this effect — a rotation during hydration is enough.
-    setMatches(list.matches);
-    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
-    list.addEventListener('change', onChange);
-    return () => list.removeEventListener('change', onChange);
-  }, [query]);
+  const getSnapshot = useCallback(
+    () =>
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia(query).matches
+        : false,
+    [query],
+  );
 
-  return matches;
+  // The third argument is the server snapshot. Nothing here is server-rendered, but
+  // the signature wants one and `false` is the honest answer: with no window there is
+  // no viewport to match.
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
 
 /**

@@ -191,8 +191,10 @@ each entry below names the file it is about.
   - **Docker Infrastructure** — the amd64 pin, the layered images and the model volumes.
   - **Frontend (`web/`)** — the two themes and the ink ladder, the composer's
     parametric path (the archetype strip as the mode, and why no number on it is
-    computed in a browser), the four load-bearing layout rules, the running view's
-    stage, and the WebSocket close.
+    computed in a browser), the five load-bearing layout rules — the first of which is
+    that there is **one breakpoint ladder with two steps, 900 px and 720 px**
+    (`tests/test_layout_ladder.py`) — the running view's stage, the WebSocket close, and
+    the installable shell whose service worker is an allowlist that never sees the API.
 - **Configuration** — `.env` versus the encrypted store, the loopback API bind, and where
   each pipeline path lives on disk.
 - **Licensing Constraints** — the rules that keep the Apache-2.0 grant coherent, three of

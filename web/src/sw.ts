@@ -35,9 +35,26 @@ export {}
 /** The subset of the worker globals this file touches. `lib: ["ES2023", "DOM"]` in
  *  `tsconfig.app.json` does not carry the WebWorker lib, and adding it would put
  *  worker globals into scope for the whole app — a `self.skipWaiting()` that type-checks
- *  in a React component is worse than eight lines of declaration. */
+ *  in a React component is worse than a dozen lines of declaration.
+ *
+ *  Declared to the shape this file uses rather than to `any`: `respondWith` is the one
+ *  call in here that can take an app offline by mistake, and a typed event is what makes
+ *  passing it the wrong thing a build error instead of a deploy. */
+interface ExtendableEventLike {
+  waitUntil(promise: Promise<unknown>): void
+}
+
+interface FetchEventLike extends ExtendableEventLike {
+  readonly request: Request
+  respondWith(response: Response | Promise<Response>): void
+}
+
 declare const self: {
-  addEventListener(type: string, listener: (event: any) => void): void
+  addEventListener(
+    type: 'install' | 'activate',
+    listener: (event: ExtendableEventLike) => void,
+  ): void
+  addEventListener(type: 'fetch', listener: (event: FetchEventLike) => void): void
   skipWaiting(): Promise<void>
   clients: { claim(): Promise<void> }
   registration: unknown
@@ -74,7 +91,7 @@ const PRECACHE = ['/', ...ROOT_FILES]
 /** Fingerprinted build output. The URL carries the hash, so a hit is never stale. */
 const ASSET_PREFIX = '/assets/'
 
-self.addEventListener('install', (event: any) => {
+self.addEventListener('install', event => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE)
@@ -95,7 +112,7 @@ self.addEventListener('install', (event: any) => {
   )
 })
 
-self.addEventListener('activate', (event: any) => {
+self.addEventListener('activate', event => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys()
@@ -133,8 +150,8 @@ async function cacheFirst(request: Request): Promise<Response> {
   return response
 }
 
-self.addEventListener('fetch', (event: any) => {
-  const request: Request = event.request
+self.addEventListener('fetch', event => {
+  const request = event.request
 
   // A worker sees every request the page makes, including the ones that change state.
   // Anything that is not a plain same-origin GET is not ours.
