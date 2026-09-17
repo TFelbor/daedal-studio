@@ -2379,6 +2379,14 @@ than prefixed because `/` is shared with the API: "anything at the root that loo
 is one endpoint away from caching `/health`. `tests/test_pwa_shell.py` holds the worker's
 set and `vite.config.ts`'s proxy prefixes apart, and fails when they intersect.
 
+`/health` gets in one other way, and the navigation path has to say no to it twice. A
+person who types `/health` into the address bar makes a request whose `mode` is `navigate`
+and whose response is `200` — so "cache an OK navigation as the shell" would replace the
+shell with `{"status": "ok"}`, and every offline load afterwards would open to that JSON
+until the next successful navigation repaired it. The worker therefore caches a navigation
+only when its `Content-Type` is `text/html`: a page and a route a person happened to
+navigate to are not distinguishable by status or by mode, only by what came back.
+
 Four smaller facts hang off that one. The worker is a **second Rollup input** emitted as
 an unhashed `/sw.js`, not a hand-written file in `public/`: a worker's scope is the
 directory it is served from, so `assets/sw-a1b2c3.js` would control `/assets/` and nothing

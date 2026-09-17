@@ -127,7 +127,14 @@ async function networkFirstShell(request: Request): Promise<Response> {
     const response = await fetch(request)
     // Only the shell is worth keeping, and only when it is really the shell: a 404 or a
     // 502 body cached here is the page every future offline load would open to.
-    if (response.ok && request.mode === 'navigate') {
+    //
+    // `ok` and `navigate` are not enough to establish that. `GET /health` is a route,
+    // not a page, and it answers `200 application/json` — so typing `/health` into the
+    // address bar is a navigation whose response would become the shell, and every
+    // offline load after it would open to `{"status": "ok"}`. The content type is what
+    // separates a page from a route that a person happened to navigate to.
+    const isHtml = response.headers.get('content-type')?.includes('text/html') ?? false
+    if (response.ok && isHtml && request.mode === 'navigate') {
       const cache = await caches.open(CACHE)
       await cache.put('/', response.clone())
     }

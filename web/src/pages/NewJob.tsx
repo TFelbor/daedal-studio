@@ -1746,7 +1746,10 @@ export function NewJob() {
             column beside a stage is not available. `.rail` becomes `display: contents`
             under 720px and these three children are ordered directly by `.liveGrid`:
             the phases become a strip above the stage, telemetry's dead channel goes
-            away entirely, and the controls become the sticky bar at the foot. */}
+            away entirely, and the controls move *above* the stage and stay in the
+            flow. Not a sticky bar at the foot — that was tried and is wrong, for the
+            reason `.railBottom` states under `@media (max-width: 720px)`, and
+            `web/e2e/viewports.spec.ts` asserts the `static` it settled on. */}
         <div className={styles.rail}>
           <div className={styles.railPhases}>
             <div className={styles.railHead}>

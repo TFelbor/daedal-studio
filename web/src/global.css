@@ -959,35 +959,29 @@ p {
 }
 
 /* ── Nothing scrolls the page sideways ────────────────────────────────────────
-   Three rules, applied once, that between them account for nearly every horizontal
-   scrollbar this app had at 375px. They are here rather than in a page's sheet
-   because the failure is not a page's: it is what `auto` means in a grid track, and
-   what a browser does with a 36-character job id.
+   Two rules account for nearly every horizontal scrollbar this app had at 375px, and
+   neither of them is a utility class here. They are `overflow-wrap: anywhere` on the
+   text that cannot break — a 36-character job id, a URL, a filesystem path, each one
+   longer than a phone is wide — and `min-width: 0` on the flex and grid children that
+   hold it, because a flex item's `min-width` defaults to `auto` and one long word then
+   makes the whole row wider than its parent.
 
-   `tests/test_layout_ladder.py` fixes the widths; this fixes what happens inside
-   them. */
+   Both live in the module sheet of the element that needs them, beside the rule that
+   sized it. Global `.break-any` / `.min-0` utilities were written first and deleted
+   unused: a class in `global.css` and a selector in the module sheet are two places to
+   look for why one cell is narrow, and the module sheet is the one that already says
+   what the cell is.
 
-/* An id, a hash, a URL, a filesystem path. Unbreakable by every normal rule, and each
-   one of them is longer than a phone is wide. `anywhere` rather than `break-word`
-   because it also shrinks the element's min-content width, which is the number a
-   grid track is actually sized by. */
-.break-any {
-  overflow-wrap: anywhere;
-}
+   `tests/test_layout_ladder.py` fixes the widths; those rules fix what happens inside
+   them.
 
-/* Long text in a flex or grid child. A flex item's `min-width` defaults to `auto`,
-   which means "never smaller than my content" — so one long word in a column makes
-   the whole row wider than its parent and the page grows to match. */
-.min-0 {
-  min-width: 0;
-}
-
-/* There is deliberately no `overflow-x: clip` on `body` to catch what these miss.
+   There is deliberately no `overflow-x: clip` on `body` to catch what they miss.
    It would work, and it would make `web/e2e/viewports.spec.ts` incapable of failing:
    a clipped document reports a `scrollWidth` it has been told to report, so the
    smoke test would pass over an element half a screen wide instead of finding it.
-   `hidden` would be worse again — it makes the element a scroll container, and the
-   nav, the printer-setup index and the running view's action bar are all sticky. */
+   `hidden` would be worse again — it makes the element a scroll container, and both
+   of this app's sticky elements, the nav and the printer-setup index, would stop
+   sticking. */
 
 .spin {
   animation: ds-spin 1s linear infinite;
