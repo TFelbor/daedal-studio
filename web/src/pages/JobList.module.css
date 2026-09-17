@@ -38,7 +38,7 @@
 }
 
 div.stats {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 /* Keeps a long count from widening its own cell out of the four-up rhythm. */
@@ -55,7 +55,7 @@ div.stats {
 .headRow,
 a.jobRow {
   display: grid;
-  grid-template-columns: 56px 1fr 150px 130px 110px 96px;
+  grid-template-columns: 56px minmax(0, 1fr) 150px 130px 110px 96px;
   gap: 0 20px;
 }
 
@@ -240,7 +240,7 @@ span.statusAwaiting::before {
 
 @media (max-width: 720px) {
   div.stats {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Wrapping the plate leaves cell 3 with a stray left hairline and no rule

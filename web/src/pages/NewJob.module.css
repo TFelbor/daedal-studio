@@ -18,7 +18,7 @@
    status twice and drifted. */
 .split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   grid-template-areas:
     'compose explain'
@@ -469,7 +469,7 @@
 
 .liveGrid {
   display: grid;
-  grid-template-columns: 1fr var(--rail);
+  grid-template-columns: minmax(0, 1fr) var(--rail);
   flex: 1;
 }
 
@@ -664,7 +664,7 @@
 
 .railRow {
   display: grid;
-  grid-template-columns: 30px 1fr auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
   gap: 0 14px;
   padding: 13px 0;

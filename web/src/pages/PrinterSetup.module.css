@@ -5,7 +5,7 @@
 
 .page {
   display: grid;
-  grid-template-columns: 230px 1fr;
+  grid-template-columns: 230px minmax(0, 1fr);
   gap: 56px;
   align-items: start;
 }
@@ -148,7 +148,7 @@
 
 .fieldGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -310,7 +310,7 @@
 
 .simGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -378,12 +378,23 @@
 
 @media (max-width: 900px) {
   .page {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 32px;
   }
 
+  /* Still sticky, and still for the reason it was sticky as a column: the index is
+     the only way to reach section 05 without scrolling past four others, and a strip
+     that scrolls away with the page is a strip that is never used again after the
+     first screen. It docks under the nav rather than at the top of the viewport,
+     because the nav is sticky too and would otherwise sit on top of it. */
   .index {
-    position: static;
+    position: sticky;
+    top: var(--nav-height);
+    z-index: 30;
+    /* The page's own ground: the sections scroll *under* this, so it cannot be
+       transparent the way it could when it was a column beside them. */
+    background: var(--ground);
+    padding-bottom: 2px;
   }
 
   .indexTitle {
@@ -421,7 +432,32 @@
   .fieldGrid,
   .simGrid,
   .devGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The index title is 26px of margin and a word ("Settings") the nav directly
+     above it has already said. The numbered strip is the part that does anything. */
+  .indexTitle {
+    display: none;
+  }
+
+  .indexRow {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  /* A section head is a number, a name, and a right-aligned tag or note. At 335px the
+     tag wins the argument and the name wraps to three lines, so the tag goes under
+     both rather than beside them. */
+  .sectionHead {
+    flex-wrap: wrap;
+  }
+
+  .sectionTag,
+  .sectionNote {
+    margin-left: 0;
+    flex-basis: 100%;
+    text-align: left;
   }
 
   .toggleBox {

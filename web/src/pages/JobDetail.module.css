@@ -69,7 +69,7 @@
 .grid {
   display: grid;
   /* One rail width across every scene that has one. See --rail. */
-  grid-template-columns: 1fr var(--rail);
+  grid-template-columns: minmax(0, 1fr) var(--rail);
   gap: 44px;
   align-items: start;
 }
@@ -97,7 +97,7 @@
 
 .figures {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 26px;
 }
 
@@ -314,6 +314,19 @@
 @media (max-width: 720px) {
   .figures {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The title is the job's prompt, so it is arbitrary text rather than a heading
+     someone wrote to fit. At 32px a single long word is wider than the screen. */
+  .title {
+    font-size: 26px;
+    overflow-wrap: anywhere;
+  }
+
+  /* Approve and Reject side by side, each at half of 335px less the gap, is two
+     buttons too narrow to read the verb on. */
+  .verdictActions {
+    flex-direction: column;
   }
 }
 

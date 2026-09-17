@@ -347,6 +347,33 @@ p {
   }
 }
 
+/* What every control has to give up at the phone step. Two things, and neither is
+   cosmetic.
+
+   **16px on anything typed into.** Mobile Safari zooms the viewport when a field with
+   a font smaller than 16px takes focus, and it does not zoom back out — the page is
+   left wider than the screen and scrolling sideways, which is the exact defect this
+   pass exists to remove. The mono faces here are 13.5px by design on a desktop; 16px
+   is the price of the same field on a phone.
+
+   **A cell you can hit.** 44px is the platform floor for a tap target on both
+   platforms, and the segmented controls were 38px rows of 12px tracked caps. The
+   tracking comes down with the padding so a three-cell control still fits 375px
+   without a cell wrapping mid-word. */
+@media (max-width: 720px) {
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
+  }
+
+  .seg > *:not(.corner) {
+    min-height: 44px;
+    padding: 13px 10px;
+    letter-spacing: 0.04em;
+  }
+}
+
 /* ── Type roles ───────────────────────────────────────────────────────────── */
 
 .display {
