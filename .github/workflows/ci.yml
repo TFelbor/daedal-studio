@@ -256,3 +256,31 @@ jobs:
         # The API server image serves `web/dist/`, which means a build that only breaks
         # in production is a server that starts and then 404s the whole app.
         run: npm run build
+
+      - name: Install the smoke browser
+        # A named step rather than a `postinstall` hook: this pulls ~170 MB of Chromium
+        # from Microsoft's CDN, and a dependency install that quietly does that is a
+        # licence event nobody sees (THIRD-PARTY-NOTICES.md § 2 § Frontend). Nothing
+        # else in this repository needs it — the Docker build runs `npm ci` and no
+        # browser.
+        run: npm run e2e:install
+
+      - name: Viewport smoke
+        # Blocking, and the only thing here that runs a browser. It asserts one thing at
+        # three widths — that no page scrolls sideways — and that is a claim no source
+        # assertion can make: layout is what the engine does with the rules, not what
+        # the rules say. `tests/test_layout_ladder.py` fixes the breakpoints; this
+        # checks the result at the widths they are for.
+        #
+        # It rebuilds inside `playwright.config.ts`'s `webServer` because it runs
+        # against `web/dist` — the artifact the server image actually ships — rather
+        # than against a dev server with a different CSS pipeline.
+        run: npm run e2e
+
+      - name: Keep the failing run's traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
