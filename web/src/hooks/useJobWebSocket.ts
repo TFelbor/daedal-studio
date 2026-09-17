@@ -32,10 +32,13 @@ export function useJobWebSocket(jobId: string | null) {
 
     let mounted = true;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // This was changed so that the "npm run dev" command would work with the WebSocket connection.
-    const wsUrl = import.meta.env.DEV
-      ? `${protocol}//localhost:8000/ws/jobs/${jobId}`
-      : `${protocol}//${window.location.host}/ws/jobs/${jobId}`;
+    // Same origin in dev as well as in production. It used to point at `localhost:8000`
+    // under `import.meta.env.DEV`, which works on the machine running `npm run dev` and
+    // nowhere else: a phone on the same network loads the page from the dev server's LAN
+    // address and then opens its socket against its *own* loopback, so the running view
+    // renders a job that never advances. `vite.config.ts` proxies `/ws` with `ws: true`,
+    // so there was nothing to route around.
+    const wsUrl = `${protocol}//${window.location.host}/ws/jobs/${jobId}`;
     console.info(`[WS] connecting to ${wsUrl}`);
     // The upgrade is refused without the shared secret, and a browser cannot put a
     // header on it — see `withToken`. Not logged above: that line carries the URL.

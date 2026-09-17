@@ -49,6 +49,7 @@ import { getConfig } from '../api/config';
 import { reportUi } from '../api/activity';
 import { closeSocket } from '../api/ws';
 import { useActivityFeed } from '../hooks/useActivityFeed';
+import { useIsPhone } from '../hooks/useMediaQuery';
 import { PIPELINE } from '../pipeline';
 import {
   NO_SPEC_REASON,
@@ -211,6 +212,10 @@ function recallWatchedJob(): string | null {
 }
 
 export function NewJob() {
+  /* The one thing on this page that a stylesheet cannot express: the pipeline
+     explainer is a collapsed disclosure on a phone and a plain block above it, and
+     `open` is an attribute. Everything else about the response to width is CSS. */
+  const isPhone = useIsPhone();
   const [prompt, setPrompt] = useState('');
   /**
    * The archetype being composed, or null for a free prompt.
@@ -968,7 +973,7 @@ export function NewJob() {
     return (
       <>
         <div className={styles.split}>
-          <div className={styles.splitCell}>
+          <div className={`${styles.splitCell} ${styles.composeCell}`}>
             {/* Whoever is reading this already chose to be here — they do not need
                 selling, they need to know what to type and that it is safe to try. */}
             {/* The state of the product, not the name of the page: the nav already
@@ -1313,27 +1318,46 @@ export function NewJob() {
             </div>
           </div>
 
-          <div className={styles.splitCell}>
-            <div className="block-title">
-              <span className="label">Pipeline · what runs when you hit send</span>
-              <span className="label-tight">05 phases</span>
-            </div>
+          {/* Two cells on a desktop, three areas in the grid — because a phone wants
+              them in a different order than the source can give. The printer plate has
+              to come *before* the explainer on a small screen: it is the one thing on
+              this page that can stop the submit button working, and a reader who has to
+              scroll past five phase descriptions to find out their printer is offline
+              finds out by pressing the button instead. `grid-template-areas` moves it
+              without a second copy in the DOM; see `.split`. */}
+          <div className={`${styles.splitCell} ${styles.explainCell}`}>
+            {/* A disclosure on a phone and a plain block everywhere else. Five phases
+                at ~96px each is two thirds of a 375px screen of prose nobody asked for
+                between the composer and the end of the page, and `open` is an attribute
+                rather than a style, so this is the one thing here a media query cannot
+                do. */}
+            <details className={styles.explain} open={!isPhone}>
+              <summary
+                className={`block-title ${styles.explainSummary}`}
+                tabIndex={isPhone ? undefined : -1}
+              >
+                <span className="label">Pipeline · what runs when you hit send</span>
+                <span className="label-tight">05 phases</span>
+              </summary>
 
-            {PIPELINE.map((p) => (
-              <div key={p.phase} className="phase-row">
-                <span className="phase-num">{pad2(p.phase)}</span>
-                <div>
-                  <div className={styles.phaseName}>{p.name}</div>
-                  <div className={styles.phaseBlurb}>{p.blurb}</div>
+              {PIPELINE.map((p) => (
+                <div key={p.phase} className="phase-row">
+                  <span className="phase-num">{pad2(p.phase)}</span>
+                  <div className={styles.phaseText}>
+                    <div className={styles.phaseName}>{p.name}</div>
+                    <div className={styles.phaseBlurb}>{p.blurb}</div>
+                  </div>
+                  <span className={styles.tag}>{p.tag}</span>
                 </div>
-                <span className={styles.tag}>{p.tag}</span>
-              </div>
-            ))}
+              ))}
+            </details>
+          </div>
 
+          <div className={`${styles.splitCell} ${styles.printerCell}`}>
             <div className={styles.printerBlock}>
               <div className={`label ${styles.printerLabel}`}>Printer</div>
               <Blueprint className={styles.printerFrame}>
-                <div>
+                <div className={styles.printerIdentity}>
                   <div className={styles.printerName}>{printerName}</div>
                   <div className={styles.printerMeta}>{printerMeta}</div>
                 </div>
@@ -1718,8 +1742,13 @@ export function NewJob() {
           </div>
         </div>
 
+        {/* The rail on a desktop; three separate homes on a phone, where a 380px
+            column beside a stage is not available. `.rail` becomes `display: contents`
+            under 720px and these three children are ordered directly by `.liveGrid`:
+            the phases become a strip above the stage, telemetry's dead channel goes
+            away entirely, and the controls become the sticky bar at the foot. */}
         <div className={styles.rail}>
-          <div>
+          <div className={styles.railPhases}>
             <div className={styles.railHead}>
               <span className="label">Phases</span>
             </div>
@@ -1755,7 +1784,7 @@ export function NewJob() {
           </div>
 
           {telemetrySamples.length === 0 && (
-            <div>
+            <div className={styles.railTelemetry}>
               <div className={styles.railHead}>
                 <span className="label">Telemetry</span>
               </div>

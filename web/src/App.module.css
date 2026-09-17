@@ -6,7 +6,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 0 var(--gutter);
+  /* The bar spans the notch rather than stopping at it — see `viewport-fit=cover`
+     in index.html — so the gutter is the safe area plus the gutter on each side. */
+  padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0
+    max(var(--gutter), env(safe-area-inset-left));
   background: var(--nav-bg);
   border-bottom: 1px solid var(--rule);
   position: sticky;
@@ -88,7 +91,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px 24px;
-  padding: 16px var(--gutter);
+  padding: 16px max(var(--gutter), env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom)) max(var(--gutter), env(safe-area-inset-left));
   background: var(--void);
   border-top: 1px solid var(--rule);
   font-size: 11.5px;

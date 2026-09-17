@@ -9,12 +9,27 @@
    any screen taller than about 740px the closing rule landed mid-page with a band of
    bare grid beneath it — the page read as unfinished rather than as composed. The
    min-height stays as the floor for short viewports, where there is no slack to take. */
+/* Two cells to read and three areas to place. The right-hand column is the pipeline
+   explainer over the printer plate, and they are separate grid areas for one reason:
+   on a phone the plate has to come *before* the explainer. It is the only thing on this
+   page that can stop the submit button working, and five phase descriptions is two
+   thirds of a 375px screen to scroll past before finding out the printer is offline.
+   `grid-template-areas` reorders them; a second copy in the DOM would have rendered the
+   status twice and drifted. */
 .split {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    'compose explain'
+    'compose printer';
   flex: 1;
   min-height: min(72vh, 620px);
   border-bottom: 1px solid var(--rule);
+  /* Named so the three areas can each drop the edge they no longer own once they are
+     stacked, without restating the clamp four times. */
+  --cell-top: clamp(32px, 4.4vw, 64px);
+  --cell-bottom: clamp(36px, 4.7vw, 68px);
 }
 
 /* The horizontal padding is the shared gutter, not a clamp of its own: the hero's left
@@ -23,12 +38,25 @@
 .splitCell {
   display: flex;
   flex-direction: column;
-  padding: clamp(32px, 4.4vw, 64px) var(--gutter) clamp(36px, 4.7vw, 68px);
+  padding: var(--cell-top) var(--gutter) var(--cell-bottom);
   min-width: 0;
 }
 
-.splitCell:first-child {
+.composeCell {
+  grid-area: compose;
   border-right: 1px solid var(--rule);
+}
+
+/* The two right-hand areas share one column's padding between them: the explainer owns
+   its top edge, the plate owns its bottom, and neither draws a rule against the other. */
+.explainCell {
+  grid-area: explain;
+  padding-bottom: 0;
+}
+
+.printerCell {
+  grid-area: printer;
+  padding-top: 0;
 }
 
 .heroEyebrow {
@@ -231,6 +259,34 @@
 
 /* ── Idle: the pipeline explainer ─────────────────────────────────────────── */
 
+/* A `<details>` on every screen, open everywhere but the phone step. The element is a
+   plain block rather than the flex column its cell is: `display: flex` on a `<details>`
+   is still the one property browsers disagree about, and getting it wrong means the
+   content never collapses — which is the whole point of the element here. */
+.explain {
+  display: block;
+}
+
+/* The block title *is* the summary. Above the phone step it is not a control at all:
+   the disclosure is open, cannot be closed, and a caret inviting a reader to collapse
+   something that then reopens on every load is a lie about what the page does. Hence
+   no marker, no pointer, and `tabIndex={-1}` from the TSX so the keyboard skips it too. */
+.explainSummary {
+  list-style: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+.explainSummary::-webkit-details-marker {
+  display: none;
+}
+
+/* Name and blurb share one grid cell, and the blurb is a sentence: without this the
+   cell is sized by its longest word and the page grows past the viewport. */
+.phaseText {
+  min-width: 0;
+}
+
 .phaseName {
   font-family: var(--font-heading);
   font-weight: 600;
@@ -284,7 +340,13 @@
   padding: 18px 20px;
 }
 
+/* The name is a hostname and the meta is a URL; both wrap rather than widen. */
+.printerIdentity {
+  min-width: 0;
+}
+
 .printerName {
+  overflow-wrap: anywhere;
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 18px;
@@ -673,18 +735,23 @@
    sideways, so the tab strip scrolls inside itself instead. */
 
 @media (max-width: 900px) {
-  .split,
-  .liveGrid {
-    grid-template-columns: 1fr;
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'compose'
+      'explain'
+      'printer';
+    min-height: 0;
   }
 
-  .splitCell:first-child {
+  .liveGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .composeCell {
     border-right: none;
     border-bottom: 1px solid var(--rule);
-  }
-
-  .split {
-    min-height: 0;
   }
 
   .stagePane {
@@ -707,6 +774,138 @@
 
   .tabs {
     overflow-x: auto;
+  }
+}
+
+/* ── The phone step ──────────────────────────────────────────────────────────
+   Two structural moves, and both of them are about what a thumb reaches first.
+   The composer's printer plate overtakes the explainer, which collapses; and the
+   running view's rail stops being a column and becomes three things in three
+   places. */
+
+@media (max-width: 720px) {
+  /* Plate before prose. See `.split`. */
+  .split {
+    grid-template-areas:
+      'compose'
+      'printer'
+      'explain';
+  }
+
+  .printerCell {
+    padding-bottom: 0;
+  }
+
+  .explainCell {
+    padding-top: 30px;
+    padding-bottom: var(--cell-bottom);
+  }
+
+  /* Now it is a control, so it looks and behaves like one: a caret, a pointer, and
+     a row tall enough to hit without aiming. */
+  .explainSummary {
+    cursor: pointer;
+    pointer-events: auto;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .explainSummary::after {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-right: 1px solid var(--ink-mute);
+    border-bottom: 1px solid var(--ink-mute);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform var(--motion-quick) var(--motion-ease);
+  }
+
+  .explain[open] .explainSummary::after {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  /* `CSG · MESH` is a caption on the technique, and it costs the sentence beside it
+     a third of the width it has left. The phase names and blurbs are the content. */
+  .explain .tag {
+    display: none;
+  }
+
+  /* The rail dissolves. Its three children become direct children of the live grid,
+     which is a flex column here rather than a grid — a sticky element's containing
+     block is its grid *area*, so `.railBottom` as a grid item would stick to the
+     bottom row it is already at the bottom of and do nothing at all. As a flex item
+     its containing block is the whole column, which is what a bar wants. */
+  .liveGrid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .rail {
+    display: contents;
+  }
+
+  /* Five rows become five columns under the header: the phase list is a progress
+     indicator on a phone, not a table. Equal columns rather than a scroller —
+     a phase you cannot see is a phase you do not know about. */
+  .railPhases {
+    order: 1;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 18px var(--gutter) 0;
+  }
+
+  .railPhases .railHead {
+    grid-column: 1 / -1;
+  }
+
+  .railPhases .railRow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-height: 44px;
+    padding: 12px 4px;
+    text-align: center;
+    border-bottom: none;
+    border-left: 1px solid var(--rule-sub);
+  }
+
+  .railPhases .railRow:first-of-type {
+    border-left: none;
+  }
+
+  .railPhases .railName {
+    font-size: 11.5px;
+    letter-spacing: 0.01em;
+    overflow-wrap: anywhere;
+  }
+
+  .stagePane {
+    order: 2;
+  }
+
+  /* "No printer data until phase 05" is a box explaining an absence. On a desktop rail
+     it fills a column that would otherwise be empty; on a phone it is a screen of
+     nothing between the stage and the controls. */
+  .railTelemetry {
+    display: none;
+  }
+
+  /* The action bar. Dispatch and stop are the two things this view exists to offer,
+     and a 200-layer toolpath plus two log panes is a long way to scroll to reach
+     them. Sticky, not fixed: it keeps its place in the flow, so nothing underneath
+     it is permanently covered, and `.page` keeps no `overflow` of its own — which is
+     what the `.surface` flex-column rule depends on. */
+  .railBottom {
+    order: 3;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin-top: 0;
+    padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--rule);
+    background: var(--nav-bg);
+    backdrop-filter: blur(10px);
   }
 }
 

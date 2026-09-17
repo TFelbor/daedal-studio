@@ -13,7 +13,14 @@
     <link rel="alternate icon" type="image/x-icon" href="/favicon.ico?v=3" sizes="16x16 32x32 48x48 64x64" />
     <link rel="shortcut icon" href="/favicon.ico?v=3" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` is what makes `env(safe-area-inset-*)` report anything
+         other than zero: without it iOS letterboxes the page inside the safe area and
+         the app stops short of the rounded corners, which in a standalone PWA reads as
+         a web page someone put a frame around. With it, the page owns the full screen
+         and the nav, the footer and the running view's action bar pad themselves out
+         of the notch and the home indicator. `user-scalable` is left alone — pinch to
+         zoom is not the app's to take away. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- The browser chrome around the page. Two declarations so the colour is right
          before any script runs; `theme.ts` rewrites the active one when the viewer
          uses the in-app toggle, which no media query can see. -->
