@@ -29,9 +29,24 @@ const MASK = '••••••••';
 
 const DEFAULT_PROFILES = [
   'pythonsrc/profiles/anycubic_mega.json',
-  'pythonsrc/profiles/bambu_test.json',
+  'pythonsrc/profiles/bambu_p1s.json',
   'pythonsrc/profiles/ender3.json',
   'pythonsrc/profiles/klipper_test.json',
+];
+
+/** Bambu models, and the bundled profile for each — `null` where there is not one yet.
+ *
+ *  Only the P1S has a profile, because only the P1S has been measured. The rest are
+ *  listed so a person can record which machine they have, and the form says plainly
+ *  that slicing will fall back to the generic profile until someone adds theirs. The
+ *  alternative was four profiles of plausible numbers, which is the failure mode
+ *  `bambu_test.json` already demonstrated: a file that looks configured and is not. */
+const BAMBU_MODELS: { id: string; label: string; profile: string | null }[] = [
+  { id: 'P1S', label: 'P1S', profile: 'pythonsrc/profiles/bambu_p1s.json' },
+  { id: 'P1P', label: 'P1P', profile: null },
+  { id: 'X1C', label: 'X1 Carbon', profile: null },
+  { id: 'A1', label: 'A1', profile: null },
+  { id: 'A1MINI', label: 'A1 mini', profile: null },
 ];
 
 /** The four sections, in order. The index on the left is generated from this, so
@@ -123,10 +138,27 @@ export function PrinterSetup() {
   const [octoprintKey, setOctoprintKey] = useState('');
   const [bambuIp, setBambuIp] = useState('');
   const [bambuCode, setBambuCode] = useState('');
+  const [bambuSerial, setBambuSerial] = useState('');
+  const [bambuModel, setBambuModel] = useState('');
   const [profileInput, setProfileInput] = useState('');
 
   const [printerTestResult, setPrinterTestResult] = useState<TestResult | null>(null);
   const [printerTesting, setPrinterTesting] = useState(false);
+
+  // What the chosen model means for slicing, said at the point of choosing — and what
+  // it does not mean. Choosing a model records the model; it does not select a profile,
+  // because nothing on the server reads the key. The bed size and nozzle come from the
+  // default slicing profile in the field below, and only the P1S has measured geometry
+  // — the rest would otherwise silently slice against `fdmprinter` defaults, which is
+  // exactly what `bambu_test.json` used to do.
+  const bambuProfile = BAMBU_MODELS.find((model) => model.id === bambuModel)?.profile ?? null;
+  const bambuModelHint = !bambuModel
+    ? 'Recorded for reference. The bed size and nozzle come from the slicing profile below.'
+    : bambuProfile
+      ? `Recorded for reference. ${bambuProfile} is the matching profile — set it as the ` +
+        'default slicing profile below; choosing a model here does not select it.'
+      : 'Recorded for reference. There is no bundled profile for this model yet, so ' +
+        'slicing falls back to generic defaults that will not match the bed size.';
 
   const [savingField, setSavingField] = useState<string | null>(null);
   const [savedField, setSavedField] = useState<string | null>(null);
@@ -156,6 +188,8 @@ export function PrinterSetup() {
       if (data['OCTOPRINT_API_KEY']?.is_set) setOctoprintKey(data['OCTOPRINT_API_KEY'].value || '');
       if (data['BAMBU_IP']?.value) setBambuIp(data['BAMBU_IP'].value);
       if (data['BAMBU_CODE']?.is_set) setBambuCode(data['BAMBU_CODE'].value || '');
+      if (data['BAMBU_SERIAL']?.value) setBambuSerial(data['BAMBU_SERIAL'].value);
+      if (data['BAMBU_MODEL']?.value) setBambuModel(data['BAMBU_MODEL'].value);
       // Buffered locally rather than driven straight off the response: these two
       // are typed into, and a refetch mid-sentence would overwrite the caret.
       setProfileInput(data['DEFAULT_PROFILE']?.value || '');
@@ -761,6 +795,55 @@ export function PrinterSetup() {
                       onBlur={(e) => commitSecret('BAMBU_CODE', e.target.value)}
                     />
                     {hostBinding('BAMBU_CODE')}
+                  </div>
+                  <div className="field">
+                    <div className={styles.fieldHead}>
+                      <label className="field-label" htmlFor="bambu-serial">
+                        Serial number
+                      </label>
+                      {fieldState('BAMBU_SERIAL')}
+                    </div>
+                    <input
+                      id="bambu-serial"
+                      className="input"
+                      type="text"
+                      value={bambuSerial}
+                      placeholder="01P00A000000001"
+                      spellCheck={false}
+                      autoComplete="off"
+                      onChange={(e) => setBambuSerial(e.target.value)}
+                      onBlur={(e) => commitValue('BAMBU_SERIAL', e.target.value)}
+                    />
+                    <p className={styles.bindingNote}>
+                      On the printer screen, beside the access code. Every command topic is
+                      <code> device/&lt;serial&gt;/request</code>, so without it the printer can be
+                      reached and not addressed.
+                    </p>
+                  </div>
+                  <div className="field">
+                    <div className={styles.fieldHead}>
+                      <label className="field-label" htmlFor="bambu-model">
+                        Model
+                      </label>
+                      {fieldState('BAMBU_MODEL')}
+                    </div>
+                    <select
+                      id="bambu-model"
+                      className="input"
+                      value={bambuModel}
+                      onChange={(e) => {
+                        setBambuModel(e.target.value);
+                        commitValue('BAMBU_MODEL', e.target.value);
+                      }}
+                    >
+                      <option value="">Choose a model</option>
+                      {BAMBU_MODELS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className={styles.bindingNote}>{bambuModelHint}</p>
                   </div>
                 </div>
               )}

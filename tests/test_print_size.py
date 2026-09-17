@@ -17,6 +17,7 @@ default happened to be 50 mm" from "they asked for 50 mm" answers no question wo
 asking.
 """
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -237,31 +238,42 @@ def test_the_printer_probe_reports_a_build_volume_from_the_profile(monkeypatch):
 def test_a_profile_without_machine_keys_reports_no_ceiling(monkeypatch):
     """"No ceiling known" is a first-class case, not a zero.
 
-    `bambu_test.json` declares no machine dimensions at all, so it is used directly
-    rather than reconstructed in `tmp_path`: a copy would keep passing if the bundled
-    profile grew machine keys, which is the one change that should break this.
     A composer that assumes a number would clamp to 0 or NaN and refuse every size for
     that printer.
+
+    This used to point at the bundled `bambu_test.json`, which declared no machine
+    dimensions at all. That file was deleted in #73 — it was a connection stub carrying
+    a placeholder `api_key` — and with it gone the test passed on the *missing file*
+    branch instead, which answers `build_volume_mm: None` for an entirely different
+    reason. The stub is written into `PROFILES_DIR` for the duration instead, because
+    `resolve_profile_path` confines profiles to that directory and a `tmp_path` copy
+    would not resolve at all.
     """
     import asyncio
 
-    profile = "pythonsrc/profiles/bambu_test.json"
+    stub = app_module.PROFILES_DIR / "_no_machine_keys_test.json"
+    stub.write_text(json.dumps({"firmware": "bambu", "base_url": "http://x"}))
+    profile = f"pythonsrc/profiles/{stub.name}"
+    try:
+        monkeypatch.setattr(
+            app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
+        )
+        monkeypatch.setattr(app_module.config_store, "get", lambda key, *a, **k: (
+            profile if key == "DEFAULT_PROFILE" else None
+        ))
+        monkeypatch.setattr(app_module, "resolve_printer_target",
+                            lambda path: ("bambu", "http://x", None))
 
-    monkeypatch.setattr(
-        app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
-    )
-    monkeypatch.setattr(app_module.config_store, "get", lambda key, *a, **k: (
-        profile if key == "DEFAULT_PROFILE" else None
-    ))
-    monkeypatch.setattr(app_module, "resolve_printer_target",
-                        lambda path: ("bambu", "http://x", None))
+        async def _probe(_request):
+            return {"success": False, "message": "no"}
+        monkeypatch.setattr(app_module, "test_connection", _probe)
 
-    async def _probe(_request):
-        return {"success": False, "message": "no"}
-    monkeypatch.setattr(app_module, "test_connection", _probe)
+        status = asyncio.run(app_module.printer_status())
+    finally:
+        stub.unlink()
 
-    status = asyncio.run(app_module.printer_status())
-
+    # Not the missing-file branch: the profile resolved, and had nothing to say.
+    assert status["configured"] is True
     assert "build_volume_mm" in status
     assert status["build_volume_mm"] is None
 

@@ -343,28 +343,115 @@ def test_test_connection_withholds_the_key_from_a_changed_moonraker_url(store, p
 
 
 def test_test_connection_refuses_a_bambu_code_bound_elsewhere(store, monkeypatch):
-    """Nothing is sent on the Bambu probe, so the answer is the binding itself.
+    """The binding answers before the probe does, so the code never leaves.
 
-    A TCP connect to 8883 cannot carry the access code, so there is no keyless
-    version of this probe worth making — the code cannot authenticate a print to
-    this address, and that is the whole answer.
+    The Bambu probe is no longer a TCP connect that carries nothing: `check_credentials`
+    opens an MQTT session and *sends the access code*, because the CONNACK is the only
+    thing that carries the authentication result. That makes this test's subject sharper
+    than it was — a code bound to one address must not be offered to another — and it is
+    why the stub below is `BambuOperator.check_credentials` rather than
+    `asyncio.open_connection`, which this branch has not called since #73.
     """
-    connected = []
+    probed = []
 
-    async def fake_open_connection(host, port):
-        connected.append((host, port))
+    def fake_check_credentials(self):
+        probed.append(self.base_url)
         raise AssertionError("the probe must not run for a code bound elsewhere")
 
     store("BAMBU_IP", "192.168.1.150")
     store("BAMBU_CODE", "the-real-code")
     store("BAMBU_IP", "attacker.example")
-    monkeypatch.setattr(app_module.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(
+        app_module.BambuOperator, "check_credentials", fake_check_credentials,
+    )
 
     body = client.post("/config/test-connection", json={"service": "bambu"}).json()
 
     assert body["success"] is False
     assert "BAMBU_IP changed since the key was saved" in body["message"]
-    assert connected == []
+    assert probed == []
+
+
+# ── The Bambu probe itself, both ways ────────────────────────────────────────
+#
+# The branch that replaced the TCP connect. It is short, and it is load-bearing twice
+# over: it is what a person reads in Printer Setup, and `printer_status` gates on it.
+
+
+def test_a_bambu_probe_that_authenticates_says_the_code_was_accepted(store, monkeypatch):
+    """Success has to name what succeeded. The old probe could only say "reachable on
+    port 8883 — the access code is not verified until a print is sent", because a TCP
+    connect carries no credential; this one opened a session and was let in."""
+    asked = {}
+
+    def fake_check_credentials(self):
+        asked["host"] = self.base_url
+        asked["code"] = self.api_key
+        return True
+
+    store("BAMBU_IP", "192.168.1.150")
+    store("BAMBU_CODE", "the-real-code")
+    monkeypatch.setattr(
+        app_module.BambuOperator, "check_credentials", fake_check_credentials,
+    )
+
+    body = client.post("/config/test-connection", json={"service": "bambu"}).json()
+
+    assert body["success"] is True
+    assert "accepted the LAN access code" in body["message"]
+    # The stored pair, both halves, and no serial — a person setting a printer up has
+    # typed an address and a code and is asking whether those two are right.
+    assert (asked["host"], asked["code"]) == ("192.168.1.150", "the-real-code")
+
+
+def test_a_bambu_probe_that_is_refused_repeats_the_operators_own_sentence(store, monkeypatch):
+    """Not rephrased here. `BambuOperator` distinguishes "the code was refused" from "I
+    could not reach it" and names the printer's screen for the first; saying it twice in
+    two places is how the two drift apart."""
+    refusal = (
+        "The Bambu printer refused the LAN access code. Check it on the printer under "
+        "Settings → Network."
+    )
+
+    def fake_check_credentials(self):
+        raise app_module.PrinterConnectionError(refusal)
+
+    store("BAMBU_IP", "192.168.1.150")
+    store("BAMBU_CODE", "the-wrong-code")
+    monkeypatch.setattr(
+        app_module.BambuOperator, "check_credentials", fake_check_credentials,
+    )
+
+    body = client.post("/config/test-connection", json={"service": "bambu"}).json()
+
+    assert body["success"] is False
+    assert body["message"] == refusal
+
+
+def test_printer_status_reports_a_bambu_printer_from_that_same_probe(store, monkeypatch):
+    """One probe, one answer. `printer_status` is what the dispatch gate and the nav
+    pill read, so a Bambu printer that fails its connection test must not show ready."""
+    import asyncio
+
+    store("DEFAULT_PROFILE", "pythonsrc/profiles/bambu_p1s.json")
+    store("BAMBU_IP", "192.168.1.150")
+    store("BAMBU_CODE", "the-wrong-code")
+    monkeypatch.setattr(
+        app_module.simulator_manager, "get_status", lambda: {"octoprint": {"running": False}},
+    )
+
+    def refuse(self):
+        raise app_module.PrinterConnectionError("refused, and here is the screen to check")
+
+    monkeypatch.setattr(app_module.BambuOperator, "check_credentials", refuse)
+    refused = asyncio.run(app_module.printer_status())
+
+    monkeypatch.setattr(app_module.BambuOperator, "check_credentials", lambda self: True)
+    accepted = asyncio.run(app_module.printer_status())
+
+    assert refused["running"] is False
+    assert "refused" in refused["detail"]
+    assert accepted["running"] is True
 
 
 # ── resolve_printer_target and subprocess_env ────────────────────────────────
@@ -391,9 +478,13 @@ def test_resolve_printer_target_withholds_a_key_bound_elsewhere(
 def test_a_profile_key_is_never_paired_with_a_stored_address(store, tmp_path):
     """A profile's own credential belongs to the profile's own address.
 
-    `pythonsrc/profiles/bambu_test.json` carries an `api_key`, and the store's
+    `pythonsrc/profiles/bambu_test.json` used to carry an `api_key`, and the store's
     address is settable by an unauthenticated request — so pairing the two was the
-    same confused deputy by another route, with the key coming off disk.
+    same confused deputy by another route, with the key coming off disk. That file was
+    deleted in #73 and no bundled profile carries a credential now
+    (`test_no_bundled_profile_carries_a_connection_secret`), but the rule is about the
+    shape rather than about that file: a profile is a place a key *can* be written, so
+    this builds one and checks the pairing directly.
     """
     profile = tmp_path / "profile.json"
     profile.write_text(
@@ -471,7 +562,7 @@ def test_subprocess_env_still_forwards_a_bound_key_over_an_inherited_one(store):
 PROFILE_FOR_SERVICE = {
     "octoprint": "pythonsrc/profiles/ender3.json",
     "moonraker": "pythonsrc/profiles/klipper_test.json",
-    "bambu": "pythonsrc/profiles/bambu_test.json",
+    "bambu": "pythonsrc/profiles/bambu_p1s.json",
 }
 
 
@@ -536,8 +627,19 @@ def test_the_dispatch_gate_refuses_a_key_bound_elsewhere(
         resp = client.post(f"/jobs/{job_id}/print-dispatch", json={"confirmed": True})
 
     assert resp.status_code == 409, resp.text
-    assert url_key in resp.json()["detail"]
-    assert "re-enter" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    if service == "bambu":
+        # This firmware never reaches the binding check at the gate, because #73's scope
+        # reduction refuses a Bambu dispatch outright and does so first: telling someone
+        # to re-save a key for a printer this repository will not dispatch to is a wild
+        # goose chase. The binding still governs every path that *does* send the code —
+        # `test_connection`, `resolve_printer_target` and `subprocess_env`, each
+        # parametrised over this same table above. What matters here is unchanged and
+        # asserted below: nothing was launched.
+        assert "Bambu Studio" in detail
+    else:
+        assert url_key in detail
+        assert "re-enter" in detail
     assert launched == [], "nothing may be sent to a printer the key is not bound to"
 
 
@@ -700,9 +802,10 @@ def test_the_operator_sends_no_key_when_the_server_withheld_one():
 def test_a_profile_key_travels_only_with_the_profiles_own_address():
     """`resolve_printer_target`'s rule, which has to hold on this side too.
 
-    `pythonsrc/profiles/bambu_test.json` carries an `api_key`. The store's address is
-    settable by an unauthenticated request; the profile is a file on disk. Pairing one
-    with the other is the same confused deputy with the key coming off disk.
+    `pythonsrc/profiles/bambu_test.json` used to carry an `api_key`; it was deleted in
+    #73 and no bundled profile carries a credential now. The store's address is still
+    settable by an unauthenticated request and a profile is still a file on disk, so
+    the rule stands on its own and the dict below supplies the shape.
     """
     from pythonsrc.run_operator import printer_from_env
 

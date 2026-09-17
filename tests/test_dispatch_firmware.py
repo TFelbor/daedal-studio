@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = REPO_ROOT / "data" / "outputs"
 
 KLIPPER_PROFILE = "pythonsrc/profiles/klipper_test.json"
-BAMBU_PROFILE = "pythonsrc/profiles/bambu_test.json"
+BAMBU_PROFILE = "pythonsrc/profiles/bambu_p1s.json"
 
 MOONRAKER_URL = "http://klipper.local:7125"
 OCTOPRINT_URL = "http://octoprint.local:5000"
@@ -146,24 +146,98 @@ def test_a_klipper_dispatch_carries_the_moonraker_credentials(dispatched):
     assert env["DS_PRINTER_KEY"] != "octo-key"
 
 
-def test_a_bambu_dispatch_carries_the_bambu_access_code(dispatched):
+#: Everything a correctly configured Bambu printer needs, so the refusal below can only
+#: be the refusal — not a missing serial, a missing code or an unbound credential.
+BAMBU_CONFIGURED = {
+    "BAMBU_IP": BAMBU_IP,
+    "BAMBU_CODE": "12345678",
+    "BAMBU_CODE_HOST": credential_host(BAMBU_IP),
+    "BAMBU_SERIAL": "01P00A000000001",
+}
+
+
+def test_a_bambu_dispatch_is_refused_before_it_touches_the_printer(dispatched):
+    """#73's scope reduction, enforced where it costs nothing.
+
+    This repository does not start prints on Bambu firmware: a raw `gcode_file` runs
+    none of the machine's start behaviour, and the machine's cannot be reproduced here
+    without copying Bambu's AGPL-3.0 macros into an Apache-2.0 tree.
+
+    `BambuOperator.start_print` raising is not enough on its own, and that is the whole
+    point of this test. The gate used to spawn the operator, which connected, uploaded
+    the CuraEngine `.gcode` over FTPS, and *then* had `start_print` refuse — leaving a
+    start-sequence-less file on the printer's SD card and a job marked failure with "The
+    operator exited with 1", the reason visible only in a subprocess log. The refusal has
+    to arrive before the first side effect.
+    """
+    result = dispatched(BAMBU_PROFILE, BAMBU_CONFIGURED)
+    response = result["response"]
+
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    # The person's own answer, not a status code: what to do instead, and why.
+    assert "Bambu Studio" in detail
+    assert "3MF" in detail
+    # Nothing was spawned, so nothing connected, uploaded or published.
+    assert "cmd" not in result and "env" not in result
+
+
+def test_a_refused_bambu_dispatch_leaves_the_job_alone(dispatched):
+    """A refusal is not a dispatch, so the row must not read as one.
+
+    The 409 lands before `dispatch_confirmed` is recorded and before the outcome moves
+    to `awaiting_verdict` — otherwise the job sits asking a person for a verdict on a
+    part no printer was ever asked to make, and `dispatch_state` reports it as sent.
+    """
+    result = dispatched(BAMBU_PROFILE, BAMBU_CONFIGURED)
+    assert result["response"].status_code == 409
+
+    db = TelemetryDB()
+    job = db.get_job(result["job_id"])
+    events = db.get_job_events(result["job_id"], kind="dispatch_confirmed")
+    db.close()
+
+    assert events == []
+    assert job.outcome != "awaiting_verdict"
+    assert job.dispatched_printer_url in (None, "")
+
+
+def test_the_gate_asks_the_operator_class_rather_than_naming_bambu(dispatched, monkeypatch):
+    """The gate must not carry its own list of firmwares it will not print to.
+
+    `starts_prints` is declared by the operator, so a firmware that stops refusing —
+    or a fourth one that starts — changes one attribute and no branch in `server/`.
+    Asserted by making a firmware that *does* print refuse, and watching the gate obey.
+    """
+    from pythonsrc.operators.moonraker_operator import MoonrakerOperator
+
+    monkeypatch.setattr(MoonrakerOperator, "starts_prints", False)
+    monkeypatch.setattr(
+        MoonrakerOperator, "dispatch_refusal", "Not this one either, and here is why.",
+    )
+
     result = dispatched(
-        BAMBU_PROFILE,
+        KLIPPER_PROFILE,
         {
-            "BAMBU_IP": BAMBU_IP,
-            "BAMBU_CODE": "12345678",
-            "BAMBU_CODE_HOST": credential_host(BAMBU_IP),
-            "OCTOPRINT_API_KEY": "octo-key",
-            "OCTOPRINT_URL": OCTOPRINT_URL,
-            "OCTOPRINT_API_KEY_HOST": credential_host(OCTOPRINT_URL),
+            "MOONRAKER_URL": MOONRAKER_URL,
+            "MOONRAKER_API_KEY": "moon-key",
+            "MOONRAKER_API_KEY_HOST": credential_host(MOONRAKER_URL),
         },
     )
 
-    assert result["response"].status_code == 200, result["response"].text
-    env = result["env"]
-    assert env["DS_FIRMWARE"] == "bambu"
-    assert env["DS_PRINTER_KEY"] == "12345678"
-    assert "OCTOPRINT_API_KEY" not in env
+    assert result["response"].status_code == 409
+    assert result["response"].json()["detail"] == "Not this one either, and here is why."
+
+
+def test_the_bambu_operator_declares_the_refusal_the_gate_reads():
+    """One sentence, on the class, so the 409 and the log cannot say different things."""
+    from pythonsrc.operators.bambu_operator import DISPATCH_REFUSAL, BambuOperator
+    from pythonsrc.operators.base import BasePrinterOperator
+
+    assert BambuOperator.starts_prints is False
+    assert BambuOperator.dispatch_refusal == DISPATCH_REFUSAL
+    # The default is to print. A new operator that says nothing is not silently refused.
+    assert BasePrinterOperator.starts_prints is True
 
 
 def test_the_operator_is_launched_by_the_path_the_gate_names(dispatched):
@@ -238,12 +312,18 @@ def test_the_moonraker_socket_url_follows_the_scheme(base_url, expected):
 class _FakeOperator:
     """Answers `get_printer_state()` from a script, in that firmware's own shape."""
 
+    #: The `BasePrinterOperator` default, overridden per test for the refusal case.
+    starts_prints = True
+    dispatch_refusal = ""
+
     def __init__(self, states):
         self.states = list(states)
         self.started: list[str] = []
         self.uploaded: list[str] = []
+        self.connected = False
 
     def connect(self):
+        self.connected = True
         return True
 
     def upload_file(self, path, filename):
@@ -293,8 +373,14 @@ def run_monitor(monkeypatch, tmp_path):
         lambda *a, **k: asyncio.ensure_future(_instant(0)),
     )
 
-    def _go(firmware: str, states, collector=_DEFAULT_COLLECTOR):
+    def _go(firmware: str, states, collector=_DEFAULT_COLLECTOR, starts_prints=True):
         operator = _FakeOperator(states)
+        operator.starts_prints = starts_prints
+        operator.dispatch_refusal = "" if starts_prints else "Not on this firmware."
+        # Hung on the fixture as well as returned, because a run that refuses exits
+        # through `SystemExit` and never reaches the return — and what that run did
+        # *not* do is the whole assertion.
+        _go.operator = operator
         # `None` has to mean "this firmware has no collector", so the default is a
         # sentinel rather than None — the distinction the test below is about.
         collector = _FakeCollector() if collector is _DEFAULT_COLLECTOR else collector
@@ -364,19 +450,42 @@ def test_a_printer_fault_still_fails_the_dispatch(run_monitor):
 
 
 def test_a_firmware_that_cannot_report_state_does_not_fail_the_dispatch(run_monitor):
-    """Bambu's `get_printer_state` raises `NotImplementedError` until #73. The print
-    was uploaded and started; failing here would report that as a failed dispatch."""
+    """A `NotImplementedError` from `get_printer_state` is a statement about the
+    firmware, not a fault. The print was uploaded and started by then; failing here
+    would report a running print as a failed dispatch — the shape of #74."""
     operator, _ = run_monitor("bambu", [NotImplementedError])
 
     assert operator.started == ["part.gcode"]
 
 
 def test_a_dispatch_with_no_collector_at_all_still_runs(run_monitor):
-    """Bambu has none until #73, and `collector_for` says so by returning None. The
-    print is uploaded, started and recorded; only the sample stream is missing, which
-    is what the warning in the loop exists to say."""
+    """Bambu has no collector, and `collector_for` says so by returning None. The print
+    is uploaded, started and recorded; only the sample stream is missing, which is what
+    the warning in the loop exists to say."""
     operator, collector = run_monitor("bambu", [NotImplementedError], collector=None)
 
     assert collector is None
     assert operator.uploaded == ["part.gcode"]
     assert operator.started == ["part.gcode"]
+
+
+def test_the_operator_refuses_before_it_connects_when_the_gate_is_bypassed(run_monitor, caplog):
+    """The backstop behind the gate's 409, asserted where it has to hold: before the
+    first side effect.
+
+    `BambuOperator.start_print` raises, but only after `connect()` and `upload_file()`
+    have run — and `upload_file` is what puts a start-sequence-less `.gcode` on the
+    printer's SD card. So the run must end at the question, not at the answer. The
+    gate is what a person sees; this is what holds for a hand-run command line or a
+    caller that forgets to ask.
+    """
+    with pytest.raises(SystemExit) as exit_info:
+        run_monitor("bambu", [], collector=None, starts_prints=False)
+
+    operator = run_monitor.operator
+    assert exit_info.value.code == 1
+    assert not operator.connected
+    assert operator.uploaded == []
+    assert operator.started == []
+    # And the reason, not just the exit code — this is the only place it is said.
+    assert "Not on this firmware." in caplog.text

@@ -83,8 +83,8 @@ interface PrinterProbe {
   type: string;
   /**
    * [width, depth, height] in mm, or null when the profile does not declare them.
-   * Null is a real answer — `bambu_test.json` says nothing about machine size — and
-   * means "do not clamp", not "clamp to zero".
+   * Null is a real answer — a profile that names a printer and no geometry says
+   * nothing about machine size — and means "do not clamp", not "clamp to zero".
    */
   build_volume_mm?: number[] | null;
 }

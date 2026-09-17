@@ -37,6 +37,9 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from pythonsrc.api_token import default_api_token_path, resolve_api_token
 from pythonsrc.ip_screen import screen_prompt
 from pythonsrc.operators import PrinterFactory
+from pythonsrc.operators.bambu_operator import BambuOperator
+from pythonsrc.operators.base import PrinterConnectionError
+from pythonsrc.operators.printer_state import canonical_firmware
 
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
@@ -3322,6 +3325,24 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         db.close()
         raise HTTPException(status_code=400, detail="Configured printer profile not found.")
 
+    # Before anything with a side effect, because the alternative is what this replaced:
+    # the operator was spawned for a Bambu target, connected, uploaded the CuraEngine
+    # `.gcode` to the printer's SD card over FTPS, and only then had `start_print` refuse
+    # — leaving a start-sequence-less file on the machine, the job marked failure with
+    # "The operator exited with 1", and the reason visible only in a subprocess log.
+    # Asked here, the refusal costs nothing and the person reads the actual sentence.
+    #
+    # The class, not an instance: this is a fact about the firmware, so it needs no
+    # address and no credential to answer. See `PrinterFactory.operator_class`.
+    try:
+        operator_class = PrinterFactory.operator_class(target["firmware"])
+    except ValueError as exc:
+        db.close()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not operator_class.starts_prints:
+        db.close()
+        raise HTTPException(status_code=409, detail=operator_class.dispatch_refusal)
+
     # The target as shown, against the target as it stands. A profile swapped in Settings
     # between the two is exactly the case this step exists to catch.
     drifted = [
@@ -3451,6 +3472,14 @@ async def print_dispatch(job_id: str, request: DispatchRequest | None = None):
         if target.get("base_url"):
             env["DS_PRINTER_URL"] = container_reachable_url(target["base_url"])
             env["DS_DISPATCH_URL"] = target["base_url"]
+        # Bambu keys every MQTT topic on the serial, so without it the operator can
+        # reach the printer and not address it. Not a credential — it is printed on the
+        # machine and sits in the printer's own TLS certificate — but it is per-printer,
+        # so it comes from the store rather than from the profile, which is committed.
+        if canonical_firmware(target["firmware"]) == "bambu":
+            serial = config_store.get("BAMBU_SERIAL")
+            if serial:
+                env["DS_PRINTER_SERIAL"] = serial
         # Without this the operator's telemetry collector has nowhere to relay samples,
         # so the print runs with a live socket open and nothing on it.
         # The operator runs beside this process — in this container, or on this host
@@ -4765,11 +4794,9 @@ async def test_connection(req: TestConnectionRequest):
                 resp.raise_for_status()
 
             elif service == "bambu":
-                # Bambu speaks MQTT over TLS on 8883 in LAN mode, so there is no
-                # HTTP endpoint to GET. A TCP connect proves the printer is on the
-                # network and listening, which is a real check — but it does not
-                # validate the access code, and the message says so rather than
-                # implying the credentials are good.
+                # Bambu speaks MQTT over TLS on 8883 in LAN mode, so there is no HTTP
+                # endpoint to GET — which is why this branch does not look like the two
+                # above it.
                 host = stored.get("BAMBU_IP")
                 if not host:
                     return answer(False, "BAMBU_IP not configured")
@@ -4786,23 +4813,26 @@ async def test_connection(req: TestConnectionRequest):
                     # this address, and that is the whole answer.
                     return answer(False, credential.reason)
 
-                host = host.replace("mqtts://", "").replace("https://", "").split("/")[0].split(":")[0]
+                # A real authentication check, not a TCP connect. This used to open a
+                # socket to 8883 and report reachability, which proved the printer was
+                # on the network and said nothing about the access code — so a wrong
+                # code passed the connection test and failed at dispatch, which is the
+                # worst place to find out. `check_credentials` reads the MQTT CONNACK,
+                # which is the only thing that carries the authentication result, and
+                # needs no serial: a person setting a printer up has typed an address
+                # and a code and wants to hear whether those two are right.
+                operator = BambuOperator(host, credential.value)
                 try:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, 8883), timeout=5.0
-                    )
-                    writer.close()
-                    await writer.wait_closed()
-                except (asyncio.TimeoutError, OSError) as exc:
-                    return answer(
-                        False,
-                        f"No answer from {host}:8883 — is the printer on and in LAN mode? ({exc})",
-                    )
+                    await asyncio.to_thread(operator.check_credentials)
+                except PrinterConnectionError as exc:
+                    # `BambuOperator` phrases these for a person and distinguishes
+                    # refused-code from unreachable; repeating that here in other words
+                    # is how the two drift apart.
+                    return answer(False, str(exc))
 
                 return answer(
                     True,
-                    f"{host} is reachable on port 8883. The access code is not verified "
-                    "until a print is sent.",
+                    f"{host} accepted the LAN access code on port 8883.",
                     int((time.time() - start_time) * 1000),
                 )
 

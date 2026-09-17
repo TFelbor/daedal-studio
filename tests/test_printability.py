@@ -273,8 +273,9 @@ def test_every_bundled_machine_profile_declares_its_nozzle():
     name, so the value reaches the slicer through the validated `-s` overrides
     instead of being declared twice.
 
-    A profile with no `machine_*` keys at all is a connection stub (`bambu_test.json`)
-    and is skipped: it describes how to reach a printer, not one to slice for.
+    A profile with no `machine_*` keys at all is a connection stub — `bambu_test.json`
+    was one until #73 deleted it — and is skipped: it describes how to reach a printer,
+    not one to slice for.
     """
     profiles = sorted(pathlib.Path("pythonsrc/profiles").glob("*.json"))
     assert profiles, "no bundled printer profiles found"

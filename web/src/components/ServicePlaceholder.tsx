@@ -14,7 +14,9 @@ const SERVICE_INFO: Record<string, { label: string; description: string }> = {
   bambu: {
     label: 'Bambu Lab',
     description:
-      'Jobs dispatch to Bambu Lab and print. It does not report temperatures or layer progress yet, so nothing streams here.',
+      'This app does not start prints on Bambu firmware — download the 3MF and print it ' +
+      'from Bambu Studio. Nothing streams here yet: the printer pushes its own state ' +
+      'over MQTT, but there is no collector reading it into telemetry.',
   },
 };
 

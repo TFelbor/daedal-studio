@@ -34,6 +34,19 @@ logger = logging.getLogger("ds.slicer")
 #: setting name is otherwise indistinguishable from one that had no effect.
 CONNECTION_KEYS = frozenset({"firmware", "base_url", "api_key"})
 
+#: Profile keys that document the profile rather than configure anything. Skipped for
+#: the same reason as the connection keys — a warning on every slice trains a reader to
+#: ignore the line that would have told them about a mistyped setting name.
+#:
+#: `bambu_p1s.json` needs one: its `_sources` records where each value came from — that
+#: the temperatures are conventional rather than vendor-derived, and that the start and
+#: end G-code were *removed* rather than never written, along with the acceptance
+#: criterion that was withdrawn with them (#73). Where a number came from, and where a
+#: block deliberately is not, is the difference between a profile someone can check and
+#: one someone has to guess at. Underscore-prefixed so the distinction from a real
+#: setting is visible in the file, not only here.
+DOCUMENTATION_KEYS = frozenset({"_comment", "_sources"})
+
 
 @lru_cache(maxsize=4)
 def known_cura_settings(definitions_dir: Path) -> frozenset[str]:
@@ -204,7 +217,7 @@ class CuraSlicer:
         known = known_cura_settings(cls.DEFINITIONS_DIR)
         settings: dict[str, str] = {}
         for key, raw in profile.items():
-            if key in CONNECTION_KEYS:
+            if key in CONNECTION_KEYS or key in DOCUMENTATION_KEYS:
                 continue
             if key not in known:
                 logger.warning(

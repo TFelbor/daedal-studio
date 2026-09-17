@@ -1,0 +1,31 @@
+{
+  "_comment": "Bambu Lab P1S. Connection details are NOT in this file and must not be added: the IP, LAN access code and serial are per-printer and per-person, they live in the encrypted config store as BAMBU_IP / BAMBU_CODE / BAMBU_SERIAL, and a profile is committed to the repository. Issue #73. This profile carries NO machine_start_gcode or machine_end_gcode, deliberately: Daedal Studio does not start prints on Bambu firmware (BambuOperator.start_print refuses), so no start sequence authored here would ever run. Bambu Studio supplies the machine's own. The geometry below is what this file is for — the printability gate reads it.",
+  "_sources": {
+    "machine_geometry": "Bambu Lab P1S published specification: 256 x 256 x 256 mm build volume, 0.4 mm stock hotend, enclosed, textured PEI plate. Verified against the printer in the room (owner, 2026-09-09); the machine reports nozzle_diameter '0.4' over MQTT (2026-09-17).",
+    "firmware_verified_against": "01.09.01.00 - the version on the machine. Verified reachable on 2026-09-17: MQTT 8883 authenticates with bblp + access code (CONNACK Success) and implicit FTPS 990 logs in. Bambu tightens third-party LAN access between releases and cannot be downgraded, so this profile is a claim about that firmware.",
+    "temperatures": "Conventional PLA values, NOT vendor-derived, and they do not reach this machine. Under the 3MF handoff route Bambu Studio applies its own material profile, so these only affect a G-code file a person may download and inspect. Issue #73's acceptance criterion 5 asked for Bambu Studio-derived values 'copied and cited'; it was withdrawn rather than met, because meeting it means copying AGPL-3.0 content into an Apache-2.0 repository (#73, comment of 2026-09-17).",
+    "start_end_gcode": "REMOVED, not omitted. Printing a raw gcode_file would run this block instead of the machine's, and the machine's is a firmware-evaluated conditional (M1002 judge_flag / M622 J1 ... M623) on a flag the print command sets - so no start block authored here can invoke the P1S's bed levelling, nozzle wipe or resonance calibration. PR #148 reverted the first attempt over exactly that. BambuOperator.start_print now refuses instead."
+  },
+  "firmware": "bambu",
+  "machine_name": "Bambu Lab P1S",
+  "machine_width": 256,
+  "machine_depth": 256,
+  "machine_height": 256,
+  "machine_heated_bed": true,
+  "machine_nozzle_size": 0.4,
+  "layer_height": 0.2,
+  "wall_line_count": 3,
+  "top_layers": 4,
+  "bottom_layers": 4,
+  "infill_sparse_density": 15,
+  "infill_pattern": "grid",
+  "material_print_temperature": 220,
+  "material_bed_temperature": 60,
+  "speed_print": 150,
+  "speed_travel": 300,
+  "retraction_enable": true,
+  "retraction_amount": 0.8,
+  "retraction_speed": 30,
+  "support_enable": false,
+  "adhesion_type": "skirt"
+}

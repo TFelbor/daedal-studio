@@ -69,6 +69,17 @@ def printer_from_env(profile_data: dict, environ) -> tuple:
     )
 
 
+def printer_serial(environ) -> str | None:
+    """The serial the gate resolved, for the one firmware that needs it.
+
+    Never from the profile. A serial identifies one physical machine, and #73's design
+    rule is that a person connects their own printer through the app — so it lives in
+    the encrypted config store beside the access code, and a profile committed to this
+    repository must not name a printer anybody owns.
+    """
+    return environ.get("DS_PRINTER_SERIAL") or None
+
+
 def moonraker_ws_url(base_url: str) -> str:
     """Moonraker's WebSocket endpoint, derived from its HTTP base URL.
 
@@ -142,7 +153,17 @@ def main():
             firmware=firmware,
             base_url=base_url,
             api_key=api_key,
+            serial=printer_serial(os.environ),
         )
+
+        # Before `connect()`, and therefore before `upload_file()`. `start_print` on a
+        # firmware this repository does not print to raises — but it raises *after* the
+        # G-code has been written to the printer's storage, which is the side effect the
+        # refusal exists to prevent. The dispatch gate asks the same question over the
+        # class and answers with a 409; this is what stops a direct invocation.
+        if args.start_print and not getattr(op, "starts_prints", True):
+            logger.error("%s", op.dispatch_refusal)
+            sys.exit(1)
 
         logger.info(f"Connecting to {firmware} printer at {base_url}...")
         op.connect()

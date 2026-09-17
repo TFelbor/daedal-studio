@@ -17,8 +17,9 @@ const POLL_MS = 60_000;
  * The nav pill states a fact, so it is measured rather than assumed: the printer
  * has to be configured *and* answer. Polled a minute apart because it costs a
  * real round trip to the printer, and the answer does not change faster than that.
- * Bambu is reported as configured-only — `/config/test-connection` has no MQTT
- * probe, so claiming "active" for it would be a guess.
+ * Every firmware is measured the same way now, Bambu included: its probe opens an
+ * MQTT session and reads the CONNACK, so "active" means the printer answered and
+ * accepted the LAN access code rather than that someone filled a field in.
  */
 export function useEngineStatus(): EngineState {
   const [state, setState] = useState<EngineState>('checking');
