@@ -72,6 +72,11 @@ data/outputs/*.md
 # Web frontend build artifacts
 web/node_modules/
 web/dist/
+# Playwright's own output. The *screenshots* the viewport smoke writes are committed —
+# they live in `docs/screenshots/` and are the evidence a reviewer reads — but the HTML
+# report, the traces and the per-test scratch directory are a local run's leftovers.
+web/playwright-report/
+web/test-results/
 
 # Docusaurus (docs-site)
 docs-site/node_modules/

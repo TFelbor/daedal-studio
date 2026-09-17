@@ -880,10 +880,6 @@
     overflow-wrap: anywhere;
   }
 
-  .stagePane {
-    order: 2;
-  }
-
   /* "No printer data until phase 05" is a box explaining an absence. On a desktop rail
      it fills a column that would otherwise be empty; on a phone it is a screen of
      nothing between the stage and the controls. */
@@ -891,21 +887,26 @@
     display: none;
   }
 
-  /* The action bar. Dispatch and stop are the two things this view exists to offer,
-     and a 200-layer toolpath plus two log panes is a long way to scroll to reach
-     them. Sticky, not fixed: it keeps its place in the flow, so nothing underneath
-     it is permanently covered, and `.page` keeps no `overflow` of its own — which is
-     what the `.surface` flex-column rule depends on. */
+  /* The controls come *before* the stage, and they stay in the flow.
+     
+     Dispatch and stop are the two things this view exists to offer, and at the foot of
+     the rail's source order they sit under a 200-layer toolpath and two log panes —
+     which on a phone is four screens of scrolling to reach a stop button. The obvious
+     fix was `position: sticky; bottom: 0`, and it was tried and is wrong: what the rail
+     ends with is not a bar. `JobControlPanel` is a 420px panel — job id, phase, a hotend
+     chart and the stop — so pinning it covers more than half of a 812px screen with a
+     translucent plate for the whole session. Ordering it above the stage gives the same
+     reach and hides nothing. It also keeps `.page` free of `overflow`, which is what
+     `.surface`'s flex-column rule depends on. */
   .railBottom {
-    order: 3;
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
+    order: 2;
     margin-top: 0;
-    padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--rule);
-    background: var(--nav-bg);
-    backdrop-filter: blur(10px);
+    padding: 18px var(--gutter) 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .stagePane {
+    order: 3;
   }
 }
 

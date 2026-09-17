@@ -99,7 +99,10 @@ torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, ht
 
 All permissive **[v]**, read from the installed packages: `react`, `react-dom`,
 `react-router-dom`, `three`, `@types/three`, `recharts`, `gcode-preview`, `vite`,
-`eslint` (MIT); `lucide-react` (ISC); `typescript` (Apache-2.0). Q1 yes, Q2 yes, Q3 n/a.
+`eslint` (MIT); `lucide-react` (ISC); `typescript`, `@playwright/test` (Apache-2.0).
+Q1 yes, Q2 yes, Q3 n/a. `@playwright/test` is a devDependency that also *downloads* a
+Chromium build outside the tree — see § 2 § Frontend for why that is a developer's
+download rather than a redistribution.
 
 ### Hosted services
 
@@ -559,6 +562,23 @@ TypeScript (Apache-2.0).
 second nested copy rather than deduplicating. That is a bundle-size cost, not a
 licence one — both copies are MIT — and it is deliberate: deduplicating would run the
 previewer against a three.js eleven minors newer than the one it was tested on.
+
+**`@playwright/test` (Apache-2.0), a devDependency, added 2026-09-17 with issue #87.**
+It runs the viewport smoke in `web/e2e/` and ships in nothing: it is not imported by any
+module under `web/src/`, so it is absent from `web/dist/` and therefore from the server
+image. Two things about it are worth recording rather than rediscovering:
+
+- **It downloads a browser at install time, and that browser is not Apache-2.0.**
+  `playwright install chromium` fetches a Chromium build from Microsoft's CDN into
+  `~/.cache/ms-playwright`, outside the repository and outside every artifact this
+  project publishes. Chromium is BSD-3-Clause with an LGPL-2.1 FFmpeg component, and
+  neither is redistributed here — the download is a developer's and a CI runner's, the
+  same category as the CuraEngine binary in § 1. Nothing about it changes if the browser
+  is never installed: the rest of the suite does not need it.
+- **The `npm run e2e:install` step is where that download is declared.** It is a named
+  script rather than a `postinstall` hook on purpose: a `npm ci` that silently pulls
+  170 MB of browser is a licence event nobody sees, and every other consumer of this
+  package tree — the Docker build among them — has no use for it.
 
 ---
 
