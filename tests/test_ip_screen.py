@@ -567,3 +567,241 @@ def test_a_depiction_is_still_refused_at_the_boundary(mock_run, printer_configur
     assert resp.status_code == 400
     assert "charizard" in resp.json()["detail"].lower()
     mock_run.assert_not_called()
+
+
+# ── The embossing field: the third channel ────────────────────────────────────
+#
+# `prompt` and `material_colour` are descriptions of a part that someone else's model
+# reads. The embossing text is not a description at all — it is reproduced *on the
+# object*, which is the direct-infringement case this whole screen exists for. Two
+# rules follow, and they are what these tests pin.
+#
+# **The channels are screened separately.** Joined, the prompt lends the emboss box
+# its grammar: "deck box for Pokémon cards" puts a purpose cue in front of whatever
+# was typed into the emboss field, and the functional rule demotes a refusal to a
+# flag. The box's own purpose is not the lettering's context.
+#
+# **The functional rule does not reach this channel.** Nothing raised on a face holds
+# anything, so there is no reading of a curated name there that describes contents.
+
+def test_the_embossing_field_blocks_what_the_prompt_may_say():
+    """The pairing the re-scope turns on, in one test.
+
+    "deck box for Pokémon cards" is the primary persona's literal prompt and must go
+    ahead. The same spec with "Pokémon" on the lid is a depiction of someone else's
+    mark on a manufactured good, and must not.
+    """
+    spec_prompt = "deck box for Pokémon cards"
+
+    passes = screen_prompt(spec_prompt)
+    assert passes.action == "flag", f"the persona's prompt was {passes.action}ed"
+    assert passes.usage == "functional"
+
+    blocked = screen_prompt(spec_prompt, embossing="Pokémon")
+    assert blocked.action == "block"
+    assert blocked.term == "pokemon"
+    assert blocked.channel == "embossing"
+
+
+def test_the_prompts_purpose_cue_does_not_reach_the_emboss_field():
+    """The separation, isolated from the rule above.
+
+    Joined into one string these two fields read "a box that holds pikachu", which is
+    a purpose cue reaching the name across bridge tokens — a flag. They are separate
+    channels, so the emboss field is screened on "pikachu" alone.
+    """
+    verdict = screen_prompt("a box that holds", embossing="pikachu")
+
+    assert verdict.action == "block"
+    assert verdict.channel == "embossing"
+
+
+def test_a_functional_phrase_typed_into_the_emboss_field_is_still_refused():
+    """No grammar makes a curated name on a lid a description of contents.
+
+    Someone embossing "for Pokémon cards" is putting the franchise on the part,
+    whatever the sentence around it does.
+    """
+    verdict = screen_prompt("a deck box", embossing="for Pokémon cards")
+
+    assert verdict.action == "block"
+    assert verdict.channel == "embossing"
+
+
+def test_the_emboss_channel_still_only_flags_an_ambiguous_word():
+    """Ambiguity is a property of the word, and this channel does not change it.
+
+    A joker is a playing card and "frozen" is a temperature whatever face they are on;
+    refusing them here would refuse someone embossing an ordinary English word, which
+    is the expensive mistake this screen is most careful about.
+    """
+    for text in ("joker", "frozen"):
+        verdict = screen_prompt("a deck box", embossing=text)
+        assert verdict.action == "flag", f"{text!r} embossed was {verdict.action}ed"
+        assert verdict.channel == "embossing"
+
+
+@pytest.mark.parametrize("text", ["Jonas", "est. 2019", "commander deck", ""])
+def test_ordinary_lettering_is_not_refused(text):
+    """The whole point of the field is that people put their own words on their things."""
+    assert screen_prompt("a deck box", embossing=text).action == "allow"
+
+
+def test_the_embossing_refusal_names_the_field_and_an_appeal_path():
+    """A refusal saying "describe the shape in your own words" is advice about a field
+    that was never the problem: the part is fine, the lettering is not. The appeal path
+    has to be one the person can actually take."""
+    verdict = screen_prompt("deck box for Pokémon cards", embossing="Pikachu")
+
+    assert "emboss" in verdict.detail.lower()
+    assert "pikachu" in verdict.detail.lower()
+    assert verdict.suggestion and "emboss" in verdict.suggestion.lower()
+    assert "pikachu" not in verdict.suggestion.lower()
+
+
+@pytest.mark.parametrize("channel, field", [
+    ("prompt", {}),
+    ("material_colour", {"material_colour": "official pikachu yellow"}),
+    ("embossing", {"embossing": "pikachu"}),
+])
+def test_the_verdict_says_which_channel_matched(channel, field):
+    """A flag that cannot name the field it came from cannot be acted on: three boxes
+    mean three different conversations with the person who typed into one of them."""
+    prompt = "a small pikachu figurine" if channel == "prompt" else "a deck box"
+
+    verdict = screen_prompt(prompt, **field)
+
+    assert verdict.action == "block"
+    assert verdict.channel == channel
+
+
+def test_a_clean_submission_attributes_nothing():
+    """`channel` is the field that matched, so with no match there is nothing to name."""
+    verdict = screen_prompt("a deck box", "matte black", embossing="Jonas")
+
+    assert verdict.action == "allow"
+    assert verdict.channel is None
+
+
+def test_the_most_severe_channel_decides_and_the_prompt_breaks_a_tie():
+    """Severity first, `CHANNELS` order second — the prompt is the field the person
+    wrote most of, so a name in two places is reported against that one."""
+    from pythonsrc.ip_screen import CHANNELS
+
+    assert CHANNELS.index("prompt") == 0
+
+    # A flag in the prompt and a refusal in the emboss field: the refusal wins.
+    severe = screen_prompt("a deck box for pokemon cards", embossing="pikachu")
+    assert severe.action == "block" and severe.channel == "embossing"
+
+    # Two refusals: the prompt is named.
+    tied = screen_prompt("a pikachu figurine", embossing="charizard")
+    assert tied.action == "block" and tied.channel == "prompt"
+
+
+# ── Where the embossing refusal happens ───────────────────────────────────────
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_blocked_embossing_value_creates_no_job_and_is_not_written_to_disk(
+    mock_run, printer_configured,
+):
+    """The guarantee the other two channels already have, for the third.
+
+    The screen runs before `job_id` is minted and therefore before `dump_spec` writes
+    the job's own input directory — so a refused submission leaves nothing behind at
+    all, not a row and not a file. A spec is submitted here precisely because that is
+    the path that writes: a prompt job has nothing to leave.
+    """
+    from pathlib import Path
+
+    import server.app as app_module
+
+    inputs = Path(app_module.__file__).parent.parent / "data" / "inputs"
+    inputs.mkdir(parents=True, exist_ok=True)
+    before = set(inputs.iterdir())
+
+    db = TelemetryDB()
+    rows_before = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
+    db.close()
+
+    resp = client.post("/jobs", json={
+        "prompt": "deck box for Pokémon cards",
+        "printer_id": "default",
+        "spec": {
+            "archetype": "deck_box",
+            "compartments": [
+                {"contents": {"count": 100, "card": "standard", "sleeving": "double"}},
+            ],
+            "schema_version": 1,
+        },
+        "embossing_text": "Pokémon",
+    })
+
+    assert resp.status_code == 400, resp.text
+    assert "pokemon" in resp.json()["detail"].lower()
+
+    db = TelemetryDB()
+    rows_after = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
+    db.close()
+
+    assert rows_after == rows_before
+    assert set(inputs.iterdir()) == before, "a refused submission wrote a spec to disk"
+    mock_run.assert_not_called()
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_the_refusal_record_says_which_field_carried_the_name(mock_run, printer_configured):
+    """A block cannot be a job event — there is no row to hang it on — so the activity
+    feed is the whole record of it. Without the channel it names a term an operator
+    would then look for in a prompt that never contained it."""
+    import server.app as app_module
+
+    recorded = []
+    with patch.object(
+        app_module.activity, "action",
+        side_effect=lambda title, rows=None, **kw: recorded.append((title, list(rows or ()))),
+    ):
+        resp = client.post("/jobs", json={
+            "prompt": "a deck box",
+            "printer_id": "default",
+            "embossing_text": "Pikachu",
+        })
+
+    assert resp.status_code == 400
+    refusals = [rows for title, rows in recorded if title == "job refused"]
+    assert refusals, f"no refusal was recorded; got {[t for t, _ in recorded]}"
+    assert ("channel", "embossing") in refusals[0]
+    assert ("term", "pikachu") in refusals[0]
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_flag_from_the_emboss_field_records_the_channel(mock_run, printer_configured):
+    """`usage` made "how often does the functional rule fire" a query. `channel` is
+    what stops that query mixing three fields that mean three different things."""
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box",
+        "printer_id": "default",
+        "embossing_text": "joker",
+    })
+    assert resp.status_code == 202, resp.text
+
+    db = TelemetryDB()
+    events = db.get_job_events(resp.json()["job_id"])
+    db.close()
+
+    flagged = [e for e in events if e.kind == "ip_screen_flagged"]
+    assert flagged, f"no ip_screen_flagged event; got {[e.kind for e in events]}"
+    assert flagged[0].detail["term"] == "joker"
+    assert flagged[0].detail["channel"] == "embossing"
+
+
+def test_the_embossing_field_is_bounded_like_the_colour_box():
+    """An unbounded field that is screened is still an unbounded field. The colour
+    box's 64 characters is the precedent, and lettering on a face is shorter than
+    that by any measure."""
+    from pydantic import ValidationError
+
+    import server.app as app_module
+
+    with pytest.raises(ValidationError):
+        app_module.JobRequest(prompt="a deck box", printer_id="d", embossing_text="x" * 65)

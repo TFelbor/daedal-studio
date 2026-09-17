@@ -2025,9 +2025,14 @@ happens before `insert_job`, foreign keys are enforced, and an event for a nonex
 row cannot be written — blocks go to the activity feed. **Normalise, then compare**: a
 raw string comparison was already defeated once in this repo by a `repo@sha` pin, so
 accents, spacing, hyphens and case are folded and a bounded edit distance covers typos.
-**`material_colour` is screened too** — it is free text the blueprint wrapper
-interpolates into the prompt, so a screen reading `prompt` alone leaves the colour box
-as a second, unwatched prompt channel.
+**Every free-text field is screened, and each on its own tokens** (`CHANNELS`): `prompt`,
+`material_colour` — free text the blueprint wrapper interpolates, so a screen reading
+`prompt` alone leaves the colour box as a second, unwatched prompt channel — and
+`embossing_text`, the third. The three were joined into one string before matching until
+2026-09-17, which was wrong twice: one field lent another its grammar, and a flag could
+not say which box the name was typed into. Now the most severe verdict across the
+channels wins, ties go to `CHANNELS` order (the prompt first), and
+`ScreenVerdict.channel` rides on the refusal and on `ip_screen_flagged`.
 
 **A functional article is not a reproduction, and the grammar is what says which**
 (`_classify_usage`, 2026-09-10, issue #79). This screen was written for the figurine
@@ -2080,8 +2085,24 @@ refusal's own wording asks for. Both classes
 reach the human gate, which remains the last word; where the line sits is a **product
 decision pending counsel**, recorded in `docs/deferred-legal-tasks.md` § L6 and not
 legal advice. `ip_screen_flagged` carries the `usage`, which makes "how often does the
-functional rule fire" a query. F13's embossing field is the *third* prompt channel and
-is deliberately out of scope until it exists (roadmap §4A, part (b)).
+functional rule fire" a query.
+
+**The embossing field is not a functional-article context** (`DEPICTION_ONLY_CHANNELS`,
+2026-09-17, issue #156 — part (b) of the same re-scope, and what PRD F13 waits on).
+F13 raises typed words *on the part*, which is the one place this product can put
+someone else's mark on a manufactured good — and the functional rule has no purchase
+there, because nothing raised on a face holds anything. So in that channel a **strong
+hit is refused whatever grammar surrounds it**: "deck box for Pokémon cards" still
+passes as a purpose, "Pokémon" embossed on that same box does not, and separate
+screening is what keeps the first from demoting the second. An *ambiguous* term still
+only flags — "joker" and "frozen" are ordinary English on a lid as much as in a prompt —
+and the refusal names the appeal path it can actually offer: keep the prompt, emboss
+your own words. `JobRequest.embossing_text` is the field, bounded at 64 characters like
+the colour box and screened before `job_id` is minted and before `dump_spec` writes the
+job's input directory, so a refused submission leaves neither a row nor a file. It
+compiles to nothing yet by design: the geometry is issue #157, and the screen ships
+first. Where the line sits is a product decision pending counsel, recorded in
+`docs/deferred-legal-tasks.md` § L6.
 
 **Tier 2 — the image screen** (`pythonsrc/ip_screen_image.py`). Prompt filtering leaks:
 "a chunky yellow lightning-mouse figurine, anime style" names nothing on the blocklist

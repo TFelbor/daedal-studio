@@ -73,7 +73,24 @@ edit distance covers typos.
 **Every field that reaches the model is screened, not just `prompt`.** `material_colour`
 is free text from the composer that `blueprint_spec.engineer_prompt` interpolates into
 the string sent to FLUX. A screen reading `prompt` alone leaves the colour box as a
-second, unwatched prompt channel.
+second, unwatched prompt channel. F13's embossing text is the third, and it is the most
+exposed of them: the words in it are *raised on the part*.
+
+**A channel is screened on its own tokens, and the verdict says which one matched.**
+The three fields were joined into one string once, and that is wrong twice over. It
+lets one field lend another its grammar — "deck box for Pokémon cards" in the prompt
+would have put a purpose cue in front of "Pokémon" typed into the emboss box, which is
+exactly the demotion an emboss field must not get — and it leaves a flag unable to say
+which box the person typed the name into. So each channel is screened separately, the
+most severe verdict wins (ties go to `CHANNELS` order), and `ScreenVerdict.channel`
+carries the answer into the refusal and into `ip_screen_flagged`.
+
+**An embossing field is not a functional-article context.** The functional rule above
+exists because a name can describe what a part *holds*; nothing raised on a lid holds
+anything. "deck box for Pokémon cards" is a purpose and passes; "Pokémon" embossed on
+that same box is a depiction of someone else's mark on a manufactured good, so in
+`DEPICTION_ONLY_CHANNELS` a strong hit is refused whatever grammar surrounds it. The
+appeal path is the one the refusal names: keep the prompt, emboss your own words.
 
 Deliberately torch-free and dependency-free (`difflib` is stdlib): the API server image
 is `python:3.10-slim` with no torch, no transformers and no numpy, and a screen that
@@ -205,6 +222,25 @@ BRIDGE_TOKENS: Tuple[str, ...] = (
 #: Severity order, so "the most severe verdict across every match wins" is one lookup.
 _SEVERITY = {"allow": 0, "flag": 1, "block": 2}
 
+#: Every free-text channel of one submission, in the order a tie between equally severe
+#: verdicts is broken — the prompt first, because it is the field the person wrote most
+#: of. One named parameter of `screen_prompt` per entry: a positional `*args` could not
+#: name the field that matched, and naming it is the point of `ScreenVerdict.channel`.
+CHANNELS: Tuple[str, ...] = ("prompt", "material_colour", "embossing")
+
+#: Channels where a name cannot be describing what the part is *for*. Nothing raised on
+#: a face holds anything, so the functional-article rule has no purchase there and a
+#: strong hit is refused whatever grammar sits around it. See the module docstring.
+DEPICTION_ONLY_CHANNELS: Tuple[str, ...] = ("embossing",)
+
+#: How each channel is named in the sentence a person reads. A refusal that says "this
+#: prompt" about the colour box sends someone to re-read the field that was fine.
+_CHANNEL_SUBJECT: Dict[str, str] = {
+    "prompt": "This prompt",
+    "material_colour": "The colour on this request",
+    "embossing": "The text to be embossed",
+}
+
 
 @dataclasses.dataclass(frozen=True)
 class ScreenVerdict:
@@ -231,6 +267,11 @@ class ScreenVerdict:
     None when nothing was matched, and None for a weak signal, which is a phrase
     rather than a name and so has no grammatical role to read. A trailing default so
     every existing constructor keeps working."""
+
+    channel: Optional[str] = None
+    """Which field the match was in — one of `CHANNELS`. None for an "allow", where
+    there is no match to attribute. This is what a refusal and an `ip_screen_flagged`
+    event carry, so "which box did they type it into" is answerable at all."""
 
 
 def _normalise(text: str) -> str:
@@ -495,7 +536,7 @@ class _Hit:
     box" and "a star wars x-wing"."""
 
 
-def _hit_action(hit: _Hit) -> str:
+def _hit_action(hit: _Hit, *, functional_articles: bool = True) -> str:
     """What one match, on its own, would decide.
 
     An ambiguous term is flagged whatever its usage: the match is *correct* and the
@@ -508,9 +549,20 @@ def _hit_action(hit: _Hit) -> str:
     else is naming the subject — "a star wars x-wing", "a hogwarts castle" — and that
     is a reproduction of someone else's design however the sentence is arranged, so
     it stays refused exactly as it was before the functional rule existed.
+
+    Args:
+        hit: The match.
+        functional_articles: Whether a name in this channel can be describing what the
+            part is for. False for `DEPICTION_ONLY_CHANNELS`, where a strong hit is
+            refused whatever its usage — an emboss field has no contents to name, so
+            every reading of a curated name in it is the depiction reading. An
+            *ambiguous* term still only flags there, for the reason above: the word is
+            also ordinary English, and that is a question for a person either way.
     """
     if hit.strength != "strong":
         return "flag"
+    if not functional_articles:
+        return "block"
     if hit.usage == "depiction":
         return "block"
     if hit.usage == "functional":
@@ -520,22 +572,23 @@ def _hit_action(hit: _Hit) -> str:
     return "flag" if hit.names_contents else "block"
 
 
-def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
-    """Decide whether a submission may proceed.
+def screen_channel(text: Optional[str], channel: str = "prompt") -> ScreenVerdict:
+    """Screen one free-text channel, on its own tokens.
 
     Args:
-        prompt: The user's prompt.
-        *args: Any other free-text field that reaches the model — currently
-            `material_colour`, which the blueprint wrapper interpolates. Passed
-            positionally so a new field is one call-site change and cannot be
-            forgotten in a signature.
+        text: What the person typed into that one field.
+        channel: Which field it is — one of `CHANNELS`. It decides two things and
+            nothing else: the subject of the sentence the person is shown, and whether
+            a functional-article reading is available at all
+            (`DEPICTION_ONLY_CHANNELS`).
 
     Returns:
-        A `ScreenVerdict`. "block" means refuse the submission; "flag" means proceed
-        and record it for the blueprint gate; "allow" means nothing was recognised.
+        A `ScreenVerdict` carrying `channel`, unless nothing matched.
     """
-    combined = " ".join(part for part in (prompt, *args) if part)
-    normalised = _normalise(combined)
+    subject = _CHANNEL_SUBJECT.get(channel, "This prompt")
+    functional_articles = channel not in DEPICTION_ONLY_CHANNELS
+
+    normalised = _normalise(text or "")
     if not normalised:
         return ScreenVerdict("allow", None, 0.0, "Nothing to screen.", None)
 
@@ -570,7 +623,10 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
     # not merely a strong hit: a *functional* franchise is the one construction this
     # screen now accepts, and promoting on it turned "a deck box for pokemon cards
     # with a creeper vine engraved on the lid" into a refusal over a plant.
-    if any(_hit_action(hit) == "block" for hit in exact if hit.strength == "strong"):
+    if any(
+        _hit_action(hit, functional_articles=functional_articles) == "block"
+        for hit in exact if hit.strength == "strong"
+    ):
         exact = [dataclasses.replace(hit, strength="strong") for hit in exact]
 
     # The best near-match is considered alongside the exact ones rather than only when
@@ -584,43 +640,68 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
     if candidates:
         # The most severe verdict any one match would give, and then the first match
         # that gives it — blocklist order, so the term a person is shown is stable.
-        action = max((_hit_action(hit) for hit in candidates), key=_SEVERITY.__getitem__)
-        decisive = next(hit for hit in candidates if _hit_action(hit) == action)
+        actions = [
+            _hit_action(hit, functional_articles=functional_articles)
+            for hit in candidates
+        ]
+        action = max(actions, key=_SEVERITY.__getitem__)
+        decisive = next(
+            hit for hit, a in zip(candidates, actions, strict=True) if a == action
+        )
 
         if action == "block":
             return ScreenVerdict(
                 action="block",
                 term=decisive.term,
                 score=round(decisive.score, 3),
+                # A refusal has no appeal path but the one it names, so the two
+                # channels name different ones. Telling someone who embossed a
+                # franchise to "describe the shape in your own words" is advice about
+                # a field that was never the problem; their part is fine and their
+                # lettering is not.
                 detail=(
-                    f"This prompt names \"{decisive.term}\", which belongs to someone "
+                    f"{subject} names \"{decisive.term}\", which belongs to someone "
+                    "else. A name raised on the part reproduces it however the part "
+                    "itself is described, so we cannot make this one. Emboss words of "
+                    "your own instead — what the part is for can still say what it "
+                    "holds."
+                    if not functional_articles else
+                    f"{subject} names \"{decisive.term}\", which belongs to someone "
                     "else. We only print original designs, so we cannot make this "
                     "one. Describe the shape and character you want in your own words "
                     "instead and we will design something original for you."
                 ),
                 suggestion=(
+                    "Emboss something that is yours — a name, initials, a club, a "
+                    "short phrase. The prompt may still name what the part holds; "
+                    "what is raised on its face may not be someone else's."
+                    if not functional_articles else
                     "Try describing the form rather than the name — proportions, pose, "
                     "silhouette, style. For example: \"a chunky, round-cheeked creature "
                     "figurine with big ears and a lightning-bolt tail, chibi "
                     "proportions\"."
                 ),
                 usage=decisive.usage,
+                channel=channel,
             )
 
         # A name used for what the part *holds* describes purpose, not depiction. The
-        # part is made; the flag is what the human gate reads.
-        if decisive.usage == "functional":
+        # part is made; the flag is what the human gate reads. Not reachable in a
+        # depiction-only channel for a strong hit, and the sentence would be wrong
+        # there for an ambiguous one — nothing embossed is what the part is for.
+        if decisive.usage == "functional" and functional_articles:
             return ScreenVerdict(
                 action="flag",
                 term=decisive.term,
                 score=round(decisive.score, 3),
                 detail=(
-                    f"This prompt mentions \"{decisive.term}\" as what the part is "
+                    f"{subject} mentions \"{decisive.term}\" as what the part is "
                     "for, not as what it depicts, so it goes ahead as a functional "
                     "article. It will be reviewed before anything is reconstructed."
                 ),
                 suggestion=None,
                 usage=decisive.usage,
+                channel=channel,
             )
 
         # A correct match on a word that is also ordinary English, or on a franchise
@@ -632,12 +713,13 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
             term=decisive.term,
             score=round(decisive.score, 3),
             detail=(
-                f"This prompt uses the word \"{decisive.term}\", which is also the "
+                f"{subject} uses the word \"{decisive.term}\", which is also the "
                 "name of a protected character or franchise. It will be reviewed "
                 "before anything is reconstructed."
             ),
             suggestion=None,
             usage=decisive.usage,
+            channel=channel,
         )
 
     for signal in _weak_signals():
@@ -647,11 +729,12 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
                 term=signal,
                 score=0.5,
                 detail=(
-                    f"This prompt says \"{signal}\", which often means a reproduction "
+                    f"{subject} says \"{signal}\", which often means a reproduction "
                     "of an existing product. It will be reviewed before anything is "
                     "reconstructed."
                 ),
                 suggestion=None,
+                channel=channel,
             )
 
     # A near miss that did not clear the threshold is still worth surfacing to the
@@ -663,11 +746,49 @@ def screen_prompt(prompt: str, *args: Optional[str]) -> ScreenVerdict:
             term=fuzzy.term,
             score=round(fuzzy.score, 3),
             detail=(
-                f"This prompt resembles \"{fuzzy.term}\". It will be reviewed before "
+                f"{subject} resembles \"{fuzzy.term}\". It will be reviewed before "
                 "anything is reconstructed."
             ),
             suggestion=None,
             usage=fuzzy.usage,
+            channel=channel,
         )
 
     return ScreenVerdict("allow", None, 0.0, "No protected name recognised.", None)
+
+
+def screen_prompt(
+    prompt: str,
+    material_colour: Optional[str] = None,
+    *,
+    embossing: Optional[str] = None,
+) -> ScreenVerdict:
+    """Decide whether a submission may proceed, reading every channel it has.
+
+    One parameter per entry in `CHANNELS`, each screened by `screen_channel` on its
+    own tokens. Joining them into one string — which this did until the embossing
+    field existed — lets one field lend another its grammar and leaves the verdict
+    unable to say which box the name was typed into. Both matter most for the third
+    channel: "deck box for Pokémon cards" in the prompt would otherwise put a purpose
+    cue in front of "Pokémon" in the emboss box, demoting a refusal to a flag.
+
+    Args:
+        prompt: The user's prompt.
+        material_colour: The colour box, which `blueprint_spec.engineer_prompt`
+            interpolates into the string sent to FLUX.
+        embossing: The text F13 raises on a face of the part. Keyword-only, because
+            it is not a description of the part and must never be mistaken for one at
+            a call site.
+
+    Returns:
+        A `ScreenVerdict`. "block" means refuse the submission; "flag" means proceed
+        and record it for the blueprint gate; "allow" means nothing was recognised.
+        The most severe verdict across the channels wins, and a tie goes to the
+        earlier channel in `CHANNELS` — the prompt first, because it is the field the
+        person wrote most of.
+    """
+    typed = {"prompt": prompt, "material_colour": material_colour, "embossing": embossing}
+    verdicts = [screen_channel(typed[channel], channel) for channel in CHANNELS]
+    # `max` returns the first of equal maxima, which is what makes `CHANNELS` the
+    # tie-break rather than an accident of dict ordering.
+    return max(verdicts, key=lambda verdict: _SEVERITY[verdict.action])

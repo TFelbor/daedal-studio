@@ -312,7 +312,10 @@ reasoning below, not advice from counsel and not a legal conclusion.
 that reproduces a protected character (Task L1). A storage box sized for a game's cards
 does not reproduce anything: the geometry is a rectangular enclosure whose dimensions come
 from a card footprint, the pipeline discards appearance and prints in one colour, and the
-franchise name appears only in the request, never on the part. Naming a product's brand to
+franchise name appears only in the request, never on the part. **That last clause is a
+premise, not an observation** — F13's embossing field is the one thing in the product that
+could put the name on the part, and it is held by code rather than by hope: see the
+embossing position below. Naming a product's brand to
 say what an accessory fits is the ordinary indication-of-purpose case — Art. 14(1)(c) EUTMR
 permits use of a mark to indicate the intended purpose of an accessory where it is
 necessary and in accordance with honest practices. The counter-consideration is the one
@@ -346,13 +349,40 @@ than either consistent answer because it looks like a policy and is not one.
   is the only signal available in the sentence. Whether that trade is the right way round
   is a question for counsel; the code pins both directions in
   `tests/test_ip_screen.py` so moving the line is one decision in one place.
-- The line moves again for F13 (decorative embossing), which is a third prompt channel and
-  where the real reproduction risk goes. Roadmap §4A part (b) holds it; do not ship F13
-  before that screen exists.
+**The embossing field — where the line sits on the third channel.** Decided 2026-09-17
+(issue #156), the same way and on the same standing: a product decision by the team,
+pending counsel. F13 raises typed words *on the part*, which is the one place this
+product could put someone else's mark on a manufactured good, so:
+
+- **A curated name in the embossing field is refused, whatever surrounds it.** The
+  functional-article rule does not reach this channel — nothing raised on a face holds
+  anything, so there is no reading in which the name describes contents. "Deck box for
+  Pokémon cards" still passes as a purpose; "Pokémon" embossed on that same box does not.
+  In the code this is `ip_screen.DEPICTION_ONLY_CHANNELS`.
+- **Each channel is screened on its own tokens.** The three free-text fields were joined
+  into one string before matching, which would have let the box's own purpose text lend
+  the emboss field its grammar and demote that refusal to a flag. They are separate
+  channels and are screened separately; `ScreenVerdict.channel` says which one matched,
+  and the refusal and the `ip_screen_flagged` event both carry it.
+- **An ambiguous term still only flags here.** "Joker", "frozen" and "creeper" are
+  ordinary English on a lid as much as in a prompt, and refusing someone's own word is
+  the mistake with no appeal path.
+- **The appeal path is stated in the refusal itself**: keep the prompt, emboss your own
+  words. A refusal telling someone to describe the shape differently would be advice
+  about a field that was not the problem.
+
+**What counsel is asked to confirm about this channel:** that refusal (rather than a
+flag to the human gate) is the right posture for a name on the article itself, given
+that the honest-practice conditions above turn on the article and its listing carrying
+no franchise name or livery; and whether a *character* embossed differs from a
+*franchise* embossed, which the code today does not distinguish — both are refused.
 
 **Where the code is:** `_classify_usage` in `pythonsrc/ip_screen.py`, the cue constants
-beside it, `category` in `pythonsrc/data/ip_blocklist.json`, and the `ip_screen_flagged`
-job event's `usage` field, which is how often the rule fires.
+beside it, `CHANNELS` and `DEPICTION_ONLY_CHANNELS` in the same module,
+`JobRequest.embossing_text` in `server/app.py`, `category` in
+`pythonsrc/data/ip_blocklist.json`, and the `ip_screen_flagged` job event's `usage` and
+`channel` fields, which are how often each rule fires and in which box. The lines are
+pinned by `tests/test_ip_screen.py`, so moving either is one decision in one place.
 
 ---
 

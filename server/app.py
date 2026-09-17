@@ -1167,6 +1167,17 @@ class JobRequest(BaseModel):
     # Bounded for the same reasons as the prompt, and because it is interpolated
     # into the string sent to the image model — an unbounded second prompt channel.
     material_colour: Optional[str] = Field(None, max_length=64)
+    # F13's decorative layer: the words raised on a face of the part. The **third**
+    # prompt channel, and the most exposed of the three, because what is typed here
+    # is reproduced on the object rather than described to a model — so it is
+    # screened as its own channel, and the functional-article rule does not reach it
+    # (`ip_screen.DEPICTION_ONLY_CHANNELS`). Bounded like the colour box.
+    #
+    # It compiles to nothing yet, deliberately: the geometry is issue #157, and PRD
+    # F13 says do not ship the decorative layer before this screen exists. So the
+    # channel and its refusal land first, and no composer sends the field until the
+    # thing that builds it does.
+    embossing_text: Optional[str] = Field(None, max_length=64)
     # Reproducibility and lineage.
     seed: Optional[int] = None
     parent_job_id: Optional[str] = None
@@ -2457,7 +2468,10 @@ async def create_job(request: JobRequest):
     #
     # Every field that reaches the model is passed, not just the prompt:
     # `material_colour` is interpolated into the string sent to FLUX, so a screen
-    # reading `prompt` alone leaves the colour box unwatched.
+    # reading `prompt` alone leaves the colour box unwatched. `embossing_text` is the
+    # third channel and the one that ends up *on* the part; each is screened on its
+    # own tokens, so the spec's own purpose text ("deck box for Pokémon cards") is
+    # not read as the emboss field's context.
     # Refused here for the same reason the IP screen is: before `job_id` is minted and
     # before the artifact-cleanup loop below, which unconditionally deletes the flat mesh
     # and G-code. A refusal after that point destroys the previous job's output in order
@@ -2490,13 +2504,19 @@ async def create_job(request: JobRequest):
             ),
         ) from exc
 
-    screen = screen_prompt(request.prompt, request.material_colour)
+    screen = screen_prompt(
+        request.prompt, request.material_colour, embossing=request.embossing_text,
+    )
     if screen.action == "block":
         activity.action(
             "job refused",
             [
                 ("reason", "ip screen"),
                 ("term", screen.term),
+                # Which field carried the name. A refusal that does not say leaves
+                # an operator reading the prompt for a term that was in the emboss
+                # box, and the two have different answers for the person.
+                ("channel", screen.channel),
                 ("score", screen.score),
                 ("prompt", request.prompt),
             ],
@@ -2618,6 +2638,10 @@ async def create_job(request: JobRequest):
                 # rule fire" is a query rather than a log grep. No schema change:
                 # `job_event.detail` is JSONB.
                 "usage": screen.usage,
+                # And which field it was used in, so the same query can separate the
+                # prompt from the colour box from the embossing text — three channels
+                # whose flags mean three different things.
+                "channel": screen.channel,
             })
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record ip_screen_flagged event: %s", exc)

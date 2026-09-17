@@ -590,7 +590,9 @@ JOB_EVENT_KINDS = (
     # The prompt screen recognised something, but not clearly enough to refuse. There
     # is deliberately no `ip_screen_blocked` counterpart: a block happens before
     # `insert_job`, foreign keys are enforced, and an event for a job row that does
-    # not exist cannot be written. Blocks go to the activity feed instead.
+    # not exist cannot be written. Blocks go to the activity feed instead. The detail
+    # carries `usage` and `channel` — which grammar the name was used with, and which
+    # of the three free-text fields it was typed into.
     "ip_screen_flagged",
     # The blueprint approval gate. Phase 2 does not run until `blueprint_approved`
     # exists for the job, and `blueprint_rejected` records that a person looked and
