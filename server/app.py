@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import mimetypes
 import os
 import platform
 import re
@@ -187,6 +188,17 @@ cancelled_jobs: set[str] = set()
 #: against the same absolute directory rather than re-deriving `server/../web/dist` and
 #: hoping the two spellings agree.
 DIST_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+#: `.webmanifest`, spelled out rather than inherited.
+#:
+#: The SPA catch-all answers with a `FileResponse`, whose media type comes from
+#: `mimetypes.guess_type`, whose table comes from the interpreter *and the host*.
+#: CPython learned `.webmanifest` in 3.11; the server image is `python:3.10-slim`, where
+#: the guess is `None` and Starlette falls back to `text/plain`. Chrome then warns and
+#: still installs; Safari does not, so the app is installable in CI and on a developer's
+#: 3.11 machine and silently is not on the one platform half the pilot is holding.
+#: `add_type` is idempotent, so this is a floor rather than an override.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 def contained_path(base: Path, *parts: str) -> Path | None:

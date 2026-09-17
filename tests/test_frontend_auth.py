@@ -24,6 +24,17 @@ MAKEFILE = REPO_ROOT / "Makefile"
 #: the wrapper; the other is the token store it reads from.
 WRAPPERS = {WEB_SRC / "api" / "http.ts", WEB_SRC / "api" / "auth.ts"}
 
+#: The service worker, which calls `fetch` and must not send the token — the opposite
+#: exemption to the one above, for the opposite reason.
+#:
+#: A worker has no `localStorage` and cannot read the secret, and this is the reason it
+#: never needs to: it only ever forwards a request the browser already made, for a path
+#: on its own allowlist, and every path on that allowlist is served by the same `@public`
+#: catch-all that serves the bundle. `apiFetch` here would be a worker attaching a
+#: credential to an unauthenticated asset request, which is not a fix for anything.
+#: `tests/test_pwa_shell.py` is what holds the allowlist to paths the API does not own.
+SERVICE_WORKER = WEB_SRC / "sw.ts"
+
 #: `fetch(` not preceded by a word character or a dot — so `apiFetch(` and
 #: `window.fetch(` do not match, and a bare call does.
 BARE_FETCH = re.compile(r"(?<![\w.])fetch\(")
@@ -43,7 +54,7 @@ def test_no_bare_fetch_outside_the_wrapper():
     """One place attaches the token, so one place may call `fetch`."""
     offenders = []
     for path in _sources():
-        if path in WRAPPERS:
+        if path in WRAPPERS or path == SERVICE_WORKER:
             continue
         for number, line in enumerate(path.read_text().splitlines(), 1):
             if BARE_FETCH.search(line):

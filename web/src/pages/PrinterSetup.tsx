@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Blueprint, Marks } from '../components/Blueprint';
 import { BootMark } from '../components/BootMark';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 import {
   getConfig,
   setConfig,
@@ -55,7 +56,8 @@ const SECTIONS = [
   { id: 'settings-models', num: '01', title: 'Spec engine' },
   { id: 'settings-printer', num: '02', title: 'Printer' },
   { id: 'settings-simulators', num: '03', title: 'Simulators' },
-  { id: 'settings-developer', num: '04', title: 'Developer' },
+  { id: 'settings-install', num: '04', title: 'Install' },
+  { id: 'settings-developer', num: '05', title: 'Developer' },
 ];
 
 type PrinterKind = 'moonraker' | 'octoprint' | 'bambu';
@@ -1003,11 +1005,27 @@ export function PrinterSetup() {
             </div>
           </section>
 
-          {/* ── 04 Developer ──────────────────────────────────────────────── */}
+          {/* ── 04 Install ────────────────────────────────────────────────────
+              A section rather than a banner, on purpose. An install prompt that
+              appears over the page someone is reading is the pattern every mobile
+              site has taught people to dismiss without reading, and Chromium's own
+              mini-infobar is suppressed for the same reason (`useInstallPrompt`).
+              Settings is where a person goes to change how the app behaves, and
+              putting it on the home screen is that. ── */}
           <section id={SECTIONS[3].id} className={styles.section}>
             <div className={styles.sectionHead}>
               <span className={styles.sectionNum}>{SECTIONS[3].num}</span>
               <h2 className="heading">{SECTIONS[3].title}</h2>
+              <span className={styles.sectionTag}>HOME SCREEN</span>
+            </div>
+            <InstallSection />
+          </section>
+
+          {/* ── 05 Developer ──────────────────────────────────────────────── */}
+          <section id={SECTIONS[4].id} className={styles.section}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionNum}>{SECTIONS[4].num}</span>
+              <h2 className="heading">{SECTIONS[4].title}</h2>
             </div>
 
             {/* The PYTHONPATH override that used to sit here is gone, and so is the
@@ -1042,6 +1060,58 @@ export function PrinterSetup() {
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Putting the app on a home screen, in whichever of the three states this browser is in.
+ *
+ * The third paragraph is the one that stops a support conversation: an installed app on
+ * iOS gets its own storage, so the API token typed into Safari is not the token the
+ * installed app has. That is the platform's, not this app's — but a person meeting it
+ * has no way to know that, and "it asked me for the token again" reads as data loss.
+ */
+function InstallSection() {
+  const { state, isIos, install } = useInstallPrompt();
+
+  return (
+    <div className={styles.sectionBody}>
+      {state === 'installed' ? (
+        <p className="hint">
+          Running as an installed app. To update it, open it and pull down to reload — the
+          app fetches its own shell from the network every time it opens.
+        </p>
+      ) : state === 'promptable' ? (
+        <>
+          <p className="hint">
+            Add Daedal Studio to your home screen. It opens without browser chrome and
+            keeps working on the same network as your printer.
+          </p>
+          <div className={styles.row}>
+            <button type="button" className="btn" onClick={() => void install()}>
+              Install
+            </button>
+          </div>
+        </>
+      ) : isIos ? (
+        <p className="hint">
+          On iPhone and iPad: open this page in Safari, tap Share, then{' '}
+          <strong>Add to Home Screen</strong>. Other iOS browsers cannot install it —
+          that restriction is the platform&apos;s.
+        </p>
+      ) : (
+        <p className="hint">
+          This browser has not offered an install. Chrome and Edge offer one from the
+          address bar once the page has been served over HTTPS; Safari on iPad and iPhone
+          installs from Share → <strong>Add to Home Screen</strong>.
+        </p>
+      )}
+
+      <p className="hint">
+        An installed app keeps its own storage, so the API token is asked for once more the
+        first time you open it. It is the same token; nothing has been lost.
+      </p>
     </div>
   );
 }

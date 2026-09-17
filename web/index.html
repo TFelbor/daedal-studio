@@ -26,6 +26,21 @@
          uses the in-app toggle, which no media query can see. -->
     <meta name="theme-color" content="#2f3030" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#dbdbdb" media="(prefers-color-scheme: light)" />
+    <!-- The home-screen app. Two platforms, two mechanisms, and neither reads the
+         other's: Android Chrome installs from the manifest, and iOS Safari installs
+         from `apple-mobile-web-app-*` plus the apple-touch-icon above. Declaring only
+         the manifest gives an iOS install that opens in a Safari chrome with a URL bar,
+         which is a bookmark wearing an app's icon.
+
+         `apple-mobile-web-app-status-bar-style=black-translucent` puts the page under
+         the status bar rather than beside it, which is the half of `viewport-fit=cover`
+         that iOS needs told separately; the safe-area padding on the nav is what keeps
+         the logo out from under the clock. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Daedal" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

@@ -4,6 +4,31 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // The service worker's cache name. One per build, so `activate` can delete every
+    // other one — without it a deploy leaves the previous shell installed and the only
+    // cure is a person knowing to unregister a worker they cannot see.
+    __SW_BUILD__: JSON.stringify(new Date().toISOString()),
+  },
+  build: {
+    rollupOptions: {
+      // Two entries. The worker is a second Rollup input rather than a hand-written file
+      // in `public/`, so `tsc -b` type-checks it and the bundler resolves it — a worker
+      // copied verbatim is the one file in the app nothing checks, and it is also the
+      // one file that can brick the app for a returning visitor.
+      input: {
+        main: 'index.html',
+        sw: 'src/sw.ts',
+      },
+      output: {
+        // `/sw.js`, unhashed and at the root: a worker's default scope is the directory
+        // it is served from, so `assets/sw-a1b2c3.js` would control `/assets/` and
+        // nothing else, and a fingerprinted name would leave the browser unable to find
+        // the registration it already has.
+        entryFileNames: chunk => (chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js'),
+      },
+    },
+  },
   server: {
     proxy: {
       '/jobs': 'http://localhost:8000',
