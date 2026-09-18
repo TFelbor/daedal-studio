@@ -105,6 +105,14 @@ python-socketio[asyncio_client]
 paho-mqtt==2.1.0
 cryptography
 aiohttp
+# Web push (issue #159): the notification a job reaching `awaiting_verdict` sends.
+# MPL-2.0, with py-vapid (MPL-2.0) and http-ece (MIT) behind it — file-level weak
+# copyleft, imported unmodified, recorded in licence_policy.REVIEWED_WEAK_COPYLEFT and
+# THIRD-PARTY-NOTICES.md § 1. Pinned because a floating web-push library is a delivery
+# that fails on a phone and nowhere else. The alternative was hand-rolling RFC 8291 on
+# the `cryptography` above; see server/push.py for why that was refused. Its send path
+# is `webpush_async`, which uses the aiohttp already on the line above.
+pywebpush==2.5.0
 
 fastapi
 uvicorn
