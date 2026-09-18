@@ -84,10 +84,8 @@ from ..compiler import (
     CompileResult,
     FitsResult,
     MeasureError,
-    face_plane_extent,
     manifold_to_trimesh,
     rounded_rect_prism,
-    tilted_face_extent,
 )
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import (
@@ -107,6 +105,8 @@ from .common import (
     card_contents_problem,
     expect_planes,
     external_overshoots,
+    measured_chamfer,
+    measured_corner_radius,
     single_compartment_problem,
     stray_section_problem,
     view_frame,
@@ -213,11 +213,12 @@ def _structural_problems(spec: OrganizerSpec) -> list[str]:
             f"deck_box v{ARCHETYPE_VERSION} has no divider plate; the divider section "
             "belongs to archetype 'card_divider' — remove it or change the archetype"
         )
-    tray = stray_section_problem(
-        spec, section="tray", subject=f"deck_box v{ARCHETYPE_VERSION}", owner="token_tray"
-    )
-    if tray:
-        problems.append(tray)
+    for section, owner in (("tray", "token_tray"), ("insert", "box_insert")):
+        stray = stray_section_problem(
+            spec, section=section, subject=f"deck_box v{ARCHETYPE_VERSION}", owner=owner
+        )
+        if stray:
+            problems.append(stray)
     if spec.lid is None:
         problems.append(f"deck_box v{ARCHETYPE_VERSION} needs a lid (lid is null)")
     else:
@@ -487,47 +488,20 @@ MEASURED_FEATURES: tuple[str, ...] = (
     "cavity_corner_radius_mm", "lip_corner_radius_mm", "lid_cavity_corner_radius_mm",
 )
 
-#: How far a chamfer face may sit from 45° before the measurement is a finding rather
-#: than a number. `base_chamfer` builds the angle exactly — every face is the supporting
-#: plane through a chord and the same chord moved in by `c` and down by `c` — so this is
-#: a check on the *mesh*, not a tolerance on the design: a tenth of a degree is four
-#: orders above what the kernel's own float noise produces and far below anything a
-#: broken construction would.
-CHAMFER_ANGLE_TOL_DEG = 0.1
-
-
 def _planes(part: Any, axis: int, expected: int, what: str) -> list[float]:
     return expect_planes(part, axis, expected, what=what, subject=_SUBJECT)
 
 
 def _chamfer(part: Any, what: str) -> float:
-    """The height of `part`'s base chamfer, refusing a mesh whose slope is not 45°.
-
-    A chamfer is not a difference of two planes, so it is measured off the faces that
-    slope: the only ones on this shape that point downward without being the bed face.
-    Their Z extent *is* the chamfer, and their tilt is checked rather than assumed,
-    because a face at 30° would measure a plausible height off a part nobody designed.
-    A part with no sloping face measures 0 — right for a designed 0, out of tolerance
-    for anything else.
-    """
-    low, high, worst_error_deg = tilted_face_extent(part)
-    if worst_error_deg > CHAMFER_ANGLE_TOL_DEG:
-        raise MeasureError(
-            f"the {what}'s base chamfer is {45.0 + worst_error_deg:.3f}° at its worst "
-            f"where {_SUBJECT} cuts 45°"
-        )
-    return high - low
+    """This archetype's subject, on `common.measured_chamfer`. Both bodies carry the
+    treatment, so `what` is the one that says which body a finding is about."""
+    return measured_chamfer(part, what=what, subject=_SUBJECT)
 
 
-def _corner_radius(part: Any, y_plane: float, x_plane: float) -> float:
-    """The radius of the vertical corners a wall runs between, as a plane difference.
-
-    The wall in the plane `Y = y_plane` runs from its tangent point to its tangent
-    point — `r` in from each end — so the radius is where that wall starts along X minus
-    the X plane the design says it starts at. Exact vertices both, which is why a radius
-    survives the float32 export like every other feature here; a square corner gives 0.
-    """
-    return face_plane_extent(part, 1, y_plane, 0)[0] - x_plane
+#: `common.measured_corner_radius`, under the name this module's `measure()` calls it by.
+#: The measurement moved to `common.py` when the box insert gained the same outer round
+#: (issue #152); the four call sites below are unchanged.
+_corner_radius = measured_corner_radius
 
 
 def measure(mesh: Any) -> dict[str, float]:

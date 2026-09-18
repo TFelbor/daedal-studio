@@ -39,6 +39,7 @@ def test_example_with_no_archetype_says_which_ones_there_are(capsys):
     assert main(["example"]) == 2
     err = capsys.readouterr().err
     assert "card_divider" in err and "deck_box" in err and "token_tray" in err
+    assert "box_insert" in err
 
 
 def test_example_prints_a_valid_token_tray_spec_by_flag(capsys):
@@ -151,3 +152,42 @@ def test_measure_can_write_the_dimension_report_beside_the_table(tmp_path, capsy
     assert doc["within_tolerance"] is True
     assert doc["features_checked"] == len(deck_box.MEASURED_FEATURES) == 26
     assert "cavity_width_mm" in doc["features"]
+
+
+def test_example_prints_a_valid_box_insert_spec_by_flag(capsys):
+    """The fourth archetype through the same command, with no flag of its own."""
+    assert main(["example", "--archetype", "box_insert"]) == 0
+    spec = OrganizerSpec.from_json(capsys.readouterr().out)
+    assert spec.archetype == "box_insert"
+    assert spec.insert is not None and spec.insert.rows == (1, 2)
+    assert spec.lid is None and spec.divider is None and spec.tray is None
+    assert len(spec.compartments) == 3
+
+
+def test_compile_and_measure_run_an_insert_through_the_same_two_commands(tmp_path, capsys):
+    """The developer loop over a ragged layout, which is the case that needed the
+    registry's `MEASURE_NEEDS_SPEC` hook: `measure` is handed a spec and a mesh, the
+    dispatch is the only thing that knows the measurer wants both, and this file took no
+    archetype-specific change to gain the fourth shape.
+    """
+    from pythonsrc.organizer.archetypes import example_spec
+    spec_path = dump_spec(example_spec("box_insert"), tmp_path / "insert.json")
+    out = tmp_path / "insert.stl"
+    features = tmp_path / "features.json"
+    assert main(["compile", str(spec_path), "--out", str(out), "--features", str(features)]) == 0
+    assert json.loads(features.read_text())["parts"] == ["insert"]
+
+    report = tmp_path / "dimension_report.json"
+    capsys.readouterr()
+    assert main(["measure", str(spec_path), str(out), "--report", str(report)]) == 0
+    table = capsys.readouterr().out
+    assert "c0_width_mm" in table and "OK" in table
+    doc = json.loads(report.read_text())
+    assert doc["within_tolerance"] is True and doc["missing"] == []
+    # Every compartment, in all three dimensions *and in both positions*, plus one wall
+    # per row and one per row boundary — the list that grows with the compartments.
+    for i in range(3):
+        for axis in ("width", "depth", "height", "x", "y"):
+            assert f"c{i}_{axis}_mm" in doc["features"]
+    assert {f"row{r}_wall_mm" for r in range(2)} <= set(doc["features"])
+    assert {f"wall_y{j}_mm" for j in range(3)} <= set(doc["features"])

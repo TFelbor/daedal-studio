@@ -39,6 +39,7 @@ import trimesh
 from pythonsrc.engineer import Engineer
 from pythonsrc.organizer.archetypes import (
     REGISTRY,
+    box_insert,
     card_divider,
     compile_spec,
     deck_box,
@@ -61,6 +62,7 @@ from pythonsrc.organizer.spec import (
     CardStack,
     Compartment,
     Divider,
+    Insert,
     Lid,
     OrganizerSpec,
     Pocket,
@@ -684,4 +686,143 @@ def test_a_single_pocket_out_of_position_is_caught_by_name(tmp_path):
 def test_the_example_tray_has_sub_micron_error_on_the_exported_mesh(tmp_path):
     spec = token_tray_spec(2, 3, (20.0, 20.0, 15.0), None, 2.0)
     result, mesh = exported_and_reloaded(spec, tmp_path / "tray.stl")
+    assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4
+
+
+# ── the box insert's own corners ───────────────────────────────────────────────
+#
+# What this archetype contributes is the **ragged layout**: the first shape in the
+# registry whose features cannot be read off a global plane count at all, because a
+# compartment shallower or shorter than its neighbour puts a plane where nothing else has
+# one. Every feature is therefore measured inside the region the design says one
+# compartment occupies, and the two things a region can get wrong are the two drift cases
+# below: a well the right size in the wrong *place*, and a well the right place at the
+# wrong *depth*. Both leave every external dimension exact, and a fixed feature tuple —
+# or a plane count — would report *within tolerance* about either.
+
+
+def box_insert_spec(rows, contents, wall=None, floor=2.0):
+    """An insert from `(rows, contents)`, with `contents` in `box_insert.SWEEP_LAYOUTS`'
+    own shape so a corner and an envelope case are written the same way."""
+    return OrganizerSpec(
+        archetype="box_insert",
+        compartments=tuple(box_insert._compartment(c) for c in contents),
+        insert=Insert(rows=tuple(rows)),
+        process=Process(wall_mm=wall, floor_mm=floor),
+    )
+
+
+#: The example's layout, and the one every corner below is built on: a card well across
+#: the front with two differently sized, differently deep pockets behind it.
+MIXED_CONTENTS = (
+    ("card", 60, "double"), ("pocket", 40.0, 40.0, 15.0), ("pocket", 20.0, 20.0, 18.0),
+)
+
+
+def test_the_insert_envelope_is_wide_enough_to_mean_something():
+    """Guards the module's declared envelope against being narrowed to the one example.
+
+    Five properties, each naming a failure it would hide: the unstated wall (what almost
+    every real spec is); a layout with **one** compartment, which is the only one with no
+    divider at all; rows of unequal width in *both* orders, so the slack lands in the back
+    row in one case and the front row in the other; differing depths and heights inside a
+    single row, which is the ragged case the token tray refuses outright; and at least two
+    layouts mixing a resolved card footprint with typed pockets, which is the composition
+    the archetype exists for.
+    """
+    cases = envelope_for("box_insert")
+    assert len(cases) >= 150
+    assert None in box_insert.SWEEP_WALLS
+    layouts = {name: (rows, contents) for name, rows, contents in box_insert.SWEEP_LAYOUTS}
+    assert any(sum(rows) == 1 for rows, _ in layouts.values())
+    assert len(set(box_insert.SWEEP_FLOORS)) == 2
+    assert (0.0, 0.0) in box_insert.SWEEP_EDGES, "no square-cornered case"
+
+    def widths(rows, contents):
+        """Each row's compartment count, and the footprints in it, row by row."""
+        out, i = [], 0
+        for n in rows:
+            out.append(contents[i:i + n])
+            i += n
+        return out
+
+    ragged_rows, ragged_within, mixed = 0, 0, 0
+    for rows, contents in layouts.values():
+        grouped = widths(rows, contents)
+        sizes = [[c[1:] for c in row] for row in grouped]
+        if len({len(row) for row in grouped}) > 1:
+            ragged_rows += 1
+        if any(len({s for s in row}) > 1 for row in sizes):
+            ragged_within += 1
+        kinds = {c[0] for c in contents}
+        if kinds == {"card", "pocket"}:
+            mixed += 1
+    assert ragged_rows >= 2, "rows of unequal width are swept in only one order"
+    assert ragged_within >= 2, "no row holds two differently sized compartments"
+    assert mixed >= 2, "the card-and-pocket composition is swept once or not at all"
+
+
+@pytest.mark.parametrize("rows,contents", [
+    ((1,), (("pocket", 20.0, 20.0, 15.0),)),
+    ((1, 2), MIXED_CONTENTS),
+    ((3, 1), (("pocket", 15.0, 15.0, 10.0), ("pocket", 15.0, 15.0, 12.0),
+              ("pocket", 15.0, 15.0, 14.0), ("pocket", 30.0, 20.0, 20.0))),
+])
+def test_the_insert_sweep_measures_every_compartment_and_every_wall(tmp_path, rows, contents):
+    """The count behind the sweep's `set(report.features) == required_measurements`:
+    seven fixed features, **five** per compartment — three sizes and two positions — one
+    wall per row and one per row boundary."""
+    spec = box_insert_spec(rows, contents)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "insert.stl")
+    report = verify_spec_mesh(spec, result.features, mesh)
+    assert report.within_tolerance, report.problems()
+    assert len(report.features) == 7 + 5 * sum(rows) + len(rows) + (len(rows) + 1)
+
+
+def test_a_compartment_out_of_position_is_caught_by_name(tmp_path):
+    """What a plane count cannot see. A regular grid's dividers are shared planes, so
+    moving one moves two pockets' widths; a ragged layout's are not, so a well shifted
+    0,5 mm leaves every external, every wall and every *size* exactly right and shows up
+    only because where each compartment is is a measured feature."""
+    spec = box_insert_spec((1, 2), MIXED_CONTENTS)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "insert.stl")
+    designed = dict(result.features)
+    designed["c2_x_mm"] += 0.5
+    report = verify_spec_mesh(spec, designed, mesh)
+    assert report.within_tolerance is False
+    assert set(report.out_of_tolerance) == {"c2_x_mm"}
+    assert "external_width_mm" not in report.out_of_tolerance
+
+
+def test_a_compartment_at_the_wrong_depth_is_caught_by_name(tmp_path):
+    """Per-compartment depth is the feature `token_tray` deferred, and it is measured per
+    compartment for the same reason: three wells give three floor planes, and a global Z
+    read would see all three and be unable to say which one had moved."""
+    spec = box_insert_spec((1, 2), MIXED_CONTENTS)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "insert.stl")
+    designed = dict(result.features)
+    designed["c1_height_mm"] -= 0.5
+    report = verify_spec_mesh(spec, designed, mesh)
+    assert report.within_tolerance is False
+    assert set(report.out_of_tolerance) == {"c1_height_mm"}
+    assert "external_height_mm" not in report.out_of_tolerance
+    assert "floor_mm" not in report.out_of_tolerance
+
+
+def test_an_insert_scaled_by_a_fifth_of_a_percent_is_caught_and_a_feature_named(tmp_path):
+    """The check bites on the fourth archetype: a 0,2 % scale is 0,28 mm on the 138 mm
+    depth, and the report names which feature moved rather than shrugging."""
+    spec = box_insert_spec((1, 2), MIXED_CONTENTS)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "insert.stl")
+    drifted = mesh.copy()
+    drifted.apply_scale(1.002)
+    report = verify_spec_mesh(spec, result.features, drifted)
+    assert report.within_tolerance is False
+    assert "external_depth_mm" in report.out_of_tolerance
+    assert report.max_abs_error_mm > TOL_MM
+
+
+def test_the_example_insert_has_sub_micron_error_on_the_exported_mesh(tmp_path):
+    spec = box_insert_spec((1, 2), MIXED_CONTENTS)
+    result, mesh = exported_and_reloaded(spec, tmp_path / "insert.stl")
     assert verify_spec_mesh(spec, result.features, mesh).max_abs_error_mm < 1e-4

@@ -110,6 +110,50 @@ for (const viewport of VIEWPORTS) {
   })
 }
 
+/**
+ * The box insert's compartment list (issue #152).
+ *
+ * The composer's only control that is a *list* — every other archetype has a fixed set
+ * of fields, so the widest the form can get is a known quantity that the composer page
+ * test above already covers. An insert's grows: three compartments open by default and
+ * a person can add more, each a bordered block of its own grid. So it gets the same one
+ * assertion at both ends of the ladder, on the state the strip actually produces.
+ */
+for (const width of [375, 1280]) {
+  test.describe(`${width}px`, () => {
+    test.use({ viewport: { width, height: 900 } })
+
+    test('the box insert’s compartment list fits', async ({ page }) => {
+      await mockApi(page)
+      await page.goto('/')
+      await page.locator('text=What are we').first().waitFor({ timeout: 15_000 })
+      await page.getByRole('button', { name: 'Box insert' }).click()
+      // The third compartment is the last thing the list renders, so waiting for it is
+      // waiting for the whole editor rather than for a partial render.
+      await page.locator('text=Compartment 3').first().waitFor({ timeout: 15_000 })
+      await page.evaluate(() => document.fonts.ready)
+
+      await page.screenshot({
+        path: `${SHOTS}/box-insert-${width}.png`,
+        fullPage: true,
+      })
+
+      const widths = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }))
+      const culprit = await overflowingElement(page)
+      expect(
+        widths.scroll,
+        culprit
+          ? `the box insert form at ${width}px scrolls sideways; widest offender is ` +
+            `${culprit.selector}, whose right edge is at ${Math.round(culprit.right)}px`
+          : `the box insert form at ${width}px scrolls sideways`,
+      ).toBeLessThanOrEqual(widths.client)
+    })
+  })
+}
+
 test.describe('375px', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 

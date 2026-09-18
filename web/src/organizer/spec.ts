@@ -58,8 +58,9 @@ export function isCardStack(contents: RawContents): contents is RawCardStack {
  * of which existed: a strip cell for a shape the engine would refuse is the same class
  * of fabrication as a fits badge with no measurement behind it — the person picks it,
  * types a prompt, and the product silently gives them something else. The token tray
- * joined the day its compiler did (issue #84); the box-insert grid is a real roadmap
- * item (§0.3 Phase 3) and a cell appears here the day that compiler does too.
+ * joined the day its compiler did (issue #84), and the box insert the day its compiler
+ * did (issue #152) — which is the rule those three dead cells were removed to establish,
+ * honoured twice now rather than merely stated.
  *
  * Ordered as the strip presents them.
  */
@@ -67,6 +68,7 @@ export const ARCHETYPES = [
   { id: 'deck_box', label: 'Deck box' },
   { id: 'card_divider', label: 'Card divider' },
   { id: 'token_tray', label: 'Token tray' },
+  { id: 'box_insert', label: 'Box insert' },
 ] as const;
 
 export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];
@@ -211,9 +213,45 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
   const lid = spec.lid;
   const divider = spec.divider;
   const tray = spec.tray;
+  const insert = spec.insert;
   const dimensions: SpecDimension[] = [];
 
-  if (contents && isCardStack(contents)) {
+  if (insert) {
+    // A box insert's compartments are **not** all the same shape, which is the one
+    // assumption every other branch here is allowed to make. Reading `compartments[0]`
+    // and describing the whole part with it — which is what this function did before
+    // issue #152 — would show a deck's card count as though it were the part, with two
+    // pockets silently missing from a table whose entire promise is that every row on
+    // it is a number somebody wrote.
+    //
+    // So every compartment is listed, indexed as the spec indexes it, in the words of
+    // whichever shape it is. The row grouping is listed too, because it is the layout:
+    // nothing here computes a position, and `insert.rows` is what a remix would change
+    // to move a compartment.
+    dimensions.push(
+      row('insert_rows', 'Rows', insert.rows.length, 'rows', true,
+        `${insert.rows.join(' / ')} compartments per row, front to back`),
+    );
+    (spec.compartments ?? []).forEach((compartment, i) => {
+      const held = compartment?.contents;
+      if (!held) return;
+      const label = `Compartment ${i + 1}`;
+      if (isCardStack(held)) {
+        const sleeving = SLEEVING_NOTE[held.sleeving] ?? `${held.sleeving} sleeved`;
+        dimensions.push(
+          row(`c${i}_count`, `${label} cards`, held.count, 'cards', true,
+            `${held.card}, ${sleeving}; the well is the resolved footprint plus the clearance`),
+        );
+        return;
+      }
+      const provenance = held.source ?? 'user-given mm — no token or dice size is sourced';
+      dimensions.push(
+        row(`c${i}_width_mm`, `${label} width`, held.width_mm, 'mm', true, provenance),
+        row(`c${i}_depth_mm`, `${label} depth`, held.depth_mm, 'mm', true, provenance),
+        row(`c${i}_height_mm`, `${label} depth (Z)`, held.height_mm, 'mm', true, provenance),
+      );
+    });
+  } else if (contents && isCardStack(contents)) {
     const sleeving = SLEEVING_NOTE[contents.sleeving] ?? `${contents.sleeving} sleeved`;
     dimensions.push(
       row('card_count', 'Cards', contents.count, 'cards', true, `${contents.card}, ${sleeving}`),

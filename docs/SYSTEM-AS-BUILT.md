@@ -22,11 +22,13 @@ governing rule: *the LLM interprets words; it never produces geometry.* Phases 1
 branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,
 printability gate, slicing, dispatch gate, telemetry) is unchanged and is what the parametric
 path plugs into via the `--skip-visualizer --skip-sculptor --mesh <path>` seam. The parametric engine has its first pieces (2026-09-03): the spec schema
-(`pythonsrc/organizer/spec.py`) and three archetypes — the deck box
+(`pythonsrc/organizer/spec.py`) and four archetypes — the deck box
 (`archetypes/deck_box.py`), since 2026-09-10 the card divider
-(`archetypes/card_divider.py`) and since 2026-09-13 the token tray
+(`archetypes/card_divider.py`), since 2026-09-13 the token tray
 (`archetypes/token_tray.py`, the first whose compartments hold something other than a
-card stack) — entered through `pipeline.py --spec` —
+card stack) and since 2026-09-18 the box insert
+(`archetypes/box_insert.py`, the first whose compartments are not all the same shape) —
+entered through `pipeline.py --spec` —
 see **Organizer — the parametric path** below. Phase 3 asserts a spec run's geometry
 instead of repairing it and measures every designed feature back to ±0,05 mm, and
 `POST /jobs` accepts a spec (2026-09-03), and **since 2026-09-11 a person can compose one
@@ -472,16 +474,16 @@ mesh bytes with `X-DS-Up-Axis`, `X-DS-Model`, `X-DS-Model-Version`, `X-DS-Mesh-F
 
 ### Organizer — the parametric path (pythonsrc/organizer/)
 
-The pivot's engine: a **spec schema** and **three archetypes**, entered through
+The pivot's engine: a **spec schema** and **four archetypes**, entered through
 `pipeline.py --spec PATH`. *The LLM interprets words; it never produces
 geometry* — and the spec is the boundary that rule describes. Everything left of it may
 be probabilistic; everything right of it is deterministic, and the same spec compiles to
-the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.py` and
-`tests/test_token_tray.py` pin that).
+the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.py`,
+`tests/test_token_tray.py` and `tests/test_box_insert.py` pin that).
 
 - **`spec.py` is stdlib-only, on purpose.** Frozen dataclasses (`OrganizerSpec`,
-  `Compartment`, `CardStack`, `Pocket`, `Lid`, `Divider`, `Tray`, `Constraints`,
-  `Process`), millimetres
+  `Compartment`, `CardStack`, `Pocket`, `Lid`, `Divider`, `Tray`, `Insert`,
+  `Constraints`, `Process`), millimetres
   rounded to 1 µm on construction so `from_dict(to_dict(s)) == s` holds exactly,
   `from_dict`
   refusing unknown keys, and one `SpecError` listing *every* problem with its dotted
@@ -505,16 +507,23 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   in silence. `isCardStack` in `web/src/organizer/spec.ts` is the same narrowing on the
   browser side.
 - **An archetype's parameters are a *section* on the spec, and an absent section is
-  omitted from the canonical form.** `Lid`, `Divider` and `Tray` are `Optional[...] =
-  None` and named in `_OPTIONAL_SECTIONS`, which is what `to_dict` drops when they are
-  None.
+  omitted from the canonical form.** `Lid`, `Divider`, `Tray` and `Insert` are
+  `Optional[...] = None` and named in `_OPTIONAL_SECTIONS`, which is what `to_dict` drops
+  when they are None.
   `dataclasses.asdict` would have written `"divider":null` into every deck box spec ever
   stored — moving every one of their hashes for a field they do not mention, and moving
   them all again for the next archetype's section. `from_dict` defaults each to None, so
   the round trip is unaffected and the fixed hash vector in `tests/test_organizer_spec.py`
-  did not move — and did not move again when `tray` joined them, which is the property
-  that tuple exists for and what `test_the_third_archetypes_section_moved_no_existing_hash`
-  pins. `RawSpec` in `web/src/api/client.ts` declares every section optional for
+  did not move — and did not move again when `tray` joined them, or when `insert` did
+  (issue #152), which is the property that tuple exists for and what
+  `test_the_third_archetypes_section_moved_no_existing_hash` and its fourth-archetype twin
+  pin. The fourth one is pinned harder, and deliberately: `EXAMPLE_SPEC_HASHES` carries
+  the literal `spec_hash` of all three earlier archetypes' `example()`, **captured on
+  `main` before `insert` was written**, because a new optional section is the *only*
+  additive-safe change this schema has and nothing mechanical stops a well-meant scalar
+  on `CardStack`, `Pocket`, `Process`, `Constraints` or `Tray` — which is written into
+  every canonical form there has ever been.
+  `RawSpec` in `web/src/api/client.ts` declares every section optional for
   the same reason. The alternative — a `SCHEMA_VERSION` bump — refuses every existing
   spec file for an additive field.
   The parameters live on the spec rather than as archetype constants because F8 iterates
@@ -748,12 +757,84 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
     that pushed the box over is a number *nobody typed*; here every millimetre was
     typed, so the honest answer is "it does not fit, by this much, on this axis" and not
     a spec the composer cannot show.
+- **`box_insert` is one enclosure holding several *differently shaped* fitted regions,
+  and it is where PRD §1's composition claim becomes true of the code** (issue #152,
+  2026-09-18). A card well, a token pocket and a dice well in one manifold body, compiled
+  to fit the interior of a publisher's box. One part, so the gate is told
+  `expected_components=1`. `insert.rows` groups the compartment list into rows; with
+  `w = process.wall_mm` and `f = process.floor_mm`:
+
+  ```
+  row_depth[r] = max cd in row r        row_width[r] = Σ cw in row r + (n_r + 1)·w
+  external_w   = max row_width[r]       external_d   = Σ row_depth + (rows + 1)·w
+  external_h   = max ch + f             row_wall[r]  = w + (external_w − row_width[r])
+                                                           / (n_r + 1)
+  x[r][k] = (k + 1)·row_wall[r] + Σ earlier cw in the row
+  y[r]    = (r + 1)·w + Σ earlier row_depth        z_floor = external_h − ch
+  ```
+
+  - **One archetype with a heterogeneous compartment list, not a container that nests the
+    existing ones.** That was the open question, and three things settled it. A nested
+    spec changes the *shape* of `compartments`, which is a schema change rather than a new
+    optional section, so every stored `spec_hash` would move. Every archetype it could
+    nest carries a section an insert has to refuse anyway (`lid`, `divider`, `tray`). And
+    what an insert actually borrows is already shared — `resolve_stack`,
+    `rounded_rect_prism`/`base_chamfer`, `external_overshoots`, `stray_section_problem`,
+    `SweepCase`. What is genuinely new is *layout*, which no module had.
+  - **No new content type.** Card stacks, token pockets and dice wells are `CardStack`
+    and `Pocket`, which is what keeps every stored hash still: a die clearance is
+    unsourced (see the token tray above), so a dice well is a typed pocket like any other.
+  - **`insert.rows` is the whole layout grammar and nobody types a position.** Each entry
+    is how many compartments that row holds, front to back; the compartments fill them in
+    order; `box_insert.validate` refuses a `rows` whose entries do not sum to the
+    compartment count. That is `Tray.columns`' rule in the other direction — there, one
+    number and a list that must divide by it — and both exist so a spec cannot state a
+    layout its compartment list fails to fill. Positions are derived because they are not
+    a decision anybody makes: given the contents, the wall and the grouping there is
+    exactly one rectangular layout, and a spec carrying `x_mm` could contradict its own
+    contents. A compartment that **spans two rows** is not expressible and is not built.
+  - **Slack in a narrower row is shared equally across that row's X walls.** The
+    alternative was one thick end wall. Equal costs nothing — the shell stays rectangular,
+    no millimetre anybody typed changes, and `row{r}_wall_mm` is one measurable number per
+    row rather than a wall that is 1,6 mm here and 6,4 mm there. What it *does* mean is
+    that `process.wall_mm` is the **minimum** wall rather than the exact one, which
+    `to_view` says on the row it appears on and `ARCHETYPE_WALL_MM`'s comment repeats.
+  - **Per-compartment depth is the floor rising, not the rim falling.** Each well is cut
+    from its own `z_floor` through the top, so the part is one body with several floor
+    planes and one rim. That is the feature `token_tray` deferred, and `floor_mm` is the
+    floor under the **deepest** compartment — the only one that number names.
+  - **A card stack lies flat**: footprint `(fw + cc) × (fh + cc)`, well depth
+    `n·pitch + stack_slack_mm`. A sleeved card stands 92 mm and the interiors this fills
+    run 70–75 mm (`docs/dimension-kb-research.md` §7; Wingspan at 72 mm), so on edge is
+    the deck box's orientation and not an insert's. A v1 decision rather than a permanent
+    one — and if an orientation flag is ever wanted it goes on the `insert` section,
+    **never** on `CardStack`, where a field moves every stored hash.
+  - **The interior is a limit, not a target.** `constraints.max_external_mm` is already
+    documented as a box interior somebody measured and `fit_margin_mm` already comes off
+    it; that machinery was written for this case and took no change. So the externals are
+    derived from the contents and compared against the interior, never stretched to it.
+    An overshoot is a verdict (the tray's rule) naming the axis, and — new here — the
+    **undershoot** is printed on the fits line too: an insert 3 mm narrower than the box
+    rattles, slides under the lid and tips its contents out. Filling to the interior, and
+    the locking tabs that are the other answer to it (#153), are not built. The
+    undershoot is measured against the *effective* limit, or two millimetres of
+    deliberate clearance would read as a fault on every part that fits perfectly.
+  - **The shell is rounded and chamfered; the wells are square.**
+    `process.corner_radius_mm` and `process.base_chamfer_mm` go through
+    `rounded_rect_prism` as the deck box's do — the audited standard calls both mandatory
+    and an insert is the part it is about — with the deck box's two refusals restated: a
+    round larger than the wall it is cut from, a chamfer at or above the floor.
+    `process.cavity_corner_radius_mm` is read by nobody here and `to_view`'s `note` says
+    so.
 - **Archetype rules live in the archetype.** A lip thinner than `min_feature_mm`, a
   second compartment, magnets, a lid taller than the cavity — `deck_box.validate`
   refuses each with the remedy named. A tab as wide as its plate, a missing `divider`
   section, a sub-`min_feature_mm` tab — `card_divider.validate` likewise. A missing
   `tray` section, a column count that does not divide the compartments, an irregular
-  grid, a sub-`min_feature_mm` pocket, wall or floor — `token_tray.validate`. Ignoring an
+  grid, a sub-`min_feature_mm` pocket, wall or floor — `token_tray.validate`. A missing
+  `insert` section, row counts that do not sum to the compartment list, a
+  sub-`min_feature_mm` compartment, wall or floor, a corner round wider than the wall, a
+  chamfer that reaches the floor — `box_insert.validate`. Ignoring an
   unsupported field prints a different box than the one asked for, silently.
 - **Every designed feature is measured back off the mesh** (`deck_box.measure`, the
   shape of text-to-cad's measure/align checkers): the plate is split into body and lid,
@@ -771,10 +852,47 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   (the three externals, the wall, the floor), which means a report saying *within
   tolerance* with every pocket in the grid unchecked; a divider shifted 0,5 mm leaves
   every external exactly right, and `test_a_single_pocket_out_of_position_is_caught_by_name`
-  is that case. `measure(mesh)` still takes no spec: the tray's grid is read off the
-  plane counts (`2n + 2` per axis, exactly three on Z), which is what lets it refuse a
+  is that case. For the tray, `measure(mesh)` still takes no spec: its grid is read off
+  the plane counts (`2n + 2` per axis, exactly three on Z), which is what lets it refuse a
   mesh that is not a tray instead of quietly measuring one. `MEASURED_FEATURES` stays
   required of every module and is the fallback.
+- **A ragged layout cannot be read off a plane count at all, so the box insert measures
+  region by region** (issue #152). `token_tray`'s docstring says why in advance: a
+  compartment shallower or narrower than its neighbour "would put a Y plane at the top of
+  one pocket and nowhere else", and a global read cannot tell a designed edge from an
+  artefact. `compiler.face_planes_within` is the answer — `face_planes` restricted to the
+  triangles whose centroid lies inside an axis-aligned box — and the split of
+  responsibility is the whole of what keeps it a measurement: **the design supplies the
+  region, the mesh supplies the numbers.** Each compartment contributes five features read
+  inside its own region: `c{i}_width_mm`, `c{i}_depth_mm`, `c{i}_height_mm` and
+  **`c{i}_x_mm`, `c{i}_y_mm`**. The positions are features because in a ragged layout
+  nothing else catches a right-sized well built in the wrong place — a regular grid's
+  plane count moves when a divider does and a ragged one's does not
+  (`test_a_compartment_out_of_position_is_caught_by_name`).
+  Three details are load-bearing:
+  - The region reaches past the well by `0,4 ×` the thinnest wall, floor or well depth
+    (`MEASURE_MARGIN_FRACTION`). Under 1 whole wall, or it would swallow a neighbour's
+    face and report a plane count the design does not have; comfortably over the ±0,05 mm
+    claim, or a wall displaced by less than the claim allows would be reported as
+    *missing* rather than as *out of tolerance* — a true finding, but the wrong one.
+  - The Z span stops a margin *below* the rim, because the rim overhangs into every
+    compartment's region and a read that sometimes caught it would make the plane count
+    depend on how the kernel triangulated an annulus.
+  - The region is anchored to **the part's own minimum corner, read off the mesh**, not
+    to the design's zero. Every other archetype measures differences of planes and is
+    translation-invariant for free; a region is absolute and is not, and Phase 3's assert
+    path XY-centres the plate it is handed. This was a real bug, caught by
+    `test_phase_3_asserts_an_insert_and_hands_the_slicer_the_designed_dimensions`, and it
+    holds only for as long as Phase 3 translates without rotating or scaling — the same
+    contract the annotated preview's frame reconciliation rests on.
+
+  Because that needs the spec, the registry grew a second optional hook beside
+  `measured_features`: a module may declare **`MEASURE_NEEDS_SPEC = True`** and
+  `archetypes.measure_spec_mesh` then calls `measure(mesh, spec)`. Additive — the other
+  three keep `measure(mesh)` — and declared on the module rather than sniffed off the
+  signature, because "this measurer needs the design" is a claim a reviewer should see in
+  the diff. `verify_spec_mesh`, the CLI and Phase 3 all route through the dispatch and
+  took no change.
 - **`--spec` is the `--skip-visualizer --skip-sculptor --mesh --no-scale` seam with a
   compile step in front.** The three flags are implied (`_apply_spec_mode`) — the run
   that forgets `--no-scale` prints a 50 mm deck box. `--mesh` and `--hollow` are refused.
@@ -924,14 +1042,20 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   `web/`). It offered `dice_tray`, `box_insert` and `dividers` until the divider landed
   and none of the three existed: a strip cell for a shape the compiler would refuse is
   the same fabrication as a fits badge with no measurement behind it. A cell appears the
-  day the compiler does, which is what `Token tray` did in issue #84 and what
-  `box_insert` will do in Phase 3. That test also asserts every registry module exposes the whole
+  day the compiler does, which is what `Token tray` did in issue #84 and `Box insert` in
+  issue #152 — the rule those three dead cells were removed to establish, honoured twice
+  now rather than merely stated. That test also asserts every registry module exposes the whole
   archetype API, which is what "adding an archetype is a module and a line" means.
-- **Not built, and where it is:** the *generic* envelope sweep across every archetype
-  (#85 — there are three, each with its own `parametrize`), the box-insert archetype
-  and with it ragged grids, per-pocket heights and explicit compartment positions,
-  finger cutouts and rounded corners (their own issues; the tray says "square pockets"
-  in `to_view`), token and dice presets in the dimension KB (M2 — §"No token or dice
+- **Not built, and where it is:** ragged *grids* inside a token tray (the insert is the
+  archetype that lays out a ragged layout; the tray stays regular so its plane count can
+  be its grid), an insert that **fills** the interior rather than fitting inside it and
+  the locking tabs that are the other answer to a rattling one (#153), cards **on edge**
+  in an insert (a later flag on the `insert` section, never on `CardStack`), a compartment
+  that **spans two rows**, rounded well corners and finger cutouts (their own issues; both
+  the tray and the insert say so in `to_view`), the game-box interior KB (#154 — the
+  interior is typed today), the stackable enclosure (#155 — the same compiler with the
+  constraint inverted, which is why `box_insert.derive` is a pure function of the
+  contents), token and dice presets in the dimension KB (M2 — §"No token or dice
   presets" above is why none ship now), and LLM extraction (M2).
   `python -m pythonsrc.organizer example|compile|measure [--report]` is the
   developer loop; `example` takes the archetype positionally or as `--archetype`.

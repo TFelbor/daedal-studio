@@ -45,6 +45,60 @@
   cursor: not-allowed;
 }
 
+/* The box insert's compartment list. One bordered block per compartment, stacked, so
+   that "compartment 2" is a thing on screen a refusal can be put under — which is the
+   whole reason its controls are indexed rather than shared. */
+.compartments {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.compartment {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--rule-strong);
+  padding: 12px 14px;
+}
+
+/* Wrapping rather than shrinking, at every width. The kind toggle and Remove are two
+   controls with words in them, and a phone is 375px wide: laying them beside the title
+   and letting them squeeze puts "Remov" against the border, which reads as a rendering
+   bug rather than as a tight fit. The viewport smoke only catches an element leaving the
+   *viewport*, so this is the half it cannot see. */
+.compartmentHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.compartmentTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compartmentTools .seg {
+  flex: none;
+}
+
+.compartmentTools button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 5px 9px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.compartmentTools button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* A refusal reads as one: the failure colour, monospaced like the value it is about,
    and directly under the control that caused it. */
 .problems {

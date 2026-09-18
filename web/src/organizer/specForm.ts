@@ -26,6 +26,20 @@
 import type { SpecProblem } from '../api/client';
 import { type ArchetypeId } from './spec';
 
+/**
+ * One editable field of one of a box insert's compartments.
+ *
+ * A control key with an index in it, which nothing else here has, and it is the box
+ * insert that forces it: every other archetype has a *fixed* set of controls, so a
+ * refusal about "the pocket" has one place to land however many compartments the spec
+ * carries. An insert's compartments are each their own shape and size, so
+ * `spec.compartments[2].contents.height_mm` belongs under compartment 3's own field and
+ * nowhere else — flattening it to `[0]`, which is right for a tray's identical pockets,
+ * would put a refusal about the dice well under the card well.
+ */
+export type CompartmentField =
+  `compartment.${number}.${'count' | 'card' | 'sleeving' | 'widthMm' | 'depthMm' | 'heightMm'}`;
+
 /** Every control the configurator renders, plus `form` for anything unrouted. */
 export type SpecField =
   | 'archetype'
@@ -44,6 +58,8 @@ export type SpecField =
   | 'pocketWidthMm'
   | 'pocketDepthMm'
   | 'pocketHeightMm'
+  | 'insertRows'
+  | CompartmentField
   | 'form';
 
 /**
@@ -95,6 +111,31 @@ export interface SpecFormState {
   pocketWidthMm: string;
   pocketDepthMm: string;
   pocketHeightMm: string;
+  /** Box insert only: the compartment list, and how it is grouped into rows. */
+  compartments: CompartmentFormState[];
+  /** `insert.rows`, as the comma-separated list a person types. */
+  insertRows: string;
+}
+
+/**
+ * One compartment of a box insert, as the form holds it.
+ *
+ * Both shapes' fields live on the same object and the *kind* decides which are sent —
+ * rather than a discriminated union — because switching a compartment from cards to a
+ * pocket and back must not throw away what was typed in the other half. The schema's own
+ * union has no `kind` discriminator (adding one would have moved every stored
+ * `spec_hash`), so this is the browser's word and never travels: `specFromForm` sends
+ * `count`/`card`/`sleeving` **or** the three millimetres, which is exactly the narrowing
+ * `_union_class` does at the other end.
+ */
+export interface CompartmentFormState {
+  kind: 'cards' | 'pocket';
+  count: string;
+  card: string;
+  sleeving: string;
+  widthMm: string;
+  depthMm: string;
+  heightMm: string;
 }
 
 /**
@@ -109,6 +150,40 @@ export interface SpecFormState {
  * "take the schema's", so the panel's first render shows the archetype's own wall
  * rather than a number this file made up. See `REQUIRED_CONTENT_MM`.
  */
+/** A new compartment: a pocket with nothing typed in it yet, or a Commander deck. */
+export function blankCompartment(kind: 'cards' | 'pocket' = 'pocket'): CompartmentFormState {
+  return {
+    kind,
+    count: '100',
+    card: 'standard',
+    sleeving: 'double',
+    widthMm: '',
+    depthMm: '',
+    heightMm: '',
+  };
+}
+
+/**
+ * What a box insert opens on: `box_insert.example()`, field for field.
+ *
+ * Its own constant rather than an inline literal inside `DEFAULT_SPEC_FORM`, so that the
+ * *shape* of the opening form stays one flat object of strings — which is what
+ * `tests/test_composer_options.py` reads to hold every millimetre field to the
+ * blank-means-default rule. These millimetres are exempt from that rule for
+ * `REQUIRED_CONTENT_MM`'s reason, and the test that says so reads this constant by name.
+ *
+ * The three compartments are the acceptance spec: a 60-card double-sleeved well across
+ * the front, a 40 × 40 × 15 mm token pocket and a 20 × 20 × 18 mm dice well behind it.
+ * Both pocket sizes are **design examples and not sourced sizes** — nothing in the
+ * dimension research gives a punchboard footprint or a die clearance — which is what the
+ * fields' own note says on screen.
+ */
+export const DEFAULT_INSERT_COMPARTMENTS: CompartmentFormState[] = [
+  { ...blankCompartment(), kind: 'cards', count: '60' },
+  { ...blankCompartment(), kind: 'pocket', widthMm: '40', depthMm: '40', heightMm: '15' },
+  { ...blankCompartment(), kind: 'pocket', widthMm: '20', depthMm: '20', heightMm: '18' },
+];
+
 export const DEFAULT_SPEC_FORM: SpecFormState = {
   archetype: 'deck_box',
   count: '100',
@@ -126,6 +201,8 @@ export const DEFAULT_SPEC_FORM: SpecFormState = {
   pocketWidthMm: '20',
   pocketDepthMm: '20',
   pocketHeightMm: '15',
+  compartments: DEFAULT_INSERT_COMPARTMENTS,
+  insertRows: '1, 2',
 };
 
 /**
@@ -206,6 +283,7 @@ function wholeCount(raw: string): number | null {
  * holds both halves.
  */
 export function localProblems(state: SpecFormState): SpecProblem[] {
+  if (state.archetype === 'box_insert') return insertProblems(state);
   if (state.archetype !== 'token_tray') return [];
   const problems: SpecProblem[] = [];
   for (const [field, label, raw] of [
@@ -222,6 +300,51 @@ export function localProblems(state: SpecFormState): SpecProblem[] {
     });
   }
   return problems;
+}
+
+/**
+ * `insert.rows` as the numbers it is, or the text that was typed when it is not.
+ *
+ * Sent as typed rather than dropped, for `optionalMm`'s reason: the schema refuses
+ * `rows` that is not a list of positive whole numbers, it names the path when it does,
+ * and quoting what was typed is what tells somebody a semicolon is the problem. So the
+ * *parse* is the schema's refusal and not this file's — unlike the token tray's row
+ * count, which is never sent at all and therefore has nowhere else to be refused.
+ */
+function parseRows(raw: string): number[] | string {
+  const trimmed = raw.trim();
+  const entries = trimmed.split(',');
+  const counts = entries.map((entry) => wholeCount(entry));
+  if (!trimmed || counts.some((n) => n === null)) return trimmed;
+  return counts as number[];
+}
+
+/**
+ * The one refusal a box insert's form has to make itself: the rows must account for
+ * every compartment.
+ *
+ * `box_insert.validate` is where that rule lives and it needs the geometry kernel, which
+ * the API server does not install — so, exactly like `token_tray`'s column count, a
+ * mismatch resolves clean, submits, and fails ten seconds into Phase 2 on a run that has
+ * already written a row. The difference from the tray is what is *not* here: a badly
+ * typed row entry is a path the schema names (`spec.insert.rows[1]`), so it is left to
+ * the schema and routed, rather than being refused twice in two different sentences.
+ *
+ * The message names both numbers, because "the rows do not match" is not something a
+ * person can act on and "3 compartments in rows of 1 / 1 — that is 2" is.
+ */
+function insertProblems(state: SpecFormState): SpecProblem[] {
+  const rows = parseRows(state.insertRows);
+  if (!Array.isArray(rows)) return [];
+  const total = rows.reduce((sum, n) => sum + n, 0);
+  if (total === state.compartments.length) return [];
+  return [{
+    path: 'form.insertRows',
+    message:
+      `Rows of ${rows.join(' / ')} account for ${total} compartments and there ` +
+      `${state.compartments.length === 1 ? 'is' : 'are'} ${state.compartments.length}; ` +
+      'every compartment goes in exactly one row',
+  }];
 }
 
 /**
@@ -243,26 +366,53 @@ function gridCells(rows: string, columns: string): number {
 /**
  * The form as an organizer spec, ready for `/organizer/resolve` or `POST /jobs`.
  *
- * The archetype decides which optional section is present, and all three archetypes
+ * The archetype decides which optional section is present, and all four archetypes
  * *require* theirs: `deck_box.validate` refuses a spec with no `lid`,
- * `card_divider.validate` refuses one with no `divider` and one that carries a lid, and
+ * `card_divider.validate` refuses one with no `divider` and one that carries a lid,
  * `token_tray.validate` refuses one with no `tray` and one whose compartments hold card
- * stacks. None of those rules can run on the API server — every one of those modules
- * imports the geometry kernel — so a section left out here would not be a 422, it would
- * be a failed Phase 2 ten seconds into a run. The empty object is what carries the
- * schema's own defaults.
+ * stacks, and `box_insert.validate` refuses one with no `insert` and one whose `rows` do
+ * not sum to the compartment list. None of those rules can run on the API server — every
+ * one of those modules imports the geometry kernel — so a section left out here would not
+ * be a 422, it would be a failed Phase 2 ten seconds into a run. The empty object is what
+ * carries the schema's own defaults.
  *
- * The tray is also the one archetype whose *compartments* differ: it sends one pocket
- * per grid cell rather than one card stack, which is what `Compartment.contents` became
- * a union for. Identical pockets, because v1 is a regular grid — one width per column,
- * one depth per row, one height overall — and `token_tray.validate` refuses anything
- * else. Ragged layouts belong to the box-insert archetype.
+ * Two archetypes also send *compartments* that are not one card stack. The tray sends one
+ * pocket per grid cell, which is what `Compartment.contents` became a union for —
+ * identical pockets, because v1 is a regular grid (one width per column, one depth per
+ * row, one height overall) and `token_tray.validate` refuses anything else. The box
+ * insert sends a list whose entries are each their own shape, card stack or pocket, which
+ * is the ragged layout the tray deferred to it.
  *
  * A grid that is not two positive whole numbers produces **no compartments at all**,
  * and `localProblems` is what says so on the control that caused it. See `gridCells`.
  */
 export function specFromForm(state: SpecFormState): Record<string, unknown> {
   const spec: Record<string, unknown> = { archetype: state.archetype, schema_version: 1 };
+
+  if (state.archetype === 'box_insert') {
+    // The one archetype whose compartments are each their own shape, so each is sent as
+    // whichever half of the union it is — `count`/`card`/`sleeving` or the three
+    // millimetres, never both, which is what `_union_class` refuses at the other end.
+    // `fit_intent` rides along because a card well's clearance is chosen by it; a spec
+    // with no card compartment carries it and builds nothing from it, which is the
+    // "process fields this archetype does not read still hash" rule every module states.
+    spec.compartments = state.compartments.map((compartment) => ({
+      contents: compartment.kind === 'cards'
+        ? {
+            count: requiredNumber(compartment.count),
+            card: compartment.card,
+            sleeving: compartment.sleeving,
+          }
+        : {
+            width_mm: requiredNumber(compartment.widthMm),
+            depth_mm: requiredNumber(compartment.depthMm),
+            height_mm: requiredNumber(compartment.heightMm),
+          },
+    }));
+    spec.insert = { rows: parseRows(state.insertRows) };
+    spec.process = present({ fit_intent: state.fitIntent, wall_mm: optionalMm(state.wallMm) });
+    return spec;
+  }
 
   if (state.archetype === 'token_tray') {
     const columns = requiredNumber(state.columns);
@@ -326,9 +476,30 @@ export const FIELD_BY_PATH: Record<string, SpecField> = {
   'spec.divider.tab_height_mm': 'tabHeightMm',
   'spec.divider.tab_position': 'tabPosition',
   'spec.tray.columns': 'columns',
+  'spec.insert.rows': 'insertRows',
   'spec.compartments[0].contents.width_mm': 'pocketWidthMm',
   'spec.compartments[0].contents.depth_mm': 'pocketDepthMm',
   'spec.compartments[0].contents.height_mm': 'pocketHeightMm',
+};
+
+/**
+ * Which compartment control a `contents` field belongs to, for a box insert.
+ *
+ * Keyed on the schema's own field name rather than on a dotted path, because the path
+ * carries the index and the index is the control: `spec.compartments[2].contents.count`
+ * is compartment 3's card count and nothing else's. The two card fields a compartment
+ * does not edit are absent by construction — a pocket sends no `count` — so the schema
+ * cannot name one that has nowhere to land.
+ */
+type CompartmentFieldName = 'count' | 'card' | 'sleeving' | 'widthMm' | 'depthMm' | 'heightMm';
+
+export const COMPARTMENT_FIELD_BY_KEY: Record<string, CompartmentFieldName> = {
+  count: 'count',
+  card: 'card',
+  sleeving: 'sleeving',
+  width_mm: 'widthMm',
+  depth_mm: 'depthMm',
+  height_mm: 'heightMm',
 };
 
 /**
@@ -343,6 +514,7 @@ export const FIELD_BY_PATH: Record<string, SpecField> = {
 export const LOCAL_FIELD_BY_PATH: Record<string, SpecField> = {
   'form.rows': 'rows',
   'form.columns': 'columns',
+  'form.insertRows': 'insertRows',
 };
 
 /**
@@ -362,9 +534,49 @@ function flattenCompartment(path: string): string {
   return path.replace(/compartments\[\d+\]/, 'compartments[0]');
 }
 
-export function fieldForPath(path: string): SpecField {
+/**
+ * The compartment control a path names, for a box insert, or null.
+ *
+ * The **opposite** of `flattenCompartment`, and both are right for the archetype they
+ * are about: a tray's compartments are identical, so one refusal belongs under one
+ * control and five copies of it are noise; an insert's are each their own shape, so the
+ * index is the only thing that says which one is wrong. Sending the dice well's refusal
+ * to the card well would be worse than dropping it, because it looks answered.
+ */
+function compartmentField(path: string): CompartmentField | null {
+  const match = /^spec\.compartments\[(\d+)\]\.contents\.(\w+)$/.exec(path);
+  if (!match) return null;
+  const name = COMPARTMENT_FIELD_BY_KEY[match[2]];
+  return name ? (`compartment.${Number(match[1])}.${name}` as CompartmentField) : null;
+}
+
+/**
+ * Which control a dotted problem path belongs on, in this archetype's layout.
+ *
+ * The archetype is an argument because one path routes two ways: a box insert wants
+ * `spec.compartments[2]…` on compartment 3's own control and every other archetype wants
+ * it flattened onto the one pocket control. It is optional so that a caller with no
+ * archetype in hand keeps the behaviour this function always had.
+ */
+export function fieldForPath(path: string, archetype?: ArchetypeId): SpecField {
+  if (archetype === 'box_insert') {
+    const compartment = compartmentField(path);
+    if (compartment) return compartment;
+  }
   return FIELD_BY_PATH[path] ?? LOCAL_FIELD_BY_PATH[path]
-    ?? FIELD_BY_PATH[flattenCompartment(path)] ?? 'form';
+    ?? FIELD_BY_PATH[stripIndices(path)] ?? 'form';
+}
+
+/**
+ * A path with its list indices flattened: `compartments[3]` → `[0]`, `rows[1]` → `rows`.
+ *
+ * Two lists, two different flattenings, and both are one rule: *route a refusal to the
+ * control that carries the value*. Six identical pockets share one control, so their
+ * index goes to `[0]`; every entry of `insert.rows` is typed into the same comma-separated
+ * field, so its index goes away entirely.
+ */
+function stripIndices(path: string): string {
+  return flattenCompartment(path).replace(/\.rows\[\d+\]$/, '.rows');
 }
 
 /**
@@ -389,15 +601,21 @@ export function mergeProblems(live: SpecProblem[], submitted: SpecProblem[]): Sp
  * two different ones about two different compartments, which flatten to different
  * sentences. See `flattenCompartment`.
  */
-export function problemsByField(problems: SpecProblem[]): Partial<Record<SpecField, string[]>> {
+export function problemsByField(
+  problems: SpecProblem[], archetype?: ArchetypeId,
+): Partial<Record<SpecField, string[]>> {
   const grouped: Partial<Record<SpecField, string[]>> = {};
   const seen = new Set<string>();
   for (const problem of problems) {
-    const field = fieldForPath(problem.path);
+    const field = fieldForPath(problem.path, archetype);
     // Every message this schema produces opens with the path it is about and nothing
     // else — `problem_path` in `pythonsrc/organizer/spec.py` is the one place that says
-    // so — which is what makes replacing the prefix safe.
-    const message = problem.message.replace(problem.path, flattenCompartment(problem.path));
+    // so — which is what makes replacing the prefix safe. An insert keeps its indices:
+    // the message is going under the compartment it names, so erasing which one it is
+    // would strip the one word that makes it findable.
+    const message = archetype === 'box_insert' && compartmentField(problem.path)
+      ? problem.message
+      : problem.message.replace(problem.path, stripIndices(problem.path));
     if (seen.has(`${field}·${message}`)) continue;
     seen.add(`${field}·${message}`);
     (grouped[field] ??= []).push(message);

@@ -1233,17 +1233,29 @@ def spec_label(spec: Dict[str, Any]) -> str:
     `pythonsrc/organizer/spec.py`, issue #84), so there are two sentences. The pocket
     one names the grid rather than the count, because six identical 20 mm pockets read
     as "2 × 3 pockets 20 × 20 × 15 mm" and not as "6 pockets": a tray is the grid.
+
+    **A box insert's compartments are not all the same shape**, which is the thing this
+    function assumed until issue #152 and would have got silently wrong: it read
+    `compartments[0]` and described the whole part with it, so an insert holding a deck
+    and two pockets would have been titled "box insert · 60 double-sleeved standard
+    cards" — a true sentence about one third of the part, in the column a person scans to
+    tell two jobs apart. An insert is therefore listed rather than summarised: every
+    compartment, in order, each in its own shape's words. There is no grid to collapse
+    them into, which is exactly what makes it the archetype it is.
     """
     archetype = str(spec.get("archetype") or "organizer").replace("_", " ")
     compartments = spec.get("compartments") or []
     contents = (compartments[0] or {}).get("contents") if compartments else None
     if not isinstance(contents, dict):
         return archetype
+    if spec.get("insert") is not None:
+        shapes = [_contents_phrase((c or {}).get("contents")) for c in compartments]
+        shapes = [s for s in shapes if s]
+        if not shapes:
+            return archetype
+        return f"{archetype} · {len(shapes)} compartments: " + ", ".join(shapes)
     if "count" in contents:
-        count = contents.get("count")
-        card = contents.get("card", "standard")
-        sleeving = SLEEVING_WORDS.get(str(contents.get("sleeving")), str(contents.get("sleeving")))
-        return f"{archetype} · {count} {sleeving} {card} cards"
+        return f"{archetype} · {_contents_phrase(contents)}"
     # A pocket. `tray.columns` is the only layout field and the rows follow from the
     # compartment count — the same derivation `token_tray.derive` does, and the only
     # arithmetic in this function, because a label that said "6 pockets" for a 2 × 3
@@ -1251,11 +1263,33 @@ def spec_label(spec: Dict[str, Any]) -> str:
     total = len(compartments)
     columns = (spec.get("tray") or {}).get("columns")
     grid = f"{total // columns} × {columns}" if isinstance(columns, int) and columns > 0 and not total % columns else str(total)
-    size = " × ".join(
+    return f"{archetype} · {grid} pockets {_pocket_size(contents)} mm"
+
+
+def _pocket_size(contents: Dict[str, Any]) -> str:
+    """A pocket's three millimetres, as `W × D × H`. Non-numbers print as typed — this
+    runs on the canonical spec, but `POST /organizer/resolve` labels while somebody is
+    still editing, and a half-typed field must not raise here."""
+    return " × ".join(
         f"{contents[key]:g}" if isinstance(contents.get(key), (int, float)) else str(contents.get(key))
         for key in ("width_mm", "depth_mm", "height_mm")
     )
-    return f"{archetype} · {grid} pockets {size} mm"
+
+
+def _contents_phrase(contents: Any) -> str:
+    """One compartment in the words of whichever shape it is, or "" for neither.
+
+    The `Compartment.contents` union told apart the way the schema tells it apart —
+    `count` against the three millimetres, no `kind` discriminator — so a label and a
+    spec cannot disagree about what a compartment holds.
+    """
+    if not isinstance(contents, dict):
+        return ""
+    if "count" in contents:
+        card = contents.get("card", "standard")
+        sleeving = SLEEVING_WORDS.get(str(contents.get("sleeving")), str(contents.get("sleeving")))
+        return f"{contents.get('count')} {sleeving} {card} cards"
+    return f"{_pocket_size(contents)} mm"
 
 
 class JobRequest(BaseModel):

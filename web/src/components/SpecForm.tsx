@@ -9,7 +9,13 @@ import {
   SLEEVING_NOTE,
   TAB_POSITIONS,
 } from '../organizer/spec';
-import { problemsByField, type SpecFormState } from '../organizer/specForm';
+import {
+  blankCompartment,
+  problemsByField,
+  type CompartmentFormState,
+  type SpecField,
+  type SpecFormState,
+} from '../organizer/specForm';
 import type { ResolvedStack, SpecProblem } from '../api/client';
 import styles from './SpecForm.module.css';
 
@@ -87,10 +93,16 @@ export function SpecForm({
   unreachable = false,
   disabled = false,
 }: SpecFormProps) {
-  const byField = problemsByField(problems);
+  const byField = problemsByField(problems, state.archetype);
   const set = (patch: Partial<SpecFormState>) => onChange({ ...state, ...patch });
   const isDeckBox = state.archetype === 'deck_box';
   const isTray = state.archetype === 'token_tray';
+  const isInsert = state.archetype === 'box_insert';
+
+  const setCompartment = (index: number, patch: Partial<CompartmentFormState>) =>
+    set({
+      compartments: state.compartments.map((c, i) => (i === index ? { ...c, ...patch } : c)),
+    });
 
   return (
     <div className={styles.form}>
@@ -121,12 +133,134 @@ export function SpecForm({
         </div>
       ) : null}
 
+      {/* The box insert is the one archetype whose compartments are each their own
+          shape, so its contents are a *list* rather than a fixed set of controls: add a
+          card well or a pocket, remove one, and say which row each belongs to. The list
+          is above the grid rather than in it because each entry is several controls that
+          have to read as one compartment — and because a refusal about compartment 3
+          needs a compartment 3 on screen to sit under. */}
+      {isInsert ? (
+        <>
+          <div className={styles.compartments}>
+            {state.compartments.map((compartment, index) => (
+              <CompartmentEditor
+                key={index}
+                index={index}
+                state={compartment}
+                byField={byField}
+                disabled={disabled}
+                removable={state.compartments.length > 1}
+                onChange={(patch) => setCompartment(index, patch)}
+                onRemove={() =>
+                  set({ compartments: state.compartments.filter((_, i) => i !== index) })
+                }
+              />
+            ))}
+          </div>
+
+          <div className={styles.compartmentTools}>
+            <button
+              type="button"
+              className="btn"
+              disabled={disabled}
+              onClick={() =>
+                set({ compartments: [...state.compartments, blankCompartment('cards')] })
+              }
+            >
+              Add a card well
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={disabled}
+              onClick={() =>
+                set({ compartments: [...state.compartments, blankCompartment()] })
+              }
+            >
+              Add a pocket
+            </button>
+          </div>
+        </>
+      ) : null}
+
       <div className={styles.grid}>
+        {isInsert ? (
+          <>
+            <label className={styles.field}>
+              <span className="label-tight">Rows</span>
+              <input
+                className="input"
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 1, 2"
+                value={state.insertRows}
+                disabled={disabled}
+                onChange={(e) => set({ insertRows: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                how many compartments in each row, front to back; they fill it in the
+                order above
+              </span>
+              {/* Two sources, one control. A badly typed entry is `spec.insert.rows[1]`,
+                  which the schema names and routes here; that the counts *add up to the
+                  compartment list* is `box_insert.validate`'s rule, which needs the
+                  geometry kernel the API server does not install — so the browser makes
+                  that one itself. See `localProblems`. */}
+              <FieldProblems messages={byField.insertRows} />
+            </label>
+
+            <div className={styles.field}>
+              <span className="label-tight">Fit</span>
+              <div className={`seg ${styles.intentSeg}`} role="group" aria-label="Fit intent">
+                {FIT_INTENTS.map((intent) => (
+                  <button
+                    key={intent}
+                    type="button"
+                    disabled={disabled}
+                    aria-pressed={state.fitIntent === intent}
+                    className={state.fitIntent === intent ? 'is-active' : undefined}
+                    onClick={() => set({ fitIntent: intent })}
+                  >
+                    {FIT_INTENT_LABELS[intent] ?? intent}
+                  </button>
+                ))}
+              </div>
+              <span className={styles.fieldNote}>
+                how much room a card well gets around the deck; a pocket is the
+                millimetres you typed and this does not touch it
+              </span>
+              <FieldProblems messages={byField.fitIntent} />
+            </div>
+
+            <label className={styles.field}>
+              <span className="label-tight">Wall</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm — blank for the archetype’s own"
+                value={state.wallMm}
+                disabled={disabled}
+                onChange={(e) => set({ wallMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                the minimum: a row narrower than the widest shares the difference equally
+                over its own walls, so those come out thicker
+              </span>
+              <FieldProblems messages={byField.wallMm} />
+            </label>
+          </>
+        ) : null}
+
         {/* A tray holds pockets, not cards, so the two card controls are not merely
             ignored for it — they are absent. `specFromForm` sends no card stack for a
             token tray either, and a control that sends nothing is a control that
-            cannot be refused, which is worse than one that is not there. */}
-        {isTray ? null : (
+            cannot be refused, which is worse than one that is not there. An insert has
+            these controls too, but per compartment rather than once — they are in the
+            list above, where the compartment they belong to is. */}
+        {isTray || isInsert ? null : (
           <>
             <label className={styles.field}>
               <span className="label-tight">Cards</span>
@@ -168,7 +302,7 @@ export function SpecForm({
           </>
         )}
 
-        {isTray ? (
+        {isInsert ? null : isTray ? (
           <>
             <label className={styles.field}>
               <span className="label-tight">Rows</span>
@@ -431,8 +565,174 @@ export function SpecForm({
         stacks={stacks}
         resolving={resolving}
         unreachable={unreachable}
-        expectsStack={!isTray}
+        expectsStack={
+          isInsert ? state.compartments.some((c) => c.kind === 'cards') : !isTray
+        }
       />
+    </div>
+  );
+}
+
+/**
+ * One compartment of a box insert: which shape it is, and that shape's own fields.
+ *
+ * Module level for `FieldProblems`' reason — a component declared during render remounts
+ * on every keystroke and the input loses focus.
+ *
+ * The kind toggle keeps both halves of the state, so switching a compartment to a pocket
+ * and back does not throw away the card count that was typed. Only the half that is
+ * *shown* is sent (`specFromForm`), which is the union's own rule: a mapping carrying
+ * both `count` and `width_mm` is refused by the schema naming both shapes, on purpose.
+ */
+function CompartmentEditor({
+  index,
+  state,
+  byField,
+  disabled,
+  removable,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  state: CompartmentFormState;
+  byField: Partial<Record<SpecField, string[]>>;
+  disabled: boolean;
+  removable: boolean;
+  onChange: (patch: Partial<CompartmentFormState>) => void;
+  onRemove: () => void;
+}) {
+  const problems = (name: string) =>
+    byField[`compartment.${index}.${name}` as SpecField];
+  const isCards = state.kind === 'cards';
+
+  return (
+    <div className={styles.compartment}>
+      <div className={styles.compartmentHead}>
+        <span className="label">Compartment {index + 1}</span>
+        <div className={styles.compartmentTools}>
+          <div className="seg" role="group" aria-label={`Compartment ${index + 1} holds`}>
+            {(['cards', 'pocket'] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                disabled={disabled}
+                aria-pressed={state.kind === kind}
+                className={state.kind === kind ? 'is-active' : undefined}
+                onClick={() => onChange({ kind })}
+              >
+                {kind === 'cards' ? 'Cards' : 'Pocket'}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="btn" disabled={disabled || !removable} onClick={onRemove}>
+            Remove
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.grid}>
+        {isCards ? (
+          <>
+            <label className={styles.field}>
+              <span className="label-tight">Cards</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={state.count}
+                disabled={disabled}
+                onChange={(e) => onChange({ count: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                {CARD_KINDS[0]} size — 63,5 × 88,9 mm; the deck lies flat
+              </span>
+              <FieldProblems messages={problems('count')} />
+              <FieldProblems messages={problems('card')} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Sleeves</span>
+              <select
+                className="input"
+                value={state.sleeving}
+                disabled={disabled}
+                onChange={(e) => onChange({ sleeving: e.target.value })}
+              >
+                {SLEEVINGS.map((sleeving) => (
+                  <option key={sleeving} value={sleeving}>
+                    {SLEEVING_NOTE[sleeving] ?? sleeving}
+                  </option>
+                ))}
+              </select>
+              <span className={styles.fieldNote}>decides the envelope and the pitch per card</span>
+              <FieldProblems messages={problems('sleeving')} />
+            </label>
+          </>
+        ) : (
+          <>
+            {/* The three millimetres are the *input*, not a default: no token or dice
+                size is sourced anywhere in the dimension research, so there is no table
+                to resolve them against and a preset would be a sourced size plus an
+                invented clearance. */}
+            <label className={styles.field}>
+              <span className="label-tight">Width</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.widthMm}
+                disabled={disabled}
+                onChange={(e) => onChange({ widthMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                internal; no token or dice size is sourced, so this is yours
+              </span>
+              <FieldProblems messages={problems('widthMm')} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Depth</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.depthMm}
+                disabled={disabled}
+                onChange={(e) => onChange({ depthMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>internal, front to back</span>
+              <FieldProblems messages={problems('depthMm')} />
+            </label>
+
+            <label className={styles.field}>
+              <span className="label-tight">Depth (Z)</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                placeholder="mm"
+                value={state.heightMm}
+                disabled={disabled}
+                onChange={(e) => onChange({ heightMm: e.target.value })}
+              />
+              <span className={styles.fieldNote}>
+                how deep this hole is; a shallower one sits on a floor that has risen
+              </span>
+              <FieldProblems messages={problems('heightMm')} />
+            </label>
+          </>
+        )}
+      </div>
     </div>
   );
 }

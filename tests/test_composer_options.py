@@ -128,7 +128,23 @@ TRAY_BASE = {
     "schema_version": 1,
 }
 
-BASES = (BASE, TRAY_BASE)
+#: The same again, for the paths a box insert sends. A third base for `TRAY_BASE`'s
+#: reason and one more: the insert is the only archetype whose compartment list is
+#: *heterogeneous*, so its base carries a card stack **and** a pocket — which is what lets
+#: the routing test poke `compartments[1].contents.height_mm` and get a refusal about the
+#: second compartment rather than about the only one.
+INSERT_BASE = {
+    "archetype": "box_insert",
+    "compartments": [
+        {"contents": {"count": 60, "card": "standard", "sleeving": "double"}},
+        {"contents": {"width_mm": 40.0, "depth_mm": 40.0, "height_mm": 15.0}},
+    ],
+    "insert": {"rows": [1, 1]},
+    "process": {"fit_intent": "snug", "wall_mm": 1.6},
+    "schema_version": 1,
+}
+
+BASES = (BASE, TRAY_BASE, INSERT_BASE)
 
 
 def poke(base: dict, path: str, value):
@@ -289,6 +305,80 @@ def test_a_tray_routes_every_compartments_refusal_to_the_pocket_control():
     assert "spec.compartments[1].contents.width_mm" in paths
 
 
+def test_an_insert_routes_each_compartments_refusal_to_that_compartment(spec_ts):
+    """The **opposite** of the rule above, and both are right for the archetype they are
+    about. A tray's compartments are identical, so one refusal belongs under one control
+    and five copies of it are noise. An insert's are each their own shape and size, so
+    the index is the only thing that says which one is wrong — putting the dice well's
+    refusal under the card well would be worse than dropping it, because it looks
+    answered.
+
+    Read off the source, and in three halves: the archetype decides the routing, the
+    compartment path is turned into an indexed control, and the message keeps its index
+    rather than being flattened into a duplicate of its neighbour's.
+    """
+    source = WEB_FORM.read_text(encoding="utf-8")
+    assert "fieldForPath(path: string, archetype?: ArchetypeId)" in source, (
+        "fieldForPath cannot tell an insert from a tray, so one of the two is misrouted"
+    )
+    assert "if (archetype === 'box_insert')" in source
+    routing = function_body(source, "function compartmentField(path: string)")
+    assert r"spec\.compartments\[(\d+)\]\.contents\.(\w+)" in routing
+    assert "`compartment.${Number(match[1])}.${name}`" in routing
+    grouping = function_body(source, "export function problemsByField(")
+    assert "archetype === 'box_insert' && compartmentField(problem.path)" in grouping, (
+        "an insert's compartment messages are flattened, so two different compartments' "
+        "refusals collapse into one"
+    )
+    # And the schema really does name the compartment, which is what makes it routable.
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            **INSERT_BASE,
+            "compartments": [
+                INSERT_BASE["compartments"][0],
+                {"contents": {"width_mm": 40.0, "depth_mm": 40.0, "height_mm": None}},
+            ],
+        })
+    paths = [p["path"] for p in problems_with_paths(exc.value.problems)]
+    assert "spec.compartments[1].contents.height_mm" in paths
+    # Each of the six keys a compartment can be refused on has a control to land on.
+    keys = object_map(source, "COMPARTMENT_FIELD_BY_KEY")
+    assert set(keys) == {"count", "card", "sleeving", "width_mm", "depth_mm", "height_mm"}
+    tsx = WEB_FORM_TSX.read_text(encoding="utf-8")
+    for control in keys.values():
+        assert f"problems('{control}')" in tsx, f"{control} has no control to appear on"
+    assert "`compartment.${index}.${name}`" in tsx
+
+
+def test_an_inserts_row_grouping_is_refused_by_whichever_side_can_say_why():
+    """Two refusals, two owners, and the split is the point.
+
+    A badly *typed* entry is a path the schema names — `spec.insert.rows[1]` — so it is
+    sent as typed and routed, unlike a tray's row count which is never sent and has no
+    server refusal coming at all. That the counts *add up to the compartment list* is
+    `box_insert.validate`'s rule and needs the geometry kernel the API server does not
+    install, so a mismatch would resolve clean, submit, and fail ten seconds into Phase 2
+    — which is the hole `localProblems` closes here exactly as it does for the tray.
+    """
+    source = WEB_FORM.read_text(encoding="utf-8")
+    local = function_body(source, "function insertProblems(state: SpecFormState)")
+    assert "if (!Array.isArray(rows)) return [];" in local, (
+        "insertProblems refuses a bad row entry as well, which the schema already names"
+    )
+    assert "total === state.compartments.length" in local
+    assert "path: 'form.insertRows'" in local
+    dispatch = function_body(source, "export function localProblems(state: SpecFormState)")
+    assert "if (state.archetype === 'box_insert') return insertProblems(state);" in dispatch
+
+    # The schema's half: an unparseable list and a bad entry are both named.
+    for rows, path in ((["2", 1], "spec.insert.rows[0]"), ("1,2", "spec.insert.rows")):
+        with pytest.raises(SpecError) as exc:
+            OrganizerSpec.from_dict({**INSERT_BASE, "insert": {"rows": rows}})
+        assert path in [p["path"] for p in problems_with_paths(exc.value.problems)]
+    # And the sum rule is one nothing on the server can make, which is why it is local.
+    assert OrganizerSpec.from_dict({**INSERT_BASE, "insert": {"rows": [1, 1, 1]}})
+
+
 # ── the one refusal the browser has to make itself ────────────────────────────
 
 def local_field_by_path() -> dict[str, str]:
@@ -433,6 +523,89 @@ def default_spec_form() -> dict[str, str]:
     return dict(re.findall(r"(\w+):\s*'([^']*)'", block.group(1)))
 
 
+def default_insert_compartments() -> list[dict[str, str]]:
+    """`DEFAULT_INSERT_COMPARTMENTS` as a list of `{field: opening value}`.
+
+    Its own constant in `specForm.ts` rather than an inline literal inside
+    `DEFAULT_SPEC_FORM`, so that the opening form stays one flat object of strings —
+    which is what `default_spec_form` reads. The exemption that buys is paid for here
+    and in `test_the_inserts_opening_compartments_are_typed_input_and_not_defaults`.
+    """
+    block = re.search(
+        r"export const DEFAULT_INSERT_COMPARTMENTS: CompartmentFormState\[\] = \[(.*?)\n\];",
+        WEB_FORM.read_text(encoding="utf-8"), re.S,
+    )
+    assert block, "could not find DEFAULT_INSERT_COMPARTMENTS"
+    return [
+        dict(re.findall(r"(\w+):\s*'([^']*)'", entry))
+        for entry in re.findall(r"\{([^}]*)\}", block.group(1))
+    ]
+
+
+def default_insert_compartments_as_contents() -> list[dict]:
+    """The same, as the `contents` mappings `specFromForm` sends for each.
+
+    `blankCompartment` supplies whatever an entry does not override, exactly as the
+    spread in the source does, so this stays a reading of the form rather than a second
+    copy of its opening values.
+    """
+    blank = dict(re.findall(
+        r"(\w+):\s*'([^']*)'",
+        re.search(
+            r"export function blankCompartment\([^)]*\)[^{]*\{(.*?)\n\}",
+            WEB_FORM.read_text(encoding="utf-8"), re.S,
+        ).group(1),
+    ))
+    out = []
+    for entry in default_insert_compartments():
+        merged = {**blank, **entry}
+        out.append(
+            {"count": int(merged["count"]), "card": merged["card"],
+             "sleeving": merged["sleeving"]}
+            if merged["kind"] == "cards"
+            else {"width_mm": float(merged["widthMm"]),
+                  "depth_mm": float(merged["depthMm"]),
+                  "height_mm": float(merged["heightMm"])}
+        )
+    return out
+
+
+def test_the_inserts_opening_compartments_are_typed_input_and_not_defaults():
+    """The rule `test_the_form_carries_no_millimetre_defaults` makes, for the list it
+    cannot see.
+
+    Every millimetre in an insert's opening compartments is a **pocket** dimension, and
+    the schema has no default for one — `dimensions.py` carries no token or dice size,
+    because an invented one is the fabricated number the schema exists to refuse. So they
+    open on a value for `REQUIRED_CONTENT_MM`'s reason: pick `Box insert`, touch nothing,
+    press send, and a part comes out. What must not appear here is a *process* millimetre,
+    which is exactly what a copy of the archetype's wall would be.
+
+    Asserted by poking: each figure is removed from a pocket and the schema has to call
+    it missing, which is what makes "the schema truly requires it" a fact rather than a
+    claim about a field name.
+    """
+    compartments = default_insert_compartments()
+    assert len(compartments) >= 3, "the opening insert no longer shows the composition"
+    assert {c["kind"] for c in compartments} == {"cards", "pocket"}
+    for entry in compartments:
+        for field, value in entry.items():
+            if not field.endswith("Mm"):
+                continue
+            if entry["kind"] == "cards":
+                assert value == "", f"a card well carries {field}: {value!r}"
+                continue
+            assert value, f"{field} opens blank, so the opening insert cannot compile"
+    # And the three the pockets carry are the three the schema refuses a pocket without.
+    for key in ("width_mm", "depth_mm", "height_mm"):
+        bare = {k: v for k, v in
+                {"width_mm": 20.0, "depth_mm": 20.0, "height_mm": 15.0}.items() if k != key}
+        with pytest.raises(SpecError) as exc:
+            OrganizerSpec.from_dict({**INSERT_BASE, "insert": {"rows": [1]},
+                                     "compartments": [{"contents": bare}]})
+        assert "missing a required field" in str(exc.value) and key in str(exc.value)
+
+
 def required_content_mm() -> list[str]:
     """The `REQUIRED_CONTENT_MM` literal: the mm fields the schema has no default for."""
     block = re.search(
@@ -544,8 +717,15 @@ def test_the_forms_opening_spec_compiles_for_every_archetype():
             "compartments": [{"contents": dict(pocket)} for _ in range(cells)],
             "tray": {"columns": int(form["columns"])},
         },
+        "box_insert": {
+            "compartments": [
+                {"contents": c} for c in default_insert_compartments_as_contents()
+            ],
+            "insert": {"rows": [int(n) for n in form["insertRows"].split(",")]},
+            "process": {"fit_intent": form["fitIntent"]},
+        },
     }
-    # Every archetype the engine has, so a fourth one cannot land without the form
+    # Every archetype the engine has, so a fifth one cannot land without the form
     # being told which section and which compartments it needs.
     assert set(openings) == set(ARCHETYPES)
     for archetype, extra in openings.items():

@@ -22,6 +22,7 @@ from pythonsrc.organizer.spec import (
     Compartment,
     Constraints,
     Divider,
+    Insert,
     Lid,
     OrganizerSpec,
     Pocket,
@@ -65,6 +66,25 @@ def token_tray(rows=2, columns=3, **overrides):
         archetype="token_tray",
         compartments=tuple(Compartment(pocket) for _ in range(rows * columns)),
         tray=Tray(columns=columns),
+    )
+    base.update(overrides)
+    return OrganizerSpec(**base)
+
+
+def box_insert(rows=(1, 2), **overrides):
+    """A valid box-insert spec — the fourth archetype, and the heterogeneous one.
+
+    One card stack and one pocket per extra compartment, so the compartment list is
+    genuinely mixed rather than plural: the union is what the insert exists to lay out.
+    """
+    contents = [CardStack(count=60)] + [
+        Pocket(width_mm=20.0 + i, depth_mm=20.0, height_mm=15.0)
+        for i in range(sum(rows) - 1)
+    ]
+    base = dict(
+        archetype="box_insert",
+        compartments=tuple(Compartment(c) for c in contents),
+        insert=Insert(rows=tuple(rows)),
     )
     base.update(overrides)
     return OrganizerSpec(**base)
@@ -215,6 +235,74 @@ def test_a_bad_column_count_is_refused_by_name(columns):
             "tray": {"columns": columns}, "schema_version": 1,
         })
     assert "spec.tray.columns" in {p["path"] for p in problems_with_paths(exc.value.problems)}
+
+
+# ── the insert section: a ragged layout, stated as rows (issue #152) ───────────
+
+def test_the_insert_section_round_trips_and_carries_the_rows():
+    spec = box_insert(rows=(1, 2))
+    assert OrganizerSpec.from_dict(spec.to_dict()).insert == Insert(rows=(1, 2))
+    assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
+def test_a_rows_list_becomes_a_tuple_so_two_spellings_are_one_spec():
+    """JSON has only lists, so `from_dict` hands one in; the schema's equality and its
+    canonical form both have to see the same object either way."""
+    assert Insert(rows=[2, 1]) == Insert(rows=(2, 1))
+    assert Insert(rows=[2, 1]).rows == (2, 1)
+
+
+@pytest.mark.parametrize("rows", [[], (), 3, "2,1", None])
+def test_an_insert_with_no_rows_at_all_is_refused_by_name(rows):
+    with pytest.raises(SpecError) as exc:
+        Insert(rows=rows)
+    assert exc.value.problems[0].startswith("rows ")
+
+
+@pytest.mark.parametrize("bad", [[0], [1, -2], [1, 1.5], ["2"], [True], [2, None]])
+def test_a_bad_row_count_is_refused_with_its_own_index(bad):
+    """Per entry rather than as one sentence: "rows is invalid" is not something a person
+    can act on and "rows[1] must be an integer ≥ 1, got -2" is — the rule
+    `token_tray._grid_problems` states per offending position, in the schema's half."""
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "deck_box",
+            "compartments": [{"contents": {"count": 100}}],
+            "lid": {}, "insert": {"rows": bad}, "schema_version": 1,
+        })
+    paths = {p["path"] for p in problems_with_paths(exc.value.problems)}
+    assert any(path.startswith("spec.insert.rows[") for path in paths), paths
+
+
+def test_an_unknown_key_under_the_insert_is_refused_like_every_other_section():
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "deck_box",
+            "compartments": [{"contents": {"count": 100}}],
+            "lid": {}, "insert": {"rows": [1], "columns": 2}, "schema_version": 1,
+        })
+    assert "spec.insert has unknown field(s): columns" in exc.value.problems
+
+
+def test_the_fourth_archetypes_section_moved_no_existing_hash():
+    """`test_the_third_archetypes_section_moved_no_existing_hash`, one archetype later.
+
+    The rule is the same and the evidence is stronger: `insert` was added when three
+    archetypes' worth of specs already existed, and all three of their example hashes are
+    pinned in `EXAMPLE_SPEC_HASHES` at the values they had before it. Here the claim is
+    made about the canonical *form*, which is what those hashes are of.
+    """
+    for spec in (deck(), card_divider(), token_tray()):
+        assert "insert" not in canonical_json(spec)
+    assert '"insert":{"rows":[1,2]}' in canonical_json(box_insert(rows=(1, 2)))
+
+
+def test_diff_reports_a_row_grouping_which_is_what_makes_f8_mechanical():
+    """"Put the dice well in its own row" has to be a path — `insert.rows[1]` — for the
+    reason "make it three across" and "make the tab wider" do."""
+    a, b = box_insert(rows=(1, 2)), box_insert(rows=(1, 1, 1))
+    assert spec_diff(a, b)["insert.rows[1]"] == (2, 1)
+    assert spec_diff(a, b)["insert.rows[2]"] == (None, 1)
 
 
 # ── validation: every rule, with the field named ───────────────────────────────
@@ -700,6 +788,37 @@ def test_the_third_archetypes_section_moved_no_existing_hash():
     for spec in (deck(), card_divider()):
         assert "tray" not in canonical_json(spec)
     assert '"tray":{"columns":3}' in canonical_json(token_tray())
+
+
+#: The `spec_hash` of each shipped archetype's own `example()`, captured on `main` at
+#: a828492 — **before** the box insert's `insert` section was written — and pinned here
+#: so the fourth archetype's section is proved additive rather than remembered to be.
+#:
+#: The fixed canonical vectors below say the same thing for three hand-built specs; these
+#: say it for the specs the registry itself hands out, which is what
+#: `tests/test_archetype_registry.py`, the CLI's `example` and the composer's preview all
+#: compile. A field added to `CardStack`, `Pocket`, `Process`, `Constraints` or `Tray`
+#: would move every one of them, and nothing else in the suite would notice.
+EXAMPLE_SPEC_HASHES: dict[str, str] = {
+    "deck_box": "5bab61fffb5790a8076e1ea15965f8e163b4c280aa2889e00fe8f54bb3f71f6d",
+    "card_divider": "d6c67cd15099f3bda088566e996c25cea0f3d2f144e180af707fb4919e9d69c7",
+    "token_tray": "9d3cd1b52a4709453a70d60c7552f8a043e7e1e99309b9e39d02d75b6919e67c",
+}
+
+
+@pytest.mark.parametrize("archetype", sorted(EXAMPLE_SPEC_HASHES))
+def test_no_archetypes_example_hash_has_moved(archetype):
+    """Every example spec that existed before the box insert still hashes as it did.
+
+    The acceptance criterion "no existing `spec_hash` moves", asserted rather than
+    trusted. It is the guard the box insert needed and the guard the *next* archetype
+    needs: the only additive-safe change to this schema is a new optional **section**
+    (`_OPTIONAL_SECTIONS`), and nothing mechanical stops a well-meant scalar on a leaf
+    class — which is written into every canonical form there has ever been.
+    """
+    from pythonsrc.organizer.archetypes import example_spec
+
+    assert spec_hash(example_spec(archetype)) == EXAMPLE_SPEC_HASHES[archetype]
 
 
 def test_the_hash_is_stable_across_processes():

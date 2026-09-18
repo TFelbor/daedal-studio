@@ -49,7 +49,7 @@ SCHEMA_VERSION = 1
 #: `web/src/organizer/spec.ts`'s `ARCHETYPES` must be the same set — a strip offering a
 #: shape the engine cannot compile is the same fabrication as an unmeasured fits badge.
 #: `tests/test_archetype_registry.py` binds the three lists.
-ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider", "token_tray")
+ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider", "token_tray", "box_insert")
 
 #: Lid mechanisms the schema knows. Slide, hinged and magnetic lids are later
 #: archetype variants (roadmap M1/M3) and are not accepted until they exist.
@@ -132,6 +132,17 @@ ARCHETYPE_WALL_MM: dict[str, float] = {
     # dropped. It is not the deck box's 2,4 mm because that figure is the lift-off
     # lid's arithmetic, and this archetype has no lid.
     "token_tray": 1.6,
+    # The token tray's 1,6 mm, for the token tray's reasoning verbatim: the same number
+    # is both the outer wall and every divider between two compartments, a divider
+    # carries load from both sides, and the top of the audited 1,2–1,6 mm band (roadmap
+    # §0.5) is the most a document that calls anything under 1,2 mm flimsy will support.
+    # An insert is the part that document is *about*, so if any archetype here has a
+    # claim on that band's figure it is this one — and it is not the deck box's 2,4 mm,
+    # which is a lift-off lid's arithmetic and an insert has no lid. Note what this
+    # number is on a box insert: the **minimum** wall. A row narrower than the widest
+    # shares the difference equally across its own walls, so those come out thicker; see
+    # `box_insert`'s module docstring, and `row{r}_wall_mm` for the measured figure.
+    "box_insert": 1.6,
 }
 
 
@@ -387,6 +398,56 @@ class Tray:
 
 
 @dataclass(frozen=True)
+class Insert:
+    """How a box insert's compartments are laid out in its enclosure: as rows.
+
+    A section on the spec rather than a constant inside `box_insert.py`, for `Divider`'s
+    and `Tray`'s reason verbatim: F8 iterates a design by spec *diff*, so "put the dice
+    well in its own row" must be a path (`insert.rows`) rather than an archetype's
+    private habit.
+
+    **`rows` is the whole layout grammar, and nobody types a position.** Each entry is
+    how many compartments that row holds, front to back from the minimum Y corner, and
+    the compartments fill them in order — so `rows: [1, 2]` over three compartments is a
+    card well across the front with two pockets behind it. `box_insert.validate` refuses
+    a `rows` whose entries do not sum to the compartment count, which is `Tray`'s rule in
+    the other direction: there, one number and a list that must divide by it; here, a
+    list and a count that must equal its sum. Both exist so a spec cannot state a layout
+    its compartment list fails to fill.
+
+    Positions are **derived** rather than stated because they are not a decision anybody
+    makes: given the contents, the wall and the row grouping, there is exactly one
+    rectangular layout, and a spec that carried `x_mm` per compartment could contradict
+    its own contents. What *is* a decision — which compartments share a row — is the
+    list. A compartment that spans two rows is not expressible and is deliberately not
+    built; it would be a later field here, and a new optional field on this section moves
+    no hash that this section is already absent from.
+
+    Only `box_insert` reads it; every other archetype refuses a spec that carries one,
+    because ignoring a section prints a different part in silence.
+    """
+
+    #: Compartments per row, front to back. Row-major from the minimum X and Y corner.
+    rows: Tuple[int, ...] = (1,)
+
+    def __post_init__(self) -> None:
+        rows = self.rows
+        if isinstance(rows, list):
+            rows = tuple(rows)
+            _set(self, "rows", rows)
+        if not isinstance(rows, tuple) or not rows:
+            raise SpecError([
+                f"rows must hold at least one row count, got {self.rows!r}"
+            ])
+        problems = [
+            f"rows[{i}] must be an integer ≥ 1, got {n!r}"
+            for i, n in enumerate(rows)
+            if isinstance(n, bool) or not isinstance(n, int) or n < 1
+        ]
+        _raise_if(problems)
+
+
+@dataclass(frozen=True)
 class Constraints:
     """External limits the finished part must fit within: (W, D, H) in mm, or None.
 
@@ -555,6 +616,7 @@ class OrganizerSpec:
     lid: Optional[Lid] = None
     divider: Optional[Divider] = None
     tray: Optional[Tray] = None
+    insert: Optional[Insert] = None
     constraints: Constraints = field(default_factory=Constraints)
     process: Process = field(default_factory=Process)
     schema_version: int = SCHEMA_VERSION
@@ -581,6 +643,10 @@ class OrganizerSpec:
             )
         if self.tray is not None and not isinstance(self.tray, Tray):
             problems.append(f"tray must be a Tray or null, got {type(self.tray).__name__}")
+        if self.insert is not None and not isinstance(self.insert, Insert):
+            problems.append(
+                f"insert must be an Insert or null, got {type(self.insert).__name__}"
+            )
         if not isinstance(self.constraints, Constraints):
             problems.append("constraints must be a Constraints object")
         if not isinstance(self.process, Process):
@@ -648,6 +714,7 @@ _NESTED: dict[tuple[type, str], Any] = {
     (OrganizerSpec, "lid"): Lid,
     (OrganizerSpec, "divider"): Divider,
     (OrganizerSpec, "tray"): Tray,
+    (OrganizerSpec, "insert"): Insert,
     (OrganizerSpec, "constraints"): Constraints,
     (OrganizerSpec, "process"): Process,
 }
@@ -660,7 +727,15 @@ _NESTED: dict[tuple[type, str], Any] = {
 #: and divider ever stored, for a field those specs do not mention. That is the whole
 #: point of this tuple, and `tests/test_organizer_spec.py`'s fixed vectors are what
 #: prove the third archetype did not move the first two.
-_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray")
+#:
+#: `insert` joined them for the box insert (issue #152) and is the case that proves the
+#: rule generalises rather than having merely worked once: it is the *fourth* archetype's
+#: section, added while three archetypes' worth of specs already existed, and
+#: `test_no_archetypes_example_hash_has_moved` pins every one of their hashes to what
+#: they were before it. A new optional section is the **only** additive-safe change this
+#: schema has — a scalar with a default on `CardStack`, `Pocket`, `Process`,
+#: `Constraints` or `Tray` is written into every canonical form there has ever been.
+_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray", "insert")
 _LIST_FIELDS: dict[tuple[type, str], type] = {
     (OrganizerSpec, "compartments"): Compartment,
 }

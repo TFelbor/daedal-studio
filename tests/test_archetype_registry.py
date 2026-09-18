@@ -43,6 +43,7 @@ from pythonsrc.organizer.archetypes import (
     compile_spec,
     envelope_for,
     example_spec,
+    measure_spec_mesh,
     required_measurements,
 )
 from pythonsrc.organizer.spec import (
@@ -123,9 +124,36 @@ def test_the_registry_asks_every_archetype_what_this_spec_promises(name):
     )
     result = module.compile(spec)
     assert promised <= set(result.features), f"{name} promises features it never designs"
-    assert promised <= set(module.measure(result.mesh)), (
+    # Through `measure_spec_mesh` rather than `module.measure`, because the signature is
+    # the module's choice: a ragged layout cannot be read off a mesh alone, so the box
+    # insert declares `MEASURE_NEEDS_SPEC` and takes the spec as well. The dispatch is the
+    # only place that knows, which is the whole point of routing through it.
+    assert promised <= set(measure_spec_mesh(spec, result.mesh)), (
         f"{name} promises features its own measure() does not read back"
     )
+
+
+@pytest.mark.parametrize("name", sorted(REGISTRY))
+def test_the_registry_hands_the_spec_only_to_a_measurer_that_asked_for_it(name):
+    """`MEASURE_NEEDS_SPEC` is the second optional hook on this API, after
+    `measured_features(spec)`, and it exists for the same archetype and the same reason:
+    a ragged layout's features are not a function of the mesh alone, so the design has to
+    say *where* each one is measured.
+
+    The claim tested here is that the hook is additive — a module that does not declare it
+    is called with the mesh and nothing else, and one that does is called with both. A
+    dispatch that guessed from the signature would couple the API to an argument count.
+    """
+    module = REGISTRY[name]
+    needs = getattr(module, "MEASURE_NEEDS_SPEC", False)
+    assert isinstance(needs, bool)
+    spec = example_spec(name)
+    mesh = module.compile(spec).mesh
+    if needs:
+        with pytest.raises(TypeError):
+            module.measure(mesh)
+    else:
+        assert module.measure(mesh) == measure_spec_mesh(spec, mesh)
 
 
 def test_every_archetype_names_the_wall_it_builds_with_when_a_spec_does_not():

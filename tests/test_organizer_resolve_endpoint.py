@@ -217,6 +217,53 @@ def test_a_tray_whose_columns_do_not_divide_is_titled_by_its_count():
     assert body["label"] == "token tray · 5 pockets 20 × 20 × 15 mm"
 
 
+INSERT = {
+    "archetype": "box_insert",
+    "compartments": [
+        {"contents": {"count": 60, "card": "standard", "sleeving": "double"}},
+        {"contents": {"width_mm": 40.0, "depth_mm": 40.0, "height_mm": 15.0, "source": None}},
+        {"contents": {"width_mm": 20.0, "depth_mm": 20.0, "height_mm": 18.0, "source": None}},
+    ],
+    "insert": {"rows": [1, 2]},
+    "schema_version": 1,
+}
+
+
+def test_an_insert_is_titled_by_every_compartment_rather_than_by_the_first():
+    """The assumption issue #152 had to remove. `spec_label` read `compartments[0]` and
+    described the whole part with it, which for an insert is a true sentence about one
+    third of it — in the column a person scans to tell two jobs apart."""
+    assert resolve(INSERT)["label"] == (
+        "box insert · 3 compartments: 60 double-sleeved standard cards, "
+        "40 × 40 × 15 mm, 20 × 20 × 18 mm"
+    )
+
+
+def test_an_insert_resolves_only_its_card_compartments():
+    """`stacks` is "the card compartments, resolved", not one entry per compartment: a
+    pocket's millimetres were typed and there is no `basis` sentence to print under one.
+    An insert is the first spec where both kinds arrive together, so the rule is asserted
+    on the case that can actually get it wrong."""
+    body = resolve(INSERT)
+    assert body["schema_valid"] is True
+    assert len(body["stacks"]) == 1
+    assert body["stacks"][0]["count"] == 60
+    assert body["spec"]["insert"] == {"rows": [1, 2]}
+    assert "tray" not in body["spec"] and "lid" not in body["spec"]
+    # The schema's own defaults came back, including this archetype's own wall.
+    assert body["spec"]["process"]["wall_mm"] == 1.6
+
+
+def test_an_inserts_row_grouping_is_refused_on_its_own_path():
+    """A bad row count is the schema's to refuse and it names the entry, so the composer
+    can route it onto the control that caused it rather than onto the form."""
+    body = client.post(
+        "/organizer/resolve", json={"spec": {**INSERT, "insert": {"rows": [1, 0]}}}
+    ).json()
+    assert body["schema_valid"] is False
+    assert any(p["path"] == "spec.insert.rows[1]" for p in body["problems"]), body["problems"]
+
+
 # ── the import rule this endpoint exists under ────────────────────────────────
 
 def test_the_server_still_imports_nothing_that_needs_the_kernel():

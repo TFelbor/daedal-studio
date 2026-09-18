@@ -183,6 +183,16 @@ export interface RawSpec {
   compartments: { contents: RawContents }[];
   /** `token_tray` only: the grid's column count. The rows are compartments ÷ columns. */
   tray?: { columns: number } | null;
+  /**
+   * `box_insert` only: how many compartments each row holds, front to back.
+   *
+   * The whole layout grammar, and the compartments fill it in order — `[1, 2]` over
+   * three compartments is one across the front and two behind it. Nothing states a
+   * position: given the contents, the wall and this grouping there is exactly one
+   * rectangular layout, and a spec that carried millimetre positions could contradict
+   * its own contents.
+   */
+  insert?: { rows: number[] } | null;
   lid?: {
     kind: string;
     magnets: boolean;
