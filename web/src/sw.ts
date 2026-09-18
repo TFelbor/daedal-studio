@@ -28,6 +28,13 @@
  *     the same reason, by enumeration rather than by prefix, because the root is also
  *     where every API path lives.
  *  4. **Nothing else.**
+ *
+ * It also handles two events that are not fetches at all: `push` and
+ * `notificationclick`. They do not widen the allowlist above, and they are the reason
+ * to say so plainly — a push handler reads the *event payload*, which the server
+ * encrypted for this subscription, and never calls the API. So the worker still holds
+ * no credential and still answers no route, and the disjointness this file is built
+ * around is untouched. See `server/push.py` for the other end.
  */
 
 export {}
@@ -49,15 +56,47 @@ interface FetchEventLike extends ExtendableEventLike {
   respondWith(response: Response | Promise<Response>): void
 }
 
+/** A `push` event. `data` is absent for a push with no payload, which some services
+ *  send to wake a worker — the handler below still has to show something, because
+ *  `userVisibleOnly: true` is the only subscription a browser will grant. */
+interface PushEventLike extends ExtendableEventLike {
+  readonly data: { json(): unknown; text(): string } | null
+}
+
+interface NotificationLike {
+  close(): void
+  readonly data: { url?: string } | null
+}
+
+interface NotificationClickEventLike extends ExtendableEventLike {
+  readonly notification: NotificationLike
+}
+
+interface WindowClientLike {
+  readonly url: string
+  focus(): Promise<WindowClientLike>
+}
+
 declare const self: {
   addEventListener(
     type: 'install' | 'activate',
     listener: (event: ExtendableEventLike) => void,
   ): void
   addEventListener(type: 'fetch', listener: (event: FetchEventLike) => void): void
+  addEventListener(type: 'push', listener: (event: PushEventLike) => void): void
+  addEventListener(
+    type: 'notificationclick',
+    listener: (event: NotificationClickEventLike) => void,
+  ): void
   skipWaiting(): Promise<void>
-  clients: { claim(): Promise<void> }
-  registration: unknown
+  clients: {
+    claim(): Promise<void>
+    matchAll(options?: { type?: string; includeUncontrolled?: boolean }): Promise<WindowClientLike[]>
+    openWindow(url: string): Promise<WindowClientLike | null>
+  }
+  registration: {
+    showNotification(title: string, options?: Record<string, unknown>): Promise<void>
+  }
 }
 
 /** Replaced at build time — see `vite.config.ts`. One cache per build, so `activate`
@@ -181,4 +220,72 @@ self.addEventListener('fetch', event => {
 
   // Everything else falls through with no `respondWith`, which is the browser doing
   // exactly what it would do if this worker were not installed.
+})
+
+/**
+ * The notification a finished print owes whoever started it.
+ *
+ * `userVisibleOnly: true` is the only subscription a browser will grant, which means
+ * every push that arrives *must* end in a visible notification — so nothing here is
+ * allowed to bail out. A payload that will not parse still shows something, because
+ * the alternative is Chrome showing its own "This site has been updated in the
+ * background" and, after a few of those, revoking the permission.
+ *
+ * The payload comes off the event, already decrypted by the browser for this
+ * subscription. The worker asks the API for nothing — it holds no token and could not.
+ */
+interface PushPayload {
+  title?: string
+  body?: string
+  url?: string
+  tag?: string
+}
+
+self.addEventListener('push', event => {
+  event.waitUntil(
+    (async () => {
+      let payload: PushPayload = {}
+      try {
+        payload = (event.data ? (event.data.json() as PushPayload) : {}) ?? {}
+      } catch {
+        /* Not our shape. Below still shows a notification, which is the contract. */
+      }
+      await self.registration.showNotification(payload.title ?? 'Your print has finished', {
+        body: payload.body ?? 'Tell us how it came out.',
+        // Same drawing the launcher uses; both are in ROOT_FILES, so an offline device
+        // still has them.
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        // One per job. A second delivery for the same print replaces the first in the
+        // tray instead of stacking beside it.
+        tag: payload.tag,
+        data: { url: payload.url ?? '/' },
+      })
+    })(),
+  )
+})
+
+/**
+ * The tap. It opens the print the notification is about, in the app.
+ *
+ * An already-open window wins over a new one — on an installed app a second window is
+ * a second copy of the shell, and the person tapping expects the one they left. It is
+ * matched on the *path*, so a window already sitting on that job is simply focused.
+ */
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const target = event.notification.data?.url ?? '/'
+
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of windows) {
+        if (new URL(client.url).pathname === target) {
+          await client.focus()
+          return
+        }
+      }
+      await self.clients.openWindow(target)
+    })(),
+  )
 })

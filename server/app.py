@@ -66,6 +66,7 @@ from pythonsrc.telemetry.moonraker_collector import MoonrakerCollector
 from pythonsrc.telemetry.octoprint_collector import OctoPrintCollector
 from pythonsrc.telemetry.run_context import resolve_git_sha
 from pythonsrc.telemetry.schema import VALID_FAILURE_TYPES, FailureEvent, PrintJob
+from server import push
 from server.activity import activity
 from server.auth import SharedSecretAuth, public
 from server.config_store import (
@@ -1748,6 +1749,38 @@ async def _periodic_db_health(interval_s: float) -> None:
             logger.warning("Periodic database health check failed: %s", exc)
 
 
+#: Handle for the push reconciler, cancelled at shutdown.
+_push_task: Optional[asyncio.Task] = None
+
+
+async def _periodic_push(interval_s: float) -> None:
+    """Ask the database whether any finished print still owes someone a notification.
+
+    A loop rather than a hook on the three writers that set `awaiting_verdict` — see
+    `server/push.py` for why. It is deliberately forgiving: a tick that raises logs and
+    the next one runs, because the failure this must not have is a push subsystem that
+    dies quietly and leaves every later print unannounced.
+
+    Args:
+        interval_s: Seconds between ticks.
+    """
+    while True:
+        await asyncio.sleep(interval_s)
+        db = None
+        try:
+            db = TelemetryDB()
+            result = await push.reconcile_once(db, config_store)
+            if result["notified"]:
+                logger.info("Push reconciler notified %s", ", ".join(result["notified"]))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Push reconciler tick failed: %s", exc)
+        finally:
+            if db is not None:
+                db.close()
+
+
 @app.on_event("startup")
 def startup_event():
     """Handle application startup events."""
@@ -1817,6 +1850,16 @@ def startup_event():
         )
         logger.info("Database health check every %.0f s", interval)
 
+    # The VAPID keypair is *not* generated here: it is generated the first time a
+    # browser asks for the public half, so a deployment that never uses notifications
+    # never mints a key. Until then there can be no subscriptions, so the loop below
+    # has nothing to send and says so in one query.
+    global _push_task
+    push_interval = push.push_interval_s()
+    if push_interval:
+        _push_task = asyncio.get_event_loop().create_task(_periodic_push(push_interval))
+        logger.info("Push reconciler every %.0f s", push_interval)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Handle application shutdown events.
@@ -1825,6 +1868,8 @@ async def shutdown_event():
     """
     if _db_health_task:
         _db_health_task.cancel()
+    if _push_task:
+        _push_task.cancel()
     for detector_task in active_detectors.values():
         detector_task.cancel()
     active_detectors.clear()
@@ -4911,6 +4956,124 @@ async def feedback_stats() -> Dict[str, Any]:
         "pending": pending,
         "response_rate": round(funnel["answered"] / prompted, 4) if prompted else None,
     }
+
+
+# ── Web push ─────────────────────────────────────────────────────────────────
+#
+# See `server/push.py` for why this is a reconciler rather than three hooks, and why
+# `push_sent` is the dedup key. These three routes are the whole HTTP surface: the key
+# a browser needs to subscribe, and the two halves of a subscription's life.
+#
+# Authenticated by writing nothing — no `@public`, no third exemption in
+# `tests/test_api_auth.py`. That matters more here than it looks: a subscription is an
+# address this server will POST to, so an unauthenticated `POST /push/subscriptions`
+# would let anyone who can reach the port aim it at a host of their choosing. It is the
+# same shape as the `OCTOPRINT_URL` confused deputy, and it is closed the same way —
+# except that there is no credential to bind, so the token is the whole answer.
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionRequest(BaseModel):
+    """What `PushSubscription.toJSON()` hands back, field for field."""
+
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+def _valid_push_endpoint(endpoint: str) -> bool:
+    """Whether this is an address a push service could plausibly have issued.
+
+    `https` and a host, nothing more. Every push service on the web is HTTPS, and the
+    check is here because this endpoint is the one thing that tells the server where to
+    send: a typo stored now is a delivery that fails silently in an hour, and a scheme
+    like `file:` is not a typo at all.
+    """
+    parsed = urlparse(endpoint)
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
+@app.get("/push/vapid-public-key")
+async def push_vapid_public_key() -> Dict[str, Any]:
+    """The application server key a browser needs before it can subscribe.
+
+    Generated on first call and kept in the encrypted store — there is nothing for a
+    person to type, and the private half it is generated with never leaves this
+    process. A browser that holds a subscription made against an older key gets a
+    different value here, which is exactly what tells the page to subscribe again.
+    """
+    public, _ = push.ensure_vapid_keys(config_store)
+    return {"public_key": public}
+
+
+@app.post("/push/subscriptions", status_code=status.HTTP_201_CREATED)
+async def create_push_subscription(
+    request: PushSubscriptionRequest, http_request: Request
+) -> Dict[str, Any]:
+    """Remember a device that has asked to be told when a print finishes.
+
+    An upsert, because the browser hands the page the subscription it already has on
+    every load: a plain insert would grow a row per visit for a device that subscribed
+    once. The user agent rides along so a row in the table can be recognised as a
+    phone rather than as an opaque URL.
+    """
+    if not _valid_push_endpoint(request.endpoint):
+        raise HTTPException(
+            status_code=422,
+            detail="A push endpoint must be an https URL issued by a push service.",
+        )
+
+    db = TelemetryDB()
+    try:
+        db.upsert_push_subscription(
+            endpoint=request.endpoint,
+            p256dh=request.keys.p256dh,
+            auth=request.keys.auth,
+            user_agent=http_request.headers.get("user-agent"),
+        )
+        total = len(db.get_push_subscriptions())
+    finally:
+        db.close()
+
+    activity.action(
+        "push subscription saved",
+        [("endpoint", request.endpoint[:60] + "…" if len(request.endpoint) > 60 else request.endpoint)],
+        outcome=f"{total} device(s) will be told when a print finishes",
+        status="ok",
+    )
+    return {"status": "subscribed", "subscriptions": total}
+
+
+@app.delete("/push/subscriptions")
+async def remove_push_subscription(request: PushUnsubscribeRequest) -> Dict[str, Any]:
+    """Forget a device.
+
+    Deleting something that is not there is a success, not a 404: the page calls this
+    when a person turns notifications off, and a browser that had already dropped the
+    subscription would otherwise leave the switch stuck on.
+    """
+    db = TelemetryDB()
+    try:
+        removed = db.delete_push_subscription(request.endpoint)
+        total = len(db.get_push_subscriptions())
+    finally:
+        db.close()
+
+    if removed:
+        activity.action(
+            "push subscription removed",
+            [("remaining", str(total))],
+            outcome="that device will not be told again",
+            status="warn",
+        )
+    return {"status": "unsubscribed", "removed": removed, "subscriptions": total}
 
 
 class ConfigUpdate(BaseModel):

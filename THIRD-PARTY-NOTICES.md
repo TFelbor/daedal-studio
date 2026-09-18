@@ -10,7 +10,7 @@ own licence.
 This file exists to satisfy the attribution and source-offer obligations those
 licences impose. It is reviewed whenever a dependency is added or bumped.
 
-Last reviewed: 2026-09-11.
+Last reviewed: 2026-09-18.
 
 **This file is the reasoning; [`licenses/`](licenses/README.md) is the evidence.** The
 resolved transitive tree for every image — `pip-licenses` run *inside* the containers,
@@ -86,6 +86,7 @@ torch, torchvision (BSD-3) · numpy, scipy, scikit-image, networkx, tifffile, ht
 | Package | Licence | Effect |
 |---|---|---|
 | `certifi`, `bidict` | MPL-2.0 **[d]** | File-level copyleft. Using them imposes nothing; modifying *their* files and distributing would require publishing those files. Neither is modified |
+| `pywebpush`, `py-vapid` | MPL-2.0 **[v]** | Same shape, and the first MPL packages here that are *imported by our own code*: `server/push.py` sends the notification a job reaching `awaiting_verdict` owes whoever started it. Neither is modified, so the obligation is satisfied by shipping them unmodified as their own wheels. `http-ece` behind them is MIT. Recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`; see § 1 |
 | `paho-mqtt` | EPL-2.0 / EDL-1.0 dual **[d]** | Same shape. Used as an MQTT client for Bambu; unmodified |
 | `psycopg`, `psycopg-binary`, `psycopg-pool` | **LGPL-3.0-only** **[v]** | Library-level copyleft. The PostgreSQL driver for the telemetry database (`pythonsrc/telemetry/db.py`), imported unmodified as its own wheel — the dynamic linking the LGPL permits. Distributing an image carrying it means shipping the licence text (it is in the wheel) and leaving the library replaceable (it is a pip reinstall). `psycopg-binary` also bundles libpq under the PostgreSQL Licence (permissive). Recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`; see § 1 |
 
@@ -205,7 +206,26 @@ more than the cost of distribution, as AGPL-3.0 §6 permits.
 
 ### Weak copyleft — file-level
 
-None currently. `torchmcubes` (MPL-2.0) was removed with TripoSR — see
+**pywebpush** and **py-vapid** — **MPL-2.0**, added 2026-09-18 with web push
+(issue #159). `server/push.py` imports them to send one notification per job reaching
+`awaiting_verdict`: `py-vapid` signs the VAPID JWT that identifies this server to a
+push service, and `pywebpush` encrypts the payload (RFC 8291) and posts it.
+
+MPL-2.0 attaches its obligation to the licensed *files*, not to the program that uses
+them (§ 1.10, § 3.3): a "Larger Work" may be distributed under any terms, and what must
+stay available is the source of any MPL file that is modified. No file of either
+package is copied, patched or vendored here — both are installed as their own wheels
+and imported — so nothing in this repository is Covered Software, and the obligation is
+met by shipping them unmodified with their licence text (it is in each wheel) and by
+this notice. `http-ece`, which `pywebpush` uses for the content encoding, is MIT.
+
+Why a dependency at all: the alternative was roughly 150 lines of RFC 8291 — ECDH
+against the subscription's P-256 key, HKDF, AES-128-GCM and the `aes128gcm` header
+block — on the `cryptography` already in the tree. It was refused because its failure
+mode is a push service answering 400 on somebody's phone while every test in CI passes.
+The decision is recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`.
+
+`torchmcubes` (MPL-2.0) was removed with TripoSR — see
 [§3 Removed components](#3-removed-components).
 
 ### Weak copyleft — library-level
@@ -512,6 +532,7 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | aiohttp, websockets, httpx, requests | Apache-2.0 / BSD-3-Clause |
 | cryptography | Apache-2.0 OR BSD-3-Clause |
 | paho-mqtt | EPL-2.0 OR BSD-3-Clause |
+| http-ece (via pywebpush) | MIT |
 | numba, llvmlite | BSD-2-Clause |
 | Pillow | MIT-CMU |
 | pytest-cov (dev only) | MIT |

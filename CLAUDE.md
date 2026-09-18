@@ -165,6 +165,10 @@ each entry below names the file it is about.
     the REST and WebSocket surface, the job lifecycle,
     `contained_path` and the profile confinement, the config store and `subprocess_env`,
     `POST /organizer/resolve` and the prompt a spec job is titled with.
+  - **Web push (`server/push.py`)** — the one notification this product sends, why it
+    is a reconciler and not a hook on the three writers that reach `awaiting_verdict`,
+    why `push_sent` is the dedup key rather than a record of one, the backlog guard,
+    and the VAPID keys the server generates and never hands back.
   - **Data Flow** — the five steps from `POST /jobs` to live telemetry on the socket.
   - **Telemetry (`pythonsrc/telemetry/`)** — the capture principle, every column and the
     moment it stops being recoverable, the PostgreSQL move, collectors, the single-writer

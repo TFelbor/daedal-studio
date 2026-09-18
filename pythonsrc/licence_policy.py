@@ -181,6 +181,16 @@ _PSYCOPG_NOTE = (
     "THIRD-PARTY-NOTICES.md § 1, 'Weak copyleft — library-level'."
 )
 
+_WEBPUSH_NOTE = (
+    "MPL-2.0. The web push sender (server/push.py): `pywebpush` with `py-vapid` "
+    "behind it, sending the one notification a job reaching `awaiting_verdict` owes "
+    "whoever started it. File-level copyleft, satisfied by importing both unmodified "
+    "as separate wheels — no file of either is copied or patched into this project. "
+    "Chosen over ~150 lines of RFC 8291 on `cryptography` because a hand-rolled "
+    "payload encryption fails on a phone and passes in CI. Recorded in "
+    "THIRD-PARTY-NOTICES.md § 1, 'Weak copyleft — file-level'."
+)
+
 REVIEWED_WEAK_COPYLEFT = {
     "opencv-python-headless": (
         "Bundles FFmpeg (LGPLv2.1) as a shared library; the headless wheel is pinned "
@@ -196,6 +206,13 @@ REVIEWED_WEAK_COPYLEFT = {
     "psycopg_binary": _PSYCOPG_NOTE,
     "psycopg-pool": _PSYCOPG_NOTE,
     "psycopg_pool": _PSYCOPG_NOTE,
+    # Web push. MPL-2.0 is *file-level* copyleft: the obligation attaches to the
+    # licensed source files themselves, and is met by shipping them unmodified — which
+    # a pip install does — and by saying where they are. Neither package is forked or
+    # patched here, and nothing in this project is a derivative of either file.
+    "pywebpush": _WEBPUSH_NOTE,
+    "py-vapid": _WEBPUSH_NOTE,
+    "py_vapid": _WEBPUSH_NOTE,
 }
 
 # ── Licence-string classification ────────────────────────────────────────────
