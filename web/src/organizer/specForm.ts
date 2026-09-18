@@ -366,20 +366,22 @@ function gridCells(rows: string, columns: string): number {
 /**
  * The form as an organizer spec, ready for `/organizer/resolve` or `POST /jobs`.
  *
- * The archetype decides which optional section is present, and all three archetypes
+ * The archetype decides which optional section is present, and all four archetypes
  * *require* theirs: `deck_box.validate` refuses a spec with no `lid`,
- * `card_divider.validate` refuses one with no `divider` and one that carries a lid, and
+ * `card_divider.validate` refuses one with no `divider` and one that carries a lid,
  * `token_tray.validate` refuses one with no `tray` and one whose compartments hold card
- * stacks. None of those rules can run on the API server — every one of those modules
- * imports the geometry kernel — so a section left out here would not be a 422, it would
- * be a failed Phase 2 ten seconds into a run. The empty object is what carries the
- * schema's own defaults.
+ * stacks, and `box_insert.validate` refuses one with no `insert` and one whose `rows` do
+ * not sum to the compartment list. None of those rules can run on the API server — every
+ * one of those modules imports the geometry kernel — so a section left out here would not
+ * be a 422, it would be a failed Phase 2 ten seconds into a run. The empty object is what
+ * carries the schema's own defaults.
  *
- * The tray is also the one archetype whose *compartments* differ: it sends one pocket
- * per grid cell rather than one card stack, which is what `Compartment.contents` became
- * a union for. Identical pockets, because v1 is a regular grid — one width per column,
- * one depth per row, one height overall — and `token_tray.validate` refuses anything
- * else. Ragged layouts belong to the box-insert archetype.
+ * Two archetypes also send *compartments* that are not one card stack. The tray sends one
+ * pocket per grid cell, which is what `Compartment.contents` became a union for —
+ * identical pockets, because v1 is a regular grid (one width per column, one depth per
+ * row, one height overall) and `token_tray.validate` refuses anything else. The box
+ * insert sends a list whose entries are each their own shape, card stack or pocket, which
+ * is the ragged layout the tray deferred to it.
  *
  * A grid that is not two positive whole numbers produces **no compartments at all**,
  * and `localProblems` is what says so on the control that caused it. See `gridCells`.
