@@ -58,8 +58,9 @@ export function isCardStack(contents: RawContents): contents is RawCardStack {
  * of which existed: a strip cell for a shape the engine would refuse is the same class
  * of fabrication as a fits badge with no measurement behind it — the person picks it,
  * types a prompt, and the product silently gives them something else. The token tray
- * joined the day its compiler did (issue #84); the box-insert grid is a real roadmap
- * item (§0.3 Phase 3) and a cell appears here the day that compiler does too.
+ * joined the day its compiler did (issue #84), and the box insert the day its compiler
+ * did (issue #152) — which is the rule those three dead cells were removed to establish,
+ * honoured twice now rather than merely stated.
  *
  * Ordered as the strip presents them.
  */
@@ -67,6 +68,7 @@ export const ARCHETYPES = [
   { id: 'deck_box', label: 'Deck box' },
   { id: 'card_divider', label: 'Card divider' },
   { id: 'token_tray', label: 'Token tray' },
+  { id: 'box_insert', label: 'Box insert' },
 ] as const;
 
 export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];

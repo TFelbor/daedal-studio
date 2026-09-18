@@ -22,6 +22,7 @@ from pythonsrc.organizer.spec import (
     Compartment,
     Constraints,
     Divider,
+    Insert,
     Lid,
     OrganizerSpec,
     Pocket,
@@ -65,6 +66,25 @@ def token_tray(rows=2, columns=3, **overrides):
         archetype="token_tray",
         compartments=tuple(Compartment(pocket) for _ in range(rows * columns)),
         tray=Tray(columns=columns),
+    )
+    base.update(overrides)
+    return OrganizerSpec(**base)
+
+
+def box_insert(rows=(1, 2), **overrides):
+    """A valid box-insert spec — the fourth archetype, and the heterogeneous one.
+
+    One card stack and one pocket per extra compartment, so the compartment list is
+    genuinely mixed rather than plural: the union is what the insert exists to lay out.
+    """
+    contents = [CardStack(count=60)] + [
+        Pocket(width_mm=20.0 + i, depth_mm=20.0, height_mm=15.0)
+        for i in range(sum(rows) - 1)
+    ]
+    base = dict(
+        archetype="box_insert",
+        compartments=tuple(Compartment(c) for c in contents),
+        insert=Insert(rows=tuple(rows)),
     )
     base.update(overrides)
     return OrganizerSpec(**base)
@@ -215,6 +235,74 @@ def test_a_bad_column_count_is_refused_by_name(columns):
             "tray": {"columns": columns}, "schema_version": 1,
         })
     assert "spec.tray.columns" in {p["path"] for p in problems_with_paths(exc.value.problems)}
+
+
+# ── the insert section: a ragged layout, stated as rows (issue #152) ───────────
+
+def test_the_insert_section_round_trips_and_carries_the_rows():
+    spec = box_insert(rows=(1, 2))
+    assert OrganizerSpec.from_dict(spec.to_dict()).insert == Insert(rows=(1, 2))
+    assert OrganizerSpec.from_json(spec.to_json()) == spec
+
+
+def test_a_rows_list_becomes_a_tuple_so_two_spellings_are_one_spec():
+    """JSON has only lists, so `from_dict` hands one in; the schema's equality and its
+    canonical form both have to see the same object either way."""
+    assert Insert(rows=[2, 1]) == Insert(rows=(2, 1))
+    assert Insert(rows=[2, 1]).rows == (2, 1)
+
+
+@pytest.mark.parametrize("rows", [[], (), 3, "2,1", None])
+def test_an_insert_with_no_rows_at_all_is_refused_by_name(rows):
+    with pytest.raises(SpecError) as exc:
+        Insert(rows=rows)
+    assert exc.value.problems[0].startswith("rows ")
+
+
+@pytest.mark.parametrize("bad", [[0], [1, -2], [1, 1.5], ["2"], [True], [2, None]])
+def test_a_bad_row_count_is_refused_with_its_own_index(bad):
+    """Per entry rather than as one sentence: "rows is invalid" is not something a person
+    can act on and "rows[1] must be an integer ≥ 1, got -2" is — the rule
+    `token_tray._grid_problems` states per offending position, in the schema's half."""
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "deck_box",
+            "compartments": [{"contents": {"count": 100}}],
+            "lid": {}, "insert": {"rows": bad}, "schema_version": 1,
+        })
+    paths = {p["path"] for p in problems_with_paths(exc.value.problems)}
+    assert any(path.startswith("spec.insert.rows[") for path in paths), paths
+
+
+def test_an_unknown_key_under_the_insert_is_refused_like_every_other_section():
+    with pytest.raises(SpecError) as exc:
+        OrganizerSpec.from_dict({
+            "archetype": "deck_box",
+            "compartments": [{"contents": {"count": 100}}],
+            "lid": {}, "insert": {"rows": [1], "columns": 2}, "schema_version": 1,
+        })
+    assert "spec.insert has unknown field(s): columns" in exc.value.problems
+
+
+def test_the_fourth_archetypes_section_moved_no_existing_hash():
+    """`test_the_third_archetypes_section_moved_no_existing_hash`, one archetype later.
+
+    The rule is the same and the evidence is stronger: `insert` was added when three
+    archetypes' worth of specs already existed, and all three of their example hashes are
+    pinned in `EXAMPLE_SPEC_HASHES` at the values they had before it. Here the claim is
+    made about the canonical *form*, which is what those hashes are of.
+    """
+    for spec in (deck(), card_divider(), token_tray()):
+        assert "insert" not in canonical_json(spec)
+    assert '"insert":{"rows":[1,2]}' in canonical_json(box_insert(rows=(1, 2)))
+
+
+def test_diff_reports_a_row_grouping_which_is_what_makes_f8_mechanical():
+    """"Put the dice well in its own row" has to be a path — `insert.rows[1]` — for the
+    reason "make it three across" and "make the tab wider" do."""
+    a, b = box_insert(rows=(1, 2)), box_insert(rows=(1, 1, 1))
+    assert spec_diff(a, b)["insert.rows[1]"] == (2, 1)
+    assert spec_diff(a, b)["insert.rows[2]"] == (None, 1)
 
 
 # ── validation: every rule, with the field named ───────────────────────────────

@@ -76,6 +76,7 @@ from .common import (
     SweepCase,
     callout,
     external_overshoots,
+    stray_section_problem,
     view_frame,
     view_row,
 )
@@ -166,6 +167,11 @@ def _structural_problems(spec: OrganizerSpec) -> list[str]:
             f"token_tray v{ARCHETYPE_VERSION} has no divider plate; the divider section "
             "belongs to archetype 'card_divider' — remove it or change the archetype"
         )
+    stray = stray_section_problem(
+        spec, section="insert", subject=f"token_tray v{ARCHETYPE_VERSION}", owner="box_insert"
+    )
+    if stray:
+        problems.append(stray)
     carded = [i for i, c in enumerate(spec.compartments) if not isinstance(c.contents, Pocket)]
     if carded:
         problems.append(

@@ -136,11 +136,12 @@ def _structural_problems(spec: OrganizerSpec) -> list[str]:
     cards = card_contents_problem(spec, subject=f"card_divider v{ARCHETYPE_VERSION}")
     if cards:
         problems.append(cards)
-    tray = stray_section_problem(
-        spec, section="tray", subject=f"card_divider v{ARCHETYPE_VERSION}", owner="token_tray"
-    )
-    if tray:
-        problems.append(tray)
+    for section, owner in (("tray", "token_tray"), ("insert", "box_insert")):
+        stray = stray_section_problem(
+            spec, section=section, subject=f"card_divider v{ARCHETYPE_VERSION}", owner=owner
+        )
+        if stray:
+            problems.append(stray)
     if spec.divider is None:
         problems.append(
             f"card_divider v{ARCHETYPE_VERSION} needs a divider section (divider is "

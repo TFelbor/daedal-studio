@@ -485,10 +485,29 @@ def face_planes(
     if normals.size == 0:
         return []
     selected = (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS) & (areas > 0.0)
+    return _cluster_planes(_triangles(mesh), areas, selected, axis, tol_mm, min_area_mm2)
+
+
+def _cluster_planes(
+    tri: np.ndarray,
+    areas: np.ndarray,
+    selected: np.ndarray,
+    axis: int,
+    tol_mm: float,
+    min_area_mm2: float,
+) -> list[float]:
+    """The clustering half of `face_planes`, shared with `face_planes_within`.
+
+    Selection is the caller's — which faces count as being on this axis, and (for a
+    region read) which lie inside it — and everything after it is the same arithmetic in
+    both: sort by coordinate, merge at `tol_mm`, drop a cluster under `min_area_mm2`, and
+    return each survivor's **area-weighted** mean. One spelling, because a region read
+    whose clusters merged differently from a global one would put two answers to "where
+    is this plane" in one measurer.
+    """
     if not selected.any():
         return []
-    tri = _triangles(mesh)[selected]
-    coords = tri[:, :, axis].mean(axis=1)
+    coords = tri[selected][:, :, axis].mean(axis=1)
     weights = areas[selected]
     order = np.argsort(coords, kind="stable")
     coords, weights = coords[order], weights[order]
@@ -502,6 +521,58 @@ def face_planes(
             planes.append(float(np.average(block, weights=w)))
         start = i
     return planes
+
+
+def face_planes_within(
+    mesh: Any,
+    axis: int,
+    box_mm: tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
+    tol_mm: float = 1e-3,
+    *,
+    min_area_mm2: float = MIN_PLANE_AREA_MM2,
+) -> list[float]:
+    """`face_planes`, restricted to the triangles whose centroid lies inside `box_mm`.
+
+    What a **ragged** layout has to be measured with, and the reason it can be built at
+    all. `face_planes` over a whole mesh answers "which planes does this part have",
+    which is the right question for a regular grid — a token tray's `2n + 2` planes per
+    axis *are* its grid — and the wrong one the moment two compartments in the same row
+    have different depths: one well's back face is then a Y plane nothing else shares,
+    and a global read cannot tell it from an artefact. `token_tray`'s docstring names
+    that as the reason its grid is regular, and this is the answer to it.
+
+    The **design supplies the region and the mesh supplies the numbers**, which is the
+    whole of what keeps this a measurement. An archetype hands in the box it believes one
+    compartment occupies, widened by a fraction of a wall; what comes back is whatever
+    faces are actually there. A wall in the wrong place therefore reads as a wrong
+    *number* while the region still contains it, and as a `MeasureError` — no planes, or
+    more than the design says — once it has moved further than that. Neither outcome is
+    "within tolerance", which is the only outcome that would be a lie.
+
+    The centroid is the test rather than any overlap, for `face_planes`' reason: a face
+    is one triangle's worth of plane, and a triangle is in the region or it is not.
+
+    Args:
+        mesh: A mesh (or mesh body) with `vertices` and `faces` arrays.
+        axis: 0, 1 or 2 for X, Y or Z.
+        box_mm: `((x_min, x_max), (y_min, y_max), (z_min, z_max))`, inclusive, mm.
+        tol_mm: Cluster width, as `face_planes`.
+        min_area_mm2: Cluster area floor, as `face_planes`.
+
+    Returns:
+        The distinct planes perpendicular to `axis` among those triangles, sorted.
+        Empty when the region holds no face of any area on that axis.
+    """
+    normals, areas = face_normals(mesh)
+    if normals.size == 0:
+        return []
+    tri = _triangles(mesh)
+    centroids = tri.mean(axis=1)
+    inside = np.ones(len(tri), dtype=bool)
+    for i, (low, high) in enumerate(box_mm):
+        inside &= (centroids[:, i] >= float(low)) & (centroids[:, i] <= float(high))
+    selected = inside & (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS) & (areas > 0.0)
+    return _cluster_planes(tri, areas, selected, axis, tol_mm, min_area_mm2)
 
 
 def face_plane_extent(

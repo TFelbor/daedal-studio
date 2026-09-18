@@ -45,13 +45,14 @@ from ..spec import (
     SpecError,
     wall_floor_problems,
 )
-from . import card_divider, deck_box, token_tray
+from . import box_insert, card_divider, deck_box, token_tray
 from .common import SweepCase
 
 REGISTRY: dict[str, ModuleType] = {
     deck_box.ARCHETYPE: deck_box,
     card_divider.ARCHETYPE: card_divider,
     token_tray.ARCHETYPE: token_tray,
+    box_insert.ARCHETYPE: box_insert,
 }
 
 # The schema's list and the registry must agree, or a spec the schema accepts has
@@ -123,8 +124,25 @@ def example_spec(name: str) -> OrganizerSpec:
 
 
 def measure_spec_mesh(spec: OrganizerSpec, mesh) -> dict[str, float]:
-    """Read a spec's designed features off a mesh with the spec's own archetype."""
-    return get_archetype(spec.archetype).measure(mesh)
+    """Read a spec's designed features off a mesh with the spec's own archetype.
+
+    A module **may** declare `MEASURE_NEEDS_SPEC = True` when it cannot read its features
+    off the mesh alone, and this passes the spec as a second argument when it does. The
+    box insert is the first and is the reason the hook exists: its compartments are
+    ragged, so a global plane count is not its layout and each one has to be measured
+    inside the region the *design* says it occupies (`compiler.face_planes_within`). The
+    mesh still supplies every number — what the spec supplies is where to look.
+
+    Optional with the old signature as the fallback, exactly like `measured_features`, so
+    the other three modules keep `measure(mesh)` and took no change. It is declared on the
+    module rather than sniffed off the function signature because "this measurer needs the
+    design" is a claim a reviewer should see in the diff, not something inferred from an
+    argument count that a refactor could change by accident.
+    """
+    module = get_archetype(spec.archetype)
+    if getattr(module, "MEASURE_NEEDS_SPEC", False):
+        return module.measure(mesh, spec)
+    return module.measure(mesh)
 
 
 def required_measurements(spec: OrganizerSpec) -> tuple[str, ...]:

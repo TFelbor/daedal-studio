@@ -25,7 +25,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from ..compiler import CompileResult, MeasureError, face_planes
+from ..compiler import (
+    CompileResult,
+    MeasureError,
+    face_plane_extent,
+    face_planes,
+    tilted_face_extent,
+)
 from ..spec import CardStack, OrganizerSpec
 
 #: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
@@ -105,6 +111,72 @@ def external_overshoots(
     return out
 
 
+@dataclass(frozen=True)
+class Undershoot:
+    """One axis on which the part is *smaller* than the room it was given.
+
+    The mirror of `Overshoot`, and it exists because an insert fails in both directions
+    while a deck box only fails in one. A box you carry that comes out 3 mm narrower than
+    a limit somebody typed is simply a box; an insert 3 mm narrower than the interior it
+    fills **rattles**, which slides the compartments under the lid and tips the contents
+    out — the failure mode locking tabs and fill-to-interior exist for, neither of which
+    is built. So the gap is reported rather than passed over in silence, and it is
+    reported as a *number* rather than as a verdict: an insert that does not fill the box
+    is not refused and is not "does not fit", it is an insert with a stated gap.
+
+    Measured against the **effective** limit — `stated − fit_margin_mm` — for the same
+    reason `Overshoot` is: the margin is room the insert is not allowed to use, so
+    counting it as a gap would report two millimetres of deliberate clearance as a fault
+    on every part that fits perfectly.
+
+    Attributes:
+        axis: `"width"`, `"depth"` or `"height"`.
+        extent: What the part measures on that axis, mm.
+        limit: The limit actually compared against — `stated − margin`, mm.
+        gap: `limit − extent`, mm. Always positive.
+        note: The sentence a fits line is built from.
+    """
+
+    axis: str
+    extent: float
+    limit: float
+    gap: float
+    note: str
+
+
+def external_undershoots(
+    spec: OrganizerSpec, extents: Iterable[float], *, tol_mm: float = 0.05
+) -> list[Undershoot]:
+    """Every axis on which `extents` falls short of the effective external limit.
+
+    Args:
+        spec: The spec whose `constraints` supply the limit.
+        extents: The part's (width, depth, height) in mm, in that order.
+        tol_mm: How short an axis may fall before it is worth saying so. The default is
+            `compiler.DEFAULT_TOLERANCE_MM`, spelled as a number rather than imported,
+            because it is answering a different question — the smallest gap worth
+            printing, not the largest error allowed — and tying them together would make
+            a tolerance change silently rewrite a sentence.
+
+    Returns:
+        One `Undershoot` per short axis, in axis order; empty when the spec carries no
+        `max_external_mm` or every axis fills its limit.
+    """
+    limits = spec.constraints.effective_max_external_mm()
+    if limits is None:
+        return []
+    out: list[Undershoot] = []
+    for axis, extent, limit in zip(EXTERNAL_AXES, extents, limits, strict=True):
+        gap = limit - extent
+        if gap <= tol_mm:
+            continue
+        out.append(Undershoot(
+            axis=axis, extent=extent, limit=limit, gap=gap,
+            note=f"{gap:.1f} mm short of the box on {axis}",
+        ))
+    return out
+
+
 def single_compartment_problem(
     spec: OrganizerSpec, *, subject: str, holds: str
 ) -> Optional[str]:
@@ -145,8 +217,9 @@ def card_contents_problem(spec: OrganizerSpec, *, subject: str) -> Optional[str]
         return None
     return (
         f"{subject} holds card stacks, not pockets; compartments{wrong} carry a pocket. "
-        "Give each compartment a card stack (count, card, sleeving), or use archetype "
-        "'token_tray' for pockets"
+        "Give each compartment a card stack (count, card, sleeving), use archetype "
+        "'token_tray' for a grid of pockets, or 'box_insert' for cards and pockets in "
+        "one part"
     )
 
 
@@ -207,6 +280,61 @@ def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: st
             f"has {expected}: {[round(v, 3) for v in planes]}"
         )
     return planes
+
+
+#: How far a chamfer face may sit from 45° before the measurement is a finding rather
+#: than a number. `compiler.base_chamfer` builds the angle exactly — every face is the
+#: supporting plane through a chord and the same chord moved in by `c` and down by `c` —
+#: so this is a check on the *mesh*, not a tolerance on the design: a tenth of a degree
+#: is four orders above what the kernel's own float noise produces and far below anything
+#: a broken construction would.
+CHAMFER_ANGLE_TOL_DEG = 0.1
+
+
+def measured_chamfer(part: Any, *, what: str, subject: str) -> float:
+    """The height of `part`'s base chamfer, refusing a mesh whose slope is not 45°.
+
+    A chamfer is not a difference of two planes, so it is measured off the faces that
+    slope: the only ones on these archetypes that point downward without being the bed
+    face. Their Z extent *is* the chamfer, and their tilt is checked rather than assumed,
+    because a face at 30° would measure a plausible height off a part nobody designed. A
+    part with no sloping face measures 0 — right for a designed 0, out of tolerance for
+    anything else.
+
+    Here rather than in `deck_box.py`, where it was written, at the moment a second
+    archetype carries the same treatment: the chamfer and the external round are
+    `process` parameters that every body on a bed wants, so two modules reading them off
+    two spellings is one refactor away from two modules disagreeing about what 45° means.
+
+    Args:
+        part: A mesh body with `vertices` and `faces`.
+        what: The body being measured, e.g. `"lid"`, for the message.
+        subject: How the archetype names itself, e.g. `"a deck box v2"`.
+
+    Raises:
+        MeasureError: If any sloping face is further than `CHAMFER_ANGLE_TOL_DEG` from 45°.
+    """
+    low, high, worst_error_deg = tilted_face_extent(part)
+    if worst_error_deg > CHAMFER_ANGLE_TOL_DEG:
+        raise MeasureError(
+            f"the {what}'s base chamfer is {45.0 + worst_error_deg:.3f}° at its worst "
+            f"where {subject} cuts 45°"
+        )
+    return high - low
+
+
+def measured_corner_radius(part: Any, y_plane: float, x_plane: float) -> float:
+    """The radius of the vertical corners a wall runs between, as a plane difference.
+
+    The wall in the plane `Y = y_plane` runs from its tangent point to its tangent
+    point — `r` in from each end — so the radius is where that wall starts along X minus
+    the X plane the design says it starts at. Exact vertices both, which is why a radius
+    survives the float32 export like every other feature here; a square corner gives 0.
+
+    Shared for `measured_chamfer`'s reason: it is the measurement of a `process`
+    parameter rather than of one archetype's shape.
+    """
+    return face_plane_extent(part, 1, y_plane, 0)[0] - x_plane
 
 
 def view_row(
