@@ -675,7 +675,9 @@ def test_settings_says_what_ios_needs():
 
 
 @pytest.mark.asyncio
-async def test_the_real_sender_encrypts_and_signs_with_the_stored_key(push_env, awaiting_job):
+async def test_the_real_sender_encrypts_and_signs_with_the_stored_key(
+    push_env, awaiting_job, tmp_path, monkeypatch
+):
     """The whole send, against a subscription built the way a browser builds one.
 
     Everything above this replaces `webpush_async` with a fake, which proves the
@@ -687,8 +689,14 @@ async def test_the_real_sender_encrypts_and_signs_with_the_stored_key(push_env, 
     payload and builds the request without opening a socket, against a P-256 keypair
     and a 16-byte auth secret generated here exactly as a browser's `pushManager` would
     hand them over.
+
+    It runs from `tmp_path` because that mode writes the ciphertext to `encrypted.data`
+    in the *working directory* — which, run from a checkout, is a binary file dropped
+    into the repository root.
     """
     from pywebpush import webpush
+
+    monkeypatch.chdir(tmp_path)
 
     db, store = push_env
     db.insert_job(awaiting_job)
