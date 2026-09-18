@@ -22,11 +22,13 @@ two new handlers.
 
 import base64
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from starlette.testclient import TestClient
 
 from pythonsrc.telemetry import db as db_module
@@ -667,3 +669,54 @@ def test_settings_says_what_ios_needs():
     page = SETTINGS_PAGE.read_text()
     assert "Home Screen" in page
     assert "settings-notifications" in page, "the section has to be in the index too"
+
+
+# ── The one thing a fake sender cannot check ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_real_sender_encrypts_and_signs_with_the_stored_key(push_env, awaiting_job):
+    """The whole send, against a subscription built the way a browser builds one.
+
+    Everything above this replaces `webpush_async` with a fake, which proves the
+    reconciler's arithmetic and proves nothing about the *format* of what is stored: a
+    private key in the wrong encoding, or a public point that is not the pair, fails
+    only where it cannot be seen — on somebody's phone, as a 400 from a push service.
+
+    So this one runs the real `pywebpush` path with `curl=True`, which encrypts the
+    payload and builds the request without opening a socket, against a P-256 keypair
+    and a 16-byte auth secret generated here exactly as a browser's `pushManager` would
+    hand them over.
+    """
+    from pywebpush import webpush
+
+    db, store = push_env
+    db.insert_job(awaiting_job)
+    _, private = push.ensure_vapid_keys(store)
+
+    device = ec.generate_private_key(ec.SECP256R1())
+    p256dh = base64.urlsafe_b64encode(
+        device.public_key().public_bytes(
+            serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+        )
+    ).rstrip(b"=").decode()
+    auth = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
+    db.upsert_push_subscription("https://push.example/device", p256dh, auth)
+
+    request = webpush(
+        subscription_info={
+            "endpoint": "https://push.example/device",
+            "keys": {"p256dh": p256dh, "auth": auth},
+        },
+        data=json.dumps(push.notification_payload(awaiting_job)),
+        vapid_private_key=private,
+        vapid_claims={"sub": push.vapid_subject(store)},
+        ttl=push.PUSH_TTL_S,
+        curl=True,
+    )
+
+    # Header names come back lower-cased; what is asserted is the content.
+    assert "authorization: vapid t=" in request, "the VAPID header did not sign"
+    assert "k=" in request, "the JWT carries the public key the browser subscribed with"
+    assert "content-encoding: aes128gcm" in request, "the payload was not encrypted"
+    assert f"ttl: {push.PUSH_TTL_S}" in request
