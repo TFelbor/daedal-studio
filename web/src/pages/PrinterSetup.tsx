@@ -1200,6 +1200,15 @@ function NotificationsSection() {
         worked. Nothing else is ever sent.
       </p>
 
+      {typeof window !== 'undefined' && !window.isSecureContext && (
+        <p className="hint">
+          This page is not on a secure origin, so the browser will not run a service
+          worker and notifications cannot be turned on here. Open the app over HTTPS —
+          or on the machine running the server, where <code>localhost</code> counts as
+          secure.
+        </p>
+      )}
+
       {isIos && !standalone && (
         <p className="hint">
           On iPhone and iPad this works only in the installed app. Add Daedal Studio to

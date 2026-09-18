@@ -1268,6 +1268,108 @@ FastAPI application with:
   reaching the next one.
 - **SimulatorManager** (`simulator_manager.py`): manages a real dockerized OctoPrint on port 5001 (`docker compose -f infra/docker-compose.yml --profile simulator up -d octoprint-simulator`), found by compose label or name. Its virtual printer plugin is enabled in `data/octoprint/octoprint/config.yaml`, so the full dispatch path runs without hardware. `start_moonraker()`/`stop_moonraker()` are deprecated stubs that always report not-running — there is no Moonraker simulator, and `tests/mocks/` no longer contains mock servers.
 
+### Web push (`server/push.py`)
+
+**The one notification this product sends.** A print runs for hours, nobody watches it,
+and when the printer says it finished the row goes to `awaiting_verdict` — where only a
+person can say whether the part actually came off the bed. That question is the pilot's
+central instrument (`feedback_funnel`), and until this existed it reached whoever
+happened to have the page open.
+
+**A reconciler, not a hook, and that is the load-bearing decision.** Three code paths
+move a job into `awaiting_verdict`: `print_dispatch` and `_run_pipeline` in
+`server/app.py`, and `OctoPrintCollector._on_event` — which runs in *whichever process
+claimed the job*, which may be the pipeline container or `run_operator.py`, and which
+never touches the broadcaster. Hooking the writers means three places to remember, in
+two processes, one of them not this one; the fourth writer added next year would be the
+one that silently sends nothing. So a task on a 30 s cadence
+(`$DS_PUSH_INTERVAL_S`, `0` disables) asks the database the same question
+`GET /feedback/pending` already asks, and notifies what it finds.
+
+**`push_sent` in `job_event` is the dedup key, not a record of one.** "Has this job
+been pushed" has to be a fact in the database: a flag in this process's memory would
+notify a second time after a restart, which is the failure that makes people switch a
+notification off for good. It is a `job_event` kind rather than a `print_job` column
+for the reason that table exists — a new engagement signal should not be a migration.
+The event is written **after** the sends, carrying `{sent, failed, removed}`. Writing
+it first would be safer against a crash mid-send and was rejected: the event is the
+only record this product keeps of a delivery, and one claiming a send that never
+happened is worse than the single duplicate a crash between the two can cause. A job
+with **no subscriptions** is not recorded at all — nothing was delivered, and marking
+it would make the first device to subscribe miss the job it subscribed for.
+
+**The backlog guard.** `PUSH_MAX_AGE_S` (`$DS_PUSH_MAX_AGE_S`, default one hour) is why
+the first tick after this shipped did not announce every print anyone ever forgot to
+answer. A job is notified only while its `completed_at` is recent; a server restarting
+inside that window still delivers, a backlog from last month never does. A row with no
+`completed_at` is not notified either — every writer that sets `awaiting_verdict` sets
+it in the same call, so an empty one *is* the backlog.
+
+**The subscription table is not about a job.** `push_subscription` is keyed on the push
+endpoint, which is what the push service issues and what the browser re-sends on every
+load, so the write is an upsert: a plain insert grows a row per visit for a device that
+subscribed once. No foreign key, no job column, and deliberately **no user column** —
+`server/auth.py` is one shared secret and there is no per-user model, so a notification
+goes to every subscribed device and a `user_id` here would claim an identity nothing
+establishes. The only garbage collection is the push service's own verdict: a **404 or
+410 deletes the row** (that service saying the device is gone for good), while a 502 or
+a timeout is a bad afternoon and the row stays.
+
+**The VAPID keypair is generated on first use and never handed back.** Both halves are
+`CONFIG_KEYS` marked `internal`, so `POST /config` refuses them, `GET /config` does not
+list them and `/config/{key}/reveal` will not return one; `INTERNAL_CONFIG_KEYS` is now
+read off that flag rather than from a second list, so a key that declares itself
+internal cannot stay writable. The public half leaves through
+`GET /push/vapid-public-key`, which is all a browser needs; a browser holding a
+subscription made against an older key is told to make a new one by that route
+answering differently. `VAPID_SUBJECT` is the one push value a person may set — RFC
+8292's `sub` claim is a contact address, not a credential, and a *missing* one is
+refused by every push service, which is why there is a placeholder default.
+
+**The three routes are authenticated by writing nothing**, and here that default is
+doing real work: a subscription is an address this server will POST to, so an open
+`POST /push/subscriptions` would let anyone who could reach the port aim it at a host of
+their choosing — the same shape as the `OCTOPRINT_URL` confused deputy above, except
+there is no credential to bind, so the token is the whole answer. The endpoint is
+additionally required to be an `https` URL with a host.
+
+**The dependency.** `pywebpush` (MPL-2.0) with `py-vapid` (MPL-2.0) and `http-ece`
+(MIT) — file-level weak copyleft, imported unmodified, licences read off the published
+wheels rather than off an issue body, recorded in `licence_policy.REVIEWED_WEAK_COPYLEFT`
+and `THIRD-PARTY-NOTICES.md` § 1. The alternative was roughly 150 lines of RFC 8291 on
+the `cryptography` already in the tree; it was refused because a hand-rolled payload
+encryption fails on somebody's phone and passes in CI. The send path is
+`webpush_async`, on the `aiohttp` the api-server image already carries, so a tick does
+not block the event loop.
+
+**The service worker gains two handlers and no cache rules** (`web/src/sw.ts`). A push
+handler reads the event payload — which the browser has already decrypted for this
+subscription — and calls no route, so the worker still holds no credential and the
+allowlist is untouched; `tests/test_pwa_shell.py`'s `respondWith` count is still two.
+Nothing in that handler may bail out: `userVisibleOnly: true` is the only subscription
+a browser grants, and a push that ends without a visible notification is one Chrome
+replaces with its own message and then revokes the permission over. The tap opens
+`/dashboard/<job_id>` — the SPA's route. `/jobs/<job_id>` is the API, and opening it in
+the installed app opens a JSON document.
+
+**What this needs that the deployment does not yet have: TLS.** A service worker is
+only registered in a secure context, and `localhost` is the one insecure origin
+browsers treat as secure. The api-server binds loopback by default (`$DS_API_BIND`) and
+terminates no TLS — see **Configuration** — so a phone on the same network reaches it
+over plain `http://<lan-ip>:8000`, where the worker never registers and
+`pushManager.subscribe` therefore never runs. **Push is complete in this repository and
+undeliverable to a phone until the app is served over HTTPS**, which is a deployment
+change (a reverse proxy with a certificate, or the hosted beta) and not a code one.
+Everything up to that point — the keys, the routes, the reconciler, the worker — is
+exercised by `tests/test_push.py`; the device half of the acceptance criteria is a
+manual checklist that unblocks with the certificate.
+
+**iOS.** Safari has supported web push since 16.4 and **only from an installed Home
+Screen app** — the button does nothing in a Safari tab, so Settings § 05 says so rather
+than letting a person find out. That, being per device, and "blocked is not off" (once
+a browser has been told no, the page cannot ask again) are the three facts on that
+section, each of them otherwise a support conversation.
+
 ### Data Flow
 
 1. User submits job via UI → POST `/jobs` → `PrintJob` inserted in the telemetry database (PostgreSQL on Supabase)

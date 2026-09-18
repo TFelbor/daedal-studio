@@ -21,6 +21,13 @@
  * Everything goes through `apiFetch`, which is the one place the shared secret is
  * attached — `tests/test_frontend_auth.py` refuses a bare `fetch` to a server route
  * anywhere but `api/http.ts`.
+ *
+ * One deployment fact belongs here rather than in a bug report: a service worker is
+ * registered only in a *secure context*, and `localhost` is the single insecure origin
+ * browsers make an exception for. The api-server terminates no TLS today, so a phone
+ * reaching it over `http://<lan-ip>:8000` has no worker and `pushSupported()` is the
+ * last thing that is true — `registration()` gives up and the button below says so.
+ * That is a certificate away, not a code change.
  */
 
 import { apiFetch } from './http';
