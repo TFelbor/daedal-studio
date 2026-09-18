@@ -300,6 +300,9 @@ _PRINT_JOB_EXTRA_COLUMNS = {
     "dispatched_printer_url": "TEXT",
     "repair_report": "JSONB",
     "print_duration_s": "DOUBLE PRECISION",
+    # The fit photo a person took of the printed part. Evidence, not a verdict —
+    # see `update_job_fit_photo`.
+    "fit_photo_path": "TEXT",
 }
 
 #: The subset stored as JSONB and decoded back into dicts on read.
@@ -795,6 +798,21 @@ class TelemetryDB:
         the printer's terminal event arrived, and the duration is a measurement.
         """
         self._update_job_columns(job_id, {"print_duration_s": duration_s})
+
+    def update_job_fit_photo(self, job_id: str, path: str | None) -> None:
+        """Record where the photo of the printed part was stored.
+
+        Deliberately not routed through `update_job_outcome_verdict`: a photo is
+        evidence, not a verdict. Someone can photograph a part that did not fit and
+        then say nothing, and the job must stay `awaiting_verdict` — the moment this
+        wrote `outcome` it would be answering on their behalf, and the human-wins rule
+        would then refuse the answer they gave a minute later.
+
+        Args:
+            job_id: The job the photo is of.
+            path: Repo-relative path to the stored image.
+        """
+        self._update_job_columns(job_id, {"fit_photo_path": path})
 
     def update_job_slice(
         self,

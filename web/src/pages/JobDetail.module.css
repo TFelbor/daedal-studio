@@ -241,6 +241,29 @@
   margin-top: 12px;
 }
 
+/* The photo control, one rule below the verdict it is evidence for. Separated
+   rather than placed in the same row: the two verdicts are one choice, and a third
+   control beside them would read as a third answer. */
+.photoRow {
+  display: flex;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-row);
+}
+
+/* Bounded by its column, not by the image. A phone photo is 4000px wide and the
+   panel it sits in is 320; `height: auto` keeps the aspect ratio of whatever the
+   camera produced, portrait or landscape. */
+.fitPhoto {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+  border: 1px solid var(--rule);
+  background: var(--void);
+}
+
 /* ── Failure events ─────────────────────────────────────────────────────── */
 
 .failureRows {

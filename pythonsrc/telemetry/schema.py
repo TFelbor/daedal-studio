@@ -334,6 +334,13 @@ class PrintJob:
     event. The slicer's `estimated_print_time_s` is a prediction; this is the
     measurement it must be judged against."""
 
+    fit_photo_path: str | None = None
+    """Repo-relative path to the photo someone took of the printed part —
+    `data/outputs/{job_id}/fit_photo.jpg`. The only record of what the part actually
+    looked like: `printability_score` is a prediction about a mesh and `outcome` is one
+    word about a print, and neither can be re-derived into "the lid was 0,4 mm proud".
+    Evidence, not a verdict — see `TelemetryDB.update_job_fit_photo`."""
+
     def __post_init__(self):
         """Validate the instantiated PrintJob fields.
 

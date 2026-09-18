@@ -31,6 +31,7 @@ import {
   reportOutcome,
   type PendingFeedbackJob,
 } from '../api/client';
+import { FitPhotoInput } from './FitPhotoInput';
 import styles from './OutcomeFeedback.module.css';
 
 /**
@@ -190,6 +191,10 @@ function OutcomeCard({ job, onResolved }: CardProps) {
           <ThumbsDown size={16} />
           It failed
         </button>
+        {/* Evidence, beside the verdict rather than behind it. The upload is its own
+            request, so it neither blocks a verdict nor is blocked by one — and a
+            photo taken here is kept even if the person then skips. */}
+        <FitPhotoInput jobId={job.job_id} />
         <button
           type="button"
           className={`${styles.verdict} ${styles.skip}`}
