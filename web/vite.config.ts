@@ -45,6 +45,11 @@ export default defineConfig({
       // composer prefills from; `/activity` carries the UI event stream.
       '/prompt': 'http://localhost:8000',
       '/activity': 'http://localhost:8000',
+      // Web push: the VAPID public key and the two halves of a subscription's life.
+      // Unproxied it would answer with index.html and the JSON parse would throw —
+      // and `tests/test_pwa_shell.py` reads this block as the list of paths the API
+      // owns, so a push route the service worker could cache would fail there.
+      '/push': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true

@@ -23,6 +23,7 @@ two new handlers.
 import base64
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -575,3 +576,94 @@ def test_the_reconciler_can_be_switched_off(monkeypatch):
 def test_an_unreadable_interval_falls_back(monkeypatch, caplog):
     monkeypatch.setenv(push.PUSH_INTERVAL_ENV, "soon")
     assert push.push_interval_s() == push.DEFAULT_PUSH_INTERVAL_S
+
+
+# ── The browser half ─────────────────────────────────────────────────────────
+#
+# There is no frontend test runner in this repository, so the claims the worker and the
+# page make are asserted against the source, the way `tests/test_pwa_shell.py` does it.
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SERVICE_WORKER = REPO_ROOT / "web" / "src" / "sw.ts"
+PUSH_API = REPO_ROOT / "web" / "src" / "api" / "push.ts"
+SETTINGS_PAGE = REPO_ROOT / "web" / "src" / "pages" / "PrinterSetup.tsx"
+VITE_CONFIG = REPO_ROOT / "web" / "vite.config.ts"
+
+
+def _executable_lines(path: Path) -> str:
+    """The file with its comment lines dropped — prose is not a promise."""
+    out = []
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("*", "/*", "//")):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def test_the_worker_handles_a_push_and_a_tap():
+    source = SERVICE_WORKER.read_text()
+    assert "addEventListener('push'" in source
+    assert "addEventListener('notificationclick'" in source
+    assert "showNotification(" in source
+
+
+def test_the_worker_shows_something_for_every_push():
+    """`userVisibleOnly: true` is the only subscription a browser grants.
+
+    A push that ends without a notification is one Chrome shows its own message for,
+    and after a few of those it revokes the permission — so the handler must have no
+    path that returns without showing one.
+    """
+    source = _executable_lines(SERVICE_WORKER)
+    handler = source.split("addEventListener('push'", 1)[1].split("addEventListener(", 1)[0]
+    assert "catch" in handler, "a payload that will not parse still has to show something"
+    assert "??" in handler, "the title and body need defaults, not a bail-out"
+    assert "return" not in handler, "no early exit: every push owes a visible notification"
+
+
+def test_the_tap_opens_the_app_route_and_not_the_api():
+    """`/jobs/<id>` is JSON; opening it in the installed app opens a document."""
+    source = _executable_lines(SERVICE_WORKER)
+    assert "/jobs" not in source, "the worker has grown a rule about a job route"
+    assert "openWindow(" in source
+
+
+def test_the_worker_still_asks_the_api_for_nothing():
+    """The payload is decrypted by the browser. The worker holds no token and needs none."""
+    source = _executable_lines(SERVICE_WORKER)
+    assert "/push" not in source, (
+        "the worker must not call the push API: it cannot authenticate, and the "
+        "notification's contents arrive on the event"
+    )
+    assert "Authorization" not in source
+
+
+def test_push_is_a_proxied_api_prefix():
+    """Unproxied, `npm run dev` answers `/push/...` with index.html and the parse throws."""
+    assert "'/push'" in VITE_CONFIG.read_text()
+
+
+def test_the_page_never_holds_a_key_of_its_own():
+    """The application server key is fetched, not embedded — rotating it is a server act."""
+    source = PUSH_API.read_text()
+    assert "/push/vapid-public-key" in source
+    assert "applicationServerKey" in source
+    assert "userVisibleOnly: true" in source
+
+
+def test_the_permission_prompt_is_behind_a_click():
+    """Safari refuses it outside a gesture, and an unprompted ask is held against the origin."""
+    assert "requestPermission" in PUSH_API.read_text()
+    assert "requestPermission" not in SETTINGS_PAGE.read_text(), (
+        "asking belongs in api/push.ts, reached from the button below"
+    )
+    page = SETTINGS_PAGE.read_text()
+    assert "enablePush" in page and "onClick" in page
+
+
+def test_settings_says_what_ios_needs():
+    """A button that cannot work in a Safari tab is worse than no button."""
+    page = SETTINGS_PAGE.read_text()
+    assert "Home Screen" in page
+    assert "settings-notifications" in page, "the section has to be in the index too"

@@ -12,6 +12,7 @@ import {
 import { Blueprint, Marks } from '../components/Blueprint';
 import { BootMark } from '../components/BootMark';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
+import { currentSubscription, disablePush, enablePush, permission } from '../api/push';
 import {
   getConfig,
   setConfig,
@@ -57,7 +58,8 @@ const SECTIONS = [
   { id: 'settings-printer', num: '02', title: 'Printer' },
   { id: 'settings-simulators', num: '03', title: 'Simulators' },
   { id: 'settings-install', num: '04', title: 'Install' },
-  { id: 'settings-developer', num: '05', title: 'Developer' },
+  { id: 'settings-notifications', num: '05', title: 'Notifications' },
+  { id: 'settings-developer', num: '06', title: 'Developer' },
 ];
 
 type PrinterKind = 'moonraker' | 'octoprint' | 'bambu';
@@ -1021,11 +1023,21 @@ export function PrinterSetup() {
             <InstallSection />
           </section>
 
-          {/* ── 05 Developer ──────────────────────────────────────────────── */}
+          {/* ── 05 Notifications ──────────────────────────────────────────── */}
           <section id={SECTIONS[4].id} className={styles.section}>
             <div className={styles.sectionHead}>
               <span className={styles.sectionNum}>{SECTIONS[4].num}</span>
               <h2 className="heading">{SECTIONS[4].title}</h2>
+              <span className={styles.sectionTag}>WHEN A PRINT FINISHES</span>
+            </div>
+            <NotificationsSection />
+          </section>
+
+          {/* ── 06 Developer ──────────────────────────────────────────────── */}
+          <section id={SECTIONS[5].id} className={styles.section}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionNum}>{SECTIONS[5].num}</span>
+              <h2 className="heading">{SECTIONS[5].title}</h2>
             </div>
 
             {/* The PYTHONPATH override that used to sit here is gone, and so is the
@@ -1111,6 +1123,121 @@ function InstallSection() {
       <p className="hint">
         An installed app keeps its own storage, so the API token is asked for once more the
         first time you open it. It is the same token; nothing has been lost.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The one notification this product sends, and the switch for it.
+ *
+ * A print runs for hours and nobody watches it. When the printer says it finished, the
+ * row goes to `awaiting_verdict` and only a person can say whether the part actually
+ * came off the bed — a question that reaches nobody if it only ever appears on a page
+ * nobody has open. See `server/push.py`.
+ *
+ * Three things are said out loud here because each of them is a support conversation
+ * otherwise. **It is per device**: the subscription belongs to this browser on this
+ * machine, so enabling it on a laptop tells the laptop. **On iOS it needs the installed
+ * app**: Safari has supported web push since 16.4 and only from the Home Screen, so the
+ * button in a Safari tab is a button that cannot work. And **blocked is not off**: once
+ * a browser has been told no, this page cannot ask again, and the only way back is the
+ * browser's own site settings.
+ */
+function NotificationsSection() {
+  const [state, setState] = useState<NotificationPermission | 'unsupported'>(() => permission());
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void currentSubscription().then((subscription) => {
+      if (!cancelled) setSubscribed(subscription !== null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const standalone =
+    typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as { standalone?: boolean }).standalone === true);
+  const isIos =
+    typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  async function toggle(on: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (on) await enablePush();
+      else await disablePush();
+      setSubscribed(on);
+      setState(permission());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (state === 'unsupported') {
+    return (
+      <div className={styles.sectionBody}>
+        <p className="hint">
+          This browser cannot show notifications. Chrome and Edge can; Safari can from
+          version 16.4, and on iPhone and iPad only once the app is on the Home Screen.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.sectionBody}>
+      <p className="hint">
+        One notification, when a print finishes and is waiting for you to say whether it
+        worked. Nothing else is ever sent.
+      </p>
+
+      {isIos && !standalone && (
+        <p className="hint">
+          On iPhone and iPad this works only in the installed app. Add Daedal Studio to
+          your Home Screen (section 04), open it from there, and turn notifications on
+          inside it.
+        </p>
+      )}
+
+      {state === 'denied' ? (
+        <p className="hint">
+          Notifications are blocked for this site. This page cannot ask again — turn them
+          back on in the browser&apos;s site settings, then reload.
+        </p>
+      ) : (
+        <div className={styles.row}>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || subscribed === null}
+            onClick={() => void toggle(!subscribed)}
+          >
+            {busy
+              ? 'Working…'
+              : subscribed
+                ? 'Turn off notifications'
+                : 'Notify me when a print finishes'}
+          </button>
+          <span className={styles.fieldState}>
+            {subscribed === null ? '' : subscribed ? 'On for this device' : 'Off'}
+          </span>
+        </div>
+      )}
+
+      {error && <p className="hint">{error}</p>}
+
+      <p className="hint">
+        Per device: this switch is about this browser on this machine, and turning it on
+        elsewhere is a separate decision made there.
       </p>
     </div>
   );
