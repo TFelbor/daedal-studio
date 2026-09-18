@@ -702,6 +702,37 @@ def test_the_third_archetypes_section_moved_no_existing_hash():
     assert '"tray":{"columns":3}' in canonical_json(token_tray())
 
 
+#: The `spec_hash` of each shipped archetype's own `example()`, captured on `main` at
+#: a828492 — **before** the box insert's `insert` section was written — and pinned here
+#: so the fourth archetype's section is proved additive rather than remembered to be.
+#:
+#: The fixed canonical vectors below say the same thing for three hand-built specs; these
+#: say it for the specs the registry itself hands out, which is what
+#: `tests/test_archetype_registry.py`, the CLI's `example` and the composer's preview all
+#: compile. A field added to `CardStack`, `Pocket`, `Process`, `Constraints` or `Tray`
+#: would move every one of them, and nothing else in the suite would notice.
+EXAMPLE_SPEC_HASHES: dict[str, str] = {
+    "deck_box": "5bab61fffb5790a8076e1ea15965f8e163b4c280aa2889e00fe8f54bb3f71f6d",
+    "card_divider": "d6c67cd15099f3bda088566e996c25cea0f3d2f144e180af707fb4919e9d69c7",
+    "token_tray": "9d3cd1b52a4709453a70d60c7552f8a043e7e1e99309b9e39d02d75b6919e67c",
+}
+
+
+@pytest.mark.parametrize("archetype", sorted(EXAMPLE_SPEC_HASHES))
+def test_no_archetypes_example_hash_has_moved(archetype):
+    """Every example spec that existed before the box insert still hashes as it did.
+
+    The acceptance criterion "no existing `spec_hash` moves", asserted rather than
+    trusted. It is the guard the box insert needed and the guard the *next* archetype
+    needs: the only additive-safe change to this schema is a new optional **section**
+    (`_OPTIONAL_SECTIONS`), and nothing mechanical stops a well-meant scalar on a leaf
+    class — which is written into every canonical form there has ever been.
+    """
+    from pythonsrc.organizer.archetypes import example_spec
+
+    assert spec_hash(example_spec(archetype)) == EXAMPLE_SPEC_HASHES[archetype]
+
+
 def test_the_hash_is_stable_across_processes():
     """A fixed vector: if this changes, every stored hash in the world changes with it,
     which is a schema-version bump, not a refactor.
