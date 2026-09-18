@@ -420,3 +420,57 @@ def test_phase_4_slices_the_engineered_divider_stl(tmp_path, monkeypatch):
     assert cmd[cmd.index("-l") + 1] == str(stl)
     assert cmd.index("-s") < cmd.index("-l")  # settings reach slicing, not per-mesh scope
     assert gcode.exists()
+
+
+# ── the box insert, through the same three functions (issue #152) ─────────────
+#
+# The fourth archetype, and the first whose `measure()` needs the spec as well as the
+# mesh (`MEASURE_NEEDS_SPEC`). The claim these two tests make is that `pipeline.py` did
+# not learn about it: `_compile_spec_phase` and `_assert_spec_dimensions` are the same
+# two functions the divider goes through, and the dispatch is the only thing that knows.
+
+
+def test_an_insert_compiles_into_the_job_directory_as_one_part(tmp_path):
+    spec = example_spec("box_insert")
+    spec_path = dump_spec(spec, tmp_path / "in" / "insert.json")
+    outputs = tmp_path / "out"
+    mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    assert mesh_path == outputs / "compiled_mesh.stl" and mesh_path.stat().st_size > 84
+    written = json.loads((outputs / "spec.json").read_text())
+    assert written["archetype"] == "box_insert" and written["insert"] == {"rows": [1, 2]}
+    assert "lid" not in written and "tray" not in written and "divider" not in written
+    features = json.loads((outputs / "compile_features.json").read_text())
+    assert features["spec_sha256"] == spec_hash(spec) == result.spec_hash
+    assert features["parts"] == ["insert"]
+    # The example's own arithmetic: the widest row is the card well between two walls,
+    # and the back row is 6,9 mm narrower, so its three walls carry 2,3 mm each.
+    assert features["features"]["external_width_mm"] == 71.7
+    assert features["features"]["external_depth_mm"] == 138.3
+    assert features["features"]["row0_wall_mm"] == 1.6
+    assert features["features"]["row1_wall_mm"] == 3.9
+
+
+def test_an_insert_passes_phase_3s_assert_path_with_every_compartment_measured(tmp_path, capsys):
+    """A ragged layout's feature count is a function of its compartment list, so what
+    Phase 3 reports is the whole list rather than a fixed tuple — which is exactly what
+    `required_measurements` is for, and what would silently shrink if `measure()` lost
+    the spec on the way through."""
+    from pythonsrc.engineer import Engineer
+    spec = example_spec("box_insert")
+    spec_path = dump_spec(spec, tmp_path / "in" / "insert.json")
+    outputs = tmp_path / "out"
+    mesh_path, result = _compile_spec_phase(_ns(spec=str(spec_path)), outputs)
+    engineered = outputs / "engineered_mesh.obj"
+    eng = Engineer()
+    eng.process(input_path=mesh_path, output_path=engineered, target_mm=None,
+                repair_mode="assert")
+
+    report = _assert_spec_dimensions(result, engineered, outputs)
+    assert report["within_tolerance"] is True
+    # Seven fixed features, five per compartment, two row walls, three row boundaries.
+    assert report["features_checked"] == 7 + 5 * 3 + 2 + 3 == 27
+    assert report["features_within"] == report["features_checked"]
+    assert f"[DS] Dimensions: {report['features_checked']}/" in capsys.readouterr().out
+    assert eng.last_report["repair_method"] == "asserted"
+    assert eng.last_report["scale_applied"] is False
+    assert len(result.parts) == 1
