@@ -526,7 +526,7 @@ def _measure_margin(d: InsertDimensions) -> float:
     return MEASURE_MARGIN_FRACTION * thinnest
 
 
-def _region(well: Well, d: InsertDimensions, margin: float):
+def _region(well: Well, d: InsertDimensions, margin: float, origin: tuple[float, float, float]):
     """The box one compartment is measured inside, as `face_planes_within` wants it.
 
     The design says where to look and the mesh says what is there — the whole of what
@@ -534,11 +534,24 @@ def _region(well: Well, d: InsertDimensions, margin: float):
     the rim on purpose: the rim is the shell's top face and overhangs into every
     compartment's region, and a read that sometimes caught it and sometimes did not would
     make the plane count depend on how the kernel happened to triangulate an annulus.
+
+    `origin` is **the part's own minimum corner, read off the mesh**, not the design's
+    zero, and it is the one thing this whole approach turns on. Every other archetype
+    measures differences of planes and is therefore translation-invariant for free; a
+    region is an absolute box and is not. Phase 3's assert path XY-centres the plate it is
+    handed and sits it on Z = 0 (`common.view_frame` says so, and it is why a callout is
+    reconciled against the served mesh's minimum before anything is drawn), so a region
+    stated in design coordinates measures empty space on the mesh a slicer actually gets.
+    Anchoring to the measured minimum is exactly what the viewer does with the same
+    numbers, and it holds for as long as Phase 3 translates without rotating or scaling —
+    which is the standing contract of `--no-scale` assert mode, and which the sweep
+    through Phase 3 is what keeps honest.
     """
+    ox, oy, oz = origin
     return (
-        (well.x - margin, well.x + well.width + margin),
-        (well.y - margin, well.y + well.depth + margin),
-        (well.z_floor - margin, d.external_h - margin),
+        (ox + well.x - margin, ox + well.x + well.width + margin),
+        (oy + well.y - margin, oy + well.y + well.depth + margin),
+        (oz + well.z_floor - margin, oz + d.external_h - margin),
     )
 
 
@@ -618,8 +631,9 @@ def measure(mesh: Any, spec: OrganizerSpec) -> dict[str, float]:
     starts: dict[int, list[float]] = {}
     ends: dict[int, list[float]] = {}
     lefts: dict[int, list[float]] = {}
+    origin = (x[0], y[0], z[0])
     for well in d.wells:
-        region = _region(well, d, margin)
+        region = _region(well, d, margin, origin)
         wx = _planes_in(part, 0, region, 2, well)
         wy = _planes_in(part, 1, region, 2, well)
         wz = _planes_in(part, 2, region, 1, well)
