@@ -124,6 +124,15 @@ CREATE TABLE IF NOT EXISTS job_event (
 
 CREATE INDEX IF NOT EXISTS idx_job_event_job_kind ON job_event (job_id, kind);
 
+CREATE TABLE IF NOT EXISTS push_subscription (
+    endpoint TEXT PRIMARY KEY,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ,
+    user_agent TEXT
+);
+
 CREATE TABLE IF NOT EXISTS app_config (
     key TEXT PRIMARY KEY,
     value_encrypted BYTEA,
@@ -139,5 +148,7 @@ ALTER TABLE failure_event ENABLE ROW LEVEL SECURITY;
 ALTER TABLE telemetry_collector_claim ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE job_event ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE push_subscription ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE app_config ENABLE ROW LEVEL SECURITY;

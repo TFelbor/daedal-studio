@@ -74,6 +74,7 @@ TELEMETRY_TABLES = (
     "failure_event",
     "telemetry_collector_claim",
     "job_event",
+    "push_subscription",
 )
 #: The config store's table, kept here so one schema renderer covers the whole
 #: database — `server/config_store.py` imports its DDL from here.
@@ -403,6 +404,29 @@ def schema_statements(include_config: bool = True) -> list[str]:
         "    CONSTRAINT job_event_job_id_fkey FOREIGN KEY (job_id) REFERENCES print_job (job_id)\n"
         ")",
         "CREATE INDEX IF NOT EXISTS idx_job_event_job_kind ON job_event (job_id, kind)",
+        # Web push. Its own table rather than a `print_job` column or a `job_event`
+        # kind, because a subscription is not a fact about a job: it is a browser on
+        # a device saying "this endpoint will accept a notification", and it outlives
+        # every job it is told about. The `app_config` precedent, one table up.
+        #
+        # The endpoint is the primary key because it is what the push service issues
+        # and what identifies the subscription everywhere — the browser re-sends the
+        # same one on every load, so an upsert on it is what keeps a returning device
+        # to one row instead of one row per visit.
+        #
+        # No foreign key and no job column: there is nothing to reference. There is
+        # also no user column, deliberately — there is no per-user model in this
+        # product (`server/auth.py`: one shared secret), so a notification goes to
+        # every device that asked for one, and writing a `user_id` here would claim
+        # an identity nothing establishes.
+        "CREATE TABLE IF NOT EXISTS push_subscription (\n"
+        "    endpoint TEXT PRIMARY KEY,\n"
+        "    p256dh TEXT NOT NULL,\n"
+        "    auth TEXT NOT NULL,\n"
+        "    created_at TIMESTAMPTZ NOT NULL,\n"
+        "    last_seen_at TIMESTAMPTZ,\n"
+        "    user_agent TEXT\n"
+        ")",
     ]
     tables = list(TELEMETRY_TABLES)
     if include_config:
@@ -1012,6 +1036,66 @@ class TelemetryDB:
             (limit,),
         )
         return [_row_to_job(row) for row in rows]
+
+    # ── Push subscriptions ────────────────────────────────────────────────────
+    #
+    # Rows rather than records: these are not telemetry, they are the devices that
+    # have asked to be told something, and they carry no dataclass in
+    # `pythonsrc/telemetry/schema.py` for that reason. `server/push.py` is the only
+    # caller.
+
+    def upsert_push_subscription(
+        self,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+        user_agent: str | None = None,
+    ) -> None:
+        """Record a device's push endpoint, or refresh one already known.
+
+        Upsert rather than insert because a browser hands the page the *same*
+        subscription on every load: `pushManager.getSubscription()` returns what it
+        already has, and a plain insert would either fail or grow one row per visit
+        for a device that has subscribed exactly once. `created_at` is left as it
+        was — the day this device first asked is a fact, and `last_seen_at` is what
+        moves.
+
+        Args:
+            endpoint: The push service URL the browser issued. The identity of the
+                subscription, everywhere.
+            p256dh: The subscription's public key, base64url, from
+                `subscription.getKey('p256dh')`.
+            auth: The subscription's auth secret, base64url.
+            user_agent: Whatever the browser said, kept so a device that stops
+                accepting notifications can be recognised in the table.
+        """
+        now = datetime.now(timezone.utc)
+        self.execute(
+            "INSERT INTO push_subscription "
+            "(endpoint, p256dh, auth, created_at, last_seen_at, user_agent) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (endpoint) DO UPDATE SET "
+            "p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, "
+            "last_seen_at = EXCLUDED.last_seen_at, user_agent = EXCLUDED.user_agent",
+            (endpoint, p256dh, auth, now, now, user_agent),
+        )
+
+    def get_push_subscriptions(self) -> list[dict[str, Any]]:
+        """Every device that has asked to be notified, oldest first."""
+        return self.query(
+            "SELECT endpoint, p256dh, auth, created_at, last_seen_at, user_agent "
+            "FROM push_subscription ORDER BY created_at ASC"
+        )
+
+    def delete_push_subscription(self, endpoint: str) -> int:
+        """Forget a device. Returns the number of rows removed (0 or 1).
+
+        Called both by a person turning notifications off and by the sender, when a
+        push service answers 404 or 410 — which is that service saying the
+        subscription is gone for good, and the only garbage collection this table
+        has.
+        """
+        return self.execute("DELETE FROM push_subscription WHERE endpoint = %s", (endpoint,))
 
     def _update_job_columns(self, job_id: str, updates: dict) -> None:
         """Write the non-None entries of `updates` to a print_job row."""

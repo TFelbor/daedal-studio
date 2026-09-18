@@ -621,6 +621,13 @@ JOB_EVENT_KINDS = (
     # `?preview=1` already keep the *export* half of the metric separate: a person
     # rotating a mesh has not kept it.
     "preview_reached",
+    # The web push for a job reaching `awaiting_verdict`, written by the server's
+    # reconciler at the moment it hands the notification to the push services. It is
+    # the *dedup key*, not only a record: three code paths move a job into
+    # `awaiting_verdict` and none of them is hooked, so "has this job been pushed"
+    # has to be a fact in the database rather than a flag in one process's memory —
+    # a restart between the send and the next tick would otherwise notify again.
+    "push_sent",
 )
 """Recognised `JobEvent.kind` values.
 
