@@ -1,0 +1,66 @@
+/* The photo control. Sits inside whatever row of verdict buttons hosts it, so it
+   carries no ground of its own — only the thumbnail and the error line below it. */
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* The input is the thing that opens the camera, and it is never seen: `display: none`
+   would work on every browser that matters, but a hidden-but-present control keeps
+   the label association and the keyboard path intact. */
+.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Matches `.verdict` in OutcomeFeedback.module.css rather than importing it: this
+   component is mounted in two places, and only one of them is that banner. The 44px
+   minimum is the phone — a control a thumb has to hit while holding a warm part. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--ink-mute);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Small on purpose. The confirmation is "that is the right picture", not a gallery;
+   the full image is on the job's own page. */
+.thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border: 1px solid var(--rule);
+}
+
+.error {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--bad-ink);
+}

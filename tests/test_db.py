@@ -190,3 +190,27 @@ def test_insert_all_none_sample(temp_db):
 
 def test_update_non_existent_job_outcome(temp_db):
     temp_db.update_job_outcome("non_existent", "success", datetime.now(timezone.utc))
+
+
+def test_update_job_fit_photo_round_trips_and_touches_no_verdict(temp_db):
+    """A photo is evidence, not a verdict — the outcome columns must not move."""
+    job = PrintJob(
+        job_id="job_photo",
+        prompt="a tray for 60 sleeved cards",
+        printer_id="printer_1",
+        printer_firmware="klipper",
+        slicer="Cura",
+        profile_name="Standard",
+        started_at=datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        completed_at=None,
+        outcome="awaiting_verdict",
+    )
+    temp_db.insert_job(job)
+
+    temp_db.update_job_fit_photo("job_photo", "data/outputs/job_photo/fit_photo.jpg")
+
+    retrieved = temp_db.get_job("job_photo")
+    assert retrieved.fit_photo_path == "data/outputs/job_photo/fit_photo.jpg"
+    assert retrieved.outcome == "awaiting_verdict"
+    assert retrieved.outcome_source is None
+    assert retrieved.outcome_reported_at is None

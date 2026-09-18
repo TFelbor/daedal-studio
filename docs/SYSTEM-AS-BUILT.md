@@ -1082,6 +1082,57 @@ FastAPI application with:
   later job, and answered a 200 with it for any finished job whose own export was
   missing or recorded in `export_errors`. `tests/test_job_artifacts.py` binds the two
   lists and exercises the flat fallback in every format.
+- **`POST /jobs/{id}/photo` is the first route that accepts bytes from a browser**, and
+  it is what makes "does it fit?" answerable with something other than one word. Every
+  other write this server takes is a short JSON body pydantic validates; this one is an
+  arbitrary stream landing on the disk that also holds the config store's neighbours, so
+  four properties are stated as data in `server/app.py` and each has a test in
+  `tests/test_fit_photo_api.py`.
+  - **Authenticated by writing nothing.** No `@public`, no third entry in
+    `EXPECTED_PUBLIC_PATHS`. `tests/test_api_auth.py` builds its 401 matrix from the
+    router, so both the POST and the GET were covered the day they existed.
+  - **Capped twice.** `FIT_PHOTO_MAX_BYTES` is 10 MiB — a 12 MP phone JPEG is 3–6 MB and
+    an HDR one passes 8, so 5 would refuse photographs people actually take. A declared
+    `Content-Length` over it is a 413 before the body is transferred; the stream is then
+    **counted again as it is consumed**, because a chunked body declares no length at all
+    and uvicorn caps nothing. The second check is the one that bounds the disk, which is
+    why the test sends an iterator rather than a buffer. The SPA checks the same figure
+    before uploading; that check is a courtesy, the server's is the rule.
+  - **Type-checked against the bytes, not the header.** `image/jpeg`, `image/png`,
+    `image/webp`, and the magic prefix must agree with what the caller claimed
+    (`sniff_image_type`) — otherwise a 415 naming the three. A prefix check rather than a
+    decode: the api-server image has no imaging library, and handing untrusted bytes to
+    one is the decompression-bomb path. It is not a validity proof — a JPEG header over
+    garbage is stored — and nothing but a browser ever consumes the result. HEIC is
+    refused: iOS transcodes a file-input upload to JPEG, and the residue that still
+    arrives as `image/heic` cannot be rendered by two of the three desktop browsers, so
+    accepting it would store evidence nobody could look at.
+  - **Contained, and the server names the file.** The target is
+    `data/outputs/{job_id}/fit_photo.{jpg|png|webp}` — the per-job output directory the
+    api-server already has bind-mounted — joined by `fit_photo_target` through
+    `contained_path`, with the suffix coming from `FIT_PHOTO_TYPES` and never from the
+    client. A filename from a browser is request-controlled data and is not accepted at
+    all. The row is looked up **before a byte is read**, so `/jobs/%2e%2e/photo` is a 404
+    that never reaches the join. The write is staged beside the target and `os.replace`d
+    into place, and a re-upload deletes a predecessor stored under a different suffix:
+    one part, one picture.
+
+  The body is the image itself rather than a multipart form. `infra/docker/server.Dockerfile`
+  installs a hand-written package list **without `python-multipart`** — it is in
+  `requirements-base.txt` for the GPU worker's `/sculpt` alone — and FastAPI raises at
+  *import* when a route declares an `UploadFile` with no multipart parser available. A
+  multipart route would therefore pass CI, where the requirements file installs it, and
+  take the api-server image down in production. A raw body needs no dependency, no SBOM
+  entry and no Dockerfile change.
+
+  `GET /jobs/{id}/photo` serves it back inline, with the media type its stored suffix
+  implies. It reads the row's own path and puts it through `contained_path` again —
+  a value in a database is data too — and deliberately does **not** use
+  `resolve_job_artifact`: that function's flat-layout and `dev-` fallbacks exist so an
+  old job's G-code can still be found, and applied to a photo they would answer one job's
+  request with another job's evidence. `GET /jobs/{id}` carries `has_fit_photo`, a
+  boolean rather than the path, because a server-side location is not something the
+  client has any use for; `/provenance` carries the path itself, for the dataset.
 - **`POST /organizer/resolve` is the composer's arithmetic, and it is here because the
   dimension KB is here.** Spec in; the canonical spec, its hash, the resolved card stack
   per compartment (`dimensions.resolve_stack` — footprint, pitch, height and the `basis`
@@ -1144,11 +1195,13 @@ FastAPI application with:
   joins and then requires `is_relative_to(base)` **after `resolve()`**: a lexical check
   passes a path whose every component is innocent and whose symlink target is not, and
   an *absolute* part needs no `..` at all (`Path("web/dist") / "/etc/passwd"` is
-  `/etc/passwd`, and `//x` reaches a `:path` group as `/x`). Four joins use it —
+  `/etc/passwd`, and `//x` reaches a `:path` group as `/x`). Six joins use it —
   `serve_spa`, `resolve_job_artifact` (both `job_id`, which arrives as `..` from
-  `/jobs/%2e%2e/blueprint`, and `filename`), `resolve_job_profile`, and the two
+  `/jobs/%2e%2e/blueprint`, and `filename`), `resolve_job_profile`, the two
   `repo_root / job.profile_name` profile reads, where `profile` is free text from
-  `POST /jobs` that is `json.load`ed and handed to `run_operator.py`. A refused SPA
+  `POST /jobs` that is `json.load`ed and handed to `run_operator.py`, and the fit
+  photo's two — `fit_photo_target` on the way in and `fit_photo_on_disk` on the way
+  back out, which is the only join here that *writes*. A refused SPA
   path falls through to `index.html` rather than 403-ing, because client-side routing
   means an unmatched path is the normal case for a deep link.
   `tests/test_static_path_traversal.py` holds the line, and it sends every traversal
@@ -1603,6 +1656,20 @@ FastAPI application with:
   never overwrites a human one**, because printer events arrive late and would otherwise replace
   a real observation with a meaningless one. Genuine machine-observed failures
   (`PrintFailed`, `Error`, `PrintCancelled`) are still recorded directly.
+- **The fit photo is evidence, not a verdict** (`fit_photo_path`,
+  `db.update_job_fit_photo()`, its own `fit_photo` stage in `trace.STAGES`). One column,
+  holding the repo-relative `data/outputs/{job_id}/fit_photo.{jpg|png|webp}` that
+  `POST /jobs/{id}/photo` wrote. It is the only record of what a part actually looked
+  like: `printability_score` is a prediction about a mesh, `outcome` is one word about a
+  print, and neither can be re-derived into "the lid sat 0,4 mm proud" — the photograph
+  either exists or the observation is gone the moment the part is thrown away or used.
+  **It is deliberately not routed through `update_job_outcome_verdict`**, for the same
+  reason `print_duration_s` is not: someone can photograph a part that did not fit and
+  then say nothing, and the job has to stay `awaiting_verdict` until a person answers. A
+  writer that touched `outcome` would answer on their behalf, take the job out of the
+  pending queue, and then have the machine-never-overwrites-human rule refuse the verdict
+  they gave a minute later. It is its own stage for the same reason a stage names exactly
+  one `TelemetryDB` method.
 - **Asking the question** (`web/src/components/OutcomeFeedback.tsx`, `/feedback/*`): a persistent
   app-shell banner listing prints awaiting a verdict, each answerable in one tap. It lives in the
   shell rather than on a page because the person who can answer has usually navigated away.
@@ -2441,6 +2508,37 @@ proxy logs `ws proxy error: read ECONNRESET` twice. StrictMode discards the firs
 of every effect, so this fired on every dev page load and read like a dead backend.
 `api/ws.ts`'s `closeSocket` waits for the upgrade before closing; use it instead of
 `ws.close()` in effect cleanups.
+
+**The camera is ten lines of the fit photo** (`components/FitPhotoInput.tsx`).
+`capture="environment"` on an `<input type="file" accept="image/jpeg,image/png,image/webp">`
+opens the rear camera directly on a phone and degrades to a file picker on a desktop —
+no `getUserMedia`, no preview canvas, no permission dialog to explain, no dependency.
+The input is visually hidden behind an ordinary button rather than `display: none`, which
+keeps the keyboard path intact.
+
+Three decisions around it. **The upload is its own request, fired on selection**, not
+carried with the verdict: the verdict stays one tap, and the phone that walked out of
+Wi-Fi range beside the printer never blocks the answer that matters more. **The
+acknowledgement is a local object URL**, created from the picked `File` and revoked on
+unmount, so it does not wait for a round trip back over the connection that just carried
+the bytes up — a never-revoked object URL keeps a several-megabyte photo alive for the
+life of the document. And the control is mounted **twice**: in `OutcomeCard`, beside the
+verdicts in the app-shell banner, and in `JobDetail`'s own **Fit photo** panel, where the
+stored image is shown — through `useAuthedObjectUrl`, because the browser attaches none
+of our headers to an `<img src>`, and asked for only when the row says `has_fit_photo`,
+so `/photo` is not a 404 in the network log of every job page anyone opens.
+
+That panel appears on a job that **has** a photo *or* on any finished job whose verdict
+has been given, which is the case that would otherwise be lost: answering "it fits" in
+the banner dismisses the card, and with it the only camera in the app — while the part
+is still on the bed for the hour in which someone actually thinks to photograph it. A
+job still awaiting its verdict is excluded, because the "Does it fit?" panel above it
+already carries the control and a second, empty panel underneath would read as a second
+question.
+
+**It added no `@media` rule.** 375 px is whatever the 720 px step produced, which is the
+ladder below; the one figure the component states for the phone is a 44 px minimum height
+on its button, which is a touch target and not a breakpoint.
 
 **The app is installable, and the service worker is an allowlist** (`web/src/sw.ts`,
 `web/public/manifest.webmanifest`). Every route but `GET /health` and the bundle is

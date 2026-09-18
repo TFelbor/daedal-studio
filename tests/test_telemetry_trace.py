@@ -99,6 +99,7 @@ def traced_db(isolated_db_url):
     db.record_job_event(complete, "download", {"artifact": "engineered_mesh.gcode"})
     db.increment_download_count(complete)
     db.update_job_print_duration(complete, 1793.0)
+    db.update_job_fit_photo(complete, f"data/outputs/{complete}/fit_photo.jpg")
     db.update_job_outcome_verdict(
         complete, "failure", source="user", completed_at=now + timedelta(minutes=30),
     )

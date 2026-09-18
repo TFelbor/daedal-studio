@@ -247,6 +247,18 @@ STAGES: tuple[Stage, ...] = (
         ),
     ),
     Stage(
+        key="fit_photo",
+        title="Fit photo",
+        trigger="POST /jobs/{id}/photo",
+        writer="db.update_job_fit_photo()",
+        call_site="server/app.py:4812",
+        # Its own stage rather than part of the verdict above, matching the writer.
+        # A photo says what the part looked like; it does not say whether it was
+        # accepted. Folding it into `outcome` would make the trace claim a verdict
+        # exists whenever someone took a picture and then said nothing.
+        columns=("fit_photo_path",),
+    ),
+    Stage(
         key="engagement",
         title="Engagement",
         trigger="GET /jobs/{id}/download",
@@ -295,6 +307,7 @@ _EXPECTED_NULL = {
     "support_filament_mm3": "only set when supports were generated",
     "dispatched_printer_url": "only set once a print is dispatched",
     "print_duration_s": "only set once the printer reports one",
+    "fit_photo_path": "only set once someone photographs the printed part",
     "requested_size_mm": "only set when a size was chosen; the default applied otherwise, or the spec decided",
     "requested_scale_axis": "only set when a size was chosen",
 }

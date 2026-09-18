@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS print_job (
     used_reference_assets INTEGER,
     dispatched_printer_url TEXT,
     repair_report JSONB,
-    print_duration_s DOUBLE PRECISION
+    print_duration_s DOUBLE PRECISION,
+    fit_photo_path TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_print_job_started_at ON print_job (started_at DESC);

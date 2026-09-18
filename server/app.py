@@ -189,6 +189,15 @@ cancelled_jobs: set[str] = set()
 #: hoping the two spellings agree.
 DIST_DIR = Path(__file__).resolve().parent.parent / "web" / "dist"
 
+#: Everything the pipeline reads and writes: `inputs/`, `outputs/`, `logs/`.
+#:
+#: A module constant rather than a re-derived `Path(__file__).parent.parent / "data"`
+#: for the same reason `DIST_DIR` is one — every containment check under it compares
+#: against the same absolute directory — and because the fit-photo route is the first
+#: one that *writes* here from a request, which a test has to be able to redirect
+#: somewhere it may safely fill with bytes.
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
 #: `.webmanifest`, spelled out rather than inherited.
 #:
 #: The SPA catch-all answers with a `FileResponse`, whose media type comes from
@@ -410,7 +419,7 @@ def resolve_job_artifact(
     # below goes through `contained_path`. `job_id` reaches here as `..` via
     # `/jobs/%2e%2e/blueprint`: the route's `[^/]+` group matches a decoded `..` exactly
     # as it matches a UUID, and `data/outputs/../blueprint.png` is `data/blueprint.png`.
-    data = Path(__file__).resolve().parent.parent / "data"
+    data = DATA_DIR
     outputs = data / "outputs"
     for directory in (job_id, f"dev-{job_id}"):
         candidate = contained_path(outputs, directory, filename)
@@ -444,6 +453,108 @@ def resolve_job_artifact(
                 return shared_input
 
     return None
+
+
+# ── The fit photo ─────────────────────────────────────────────────────────────
+# `POST /jobs/{id}/photo` is the first route in this application that accepts bytes
+# from a browser, so the four properties below are stated as data and each one is
+# tested: it is authenticated (by wearing no `@public`), capped, type-checked, and
+# written through `contained_path`.
+
+#: The largest fit photo that will be stored, in bytes.
+#:
+#: 10 MiB. A 12 MP phone JPEG is 3–6 MB and an HDR one can pass 8, so a 5 MiB cap
+#: would refuse photographs people actually take; above 10 the only thing that fits is
+#: something that is not a phone photo. The client checks the same figure before
+#: uploading — that check is a courtesy, this one is the rule.
+FIT_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+
+#: The image types accepted, and the suffix each is stored under.
+#:
+#: Three, all of which every browser this app supports can *display* as well as
+#: produce. HEIC is deliberately absent: iOS transcodes a file-input upload to JPEG,
+#: and the residue that still arrives as `image/heic` cannot be rendered by two of the
+#: three desktop browsers, so accepting it would store evidence nobody could look at.
+FIT_PHOTO_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+
+#: The stored name, which the server chooses. The client never supplies one: a filename
+#: from a browser is request-controlled data, and one photo per job is the whole record
+#: we want anyway.
+FIT_PHOTO_STEM = "fit_photo"
+
+
+def sniff_image_type(head: bytes) -> str | None:
+    """Identify an image from its first bytes, or None if it is not one we accept.
+
+    A prefix check rather than a decode. The api-server image has no imaging library,
+    and handing untrusted bytes to one is how a decompression bomb gets in; what this
+    has to stop is a caller labelling something `image/jpeg` to get it written under a
+    name the browser will later be asked to render. It is not a validity proof — a
+    JPEG header over garbage is stored — and nothing but a browser ever consumes the
+    result.
+
+    Args:
+        head: The first bytes of the body. Twelve are enough for all three types.
+
+    Returns:
+        The content type the bytes actually are, or None.
+    """
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    # RIFF····WEBP — the four size bytes in between are the container's, not a magic.
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def fit_photo_target(job_id: str, suffix: str) -> Path | None:
+    """Where this job's photo is written, or None if the join escapes `data/outputs`.
+
+    `job_id` arrives straight off the URL, and nothing between the socket and the
+    handler collapses dot segments — `/jobs/%2e%2e/photo` reaches here as `..`, which
+    would put a request-supplied file in `data/`. `contained_path` is what refuses it.
+    The suffix is ours, from `FIT_PHOTO_TYPES`, and never the client's.
+
+    Args:
+        job_id: The job the photo belongs to.
+        suffix: `.jpg`, `.png` or `.webp`.
+
+    Returns:
+        The absolute path to write, or None.
+    """
+    return contained_path(DATA_DIR / "outputs", job_id, f"{FIT_PHOTO_STEM}{suffix}")
+
+
+def fit_photo_on_disk(job) -> Path | None:
+    """The stored photo for a job, re-confined on read, or None if there is not one.
+
+    Deliberately not `resolve_job_artifact`: its flat-layout and `dev-` fallbacks exist
+    so an old job's G-code can still be found, and applied to a photo they would answer
+    one job's request with another job's evidence. The row's own path is the only
+    source, and it is put back through `contained_path` because a value in a database
+    is data too — a row edited by hand, or written by an older build, must not be able
+    to name `/etc/passwd`.
+
+    Args:
+        job: A PrintJob row.
+
+    Returns:
+        The path to the image, or None when the row has none, it escapes the outputs
+        tree, or the file is gone.
+    """
+    stored = getattr(job, "fit_photo_path", None)
+    if not stored:
+        return None
+    path = contained_path(DATA_DIR.parent, stored)
+    if path is None or not path.is_relative_to((DATA_DIR / "outputs").resolve()):
+        return None
+    return path if path.is_file() else None
 
 
 def resolve_job_profile(job) -> tuple[str, str | None]:
@@ -1380,6 +1491,10 @@ class JobStatusResponse(BaseModel):
     support_filament_mm3: Optional[float] = None
     layer_count: Optional[int] = None
     outcome_source: Optional[str] = None
+    #: True when a photo of the printed part has been stored, so the page knows to ask
+    #: `GET /jobs/{id}/photo` for it. A boolean rather than the path: the path is a
+    #: server-side location, and the client has exactly one thing to do with it.
+    has_fit_photo: bool = False
     awaiting_verdict: bool = False
     #: True when a bundled fixture stood in for Phase 1 or Phase 2. Carried out to the
     #: UI, not only to the dataset: the running view captions the blueprint "drawn from
@@ -2794,6 +2909,7 @@ async def get_job(job_id: str):
         support_filament_mm3=job.support_filament_mm3,
         layer_count=job.layer_count,
         outcome_source=job.outcome_source,
+        has_fit_photo=fit_photo_on_disk(job) is not None,
         awaiting_verdict=job.outcome == "awaiting_verdict",
         used_reference_assets=(
             None if job.used_reference_assets is None else bool(job.used_reference_assets)
@@ -4292,6 +4408,9 @@ async def get_job_provenance(job_id: str) -> Dict[str, Any]:
             "source": job.outcome_source,
             "reported_at": job.outcome_reported_at.isoformat() if job.outcome_reported_at else None,
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            # Evidence rather than verdict, and reported as such: a row can carry a
+            # photo and no outcome, which is a person who looked and did not answer.
+            "fit_photo_path": job.fit_photo_path,
         },
     }
 
@@ -4572,6 +4691,178 @@ async def report_outcome(job_id: str, request: OutcomeRequest) -> Dict[str, Any]
         "outcome_source": "user",
         "failure_event_id": failure_event.event_id if failure_event else None,
     }
+
+
+# ── The fit photo ────────────────────────────────────────────────────────────
+# "Does it fit?" is the question the whole parametric pivot turns on, and until now
+# the only answer the system could hold was one word. A photograph of the tray with
+# the cards in it is the evidence behind that word — and on a phone it costs one tap,
+# because `capture="environment"` opens the rear camera directly.
+#
+# The body is the image itself, not a multipart form. `python-multipart` is not in the
+# api-server image's package list (`infra/docker/server.Dockerfile`), and FastAPI
+# raises at import when a route declares an `UploadFile` without it — so a multipart
+# route would pass CI, where the requirements file installs it, and take the server
+# down on the box that matters. A raw body needs no dependency, no SBOM entry and no
+# Dockerfile change.
+
+@app.post("/jobs/{job_id}/photo")
+async def upload_fit_photo(job_id: str, request: Request) -> Dict[str, Any]:
+    """Store a photo of the printed part.
+
+    Authenticated by writing nothing: the shared-secret middleware refuses everything
+    that is not marked `@public`, and this is not.
+
+    The order of the checks is the design. The job is looked up before a single byte is
+    read, so an unknown — or traversing — `job_id` is a 404 that never reaches a path
+    join; the declared length is refused before the body arrives; and the stream is
+    counted as it is consumed, because `Content-Length` is a claim and a chunked body
+    makes none at all. A re-upload replaces the previous photo, including one stored
+    under a different suffix: one part, one picture.
+
+    Args:
+        job_id: The job the photo is of.
+        request: The raw request; its body is the image bytes.
+
+    Returns:
+        The stored repo-relative path, the byte count and the content type.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, 415 if the type is not one of
+            the three accepted or the bytes are not what the header claims, 413 if
+            the body exceeds `FIT_PHOTO_MAX_BYTES`, 400 if the body is empty or the
+            path join escapes `data/outputs`.
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    accepted = ", ".join(sorted(FIT_PHOTO_TYPES))
+    declared = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if declared not in FIT_PHOTO_TYPES:
+        db.close()
+        raise HTTPException(
+            status_code=415,
+            detail=f"Send the image as {accepted}, not {declared or 'an unlabelled body'}.",
+        )
+
+    # A declared length over the cap is refused here, before the body is transferred.
+    length = request.headers.get("content-length")
+    if length is not None and length.isdigit() and int(length) > FIT_PHOTO_MAX_BYTES:
+        db.close()
+        raise HTTPException(
+            status_code=413,
+            detail=f"The photo is larger than {FIT_PHOTO_MAX_BYTES // (1024 * 1024)} MB.",
+        )
+
+    # And counted again while it arrives, because a chunked body declares nothing and
+    # uvicorn caps nothing. This is the check that actually bounds the disk.
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > FIT_PHOTO_MAX_BYTES:
+            db.close()
+            raise HTTPException(
+                status_code=413,
+                detail=f"The photo is larger than {FIT_PHOTO_MAX_BYTES // (1024 * 1024)} MB.",
+            )
+
+    if not body:
+        db.close()
+        raise HTTPException(status_code=400, detail="The request body was empty.")
+
+    if sniff_image_type(bytes(body[:12])) != declared:
+        db.close()
+        raise HTTPException(
+            status_code=415,
+            detail=f"Those bytes are not {declared}. Accepted: {accepted}.",
+        )
+
+    suffix = FIT_PHOTO_TYPES[declared]
+    target = fit_photo_target(job_id, suffix)
+    if target is None:
+        db.close()
+        raise HTTPException(status_code=400, detail="Invalid job id")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Written beside the target and moved into place, so a connection that dies
+    # halfway leaves no half-photo for the row to point at.
+    staging = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+    try:
+        staging.write_bytes(body)
+        os.replace(staging, target)
+    finally:
+        staging.unlink(missing_ok=True)
+
+    # One photo per job: a JPEG replacing a PNG must not leave the PNG behind, because
+    # the row can only point at one of them and the other would be an orphan nobody
+    # ever looks at again.
+    for other in FIT_PHOTO_TYPES.values():
+        if other == suffix:
+            continue
+        stale = fit_photo_target(job_id, other)
+        if stale is not None:
+            stale.unlink(missing_ok=True)
+
+    relative = target.relative_to(DATA_DIR.resolve().parent).as_posix()
+    # `update_job_fit_photo`, never `update_job_outcome_verdict`: a photo is evidence,
+    # not a verdict. The job stays `awaiting_verdict` until a person says a word.
+    db.update_job_fit_photo(job_id, relative)
+    db.close()
+
+    activity.action(
+        "fit photo stored",
+        [
+            ("job", job_id[:8]),
+            ("type", declared),
+            ("size", f"{len(body) / 1024:.0f} kB"),
+        ],
+        outcome=f"written to {relative}",
+        status="ok",
+    )
+
+    return {
+        "job_id": job_id,
+        "fit_photo_path": relative,
+        "bytes": len(body),
+        "content_type": declared,
+    }
+
+
+@app.get("/jobs/{job_id}/photo")
+async def get_fit_photo(job_id: str) -> FileResponse:
+    """Serve the stored fit photo.
+
+    Args:
+        job_id: The job whose photo is wanted.
+
+    Returns:
+        The image, inline, with the media type its stored suffix implies.
+
+    Raises:
+        HTTPException: 404 if the job does not exist or has no photo.
+    """
+    db = TelemetryDB()
+    job = db.get_job(job_id)
+    db.close()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    path = fit_photo_on_disk(job)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No photo for this job")
+
+    media_type = next(
+        (t for t, s in FIT_PHOTO_TYPES.items() if s == path.suffix), "application/octet-stream"
+    )
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{path.name}"'},
+    )
 
 
 @app.get("/feedback/stats")

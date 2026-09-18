@@ -106,6 +106,8 @@ export interface JobStatusResponse {
   support_filament_mm3: number | null;
   layer_count: number | null;
   outcome_source: string | null;
+  /** A photo of the printed part has been stored; `GET /jobs/{id}/photo` serves it. */
+  has_fit_photo?: boolean;
   /** The printer finished, but no human has confirmed the part survived. */
   awaiting_verdict: boolean;
   /** A bundled fixture stood in for Phase 1 or Phase 2 — nothing here came from a
@@ -504,6 +506,9 @@ export interface JobProvenance {
     source: string | null;
     reported_at: string | null;
     completed_at: string | null;
+    /** Where the fit photo landed, repo-relative. Evidence, not a verdict: a row can
+     *  carry one and no outcome, which is a person who looked and did not answer. */
+    fit_photo_path: string | null;
   };
 }
 
@@ -897,6 +902,46 @@ export async function reportOutcome(jobId: string, request: OutcomeRequest): Pro
     throw new Error(errBody?.detail || 'Failed to report outcome');
   }
   return res.json();
+}
+
+/**
+ * The image types the server accepts, and the cap it enforces.
+ *
+ * Spelled here as well so a 12 MB photo is refused before it is uploaded over a phone
+ * connection rather than after. The server's copy is the one that decides — see
+ * `FIT_PHOTO_TYPES` and `FIT_PHOTO_MAX_BYTES` in `server/app.py`; this one only saves
+ * someone a wait.
+ */
+export const FIT_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const FIT_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Upload a photo of the printed part.
+ *
+ * The body is the image itself, not a multipart form: the api-server image has no
+ * `python-multipart`, so a route declaring an upload field would raise at import.
+ * `Content-Type` is what tells the server which of the three this is, and the server
+ * checks the bytes agree with it.
+ */
+export async function uploadFitPhoto(jobId: string, file: File): Promise<{ bytes: number }> {
+  if (file.size > FIT_PHOTO_MAX_BYTES) {
+    throw new Error(`That photo is ${Math.round(file.size / 1024 / 1024)} MB; the limit is 10 MB.`);
+  }
+  const res = await apiFetch(`/jobs/${jobId}/photo`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(errBody?.detail || `Could not upload the photo (${res.status})`);
+  }
+  return res.json();
+}
+
+/** The route the stored photo is served from. Needs the token, so fetch it as a blob. */
+export function fitPhotoUrl(jobId: string): string {
+  return `/jobs/${jobId}/photo`;
 }
 
 export async function getFeedbackStats(): Promise<FeedbackStats> {

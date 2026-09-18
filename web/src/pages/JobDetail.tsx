@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { ArrowLeft, Loader2, Printer, RefreshCw } from 'lucide-react';
-import { createJob, dispatchPrint, getJob, getJobTelemetry, reportOutcome } from '../api/client';
+import {
+  createJob,
+  dispatchPrint,
+  fitPhotoUrl,
+  getJob,
+  getJobTelemetry,
+  reportOutcome,
+} from '../api/client';
 import type { FailureEvent, JobStatusResponse, TelemetrySample } from '../api/client';
 import { BootMark } from '../components/BootMark';
 import { DeadChannel } from '../components/DeadChannel';
@@ -12,6 +19,7 @@ import { StageState } from '../components/StageState';
 import { stageStatus } from '../components/stageStatus';
 import { PrintabilityCard } from '../components/PrintabilityCard';
 import { FailureButton } from '../components/FailureButton';
+import { FitPhotoInput } from '../components/FitPhotoInput';
 import { MeshViewer } from '../components/MeshViewer';
 import { PrinterStateCard } from '../components/PrinterStateCard';
 import { ServicePlaceholder } from '../components/ServicePlaceholder';
@@ -98,6 +106,13 @@ export function JobDetail() {
   // The blueprint route needs the shared secret, and the browser sends no headers of
   // ours on an `<img src>` — so the bytes are fetched here and shown as a blob.
   const blueprintSrc = useAuthedObjectUrl(job ? `/jobs/${job.job_id}/blueprint` : null);
+
+  // Same reason, and asked for only once the row says there is one: `/photo` is a 404
+  // for every job nobody has photographed, and requesting it anyway would put one in
+  // the network log of every job page anyone opens.
+  const fitPhotoSrc = useAuthedObjectUrl(
+    job && job.has_fit_photo ? fitPhotoUrl(job.job_id) : null,
+  );
 
   const fetchJob = async () => {
     if (!id) return;
@@ -649,9 +664,47 @@ export function JobDetail() {
                     Doesn't fit / failed
                   </button>
                 </div>
+                {/* The evidence behind the word. Its own request, so it neither
+                    blocks a verdict nor is blocked by one — and `fetchJob` is what
+                    makes the photo appear in the panel below without a reload. */}
+                <div className={styles.photoRow}>
+                  <FitPhotoInput jobId={job.job_id} onUploaded={fetchJob} />
+                </div>
                 {verdictError && (
                   <div className={`notice ${styles.verdictNotice}`}>{verdictError}</div>
                 )}
+              </Blueprint>
+            )}
+
+            {/* Shown once there is a photo, and on any finished job that has been
+                answered — otherwise saying "it fits" in the banner would take the
+                camera away with it, and the part is still on the bed for an hour
+                after the word. A job still awaiting its verdict is not included: the
+                panel above already carries the control, and a second empty one below
+                it would read as a second question. */}
+            {(job.has_fit_photo || (job.status === 'completed' && !job.awaiting_verdict)) && (
+              <Blueprint className={styles.panel}>
+                <span className={`label ${styles.blockLabel}`}>Fit photo</span>
+                {!job.has_fit_photo ? (
+                  <p className={styles.verdictText}>
+                    Nobody photographed this part. The score above is a prediction about a
+                    mesh and the verdict is one word about a print; neither can be turned
+                    back into what the thing actually looked like.
+                  </p>
+                ) : fitPhotoSrc ? (
+                  <img
+                    className={styles.fitPhoto}
+                    src={fitPhotoSrc}
+                    alt={`The printed part for “${job.prompt}”`}
+                  />
+                ) : (
+                  <p className={styles.verdictText}>Loading the photo…</p>
+                )}
+                {/* Re-offered here, because the first photograph is often the one
+                    taken in a hurry beside the printer. */}
+                <div className={styles.photoRow}>
+                  <FitPhotoInput jobId={job.job_id} onUploaded={fetchJob} />
+                </div>
               </Blueprint>
             )}
 
