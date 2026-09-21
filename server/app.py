@@ -50,9 +50,16 @@ from pythonsrc.organizer import (
     OrganizerSpec,
     SpecError,
     dump_spec,
+    game_box_record,
     problems_with_paths,
     spec_hash,
 )
+
+# The curated box interiors, under the same rule again: `box_kb` reads one committed JSON
+# file and imports nothing outside the stdlib. It reaches no network — BoardGameGeek has
+# no client here and must not get one (issue #154) — so the composer can offer the curated
+# list and the typed fallback from the same process that validates the spec.
+from pythonsrc.organizer.box_kb import kb as game_box_kb
 
 # The seed dimensions, for the same reason and under the same rule: `resolve_stack` is
 # arithmetic over a table of sourced millimetres and imports nothing. It is what
@@ -767,8 +774,8 @@ def job_spec_summary(job) -> dict:
         job: A PrintJob row.
 
     Returns:
-        `{"spec", "spec_hash", "archetype", "archetype_version", "dimension_check"}`,
-        every value None when the job is not a spec job.
+        `{"spec", "spec_hash", "archetype", "archetype_version", "dimension_check",
+        "game_box"}`, every value None when the job is not a spec job.
     """
     empty = {
         "spec": None,
@@ -776,6 +783,7 @@ def job_spec_summary(job) -> dict:
         "archetype": None,
         "archetype_version": None,
         "dimension_check": None,
+        "game_box": None,
     }
 
     request_params = job.request_params or {}
@@ -821,6 +829,14 @@ def job_spec_summary(job) -> dict:
         # Written by Phase 3 onto `repair_report` (the `achieved_extent_mm`
         # precedent — no new column). None until Phase 3 has measured.
         "dimension_check": (job.repair_report or {}).get("dimension_check"),
+        # The curated box the compiler recorded, with the source behind each of its
+        # three numbers. Read off `generation_params` rather than resolved from
+        # `spec.box` here, and the difference matters: this is **what that run was
+        # built against**, sources and capture dates as they stood on the day, so a
+        # later correction to the KB cannot rewrite the provenance of a finished part.
+        # None both for a job with no box and for one compiled before Phase 2 ran —
+        # the spec still carries `box.id`, and no provenance is claimed for it.
+        "game_box": generation_params.get("game_box"),
     }
 
 
@@ -1564,6 +1580,12 @@ class JobStatusResponse(BaseModel):
     #: only one that was measured. None until Phase 3 has run. See
     #: `pythonsrc/organizer/compiler.py::DimensionReport.to_dict`.
     dimension_check: Optional[Dict[str, Any]] = None
+    #: The curated box interior this part was compiled against, as Phase 2 recorded it —
+    #: the entry, the KB version and the source behind each of its three numbers. Read off
+    #: `generation_params`, so it is what that run was built against rather than what the
+    #: KB says now. None for a part built to typed millimetres, which is the degraded mode
+    #: and not a gap: `spec.box` is what says which of the two this job is.
+    game_box: Optional[Dict[str, Any]] = None
 
 
 def _profile_build_volume(source: dict) -> Optional[List[float]]:
@@ -4206,6 +4228,48 @@ async def prompt_size_hint(request: SizeHintRequest):
     }}
 
 
+@app.get("/organizer/boxes")
+async def list_game_boxes():
+    """The curated box interiors, so the composer can offer them instead of a blank field.
+
+    The launch set of the game-box dimension KB (issue #154). **Curation, not a scrape**:
+    it reads one committed JSON file, `pythonsrc/data/game_boxes.v1.json`, and reaches no
+    network at all. BoardGameGeek carries external dimensions only, user-entered, in
+    inches, behind a registration-gated commercial licence — there is no BGG client in
+    this repository and there must not be one.
+
+    Fetched rather than compiled into the client, which is the opposite of what
+    `web/src/organizer/spec.ts` does for the archetype strip and the five closed
+    vocabularies, and the difference is what each list *is*. Those are the schema's own
+    literals, where an option the engine refuses is a fabrication; this is data that grows
+    one curated measurement at a time, and a copy of it in TypeScript would be a second
+    set of millimetres drifting from the ones a spec is resolved against. A fetch that
+    fails degrades to exactly the mode this feature is designed around — a box nobody has
+    measured, typed by hand, with `constraints.fit_margin_mm` taken off it.
+
+    Returns:
+        `{"version", "boxes": [...]}`. `version` is the KB's content version, the one a
+        spec records in `box.kb_version`; each box carries its id, name, kind, publisher,
+        the interior in mm and the per-axis provenance sentence behind each number.
+    """
+    current = game_box_kb()
+    return {
+        "version": current.version,
+        "boxes": [
+            {
+                "id": entry.id,
+                "name": entry.name,
+                "kind": entry.kind,
+                "publisher": entry.publisher,
+                "note": entry.note,
+                "interior_mm": list(entry.interior_mm),
+                "provenance": entry.provenance(),
+            }
+            for entry in current.entries
+        ],
+    }
+
+
 class SpecResolveRequest(BaseModel):
     """A spec, as the composer has it so far. Deliberately unvalidated by pydantic —
     the schema is the validator, and its refusal is this endpoint's answer.
@@ -4266,8 +4330,13 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
         request: `{"spec": {...}}` — a spec as JSON, complete or not.
 
     Returns:
-        `{"schema_valid", "problems", "spec", "spec_hash", "label", "stacks"}`. When
-        `schema_valid` is false every field but `problems` is None or empty.
+        `{"schema_valid", "problems", "spec", "spec_hash", "label", "stacks",
+        "game_box"}`. When `schema_valid` is false every field but `problems` is None or
+        empty. `game_box` is the curated interior the spec named and its per-axis
+        provenance, or **None for a box nobody has measured** — the degraded mode, where
+        the millimetres are the ones somebody typed and `constraints.fit_margin_mm` comes
+        off them just the same. The composer says which of the two it used, and this
+        field is how it knows.
     """
     try:
         spec = OrganizerSpec.from_dict(request.spec)
@@ -4279,6 +4348,7 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
             "spec_hash": None,
             "label": None,
             "stacks": [],
+            "game_box": None,
         }
 
     canonical = spec.to_dict()
@@ -4312,6 +4382,12 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
         # What the job would be called if nobody types a line. See `spec_label`.
         "label": spec_label(canonical),
         "stacks": stacks,
+        # None when no box was named, which is the honest answer and not an omission:
+        # the interior is then three millimetres somebody typed, and there is no source
+        # to print under them. `game_box_record` is the same function that writes the
+        # row on `generation_params`, so the screen and the database cannot describe one
+        # box two different ways.
+        "game_box": game_box_record(spec),
     }
 
 

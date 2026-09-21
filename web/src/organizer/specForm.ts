@@ -59,6 +59,10 @@ export type SpecField =
   | 'pocketDepthMm'
   | 'pocketHeightMm'
   | 'insertRows'
+  | 'boxId'
+  | 'boxWidthMm'
+  | 'boxDepthMm'
+  | 'boxHeightMm'
   | CompartmentField
   | 'form';
 
@@ -115,6 +119,23 @@ export interface SpecFormState {
   compartments: CompartmentFormState[];
   /** `insert.rows`, as the comma-separated list a person types. */
   insertRows: string;
+  /**
+   * The box the part has to fit inside, and the two ways of saying which.
+   *
+   * `boxId` is a `GET /organizer/boxes` entry — a curated interior, three numbers with a
+   * caliper or a product page behind each. Empty means the box is one nobody has
+   * measured, and then the three millimetres below are it: **that is the degraded mode,
+   * and it is the mode this form shipped with.** `fit_margin_mm` comes off every axis
+   * either way, which is the point — a curated interior is still one copy of one box.
+   *
+   * All four archetypes carry these, because `spec.box` is archetype-agnostic: a deck box
+   * built to stand inside a commercial card case is the same claim as an insert built to
+   * fill a publisher's box, and the schema draws no distinction between them.
+   */
+  boxId: string;
+  boxWidthMm: string;
+  boxDepthMm: string;
+  boxHeightMm: string;
 }
 
 /**
@@ -203,6 +224,10 @@ export const DEFAULT_SPEC_FORM: SpecFormState = {
   pocketHeightMm: '15',
   compartments: DEFAULT_INSERT_COMPARTMENTS,
   insertRows: '1, 2',
+  boxId: '',
+  boxWidthMm: '',
+  boxDepthMm: '',
+  boxHeightMm: '',
 };
 
 /**
@@ -364,6 +389,34 @@ function gridCells(rows: string, columns: string): number {
 }
 
 /**
+ * The box half of the spec: `box`, or `constraints`, or neither. Never both.
+ *
+ * The two ways of saying which box, and they are exclusive by construction rather than
+ * by a rule somebody has to remember. A named KB entry sends **only** `box` and leaves
+ * the interior to the schema, which fills `constraints.max_external_mm` from the entry on
+ * construction — sending both would be this file computing millimetres, which is the one
+ * thing it does not do, and the schema refuses a spec whose stated limit disagrees with
+ * the entry it names anyway.
+ *
+ * An unnamed box sends the three typed millimetres and no `box`, which is the degraded
+ * mode: `fit_margin_mm` comes off every axis exactly as it does off a curated interior,
+ * because a curated interior is also one copy of one box. A partly typed interior is sent
+ * as it stands — `requiredNumber` makes a blank axis `null` — so the schema refuses
+ * `spec.constraints.max_external_mm[1]` by name on the control that is empty, rather than
+ * this file quietly dropping a limit somebody was halfway through stating.
+ *
+ * Nothing at all when neither is given, which is the behaviour every spec this form has
+ * ever composed had: no limit, and no fit comparison to fail.
+ */
+function boxFromForm(state: SpecFormState): Record<string, unknown> {
+  const id = state.boxId.trim();
+  if (id) return { box: { id } };
+  const typed = [state.boxWidthMm, state.boxDepthMm, state.boxHeightMm];
+  if (!typed.some((raw) => raw.trim())) return {};
+  return { constraints: { max_external_mm: typed.map(requiredNumber) } };
+}
+
+/**
  * The form as an organizer spec, ready for `/organizer/resolve` or `POST /jobs`.
  *
  * The archetype decides which optional section is present, and all four archetypes
@@ -388,6 +441,7 @@ function gridCells(rows: string, columns: string): number {
  */
 export function specFromForm(state: SpecFormState): Record<string, unknown> {
   const spec: Record<string, unknown> = { archetype: state.archetype, schema_version: 1 };
+  Object.assign(spec, boxFromForm(state));
 
   if (state.archetype === 'box_insert') {
     // The one archetype whose compartments are each their own shape, so each is sent as
@@ -480,6 +534,14 @@ export const FIELD_BY_PATH: Record<string, SpecField> = {
   'spec.compartments[0].contents.width_mm': 'pocketWidthMm',
   'spec.compartments[0].contents.depth_mm': 'pocketDepthMm',
   'spec.compartments[0].contents.height_mm': 'pocketHeightMm',
+  'spec.box.id': 'boxId',
+  // Per axis, not flattened, and that is the opposite of what a tray's identical pockets
+  // want: these three are three different controls holding three different numbers, so a
+  // refusal about the depth belongs under the depth. See `flattenCompartment` for the
+  // case that goes the other way, and why each is right for the control it is about.
+  'spec.constraints.max_external_mm[0]': 'boxWidthMm',
+  'spec.constraints.max_external_mm[1]': 'boxDepthMm',
+  'spec.constraints.max_external_mm[2]': 'boxHeightMm',
 };
 
 /**

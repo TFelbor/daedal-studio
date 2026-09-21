@@ -16,7 +16,7 @@ import {
   type SpecField,
   type SpecFormState,
 } from '../organizer/specForm';
-import type { ResolvedStack, SpecProblem } from '../api/client';
+import type { GameBoxEntry, ResolvedStack, SpecProblem } from '../api/client';
 import styles from './SpecForm.module.css';
 
 interface SpecFormProps {
@@ -26,6 +26,15 @@ interface SpecFormProps {
   problems: SpecProblem[];
   /** The stacks `POST /organizer/resolve` computed, or none while it has not answered. */
   stacks: ResolvedStack[];
+  /**
+   * The curated box interiors from `GET /organizer/boxes`, or none.
+   *
+   * Empty is a legitimate state and not an error: the list is data, a fetch can fail, and
+   * the form degrades to exactly the path a box nobody has measured takes anyway. It is
+   * a prop rather than a fetch inside this component so the composer owns every request
+   * it makes, as it does for the resolve.
+   */
+  boxes?: GameBoxEntry[];
   /** True between a change and the server's answer, so the readout can say it is stale. */
   resolving?: boolean;
   /**
@@ -89,6 +98,7 @@ export function SpecForm({
   onChange,
   problems,
   stacks,
+  boxes = [],
   resolving = false,
   unreachable = false,
   disabled = false,
@@ -559,6 +569,14 @@ export function SpecForm({
         )}
       </div>
 
+      <BoxPicker
+        state={state}
+        boxes={boxes}
+        byField={byField}
+        disabled={disabled}
+        onChange={set}
+      />
+
       <FieldProblems messages={byField.archetype} />
 
       <StackReadout
@@ -569,6 +587,165 @@ export function SpecForm({
           isInsert ? state.compartments.some((c) => c.kind === 'cards') : !isTray
         }
       />
+    </div>
+  );
+}
+
+/**
+ * The box the part has to fit inside: a curated interior, or three typed millimetres.
+ *
+ * The "Interior-First" input the board-gamer segment is founded on (issue #154). An
+ * insert compiled against a box nobody measured is the failure mode the whole practice is
+ * about, and until the dimension KB existed this field could only be typed.
+ *
+ * **Both halves are always reachable, and the degraded one is not a lesser state.** The
+ * KB is three curated boxes today and will never be every box that exists; a game not in
+ * it is the ordinary case, not an error, so the typed fields are right there and the
+ * refusal for a box nobody has measured is *no refusal at all*. `constraints.fit_margin_mm`
+ * comes off every axis either way, because a curated interior is also one copy of one box
+ * measured once, and boxes flare ±1–2 mm between copies.
+ *
+ * **Which of the two was used is said on screen, in both directions.** Pick an entry and
+ * its three provenance sentences appear — a source and a capture date, checkable against
+ * the page they were transcribed from. Type the millimetres and the note says they are
+ * typed. Two numbers that look identical in a table and are not the same kind of claim is
+ * precisely the habit this product exists to break, and the KB is worth nothing if the
+ * screen cannot tell them apart.
+ *
+ * **No millimetre here is computed in the browser.** The interior of a curated entry comes
+ * off `GET /organizer/boxes` and is shown as the server sent it; the spec sends the id
+ * alone and the schema fills the limit. An empty list — the fetch failed, or is still in
+ * flight — degrades to the typed fields and says so, which is the same shape of answer the
+ * stack readout gives for an unreachable server.
+ */
+function BoxPicker({
+  state,
+  boxes,
+  byField,
+  disabled,
+  onChange,
+}: {
+  state: SpecFormState;
+  boxes: GameBoxEntry[];
+  byField: Partial<Record<SpecField, string[]>>;
+  disabled: boolean;
+  onChange: (patch: Partial<SpecFormState>) => void;
+}) {
+  const chosen = boxes.find((box) => box.id === state.boxId) ?? null;
+  const typed = !state.boxId;
+
+  return (
+    <div className={styles.box}>
+      <label className={styles.field}>
+        <span className="label-tight">Box it has to fit</span>
+        <select
+          className="input"
+          value={state.boxId}
+          disabled={disabled}
+          onChange={(e) => onChange({ boxId: e.target.value })}
+        >
+          <option value="">A box nobody has measured — I’ll type the interior</option>
+          {boxes.map((box) => (
+            <option key={box.id} value={box.id}>
+              {box.name}
+              {box.publisher ? ` · ${box.publisher}` : ''}
+            </option>
+          ))}
+        </select>
+        <span className={styles.fieldNote}>
+          {boxes.length
+            ? 'the dimension KB carries a few curated interiors; anything else is typed'
+            : 'the curated list could not be loaded, so the interior is typed — which is the same path a box nobody has measured takes'}
+        </span>
+        <FieldProblems messages={byField.boxId} />
+      </label>
+
+      {chosen ? (
+        <div className={styles.boxProvenance}>
+          <p className={styles.boxInterior}>
+            <Ruler size={14} strokeWidth={1.5} aria-hidden="true" />
+            <span>
+              Interior {chosen.interior_mm.map((mm) => `${mm}`).join(' × ')} mm, from the
+              dimension KB. The fit margin still comes off every axis: a curated interior is
+              one copy of one box, and boxes vary ±1–2 mm between copies.
+            </span>
+          </p>
+          {/* One sentence per axis rather than one for the box, because provenance in
+              this project is per value: a width off a caliper and a height off a product
+              page are two different claims. */}
+          <dl className={styles.boxSources}>
+            {(['width', 'depth', 'height'] as const).map((axis) => (
+              <div key={axis}>
+                <dt>{axis}</dt>
+                <dd>{chosen.provenance[axis] ?? 'no source recorded'}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      {/* Spelled out rather than mapped over a list of three, like every other control
+          in this form: `byField.boxWidthMm` has to be readable in the source, because
+          `tests/test_composer_options.py` reads it to prove every routed refusal has a
+          control to land on — and a dynamic `byField[field]` is exactly the kind of
+          indirection that passes a reviewer and fails that promise silently. */}
+      {typed ? (
+        <div className={styles.grid}>
+          <label className={styles.field}>
+            <span className="label-tight">Interior width</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="mm — blank for no limit at all"
+              value={state.boxWidthMm}
+              disabled={disabled}
+              onChange={(e) => onChange({ boxWidthMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>
+              measured off your own copy; the fit margin comes off every axis before
+              anything is compared
+            </span>
+            <FieldProblems messages={byField.boxWidthMm} />
+          </label>
+
+          <label className={styles.field}>
+            <span className="label-tight">Interior depth</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="mm — blank for no limit at all"
+              value={state.boxDepthMm}
+              disabled={disabled}
+              onChange={(e) => onChange({ boxDepthMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>typed — no source behind this number</span>
+            <FieldProblems messages={byField.boxDepthMm} />
+          </label>
+
+          <label className={styles.field}>
+            <span className="label-tight">Interior height</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="mm — blank for no limit at all"
+              value={state.boxHeightMm}
+              disabled={disabled}
+              onChange={(e) => onChange({ boxHeightMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>typed — no source behind this number</span>
+            <FieldProblems messages={byField.boxHeightMm} />
+          </label>
+        </div>
+      ) : null}
     </div>
   );
 }

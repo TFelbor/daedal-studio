@@ -130,6 +130,15 @@ export interface JobStatusResponse {
   /** Phase 3's measurement of the compiled mesh against the spec. The only fit
    *  verdict on this endpoint, because it is the only one that was measured. */
   dimension_check?: DimensionCheck | null;
+  /**
+   * The curated box interior this part was compiled against, as Phase 2 recorded it.
+   *
+   * Read off `generation_params`, so it is **what that run was built against** — the
+   * sources and capture dates as they stood on the day — rather than what the KB says
+   * now. Null for a part built to typed millimetres, which is the degraded mode and not
+   * a gap; `spec.box` is what says which of the two this job is.
+   */
+  game_box?: ResolvedGameBox | null;
 }
 
 /**
@@ -193,6 +202,17 @@ export interface RawSpec {
    * its own contents.
    */
   insert?: { rows: number[] } | null;
+  /**
+   * Which curated box interior this spec was sized against, or absent for one nobody
+   * has measured.
+   *
+   * Optional here and optional in the schema, and its absence is the whole of the
+   * degraded mode: the interior is then three millimetres somebody typed, sitting in
+   * `constraints.max_external_mm` with `fit_margin_mm` taken off them just the same.
+   * That distinction is what `specFromJob` puts on screen, and it is the only thing
+   * separating a number with a caliper behind it from a number with a guess behind it.
+   */
+  box?: { id: string; kb_version: string } | null;
   lid?: {
     kind: string;
     magnets: boolean;
@@ -661,6 +681,81 @@ export interface SpecResolveResponse {
   /** What the job would be titled if nobody types a line. */
   label: string | null;
   stacks: ResolvedStack[];
+  /**
+   * The curated box the spec named, resolved, or **null for a box nobody measured**.
+   *
+   * Null is not an error and not a gap: it is the degraded mode, where the interior is
+   * typed and `constraints.fit_margin_mm` comes off it exactly as it does off a curated
+   * one. The composer says which of the two it used, and this field is how it knows.
+   */
+  game_box: ResolvedGameBox | null;
+}
+
+/**
+ * One curated box interior, with the source behind each of its three numbers.
+ *
+ * `pythonsrc/organizer/box_kb.py` — the game-box dimension KB, a committed JSON file
+ * curated one measurement at a time. **Provenance is per value**: a box whose width came
+ * off a caliper and whose height came off a product page is two different claims, which
+ * is why `provenance` is three sentences and not one.
+ */
+export interface GameBoxEntry {
+  id: string;
+  name: string;
+  /** `game_box` (a publisher's box) or `card_case` (a commercial deck box). */
+  kind: string;
+  publisher: string | null;
+  note: string | null;
+  /** Interior W × D × H in mm — what `constraints.max_external_mm` is filled with. */
+  interior_mm: [number, number, number];
+  /** `{width, depth, height}` → the basis, source and capture date behind that number. */
+  provenance: Record<string, string>;
+}
+
+/** What `GET /organizer/boxes` answers with: the KB's content version and its entries. */
+export interface GameBoxList {
+  version: string;
+  boxes: GameBoxEntry[];
+}
+
+/**
+ * A spec's curated box as the server resolved it, for the composer's readout.
+ *
+ * `resolved` is false — and everything below `kb_version` absent — when the spec names a
+ * KB version this build does not carry. That is a record of a job that ran, not an error:
+ * the millimetres are on the spec, and what cannot be shown is why they are those
+ * millimetres.
+ */
+export interface ResolvedGameBox {
+  id: string;
+  kb_version: string;
+  resolved: boolean;
+  name?: string;
+  kind?: string;
+  interior_mm?: [number, number, number];
+  provenance?: Record<string, string>;
+}
+
+/**
+ * The curated box interiors, for the composer's picker.
+ *
+ * Fetched rather than compiled in, unlike the archetype strip and the five closed
+ * vocabularies in `organizer/spec.ts`: those are the schema's own literals, where an
+ * option the engine refuses is a fabrication, and this is data that grows one curated
+ * measurement at a time. A second copy of it in TypeScript would be a second set of
+ * millimetres drifting from the ones a spec is resolved against.
+ *
+ * Throws on a transport failure, and the caller is expected to carry on without the
+ * list: no picker is the degraded mode this feature is designed around — a box nobody
+ * has measured, typed by hand.
+ */
+export async function fetchGameBoxes(): Promise<GameBoxList> {
+  const res = await apiFetch('/organizer/boxes');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw readError(res.status, errBody, `The server answered ${res.status}`);
+  }
+  return res.json();
 }
 
 /**

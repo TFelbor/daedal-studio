@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from pythonsrc.organizer.box_kb import kb
 from pythonsrc.organizer.dimensions import PITCH_MM_PER_CARD, resolve_stack
 from pythonsrc.organizer.spec import OrganizerSpec, spec_hash
 from server import app as app_module
@@ -264,15 +265,74 @@ def test_an_inserts_row_grouping_is_refused_on_its_own_path():
     assert any(p["path"] == "spec.insert.rows[1]" for p in body["problems"]), body["problems"]
 
 
+# ── the curated box interiors ─────────────────────────────────────────────────
+
+def test_the_curated_boxes_are_served_with_the_source_behind_each_number():
+    """`GET /organizer/boxes` — the composer's picker, and the whole of what the KB buys.
+
+    An interior with no provenance is the number this product refuses; the list is worth
+    fetching precisely because each of its three axes carries a source and a date.
+    """
+    resp = client.get("/organizer/boxes")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["version"] == kb().version
+    assert [box["id"] for box in body["boxes"]] == list(kb().ids)
+    for box in body["boxes"]:
+        assert len(box["interior_mm"]) == 3
+        for axis in ("width", "depth", "height"):
+            assert "https://" in box["provenance"][axis]
+            assert "captured" in box["provenance"][axis]
+
+
+def test_a_spec_naming_a_curated_box_resolves_with_its_provenance():
+    body = resolve({**SPEC, "box": {"id": kb().ids[0]}})
+    assert body["schema_valid"] is True
+    entry = kb().get(kb().ids[0])
+    assert body["spec"]["constraints"]["max_external_mm"] == list(entry.interior_mm)
+    assert body["game_box"]["id"] == entry.id
+    assert body["game_box"]["kb_version"] == kb().version
+    assert body["game_box"]["resolved"] is True
+    assert body["game_box"]["provenance"]["width"] == entry.width.provenance()
+
+
+def test_a_spec_with_no_box_says_so_rather_than_leaving_the_field_out():
+    """Null is the answer, not an omission: the composer has to be able to tell "typed"
+    from "curated" to say which it used, and an absent key is indistinguishable from an
+    older server that did not know about boxes."""
+    body = resolve({**SPEC, "constraints": {"max_external_mm": [80.0, 70.0, 110.0]}})
+    assert body["schema_valid"] is True
+    assert body["game_box"] is None
+    # And the margin came off anyway, which is the degraded mode's whole contract.
+    assert body["spec"]["constraints"]["fit_margin_mm"] == 2.0
+
+
+def test_a_box_nobody_has_curated_is_refused_on_its_own_path():
+    """So the composer can put it under the picker rather than on the form."""
+    body = resolve({**SPEC, "box": {"id": "no-such-game"}})
+    assert body["schema_valid"] is False
+    assert any(p["path"] == "spec.box.id" for p in body["problems"]), body["problems"]
+    assert body["game_box"] is None
+
+
 # ── the import rule this endpoint exists under ────────────────────────────────
 
 def test_the_server_still_imports_nothing_that_needs_the_kernel():
     """The api-server image installs neither trimesh nor manifold3d (see
     `infra/docker/server.Dockerfile`). This endpoint reaches further into
     `pythonsrc.organizer` than anything before it, so the rule is asserted rather
-    than remembered: no import of `archetypes` or `compiler`, at any depth."""
+    than remembered: no import of `archetypes` or `compiler`, at any depth.
+
+    `box_kb` joined the set with the game-box KB (issue #154), under the same rule and
+    for `dimensions`' reason verbatim: it is a table of sourced millimetres read off one
+    committed JSON file, and it imports nothing outside the stdlib — which is also what
+    makes "no BoardGameGeek client anywhere" a property this test can see."""
     tree = ast.parse(Path(app_module.__file__).read_text(encoding="utf-8"))
     modules = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
     modules |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     organizer = {m for m in modules if m.startswith("pythonsrc.organizer")}
-    assert organizer == {"pythonsrc.organizer", "pythonsrc.organizer.dimensions"}
+    assert organizer == {
+        "pythonsrc.organizer",
+        "pythonsrc.organizer.box_kb",
+        "pythonsrc.organizer.dimensions",
+    }

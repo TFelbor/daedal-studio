@@ -178,3 +178,74 @@
   flex: none;
   margin-top: 2px;
 }
+
+/* The box the part has to fit inside. Its own block rather than three more cells in the
+   grid above, because the two halves are exclusive — a curated entry or three typed
+   millimetres — and the provenance under a curated one is prose, not a control. Keeping
+   it out of the auto-fit grid is what stops a source sentence flowing into the column
+   beside a wall thickness. */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--rule);
+  padding-top: 14px;
+}
+
+.boxProvenance {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.boxInterior {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-body);
+}
+
+.boxInterior svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* One row per axis. The source sentence carries a URL and a date, so it is set in the
+   mono face the rest of the evidence in this form is set in — a number somebody can
+   check reads differently from a label somebody chose. */
+.boxSources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  border-left: 1px solid var(--rule-strong);
+  padding-left: 12px;
+}
+
+.boxSources > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.boxSources dt {
+  flex: none;
+  width: 44px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.boxSources dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-ghost);
+}

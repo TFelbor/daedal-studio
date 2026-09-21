@@ -1,0 +1,155 @@
+{
+  "_comment": [
+    "Curated box interiors — the launch set of the game-box dimension KB (issue #154,",
+    "roadmap §0.5, PRD F4). Read by pythonsrc/organizer/box_kb.py; every rule stated",
+    "here is enforced there, at load, so this file cannot acquire a bad row quietly.",
+    "",
+    "WHY A COMMITTED FILE AND NOT A TABLE. This is curation, reviewed in a diff, exactly",
+    "like data/ip_blocklist.json. A table would be a migration, the DDL is generated from",
+    "pythonsrc/telemetry/db.py and never hand-edited, and there is no write path that",
+    "would ever add a row at runtime — a measurement arrives in a pull request or it is",
+    "not a measurement anybody reviewed.",
+    "",
+    "PROVENANCE IS PER VALUE. Each axis carries its own basis, source, capture date and",
+    "the units it was captured in. `source` is required and `basis` is one of spec /",
+    "measured / derived — the vocabulary of docs/dimension-kb-research.md §0. Its fourth",
+    "word, `folk` (a rule of thumb), is not accepted: a rule of thumb about box walls is",
+    "not a measurement of a box. A `derived` value must carry a `note` naming what it was",
+    "derived from, because inferring an interior from an exterior without saying so in",
+    "the data is the one thing this KB may not do.",
+    "",
+    "`captured_on` is the date THIS PROJECT took the number off that source. It is not",
+    "the date the source measured it — nobody knows that, and claiming to would be the",
+    "fabrication the KB exists to refuse. All three launch entries carry 2026-08-31, the",
+    "research date in the header of docs/dimension-kb-research.md, because that document",
+    "is where they were transcribed from.",
+    "",
+    "THERE IS NO BOARDGAMEGEEK CLIENT AND THERE MUST NOT BE ONE. BGG carries EXTERNAL box",
+    "dimensions only, user-entered, in inches, and its API is registration-gated under a",
+    "commercial licence (issue #154 §0.4; research §7). A BGG forum thread in which a",
+    "person reports measuring their own copy is a citation like any other and is used",
+    "below; the API is not touched, here or anywhere in the tree.",
+    "",
+    "WHY THREE. Small and defensible beats broad and unsourced. Three is what this",
+    "repository can source today: every number below is transcribed from a row of",
+    "docs/dimension-kb-research.md that already names where it came from. Refused, with",
+    "the reason, so they are not rediscovered as omissions:",
+    "  - Printables 245516 Commander box, internal 71 × 76 × 97 (research §3). The row is",
+    "    marked unverified — it came from search snippets because the page is",
+    "    Cloudflare-gated — and §8 says re-verify it manually before shipping it. Nobody",
+    "    has. It joins when somebody opens the page.",
+    "  - Every BGG box-dimension row. External only, and in inches somebody typed.",
+    "  - Anything a wall thickness would have to be guessed for. Deriving an interior from",
+    "    an exterior is supported by the schema (`basis: derived` plus a note), and no",
+    "    entry here does it, because no source in this repository states the wall.",
+    "",
+    "`version` is the CONTENT version, bumped whenever any entry's numbers, sources or",
+    "ids change; the SCHEMA version is the `.v1` in the filename. A spec built against an",
+    "entry records both the id and this version (`spec.box`), so a corrected measurement",
+    "never silently reinterprets a design that was built before it.",
+    "tests/test_game_box_kb.py pins this version beside a digest of the entries, so",
+    "editing a number without bumping the version fails the suite."
+  ],
+  "version": "1",
+  "boxes": [
+    {
+      "id": "wingspan",
+      "name": "Wingspan",
+      "kind": "game_box",
+      "publisher": "Stonemaier Games",
+      "note": "Base game box. The one publisher's board-game box this repository can source an interior for; the insert archetype's reference case.",
+      "interior": {
+        "width": {
+          "value": 286,
+          "units": "mm",
+          "basis": "measured",
+          "source": "https://boardgamegeek.com/thread/2491522/wingspan-base-game-box-dimensions",
+          "captured_on": "2026-08-31",
+          "note": "Community caliper measurement of one copy, reported on the thread; transcribed via docs/dimension-kb-research.md §7. Boxes flare and vary ±1–2 mm between copies, which is what constraints.fit_margin_mm is for."
+        },
+        "depth": {
+          "value": 286,
+          "units": "mm",
+          "basis": "measured",
+          "source": "https://boardgamegeek.com/thread/2491522/wingspan-base-game-box-dimensions",
+          "captured_on": "2026-08-31",
+          "note": "Same thread; the footprint is square, so width and depth are the same measurement reported once."
+        },
+        "height": {
+          "value": 72,
+          "units": "mm",
+          "basis": "measured",
+          "source": "https://boardgamegeek.com/thread/2491522/wingspan-base-game-box-dimensions",
+          "captured_on": "2026-08-31",
+          "note": "Interior depth to the underside of the lid, as reported."
+        }
+      }
+    },
+    {
+      "id": "ultimate-guard-boulder-100-plus",
+      "name": "Ultimate Guard Boulder 100+",
+      "kind": "card_case",
+      "publisher": "Ultimate Guard",
+      "note": "The commercial reference a snug deck box is judged against in docs/dimension-kb-research.md §3. Width is the stack direction; depth and height are the sleeved card's own 67 × 92 mm envelope plus clearance.",
+      "interior": {
+        "width": {
+          "value": 68.5,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://ultimateguard.com/en/Card-Cases/Boulder-100-Solid-Black/UGD-011422-006-00/",
+          "captured_on": "2026-08-31",
+          "note": "The manufacturer states the figure approximately (≈68,5); treat it as ±0,5 mm, which is inside what fit_margin_mm already absorbs."
+        },
+        "depth": {
+          "value": 67.5,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://ultimateguard.com/en/Card-Cases/Boulder-100-Solid-Black/UGD-011422-006-00/",
+          "captured_on": "2026-08-31",
+          "note": "Approximate, as above. 0,5 mm over the 67 mm double-sleeved envelope measured in research §3."
+        },
+        "height": {
+          "value": 93,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://ultimateguard.com/en/Card-Cases/Boulder-100-Solid-Black/UGD-011422-006-00/",
+          "captured_on": "2026-08-31",
+          "note": "Approximate, as above. 1 mm over the 92 mm double-sleeved envelope."
+        }
+      }
+    },
+    {
+      "id": "decksmith-commander-box",
+      "name": "DeckSmith Commander box",
+      "kind": "card_case",
+      "publisher": "DeckSmith",
+      "note": "The second commercial reference in docs/dimension-kb-research.md §3, and the roomier of the two: 8 mm more stack room than the Boulder for the same card envelope.",
+      "interior": {
+        "width": {
+          "value": 76,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://www.decksmith.shop/en/commander-deck-box",
+          "captured_on": "2026-08-31",
+          "note": "Stack direction. The manufacturer's stated internal dimension."
+        },
+        "depth": {
+          "value": 68,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://www.decksmith.shop/en/commander-deck-box",
+          "captured_on": "2026-08-31",
+          "note": "1 mm over the 67 mm double-sleeved envelope measured in research §3."
+        },
+        "height": {
+          "value": 98,
+          "units": "mm",
+          "basis": "spec",
+          "source": "https://www.decksmith.shop/en/commander-deck-box",
+          "captured_on": "2026-08-31",
+          "note": "6 mm over the 92 mm double-sleeved envelope; the card sits proud enough to grip."
+        }
+      }
+    }
+  ]
+}

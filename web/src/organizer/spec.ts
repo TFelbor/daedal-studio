@@ -32,6 +32,7 @@ import type {
   RawCardStack,
   RawContents,
   RawSpec,
+  ResolvedGameBox,
 } from '../api/client';
 
 export type { RawSpec };
@@ -168,6 +169,50 @@ function row(
   note?: string,
 ): SpecDimension {
   return note ? { key, label, value, unit, editable, note } : { key, label, value, unit, editable };
+}
+
+/**
+ * What one interior row says about where its millimetre came from.
+ *
+ * The one place the KB/typed distinction is drawn, and it is drawn on **every** axis
+ * rather than once at the top, because provenance in this project is per value: a box
+ * whose width came off a caliper and whose height came off a product page is two
+ * different claims, and `box_kb.Measurement` carries a basis, a source and a capture date
+ * for each of the three. Flattening that into one sentence over the group would throw
+ * away the thing the KB exists to give.
+ *
+ * Three states, and the difference between them is the whole of issue #154:
+ *
+ * - **A curated box, resolved** — the entry's own provenance sentence for this axis.
+ *   A source and a date, checkable against the page it was transcribed from.
+ * - **A curated box this build cannot resolve** — the spec names an entry or a KB
+ *   version this build does not carry. The id and the version are said, and no source
+ *   is claimed, because none can honestly be.
+ * - **No box at all** — the degraded mode, and it is named as such rather than left
+ *   blank. Three millimetres somebody typed are a perfectly good input and the reason
+ *   `fit_margin_mm` exists; what they are not is a measurement anybody can check, and a
+ *   row that stayed silent about that would let the two look identical.
+ */
+export function interiorNote(
+  box: RawSpec['box'],
+  resolved: ResolvedGameBox | null | undefined,
+  axis: 'width' | 'depth' | 'height',
+  first: boolean,
+  margined: boolean,
+): string {
+  const fit = margined
+    ? 'the finished part must fit inside this, less the fit margin below'
+    : 'the finished part must fit inside this';
+  if (!box) {
+    return first
+      ? `typed interior — no box in the dimension KB was named; ${fit}`
+      : 'typed interior — no source behind this number';
+  }
+  const source = resolved?.resolved ? resolved.provenance?.[axis] : undefined;
+  if (source) return first ? `${source}; ${fit}` : source;
+  return first
+    ? `dimension KB entry ‘${box.id}’, version ${box.kb_version} — this build cannot resolve it, so no source is shown; ${fit}`
+    : `dimension KB entry ‘${box.id}’, version ${box.kb_version} — this build cannot resolve it, so no source is shown`;
 }
 
 /**
@@ -343,11 +388,7 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
     const axes = ['width', 'depth', 'height'] as const;
     axes.forEach((axis, i) => {
       dimensions.push(row(`max_external_${axis}_mm`, `Max external ${axis}`, limit[i], 'mm', true,
-        i === 0
-          ? margin
-            ? 'the finished part must fit inside this, less the fit margin below'
-            : 'the finished part must fit inside this'
-          : undefined));
+        interiorNote(spec.box, job.game_box, axis, i === 0, margin !== undefined && margin > 0)));
     });
     // The effective limit — stated less margin — is deliberately *not* a row. It is
     // the archetype's arithmetic, and this table shows fields somebody wrote; the

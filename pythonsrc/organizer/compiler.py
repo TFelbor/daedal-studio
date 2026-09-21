@@ -112,16 +112,29 @@ class CompileResult:
     mesh: trimesh.Trimesh
     parts: dict[str, trimesh.Trimesh]
     features: dict[str, float] = field(default_factory=dict)
+    #: Which curated box interior this part was sized against, or None for a typed one.
+    #: `{"id", "kb_version", "interior_mm", "sources"}` — set by `archetypes.compile_spec`
+    #: off `spec.box`, because the spec knows and a `CompileResult` does not keep one.
+    game_box: Optional[dict[str, Any]] = None
 
     def features_document(self) -> dict[str, Any]:
-        """The JSON written beside the mesh, and recorded as `generation_params`."""
-        return {
+        """The JSON written beside the mesh, and recorded as `generation_params`.
+
+        `game_box` is present **only** when the spec named one, which is deliberate on
+        both sides. A part built to typed millimetres must not carry a key implying a
+        curated source, and the omission keeps every `compile_features.json` written
+        before the KB existed byte-identical to what it was.
+        """
+        document = {
             "archetype": self.archetype,
             "archetype_version": self.archetype_version,
             "spec_sha256": self.spec_hash,
             "parts": sorted(self.parts),
             "features": {k: self.features[k] for k in sorted(self.features)},
         }
+        if self.game_box is not None:
+            document["game_box"] = self.game_box
+        return document
 
 
 def manifold_to_trimesh(man: "manifold3d.Manifold") -> trimesh.Trimesh:

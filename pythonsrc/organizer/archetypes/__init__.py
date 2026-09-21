@@ -43,6 +43,7 @@ from ..spec import (
     DEFAULT_NOZZLE_DIAMETER_MM,
     OrganizerSpec,
     SpecError,
+    game_box_record,
     wall_floor_problems,
 )
 from . import box_insert, card_divider, deck_box, token_tray
@@ -116,7 +117,14 @@ def compile_spec(
         except SpecError as exc:
             problems.extend(exc.problems)
         raise SpecError(problems)
-    return module.compile(spec)
+    result = module.compile(spec)
+    # The curated box is recorded **here** rather than in each archetype's `compile`,
+    # because it is a fact about the spec and not about any one shape: any archetype may
+    # be sized against a box interior, and four copies of this line would be four places
+    # for it to be forgotten. `game_box_record` returns None for a spec with no `box`, so
+    # `features_document` is unchanged for every part built to typed millimetres.
+    result.game_box = game_box_record(spec)
+    return result
 
 
 def example_spec(name: str) -> OrganizerSpec:

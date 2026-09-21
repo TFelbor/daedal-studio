@@ -151,6 +151,15 @@ the coupon → calibration loop exist to absorb.
   (exactly BIT's leave-3/3/2 rule); curate popular games one at a time. This curation
   is moat work, not a scrape.
 
+**Shipped 2026-09-21 (issue #154):** `pythonsrc/data/game_boxes.v1.json`, read by
+`pythonsrc/organizer/box_kb.py`, with **three** entries — the Wingspan row above, and the
+Ultimate Guard Boulder 100+ and DeckSmith rows of §3. Provenance is per *value* (basis,
+source, capture date, units, one set per axis) and a value with no source is refused at
+load. The −2 mm default is unchanged and applies to a curated interior exactly as to a
+typed one: a curated number is still one copy of one box, and this section is why. See
+§9 for what was refused, and `docs/SYSTEM-AS-BUILT.md` § Game-box dimension KB for the
+reasoning.
+
 ## 8. KB seed schema (v1)
 
 ```jsonc
@@ -178,3 +187,42 @@ fits ×3) are in the tables above with per-row sources; transcribe them when
 130 µm, KMC PF 40 vs 50 µm — are absorbed by the 0,70 mm/card design pitch, which two
 independent caliper measurements support. Re-verify the Printables row manually before
 shipping it (Cloudflare-gated at research time).
+
+## 9. What shipped as the game-box KB, and what was refused (2026-09-21, issue #154)
+
+The launch set is **three entries**, because three is what this document can source.
+"Small and defensible beats broad and unsourced" is the issue's own instruction, and the
+alternative — a wider set with a wall thickness guessed for half of it — is exactly the
+fabricated number `dimensions.py` carries no token sizes to avoid.
+
+| Entry id | What it is | Interior W × D × H (mm) | Basis | From |
+|---|---|---|---|---|
+| `wingspan` | Wingspan base game box | 286 × 286 × 72 | measured | §7's BGG thread 2491522 |
+| `ultimate-guard-boulder-100-plus` | Boulder 100+ card case | 68,5 × 67,5 × 93 | spec | §3's Ultimate Guard listing |
+| `decksmith-commander-box` | DeckSmith Commander box | 76 × 68 × 98 | spec | §3's DeckSmith listing |
+
+Width is the stack direction on both card cases, which is why their depth and height sit
+0,5–6 mm over the 67 × 92 mm double-sleeved envelope of §3 — the two figures corroborate
+each other, and a transcription error on either would show up as a card case narrower
+than the cards it holds.
+
+**Refused, with the reason, so they are not rediscovered as omissions:**
+
+- **Printables 245516** (internal 71 × 76 × 97, §3). The row is marked ⚠ unverified — it
+  came from search snippets because the page is Cloudflare-gated — and §8 says re-verify
+  it manually before shipping. Nobody has. It joins when somebody opens the page.
+- **Every BGG box-dimension row.** External only, user-entered, in inches, and behind a
+  registration-gated commercial API licence (§7, and issue #154's §0.4). **There is no BGG
+  client in the repository and there must not be one**; `tests/test_game_box_kb.py`
+  asserts that against the whole tree. A BGG *forum thread* in which a person reports
+  measuring their own copy is a citation like any other, and the Wingspan row is one.
+- **Anything that would need a wall thickness guessed.** Deriving an interior from an
+  exterior is supported by the schema — `basis: "derived"` plus a `note` naming the
+  subtraction, which the loader requires — and no entry does it, because no source in
+  this repository states the wall.
+
+**The confidence vocabulary in §0 is the schema's**, minus one: `spec`, `measured` and
+`derived` are accepted bases and **`folk` is not**. A rule of thumb about box walls is not
+a measurement of a box, and an insert compiled against one is the named catastrophic
+failure of the audited document (roadmap §0.5) — it presses outward, splits the cardboard
+at the corners and lifts the lid.

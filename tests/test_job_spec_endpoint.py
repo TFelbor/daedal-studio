@@ -167,8 +167,41 @@ def test_a_prompt_job_carries_nulls(prompt_job):
     """Not an empty object: a spec panel with no rows reads as a compiled part whose
     numbers went missing, which is the opposite of what happened."""
     body = client.get(f"/jobs/{prompt_job}").json()
-    for key in ("spec", "spec_hash", "archetype", "archetype_version", "dimension_check"):
+    for key in ("spec", "spec_hash", "archetype", "archetype_version", "dimension_check",
+                "game_box"):
         assert body[key] is None, f"{key} should be null for a prompt job"
+
+
+def test_the_curated_box_is_the_one_the_run_was_built_against(spec_job):
+    """`game_box` comes off `generation_params`, not off today's KB.
+
+    The difference is the point of recording a version at all: the sources and capture
+    dates are the ones that stood on the day Phase 2 compiled, so a later correction to
+    `pythonsrc/data/game_boxes.v1.json` cannot rewrite the provenance of a finished part.
+    """
+    job_id = spec_job()
+    recorded = {
+        "id": "wingspan", "kb_version": "1", "resolved": True,
+        "name": "Wingspan", "kind": "game_box", "interior_mm": [286.0, 286.0, 72.0],
+        "provenance": {"width": "286 mm (measured), https://example.invalid, captured 2026-08-31"},
+    }
+    db = TelemetryDB()
+    db.update_job_generation(
+        job_id, model="organizer/deck_box", model_version="1", backend="local",
+        params={"schema_version": 1, **COMPILE_FEATURES, "archetype_version": "1",
+                "game_box": recorded},
+    )
+    db.close()
+
+    assert client.get(f"/jobs/{job_id}").json()["game_box"] == recorded
+
+
+def test_a_part_built_to_typed_millimetres_carries_no_curated_box(spec_job):
+    """Null, not an empty object: the interior was typed, and a key implying a curated
+    source would be the fabrication the KB exists to refuse."""
+    job_id = spec_job()
+    _compile(job_id)
+    assert client.get(f"/jobs/{job_id}").json()["game_box"] is None
 
 
 def test_the_spec_is_carried_canonically_so_no_field_is_missing(spec_job):
@@ -367,7 +400,8 @@ def _interface(text: str, name: str) -> str:
 def test_the_typescript_job_response_names_every_field_the_server_sends():
     text = CLIENT_TS.read_text()
     body = _interface(text, "JobStatusResponse")
-    for key in ("spec", "spec_hash", "archetype", "archetype_version", "dimension_check"):
+    for key in ("spec", "spec_hash", "archetype", "archetype_version", "dimension_check",
+                "game_box"):
         assert re.search(rf"\n  {key}\??:", body), (
             f"`{key}` is on JobStatusResponse in the server and not in the client."
         )

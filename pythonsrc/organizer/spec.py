@@ -39,6 +39,8 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Mapping, Optional, Tuple
 
+from .box_kb import BoxEntry
+from .box_kb import kb as game_box_kb
 from .dimensions import CARD_KINDS, SLEEVINGS
 
 #: Bumped when a field's meaning changes. A spec written under another version is
@@ -448,6 +450,55 @@ class Insert:
 
 
 @dataclass(frozen=True)
+class GameBox:
+    """Which curated box interior this part was sized against, and which KB said so.
+
+    The "Interior-First" input (roadmap §0.5, issue #154): an insert compiled against a
+    box nobody measured is the failure mode the whole practice is about, and until this
+    section existed `constraints.max_external_mm` could only be typed. Naming a
+    `box_kb.BoxEntry` here fills that limit from three sourced numbers instead — and, far
+    more importantly, **records which three**, so a part can be audited back to the
+    measurement it was built from.
+
+    **It is a record, not a lookup performed at compile time.** The interior is written
+    into `constraints.max_external_mm` on construction, exactly as `Process`'s clearance
+    and wall are resolved there, so the canonical form always states the millimetres the
+    geometry is built from and `from_dict(to_dict(s))` compiles to the same mesh as `s`.
+    A KB correction therefore never silently reinterprets a stored design; it produces a
+    different spec, with a different hash, which is the visible outcome.
+
+    `kb_version` is what makes that auditable rather than merely deterministic: it is the
+    KB's own content version, resolved on construction when absent. A spec carrying a
+    version this build does not have is **still loadable** — it is the record of a job
+    that ran, and refusing it would mean the job page stopped rendering the day the KB
+    moved. What that spec cannot do is ask this build to fill anything in: see
+    `OrganizerSpec.__post_init__`.
+
+    The interior is a **limit, not a target**, and `constraints.fit_margin_mm` still
+    comes off every axis of it. A curated number is a measurement of one copy exactly as
+    a typed one is, and boxes flare ±1–2 mm between copies of the same title
+    (`docs/dimension-kb-research.md` §7).
+    """
+
+    #: A `box_kb.BoxEntry.id`.
+    id: str
+    #: The KB content version. None means "take this build's"; never None afterwards.
+    kb_version: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        problems: list[str] = []
+        if not isinstance(self.id, str) or not self.id.strip():
+            problems.append(f"id must be a game-box KB entry id, got {self.id!r}")
+        if self.kb_version is None:
+            _set(self, "kb_version", game_box_kb().version)
+        elif not isinstance(self.kb_version, str) or not self.kb_version.strip():
+            problems.append(
+                f"kb_version must be a KB version string or null, got {self.kb_version!r}"
+            )
+        _raise_if(problems)
+
+
+@dataclass(frozen=True)
 class Constraints:
     """External limits the finished part must fit within: (W, D, H) in mm, or None.
 
@@ -462,6 +513,14 @@ class Constraints:
 
     So the limit an archetype compares against is never the stated one:
     `effective_max_external_mm()` takes `fit_margin_mm` off every axis first.
+
+    **The margin applies whichever way the number arrived.** `spec.box` fills this field
+    from a curated `box_kb` entry, and that changes nothing here: a curated interior is
+    still one copy of one box, measured once, and the subtraction is the same. The only
+    difference the KB makes is that the number carries a source — which is why `box` is a
+    separate section rather than a `source` field on this one. A spec with no `box` is the
+    degraded mode, and it is the mode this schema shipped with: typed millimetres, less
+    `fit_margin_mm`.
     """
 
     max_external_mm: Optional[Tuple[float, float, float]] = None
@@ -617,6 +676,7 @@ class OrganizerSpec:
     divider: Optional[Divider] = None
     tray: Optional[Tray] = None
     insert: Optional[Insert] = None
+    box: Optional[GameBox] = None
     constraints: Constraints = field(default_factory=Constraints)
     process: Process = field(default_factory=Process)
     schema_version: int = SCHEMA_VERSION
@@ -647,8 +707,12 @@ class OrganizerSpec:
             problems.append(
                 f"insert must be an Insert or null, got {type(self.insert).__name__}"
             )
+        if self.box is not None and not isinstance(self.box, GameBox):
+            problems.append(f"box must be a GameBox or null, got {type(self.box).__name__}")
         if not isinstance(self.constraints, Constraints):
             problems.append("constraints must be a Constraints object")
+        elif isinstance(self.box, GameBox):
+            problems.extend(self._resolve_game_box())
         if not isinstance(self.process, Process):
             problems.append("process must be a Process object")
         elif self.process.wall_mm is None:
@@ -665,6 +729,86 @@ class OrganizerSpec:
                 f"schema_version must be {SCHEMA_VERSION}, got {self.schema_version!r}"
             )
         _raise_if(problems)
+
+    # ── the game-box KB ────────────────────────────────────────────────────────
+
+    def _resolve_game_box(self) -> list[str]:
+        """Fill `constraints.max_external_mm` from `box`, or say why that cannot be done.
+
+        **The KB is consulted only to fill what is absent, and only ever agrees with what
+        is present.** Three cases, and the third is the one that makes stored specs
+        survive a KB edit:
+
+        - *The entry is in this build's KB and no limit is stated* — the limit is the
+          entry's interior. This is what naming a box is for.
+        - *The entry is in this build's KB and a limit is stated* — they must be equal,
+          to the micron, or the spec is refused naming both. This is what makes the round
+          trip exact (`to_dict` writes the resolved limit, `from_dict` re-checks it) and
+          it is also the only honest answer to a spec that says two different things
+          about one box: silently preferring either would print a part somebody did not
+          ask for.
+        - *The entry is unknown to this build, or the spec names another KB version* —
+          the limit stands as written and nothing is looked up. A job compiled last month
+          against an entry since corrected or retired is a record, and a schema that
+          refused to load it would take the job page down with it. Such a spec with **no**
+          stated limit is refused, because there is then nothing to build to.
+
+        Returns:
+            Problems, each opening with its dotted path, for the caller to collect.
+        """
+        assert isinstance(self.box, GameBox)  # the caller checked
+        current = game_box_kb()
+        same_version = self.box.kb_version == current.version
+        entry = current.get(self.box.id) if same_version else None
+        stated = self.constraints.max_external_mm
+
+        if entry is None:
+            if same_version:
+                return [
+                    f"box.id {self.box.id!r} is not in the game-box KB "
+                    f"(version {current.version}); known: {list(current.ids)}. A box "
+                    "nobody has measured is typed: leave box out and state "
+                    "constraints.max_external_mm"
+                ]
+            if stated is None:
+                return [
+                    f"box.kb_version {self.box.kb_version!r} is not this build's "
+                    f"({current.version}), so the interior of {self.box.id!r} cannot be "
+                    "resolved here, and constraints.max_external_mm states none. A spec "
+                    "recorded against another KB version must carry the millimetres it "
+                    "was built with"
+                ]
+            return []
+
+        interior = entry.interior_mm
+        if stated is None:
+            _set(self, "constraints",
+                 dataclasses.replace(self.constraints, max_external_mm=interior))
+            return []
+        if tuple(stated) != interior:
+            return [
+                f"constraints.max_external_mm {tuple(stated)!r} disagrees with the "
+                f"game-box KB interior of {entry.id!r}, {interior!r} (version "
+                f"{current.version}). State one or the other: a spec that says two "
+                "different things about one box would print a part nobody asked for"
+            ]
+        return []
+
+    def game_box_entry(self) -> Optional[BoxEntry]:
+        """The `box_kb.BoxEntry` this spec names, or None.
+
+        None both for a spec that names no box and for one naming an entry this build's
+        KB does not carry — the caller wants the provenance sentences or it does not, and
+        "the record says `wingspan` and this build cannot show you why" is the same
+        answer as "nobody named a box" for every reader of it. `spec.box` still carries
+        the id and the version for anyone auditing the record itself.
+        """
+        if not isinstance(self.box, GameBox):
+            return None
+        current = game_box_kb()
+        if self.box.kb_version != current.version:
+            return None
+        return current.get(self.box.id)
 
     # ── serialisation ──────────────────────────────────────────────────────────
 
@@ -715,6 +859,7 @@ _NESTED: dict[tuple[type, str], Any] = {
     (OrganizerSpec, "divider"): Divider,
     (OrganizerSpec, "tray"): Tray,
     (OrganizerSpec, "insert"): Insert,
+    (OrganizerSpec, "box"): GameBox,
     (OrganizerSpec, "constraints"): Constraints,
     (OrganizerSpec, "process"): Process,
 }
@@ -735,7 +880,15 @@ _NESTED: dict[tuple[type, str], Any] = {
 #: they were before it. A new optional section is the **only** additive-safe change this
 #: schema has — a scalar with a default on `CardStack`, `Pocket`, `Process`,
 #: `Constraints` or `Tray` is written into every canonical form there has ever been.
-_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray", "insert")
+#:
+#: `box` joined them for the game-box KB (issue #154) and is the first that is **not** an
+#: archetype's section: any archetype may be sized against a curated box interior, and a
+#: deck box built to fit a shelf in a Boulder case is the same claim as an insert built to
+#: fit Wingspan. It is a section rather than a `source` string on `Constraints` for the
+#: reason this tuple exists — a scalar there would have been written into the canonical
+#: form of every spec ever stored — and because provenance is per *value* in this project
+#: (`Pocket.source`, `box_kb.Measurement`), which one string cannot carry.
+_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray", "insert", "box")
 _LIST_FIELDS: dict[tuple[type, str], type] = {
     (OrganizerSpec, "compartments"): Compartment,
 }
@@ -833,6 +986,45 @@ def _from_mapping(cls: type, data: Any, path: str, problems: list[str]) -> Any:
         # A missing required argument is the only TypeError a keyword-only build raises.
         problems.append(f"{path} is missing a required field ({exc})")
     return None
+
+
+# ── the game-box KB ────────────────────────────────────────────────────────────
+
+def game_box_record(spec: OrganizerSpec) -> Optional[dict[str, Any]]:
+    """The curated box a spec was sized against, as plain JSON, or None.
+
+    What `CompileResult.features_document` puts on `generation_params`, and what
+    `POST /organizer/resolve` hands the composer — one function, so the row in the
+    database and the note on the screen cannot describe the box two different ways.
+
+    The **id and the version are always there** when a box was named; that is the whole
+    of what issue #154 asks a compiled part to record. The interior and the per-axis
+    provenance are there when this build can still resolve the entry, and absent — with
+    `resolved: false` saying so — when it cannot, which is what a spec recorded against a
+    retired or corrected entry looks like. `constraints.max_external_mm` on the spec
+    itself is the millimetres in that case, and it always was.
+
+    Returns:
+        `{"id", "kb_version", "resolved"}` plus, when resolved, `{"name", "kind",
+        "interior_mm", "provenance"}`. None for a spec that names no box — the typed
+        path, which is the mode this schema shipped with.
+    """
+    if not isinstance(spec.box, GameBox):
+        return None
+    entry = spec.game_box_entry()
+    record: dict[str, Any] = {
+        "id": spec.box.id,
+        "kb_version": spec.box.kb_version,
+        "resolved": entry is not None,
+    }
+    if entry is not None:
+        record.update({
+            "name": entry.name,
+            "kind": entry.kind,
+            "interior_mm": list(entry.interior_mm),
+            "provenance": entry.provenance(),
+        })
+    return record
 
 
 # ── the wall floor ─────────────────────────────────────────────────────────────

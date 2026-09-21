@@ -1085,6 +1085,103 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   service, endpoint, column and filename it names against the source. Roadmap §0.3
   Phase 1 carries the box, and it stays `[~]` until a real row's `trace` output exists.
 
+### Game-box dimension KB (pythonsrc/organizer/box_kb.py, pythonsrc/data/game_boxes.v1.json)
+
+The "Interior-First" input the board-gamer segment is founded on (issue #154, roadmap
+§0.5): **an insert compiled against a box nobody measured is the failure mode the whole
+practice is about.** `Constraints.max_external_mm` was documented from the start as *a
+number somebody measured off one copy of a box*, and until this existed that number could
+only be typed. The KB is where a curated one comes from.
+
+- **It is curation, and there is no BoardGameGeek client.** BGG carries **external** box
+  dimensions only, user-entered, in inches, and its API is registration-gated under a
+  commercial licence (`docs/dimension-kb-research.md` §7). A BGG *forum thread* in which
+  somebody reports measuring their own copy is a citation like any other and the launch
+  set uses one; the API is not touched, here or anywhere in the tree, and
+  `tests/test_game_box_kb.py` asserts both halves — no HTTP client in `box_kb`'s import
+  graph, and no API endpoint or fetch-beside-the-hostname anywhere in the repository.
+- **Provenance is per value.** Each of the three interior axes is its own `Measurement`
+  with its own `basis` (`spec` | `measured` | `derived`), `source`, `captured_on` and the
+  `units` it was captured in. A box whose width came off a caliper and whose height came
+  off a product page is two different claims, and one `source` string on the entry would
+  flatten them into one — the shape `Pocket.source` established (issue #84's finding).
+  **A blank or missing source is a `BoxKBError` at import**, so the file cannot acquire an
+  unsourced row by inattention. `folk` — the research document's word for a rule of thumb
+  — is not an accepted basis: a rule of thumb about box walls is not a measurement of a
+  box. A `derived` value must carry a `note`, because the issue's constraint is that you
+  do not infer an interior from an exterior *without saying so in the data*.
+- **The number in the file is the number the source stated.** An inch source is stored in
+  inches and `Measurement.value_mm` converts, because a file holding 285,75 mm where the
+  source says 11¼ inches cannot be diffed against the page it came from.
+- **The launch set is three, and that is the point.** Small and defensible beats broad
+  and unsourced: every number is transcribed from a row of `docs/dimension-kb-research.md`
+  that already names where it came from — Wingspan's interior off a BGG measurement
+  thread (§7), and the two commercial card cases of §3, the Ultimate Guard Boulder 100+
+  and the DeckSmith Commander box. The rows **refused** are recorded in the data file's
+  own comment so they are not rediscovered as omissions: the Printables 245516 listing
+  §8 says to re-verify manually before shipping (Cloudflare-gated at research time, and
+  nobody has), and every BGG box-dimension row, which is external and in inches.
+- **The version is bound to the numbers under it.** `version` in the file is the *content*
+  version (the `.v1` in the filename is the schema's); `BoxKB.content_sha256()` is a
+  digest of the entries without it, and `tests/test_game_box_kb.py` pins the two together.
+  Editing a measurement in place without bumping the version fails the suite — the
+  `tests/test_supabase_migration.py` idiom — because a spec recording `box.kb_version`
+  would otherwise name a version whose numbers are not the ones it was built from.
+
+**`spec.box` is how a spec names one**, and it is a new *optional section* because that
+is the only additive-safe change this schema has (see `_OPTIONAL_SECTIONS`): no stored
+`spec_hash` moved. It is the first such section that is not an archetype's — `box` is
+archetype-agnostic, a deck box built to stand inside a commercial card case being the
+same claim as an insert built to fill a publisher's box, and all four archetypes accept
+one.
+
+- **The interior is resolved on construction, never at compile time.**
+  `OrganizerSpec.__post_init__` fills `constraints.max_external_mm` from the entry, in
+  exactly the way `Process` resolves `cavity_clearance_mm` and `wall_mm`, so the canonical
+  form always states the millimetres the geometry is built from and
+  `from_dict(to_dict(s))` compiles to the same mesh as `s`. A KB correction therefore
+  never silently reinterprets a stored design: it produces a different spec with a
+  different hash, which is a visible outcome.
+- **The KB is consulted only to fill what is absent, and only ever agrees with what is
+  present.** A stated limit beside a named entry must equal it to the micron or the spec
+  is refused naming both — silently preferring either would print a part nobody asked
+  for. A spec naming an entry or a KB version *this build does not carry* still **loads**,
+  with its own millimetres: it is the record of a job that ran, and a schema that refused
+  it would take the job page down the day the KB moved. Such a spec with no stated limit
+  is the one case refused, because there is then nothing to build to.
+- **`fit_margin_mm` comes off a curated interior exactly as off a typed one.** A curated
+  number is still one copy of one box measured once, and boxes flare ±1–2 mm between
+  copies of the same title. The KB buys provenance, not permission to skip the margin —
+  and the reading that quietly zeroes it for "measured" entries is the one that splits
+  cardboard at the corners, which is the audited document's named catastrophic failure.
+
+**What a compiled part records.** `archetypes.compile_spec` puts `game_box_record(spec)`
+on the `CompileResult`, so `features_document()` — `compile_features.json`, and
+`generation_params` on the telemetry row — carries the entry id, the KB version, the
+interior and the three provenance sentences. It is **absent** rather than null for a part
+built to typed millimetres, which keeps every document written before the KB existed
+byte-identical and stops a key implying a curated source appearing on a part that has
+none. `GET /jobs/{id}` serves it from `generation_params` rather than re-resolving it, so
+a later correction cannot rewrite the provenance of a finished part.
+
+**The degraded mode is the mode this schema shipped with, and it is not a lesser state.**
+Three curated boxes will never be every box that exists, so a game the KB does not carry
+is the ordinary case: the composer's picker opens on *"A box nobody has measured — I'll
+type the interior"*, the three millimetre fields appear, and `fit_margin_mm` comes off
+them. `GET /organizer/boxes` is **fetched** rather than compiled into the client — unlike
+the archetype strip and the five closed vocabularies, which are the schema's own literals
+— because this is data that grows one measurement at a time, and a failed fetch degrades
+to precisely that typed path.
+
+**And the UI says which of the two it used.** `interiorNote` in
+`web/src/organizer/spec.ts` is the one place the distinction is drawn, and it is drawn
+**per axis**: a curated row carries the entry's own provenance sentence for that axis, a
+typed row says *typed interior — no source behind this number*, and a spec naming a KB
+version this build cannot resolve says so instead of claiming a source it does not have.
+Two numbers that look identical in a table and are not the same kind of claim is exactly
+the habit the Fits Check exists to break; a KB whose screen cannot tell them apart would
+be worth nothing.
+
 ### Server (server/app.py)
 
 FastAPI application with:

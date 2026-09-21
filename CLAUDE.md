@@ -161,6 +161,11 @@ each entry below names the file it is about.
     assert-and-measure mode, the two edge primitives every archetype shares
     (`rounded_rect_prism`, `base_chamfer`) and why a chamfer is built with its wall
     rather than cut into a finished solid, and what is not built.
+  - **Game-box dimension KB (`pythonsrc/organizer/box_kb.py`,
+    `pythonsrc/data/game_boxes.v1.json`)** — curated box interiors with provenance per
+    value, why there is no BoardGameGeek client, the launch set and the rows refused,
+    `spec.box` and how the interior is resolved, what a compiled part records, and the
+    typed fallback the UI has to name as typed.
   - **Server (`server/app.py`)** — the shared-secret middleware and what is exempt,
     the REST and WebSocket surface, the job lifecycle,
     `contained_path` and the profile confinement, the config store and `subprocess_env`,

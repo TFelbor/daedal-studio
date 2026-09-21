@@ -33,12 +33,14 @@ import {
   createJob,
   fetchSizeHint,
   getJob,
+  fetchGameBoxes,
   listJobs,
   markPreviewReached,
   MATERIAL_TYPES,
   resolveSpec,
 } from '../api/client';
 import type {
+  GameBoxEntry,
   JobStatusResponse,
   SizeHint,
   SpecProblem,
@@ -231,6 +233,15 @@ export function NewJob() {
   const [archetype, setArchetype] = useState<ArchetypeId | null>(null);
   /** The configurator's fields. See `organizer/specForm.ts`. */
   const [specForm, setSpecForm] = useState<SpecFormState>(DEFAULT_SPEC_FORM);
+  /**
+   * The curated box interiors the composer offers, or none.
+   *
+   * Empty until `GET /organizer/boxes` answers, and empty for good if it never does.
+   * That is not an error state: the form falls back to a typed interior, which is the
+   * same path a box nobody has measured takes, and the KB has never claimed to carry
+   * every box that exists.
+   */
+  const [gameBoxes, setGameBoxes] = useState<GameBoxEntry[]>([]);
   /** The server's answer for the spec as it stands. Null until it has answered. */
   const [resolved, setResolved] = useState<SpecResolveResponse | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -915,6 +926,32 @@ export function NewJob() {
    * and every `setState` is inside the timeout for the other reason it gives: a
    * synchronous one in the effect body cascades a render on each character typed.
    */
+  /**
+   * The curated box interiors, fetched once.
+   *
+   * Not debounced and not re-fetched: it is a committed file behind the API, it changes
+   * when somebody merges a measurement, and the composer needs it only to fill a select.
+   *
+   * **A failure is swallowed on purpose, and this is the one place in this file where
+   * that is right.** No list means no picker, and no picker means the interior is typed
+   * — which is the degraded mode the whole feature is designed around, not a broken
+   * state. A notice saying "the curated boxes could not be loaded" beside a perfectly
+   * usable set of millimetre fields would be reporting a failure the person cannot act
+   * on and does not need to; the select's own note says the list is unavailable, which
+   * is where somebody looking for it would look.
+   */
+  useEffect(() => {
+    let live = true;
+    fetchGameBoxes()
+      .then((answer) => {
+        if (live) setGameBoxes(answer.boxes);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
   useEffect(() => {
     let live = true;
     const timer = setTimeout(async () => {
@@ -1033,6 +1070,7 @@ export function NewJob() {
                     onChange={setSpecForm}
                     problems={specProblems}
                     stacks={resolved?.stacks ?? []}
+                    boxes={gameBoxes}
                     resolving={resolving}
                     unreachable={resolveFailed}
                     disabled={!printerReady}

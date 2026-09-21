@@ -144,7 +144,27 @@ INSERT_BASE = {
     "schema_version": 1,
 }
 
-BASES = (BASE, TRAY_BASE, INSERT_BASE)
+#: A fourth base, for the two ways of stating the box a part has to fit inside. A base of
+#: its own for `TRAY_BASE`'s reason: `spec.box` and `constraints.max_external_mm` are
+#: exclusive in the form and the schema refuses a spec whose stated limit disagrees with
+#: the entry it names, so the only spec that can carry both paths at once is one where
+#: they agree — which is what this is. The interior is `wingspan`'s, which is what the KB
+#: fills it with; any other pair here would be refused before a poke could reach it.
+#:
+#: It is a deck box rather than an insert on purpose: `spec.box` is archetype-agnostic,
+#: and a base that made it look like the insert's section would be asserting the opposite
+#: of what the schema does.
+BOX_BASE = {
+    "archetype": "deck_box",
+    "compartments": [{"contents": {"count": 100, "card": "standard", "sleeving": "double"}}],
+    "lid": {"kind": "lift_off", "height_mm": 15.0},
+    "box": {"id": "wingspan"},
+    "constraints": {"max_external_mm": [286.0, 286.0, 72.0], "fit_margin_mm": 2.0},
+    "process": {"fit_intent": "snug", "wall_mm": 2.4},
+    "schema_version": 1,
+}
+
+BASES = (BASE, TRAY_BASE, INSERT_BASE, BOX_BASE)
 
 
 def poke(base: dict, path: str, value):
@@ -164,6 +184,16 @@ def poke(base: dict, path: str, value):
         if key not in cursor:
             return None
         cursor = cursor[key][index] if index is not None else cursor[key]
+    # The *last* segment may be indexed too, which `constraints.max_external_mm[0]` is
+    # the first path to need: it is a list of three scalars rather than a list of
+    # objects, so the index is where the value lives and not a step on the way to it.
+    last = re.fullmatch(r"(\w+)\[(\d+)\]", parts[-1])
+    if last:
+        key, index = last.group(1), int(last.group(2))
+        if key not in cursor or not isinstance(cursor[key], list) or index >= len(cursor[key]):
+            return None
+        cursor[key][index] = value
+        return node
     if parts[-1] not in cursor:
         return None
     cursor[parts[-1]] = value
