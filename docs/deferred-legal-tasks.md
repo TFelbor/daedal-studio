@@ -246,6 +246,50 @@ contract question, not a code question**, and it is the one genuinely open expos
   development only — which is close to its current role, since it is the last resort in
   `resolve_backend_name` and the only backend that bills.
 
+#### The terms, read from the primary source (2026-09-19)
+
+Until this date the Pixazo position above was reasoned from the *shape* of a standard
+hosted-API agreement rather than from the document. The terms have now been read and
+archived at
+[`docs/audits/vendor-terms/pixazo-2026-09-19.md`](audits/vendor-terms/pixazo-2026-09-19.md);
+the Terms of Use are dated effective 16 September 2025, **last updated 14 September
+2026**. Three things they say are sharper than "get a warranty", and all three are for
+counsel.
+
+- **Output ownership is split by plan, and the split may not be in our favour.** §5.3.1
+  makes free-plan output ("Free Content") the property of **Appy Pie LLP**, licensed
+  back to the user non-exclusively, revocably and with an attribution duty. §5.3.2 gives
+  paid subscribers "Full Ownership", expressly including the right to sell. §5.3.4 makes
+  the free-plan assignment permanent — upgrading later does not reclaim anything already
+  generated. **Which of the two a usage-based API key falls under, the terms do not
+  say**: §5.3 is written in the vocabulary of the consumer tiers (Free / Pro Monthly /
+  Pro Yearly), and API access is sold separately. If the answer is §5.3.1, no mesh this
+  backend has ever produced is ours, and the question is retrospective as well as
+  prospective.
+- **Two documents disagree.** Appy Pie's own *Generative AI Additional Terms* (last
+  updated 5 June 2025) contain no assignment, state that "Appy Pie does not guarantee
+  ownership of AI-generated content", and prohibit "intermediation/resale". Neither
+  document says which governs an API call to `gateway.pixazo.ai`.
+- **The disclaimers point the other way from the indemnity.** §11.2 specifically
+  declines to warrant that generated content is "UNIQUE, ORIGINAL, OR NON-INFRINGING";
+  §9.3 disclaims responsibility for a third-party model's training data and for "any
+  claim arising from a specific model used at the User's direction" — and this code
+  names the model by slug. Meanwhile §13.1's indemnity runs **from the user to Pixazo**
+  and expressly covers "Failure to comply with AI model licence terms", while §5.6.2
+  provides that where the terms conflict with a model's licence the more restrictive
+  provision applies. Taken together: an undisclosed upstream weight licence binds us,
+  and we indemnify the vendor for breaching a licence they will not name. That is the
+  RMBG-2.0 / DINOv3 flow-through question above, with the contractual consequence
+  attached.
+- **Governing law is India, forum New Delhi** (§15.1.1, §15.2.1), against a pilot
+  operating in Italy. Not a defect, but counsel should hold it alongside the ToS work in
+  Task L1 rather than discover it.
+
+**What to ask, and of whom.** The plan question and the conflicting-documents question
+are for counsel to frame and for Pixazo to answer in writing; the weights question is
+for Pixazo alone. Until both are answered, the standing position is unchanged: keep the
+`pixazo` backend beta-only.
+
 ### Why the deny-list entries must stay
 
 Two entries in this codebase name things this project does **not** use:
