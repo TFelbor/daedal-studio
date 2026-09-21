@@ -290,6 +290,60 @@ are for counsel to frame and for Pixazo to answer in writing; the weights questi
 for Pixazo alone. Until both are answered, the standing position is unchanged: keep the
 `pixazo` backend beta-only.
 
+#### Added 2026-09-21 by the external licence watch: **who owns the mesh is unsettled**
+
+The 2026-09-19 reading above raised the plan split and left it as "which of the two a
+usage-based API key falls under, the terms do not say". Re-reading the same terms on
+2026-09-21 against Pixazo's own Trellis 2 API page answers the second half of that:
+neither clause describes how we buy. The finding below supersedes the open question
+above rather than repeating it.
+
+**§ 5.3 of the Standard Terms of Use splits ownership by plan:**
+
+- **§ 5.3.1** — content generated on the **free plan is owned by Appy Pie LLP** (Pixazo's
+  parent, an SEZ unit at 165 NSEZ, Noida). The user gets a limited, revocable,
+  non-transferable licence with attribution.
+- **§ 5.3.2** — **paid subscribers** receive full ownership of content "created during
+  their active subscription period".
+
+**The problem is that this project is neither.** Pixazo's Trellis 2 API page sells
+**pay-per-use credits against a wallet balance** — USD 0,35 per generation, a `402` on
+insufficient funds — and offers **no subscription** for API access. A wallet-funded caller
+has no "active subscription period", so § 5.3.2 does not describe how we buy; § 5.3.1 is
+the clause written for everyone who is not a subscriber. Nothing in the document says
+whether topping up a wallet makes a "Paid User" for § 5.3 purposes.
+
+**Why this is the revenue gate and not a technicality.** Task L4's three questions assume
+the generated mesh is ours to sell. If § 5.3.1 governs, the mesh produced by the `pixazo`
+backend is **owned by Appy Pie LLP** and licensed back to us revocably, for "personal and
+limited commercial" use, with attribution. This product prints that mesh and hands over a
+physical object for money. That is the business, and it would be running on a revocable
+licence from a third party, under a term neither side has ever discussed.
+
+**The supporting facts counsel will want, all verified 2026-09-21:**
+
+- **§ 11.1** disclaims all warranties including **non-infringement** — the exact warranty
+  Task L4 above asks Pixazo to give.
+- **§ 13.1** has the **user indemnify Pixazo** for third-party IP claims. Nothing runs the
+  other way.
+- **§ 5.6** states third-party models are "governed by their own licences" and names Flux,
+  DALL-E, Stable Diffusion, Ideogram — **not TRELLIS.2**, and no background-removal or
+  conditioning component anywhere. So the matte-weight question above is not merely
+  unanswered by them, it is **expressly assigned to us**.
+- **§ 15.1** — Indian law, exclusive jurisdiction New Delhi. The pilot is in Trento.
+
+**What to ask for, in one letter, alongside the matte-weight question above:** written
+confirmation that a wallet-funded API caller owns generated output under § 5.3.2.
+
+**The cheap resolution exists and should be weighed first.** `create_sculptor()` already
+makes the backend swappable and `pixazo` is the last resort in `resolve_backend_name`.
+Keeping it development-only costs a config change and moots every item in this section.
+That is the same conclusion the matte-weight residual reached, now reached twice
+independently — which is itself the argument.
+
+Archived terms and the full reading: `docs/audits/vendor-terms/pixazo-2026-09-21.md`.
+Tracked as **E1**, **E2** and **E9** in `docs/audits/2026-09-21-external-licence.md`.
+
 ### Why the deny-list entries must stay
 
 Two entries in this codebase name things this project does **not** use:
