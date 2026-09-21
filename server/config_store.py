@@ -36,6 +36,13 @@ CONFIG_KEYS = {
     "DEFAULT_PROFILE": {"label": "Default Slicer Profile", "secret": False, "required": False, "description": "Path to profile JSON"},
     "SKIP_VISUALIZER": {"label": "Skip Visualizer (dev mode)", "secret": False, "required": False, "description": "true | false"},
     "SKIP_SCULPTOR": {"label": "Skip Sculptor (dev mode)", "secret": False, "required": False, "description": "true | false"},
+    # The bench switch for the generative path. Absent or anything but "true"
+    # means `POST /jobs` refuses a job that carries no spec and would construct a
+    # sculptor — see `_prompt_jobs_are_benched` in server/app.py. A store key
+    # rather than a constant because un-benching is a product decision someone
+    # should be able to take without a deploy, and because that is already how
+    # SKIP_SCULPTOR works.
+    "ALLOW_PROMPT_JOBS": {"label": "Allow prompt jobs (generative path)", "secret": False, "required": False, "description": "true | false — off by default; the shipping path is the organizer spec"},
     "EXECUTION_STRATEGY_OVERRIDE": {
         "label": "Execution Strategy Override",
         "secret": False,
@@ -165,9 +172,9 @@ RETIRED_CONFIG_KEYS = ("PYTHONPATH",)
 #:     `DEFAULT_PRINTER_FIRMWARE` — `resolve_printer_target` turns them into
 #:     `DS_FIRMWARE`/`DS_PRINTER_URL`/`DS_PRINTER_KEY` at launch, which is also where
 #:     the container's localhost rewrite happens. The raw values have no reader.
-#:   * `DEFAULT_PROFILE`, `SKIP_VISUALIZER`, `SKIP_SCULPTOR`,
+#:   * `DEFAULT_PROFILE`, `SKIP_VISUALIZER`, `SKIP_SCULPTOR`, `ALLOW_PROMPT_JOBS`,
 #:     `EXECUTION_STRATEGY_OVERRIDE` — read from the store in *this* process and turned
-#:     into argv or into a strategy. A subprocess never reads them.
+#:     into argv, into a strategy, or into a refusal. A subprocess never reads them.
 #:   * `LOG_LEVEL` — nothing this server launches reads it. `pipeline.py` takes its
 #:     level from `--verbose` and the server from `$DS_LOG_LEVEL`; the one consumer of
 #:     `$LOG_LEVEL` in this repo is the GPU worker, which is a separate deployment.

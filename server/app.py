@@ -2126,6 +2126,49 @@ def _phase_skips(request: JobRequest) -> tuple[bool, bool]:
     return bool(skip_viz), bool(skip_sculpt)
 
 
+def _prompt_jobs_are_benched(request: JobRequest) -> bool:
+    """Whether this request is a generative job the product is not currently offering.
+
+    The shipping path is the parametric organizer: a spec job compiles its geometry
+    deterministically (`pythonsrc/organizer/`), reaches no model weights, and cannot
+    construct a sculptor at all — `_apply_spec_mode` sets `skip_sculptor` for it. The
+    prompt path is the other one: Phase 1 renders a blueprint with FLUX and Phase 2
+    reconstructs a mesh with TRELLIS.2.
+
+    **Why this is a refusal rather than a comment in a design document.** The prompt
+    path was benched as a decision and left wired as code. `startJob` takes its spec
+    as an optional argument and will happily post a job without one, `prompt` is not
+    a required field, and `SKIP_SCULPTOR` defaults to false — so the composer's own
+    text field still reached Phase 2. From there
+    `sculptors.resolve_backend_name`'s `auto` resolves remote → CUDA → **pixazo**, and
+    on a machine with no NVIDIA GPU and `PIXAZO_API_KEY` in the environment — which is
+    every Apple Silicon development laptop — that is the backend that bills, at
+    €0,32 a generation, under terms whose output-ownership clause is unresolved
+    (`docs/audits/2026-09-19-external-licence.md` § 0, E5). A subsystem nobody is
+    maintaining should not be able to spend money by default.
+
+    **Only a job that would actually build a sculptor is refused.** A request that
+    skips Phase 2 — the dev and demo configuration `SKIP_SCULPTOR` exists for, which
+    substitutes a reference mesh — still runs, because nothing about it reaches a
+    model or a paid endpoint. The bench is on the generative path, not on prompts.
+
+    Un-benching is a product decision, so it is a config-store key rather than a
+    constant: set `ALLOW_PROMPT_JOBS=true` and the path is back with no deploy.
+
+    Args:
+        request: The incoming job request, already validated.
+
+    Returns:
+        True when the request should be refused before a job row exists.
+    """
+    if request.spec is not None or request.spec_path:
+        return False
+    if config_store.get("ALLOW_PROMPT_JOBS") == "true":
+        return False
+    _, skip_sculpt = _phase_skips(request)
+    return not skip_sculpt
+
+
 def _pipeline_args(
     request: JobRequest,
     *,
@@ -2697,6 +2740,25 @@ async def create_job(request: JobRequest):
                 f"{request.profile!r} resolves outside it."
             ),
         ) from exc
+
+    # Refused before the IP screen, deliberately: the screen's job is to decide
+    # whether a *subject* may be built, and telling someone their prompt names a
+    # franchise is a worse answer than telling them the generative path is closed.
+    if _prompt_jobs_are_benched(request):
+        activity.action(
+            "job refused",
+            [("reason", "prompt jobs are benched"), ("prompt", request.prompt)],
+            outcome="refused before the job row was created",
+            status="warn",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Free-text jobs are not available. This build compiles an organizer "
+                "spec into geometry; describe the part with the configurator instead. "
+                "(An operator can re-enable the generative path with ALLOW_PROMPT_JOBS.)"
+            ),
+        )
 
     screen = screen_prompt(
         request.prompt, request.material_colour, embossing=request.embossing_text,

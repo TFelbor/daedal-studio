@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -329,6 +330,40 @@ async def fake_octoprint_sio(unused_tcp_port):
     yield f"http://127.0.0.1:{unused_tcp_port}"
 
     await runner.cleanup()
+
+
+@pytest.fixture(autouse=True)
+def _generative_path_open(request, monkeypatch):
+    """Open the prompt path for the tests that predate its bench.
+
+    `POST /jobs` refuses a job carrying no spec, because the product ships the
+    parametric organizer and the generative path was benched — see
+    `server.app._prompt_jobs_are_benched`. Most of this suite predates that and uses a
+    prompt job as *the* generic way to make a job: it is the shortest request that
+    reaches the pipeline, so tests about profiles, path traversal, size hints,
+    telemetry and collectors all post one without caring what geometry comes out.
+
+    Rewriting them to compose a spec would say something none of them means. So the
+    capability is opened here, once, and the bench itself is pinned in
+    `tests/test_prompt_jobs_benched.py`, which carries the `prompt_jobs_benched`
+    marker to opt out of this.
+
+    Only the one key is answered; every other read reaches the real store. And the
+    patch is skipped entirely when the server has not been imported — a test that
+    cannot reach `POST /jobs` has no use for it, and importing the app for all of
+    them would couple every unit test to the server.
+    """
+    if request.node.get_closest_marker("prompt_jobs_benched"):
+        return
+    app_module = sys.modules.get("server.app")
+    if app_module is None:
+        return
+    real_get = app_module.config_store.get
+    monkeypatch.setattr(
+        app_module.config_store,
+        "get",
+        lambda key: "true" if key == "ALLOW_PROMPT_JOBS" else real_get(key),
+    )
 
 
 @pytest.fixture

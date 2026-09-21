@@ -272,12 +272,18 @@ make test-slow                                  # pytest tests/ -v -m "slow and 
 `pytest.ini` carries `-m "not slow"` in its `addopts`, so **`pytest tests/` is already the
 selection CI runs** — it deselects everything that needs weights, a GPU or a printer. That
 is the command that must pass before a PR opens; the two marker-selected runs above are
-opt-in and need hardware this repository cannot assume. Five markers are declared:
+opt-in and need hardware this repository cannot assume. Six markers are declared:
 `integration` (a running FastAPI server, no printer), `slow` (over 30 seconds),
-`real_printer`, `full_pipeline`, and `dimensional_sweep` — which selects nothing on the
-command line and is not meant to. It labels one case of one archetype's declared
-dimensional envelope so `tests/conftest.py` can tally the run per archetype; see **What
-CI runs** below.
+`real_printer`, `full_pipeline`, and two that select nothing on the command line and are
+not meant to. `dimensional_sweep` labels one case of one archetype's declared dimensional
+envelope so `tests/conftest.py` can tally the run per archetype; see **What CI runs**
+below. `prompt_jobs_benched` opts a module out of the suite-wide `ALLOW_PROMPT_JOBS`
+default: `POST /jobs` refuses a job carrying no spec, because the shipping path is the
+parametric organizer and the generative one is benched, but most of this suite predates
+that and posts a prompt job as the generic way to reach the pipeline.
+`tests/conftest.py::_generative_path_open` opens the capability for those modules, and
+the marker is how `tests/test_prompt_jobs_benched.py` declines it and sees the refusal
+production sees.
 
 The `slow and real_printer` selection is the only place the **real** slicer and a printer
 are exercised; the default selection runs against a CuraEngine stub.

@@ -357,6 +357,19 @@ spending money says so. There is deliberately no CPU fallback: silently producin
 something other than the model you asked for is worse than failing, and there is nothing to fall
 back *to*.
 
+**None of this runs by default any more.** `POST /jobs` refuses a job that carries no
+spec (`server.app._prompt_jobs_are_benched`), because the shipping path is the parametric
+organizer and the generative path is benched. A spec job cannot reach a sculptor at all —
+`_apply_spec_mode` sets `skip_sculptor` — so with the bench on, no server-initiated run
+constructs one. The bench exists in code rather than in a decision because the fallthrough
+above is the hazard: on a host with no NVIDIA GPU and `$PIXAZO_API_KEY` set, which is every
+Apple Silicon development laptop, `auto` reaches the backend that bills, at €0,32 a
+generation, under terms whose output-ownership clause is unresolved
+(`docs/audits/2026-09-19-external-licence.md`). Setting `ALLOW_PROMPT_JOBS=true` in the
+config store reopens it with no deploy. The **CLI is not benched**: `pipeline.py --prompt`
+still resolves `auto` the same way, because there the backend is chosen by whoever typed
+the command.
+
 - **Shape-only path.** `Trellis2Backend` drives the pipeline stages itself
   (`get_cond` → `sample_sparse_structure` → `sample_shape_slat[_cascade]` → `decode_shape_slat`)
   rather than calling `pipeline.run()`, which would also sample a texture latent. An FDM printer
