@@ -47,7 +47,7 @@ from ..spec import (
     wall_floor_problems,
 )
 from . import box_insert, card_divider, deck_box, token_tray
-from .common import SweepCase
+from .common import SweepCase, lettering_problems
 
 REGISTRY: dict[str, ModuleType] = {
     deck_box.ARCHETYPE: deck_box,
@@ -103,14 +103,23 @@ def compile_spec(
             `spec.wall_floor_mm()` of it. Defaults to CuraEngine's 0,4 mm, which is
             what every bundled profile declares.
 
+    The **lettering floors** are enforced here too and for the same three reasons: the
+    printer's nozzle decides how thin a glyph stroke may be (`common.stroke_floor_mm`),
+    a refusal after Phase 2 has written the mesh refuses a part the system has already
+    produced, and a glyph the machine cannot lay must be named where a person can change
+    it rather than discovered in Phase 4 as a name the slicer quietly left off the box.
+    See `common.lettering_problems`.
+
     Raises:
-        SpecError: If the archetype refuses the spec, or the wall is below the floor.
-            Both sets of problems are reported together — a spec is refused whole.
+        SpecError: If the archetype refuses the spec, the wall is below the floor, or the
+            lettering does not fit or does not print. Every set of problems is reported
+            together — a spec is refused whole.
     """
     module = get_archetype(spec.archetype)
     problems = (
         wall_floor_problems(spec, nozzle_diameter_mm) if module.USES_PROCESS_WALL_MM else []
     )
+    problems.extend(lettering_problems(spec, module, nozzle_diameter_mm))
     if problems:
         try:
             module.validate(spec)

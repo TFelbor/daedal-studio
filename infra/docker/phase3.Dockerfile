@@ -40,6 +40,12 @@ RUN apt-get update && \
 # at call time — Phase 3 writes `engineered_mesh.3mf` on every run, and a transitive
 # copy that arrives with something else is one a later pin can remove without any
 # manifest saying so.
+#
+# fontTools (MIT) is named for lxml's reason exactly: `pythonsrc/organizer/lettering.py`
+# reads glyph contours out of the vendored font with it, so Phase 2 cannot compile a
+# lettered spec without it — and it arrives transitively with matplotlib, which is a
+# dependency a later pin could drop with no manifest saying so. Pure Python, downloads
+# nothing at runtime. See THIRD-PARTY-NOTICES.md § 2.
 RUN pip install --no-cache-dir \
         "numpy>=1.24.0" \
         "scipy>=1.11.0" \
@@ -47,6 +53,7 @@ RUN pip install --no-cache-dir \
         "manifold3d>=3.0.0" \
         "fast-simplification>=0.1.6" \
         "lxml>=5.0.0" \
+        "fonttools>=4.50" \
         "Pillow>=10.0.0" \
         "matplotlib>=3.7.0"
 

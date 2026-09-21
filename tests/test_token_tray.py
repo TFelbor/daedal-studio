@@ -271,11 +271,13 @@ def test_the_registry_prefers_the_spec_dependent_feature_list():
     # pockets alone. Both were written down wrong once.
     assert len(required_measurements(example_spec("token_tray"))) == 30  # 2 × 3
     assert len(big) == 37  # 4 × 2
-    # And the two older archetypes still answer from their fixed tuple.
+    # The two card archetypes declare one too, since lettering landed (issue #157) — a
+    # relief is a feature only a decorated spec has. What is asserted is therefore not
+    # that they have no hook but that an **undecorated** spec still gets exactly the
+    # fixed tuple, which is the property the fallback existed to guarantee.
     from pythonsrc.organizer.archetypes import card_divider, deck_box
-    assert not hasattr(deck_box, "measured_features")
-    assert not hasattr(card_divider, "measured_features")
     assert required_measurements(example_spec("deck_box")) == deck_box.MEASURED_FEATURES
+    assert required_measurements(example_spec("card_divider")) == card_divider.MEASURED_FEATURES
 
 
 def test_the_same_spec_exports_the_same_bytes(tmp_path):

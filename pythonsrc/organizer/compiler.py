@@ -29,11 +29,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 import trimesh
+
+from . import lettering
 
 try:  # the kernel is a hard dependency; the guard only makes the error readable
     import manifold3d
@@ -423,6 +426,298 @@ def base_chamfer(
     return _chamfered_trims(section, h, chamfer)
 
 
+# ── lettering ──────────────────────────────────────────────────────────────────
+#
+# The kernel half of the decorative tier (F13, issue #157). `lettering.py` has the font
+# and the metric arithmetic and no kernel at all, because the api-server has to answer
+# "does this fit" with no kernel installed; everything below needs one.
+
+#: How much of a glyph's area a morphological opening must keep before the opened radius
+#: still counts as "the stroke survived". See `thinnest_stroke_mm`.
+#:
+#: 0,80 is not a calibration constant — it is a gap. Opening a shape by `ρ` rounds its
+#: convex corners and loses `(4 − π)ρ²` per right angle, which on a glyph is a few per
+#: cent; when `ρ` passes half a **stroke's** width that whole stroke vanishes at once and
+#: the loss jumps to a fifth of the letter or more. Anything between those two regimes
+#: reads the same answer, and `tests/test_lettering.py` pins the one that matters: the
+#: `H` of this font measures its design stem, 385/2048 em, to the micron.
+STROKE_COVERAGE = 0.80
+
+#: How far a raised slab is sunk *into* the face it stands on, mm.
+#:
+#: The `base_chamfer` lesson restated, in the other direction: a boolean between two
+#: solids that merely touch on a plane leaves the kernel retriangulating a coplanar seam,
+#: and it emits near-degenerate triangles that float32 export then merges into
+#: non-manifold edges. A transverse overlap has no seam to retriangulate. A tenth of a
+#: millimetre is half a layer — it changes no measured feature and it is four orders
+#: above the kernel's own float noise.
+LETTER_SINK_MM = 0.1
+
+#: How far a recessing cutter stands **proud** of the face it cuts into, mm. The
+#: cavity-overshoot idiom every archetype here already cuts its pockets with (`+1.0` on
+#: the deck box's cavity), for the same reason: a cutter flush with the surface is a
+#: coplanar boolean.
+LETTER_OVERSHOOT_MM = 1.0
+
+#: The two things an emboss can be. `raised` unions a slab onto the face, `recessed`
+#: subtracts one out of it; `spec.EMBOSS_MODES` is the same tuple and
+#: `tests/test_composer_options.py` binds it to the composer's.
+LETTER_MODES: tuple[str, str] = ("raised", "recessed")
+
+#: How far outside the ink a measurer's exclusion region reaches, mm. A quarter of a
+#: millimetre: five times the float32 STL noise on a 200 mm plate and a quarter of the
+#: `EMBOSS_EDGE_MARGIN_MM` the fit rule keeps clear, so the box always sits inside the
+#: face it is cut from and never swallows the face's own edge.
+LETTER_REGION_PAD_MM = 0.25
+
+
+@dataclass(frozen=True)
+class FaceFrame:
+    """Where on a part the lettering goes, and which way round it reads.
+
+    The archetype supplies this and nothing else about the decoration: it is the one
+    piece of the emboss that is a fact about *that shape*. Everything downstream — the
+    outline, the slab, the boolean, the measurement region — is the same code for every
+    face of every archetype, which is what keeps a second decorated archetype from
+    growing a second spelling of "0,6 mm deep".
+
+    Attributes:
+        face: The `spec.EMBOSS_FACES` name, carried so a refusal can say which face.
+        part: Which body of the compile result the face belongs to, e.g. `"lid"`.
+        origin: The **centre** of the usable rectangle, in the part's own mm frame.
+        u: Unit vector along the text's reading direction.
+        v: Unit vector along the text's up direction.
+        normal: Unit outward normal of the face. `u × v` by construction — asserted,
+            because a left-handed frame mirrors every letter and nothing else about the
+            mesh would look wrong.
+        width_mm: Usable extent along `u`: the flat face, inset by its corner radius,
+            its base chamfer and `EMBOSS_EDGE_MARGIN_MM`.
+        height_mm: Usable extent along `v`, inset the same way.
+        modes: Which of `LETTER_MODES` this face honours. A face that is against the
+            bed, or vertical, honours `recessed` only — see `archetypes/common.py`
+            `lettering_problems`.
+        material_mm: How much material stands behind the face, mm — what a recess eats
+            into.
+        material_name: The spec path that number comes from, e.g. `"lid.top_mm"`, so a
+            refusal names the field a person would change.
+        material_floor_mm: How little of it may be left, mm.
+    """
+
+    face: str
+    part: str
+    origin: tuple[float, float, float]
+    u: tuple[float, float, float]
+    v: tuple[float, float, float]
+    normal: tuple[float, float, float]
+    width_mm: float
+    height_mm: float
+    modes: tuple[str, ...]
+    material_mm: float
+    material_name: str
+    material_floor_mm: float
+
+    @property
+    def normal_axis(self) -> int:
+        """0, 1 or 2 — which world axis the face's normal lies on.
+
+        Every face of every archetype here is axis-aligned, so this is always defined;
+        the relief is measured as a difference of two planes on this axis, whichever face
+        and whichever mode.
+        """
+        return int(np.argmax(np.abs(np.asarray(self.normal, dtype=np.float64))))
+
+    def matrix(self) -> np.ndarray:
+        """The 3 × 4 affine that carries a slab built in `XY × +Z` onto this face.
+
+        manifold3d's `transform` reads the first three columns as the images of the local
+        x, y and z axes and the fourth as the translation, so the frame *is* the matrix:
+        `[u | v | n | origin]`.
+        """
+        u = np.asarray(self.u, dtype=np.float64)
+        v = np.asarray(self.v, dtype=np.float64)
+        n = np.asarray(self.normal, dtype=np.float64)
+        if abs(np.linalg.norm(np.cross(u, v) - n)) > 1e-9:
+            raise MeasureError(
+                f"the {self.face!r} frame is left-handed (u × v ≠ n); every letter on it "
+                "would read backwards"
+            )
+        return np.column_stack([u, v, n, np.asarray(self.origin, dtype=np.float64)])
+
+    def region_mm(
+        self,
+        ink_width_mm: float,
+        ink_height_mm: float,
+        relief_mm: float,
+        mode: str,
+        *,
+        pad_mm: float = LETTER_REGION_PAD_MM,
+    ) -> "Box":
+        """The axis-aligned box the decoration occupies, in the part's own mm frame.
+
+        What `face_planes(..., exclude_mm=…)` drops so a plane count stays the design's,
+        and what `face_planes_within` reads the relief back out of. Axis-aligned because
+        every frame here is — `u`, `v` and `n` are ± unit axes on all six faces — so the
+        box is exactly the ink rectangle swept through the relief, padded by `pad_mm` on
+        every side because the *design*'s region has to contain the *mesh*'s faces after
+        float32 has rounded them.
+
+        It is the **ink** box and not the usable rectangle, which is the difference
+        between a measurer that still works and one that does not: the face's own plane
+        runs right up to the part's edge, and excluding the whole rectangle would take
+        that plane out of the count along with the decoration. The `EMBOSS_EDGE_MARGIN_MM`
+        the fit rule keeps clear is exactly the room this box needs to sit inside.
+        """
+        low = [0.0, 0.0, 0.0]
+        high = [0.0, 0.0, 0.0]
+        half_u, half_v = float(ink_width_mm) / 2.0, float(ink_height_mm) / 2.0
+        near, far = (
+            (-LETTER_SINK_MM, float(relief_mm)) if mode == "raised"
+            else (-float(relief_mm), LETTER_SINK_MM)
+        )
+        for axis in range(3):
+            extents = [
+                self.u[axis] * s + self.v[axis] * t + self.normal[axis] * w
+                for s in (-half_u, half_u)
+                for t in (-half_v, half_v)
+                for w in (near, far)
+            ]
+            low[axis] = self.origin[axis] + min(extents) - pad_mm
+            high[axis] = self.origin[axis] + max(extents) + pad_mm
+        return ((low[0], high[0]), (low[1], high[1]), (low[2], high[2]))
+
+
+def text_outline(text: str, cap_height_mm: float) -> "manifold3d.CrossSection":
+    """The glyphs of `text` as one cross-section in mm, centred on the origin.
+
+    `FillRule.NonZero`, and not `EvenOdd`: TrueType winds an outer contour opposite to
+    the counter inside it, so non-zero fills the letter and punches the hole — while an
+    even-odd read of a *composite* glyph (every accented character in this font) would
+    punch a hole wherever the base letter and its accent happen to overlap.
+
+    `simplify` at 1 µm afterwards, for `base_chamfer`'s reason one step earlier in the
+    pipeline: flattening a curve at a fixed segment count leaves collinear and
+    near-duplicate vertices, and a pair of vertices a nanometre apart in float64 is one
+    vertex in the float32 STL — which is how a watertight solid comes back with a
+    non-manifold edge. 1 µm is the schema's own rounding (`spec.MM_DECIMALS`) and four
+    orders under N1.
+
+    Raises:
+        lettering.LetteringError: If the font cannot set the text.
+        MeasureError: If the text has no ink at all — a caller asking for the outline of
+            a space has a bug, and an empty cross-section would union to nothing and be
+            found three phases later.
+    """
+    contours = lettering.text_contours(text, cap_height_mm)
+    if not contours:
+        raise MeasureError(
+            f"{text!r} sets no ink at this size, so there is no outline to build; "
+            "an emboss must carry at least one glyph that marks the part"
+        )
+    section = manifold3d.CrossSection(
+        [np.asarray(contour, dtype=np.float64) for contour in contours],
+        manifold3d.FillRule.NonZero,
+    )
+    return section.simplify(1e-3)
+
+
+@lru_cache(maxsize=512)
+def _stroke_em(character: str) -> float:
+    """The character's thinnest stroke as a fraction of the em, by opening.
+
+    **Why an opening and not a distance.** The obvious measurement — the smallest
+    distance from any point of the outline to the material on the other side — is the
+    wrong one, and wrong in a way that would refuse every real font: a tapered terminal
+    or a cut corner has a *local* thickness that goes to zero at its tip. No slicer cares.
+    What a slicer cares about is whether a whole **stroke** is narrower than one
+    extrusion, and that is exactly what a morphological opening answers: erode by `ρ`,
+    dilate by `ρ`, and everything narrower than `2ρ` is gone while everything wider is
+    back. Bisect `ρ` for the largest that still keeps `STROKE_COVERAGE` of the area, and
+    `2ρ` is the stroke.
+
+    Cached per character and measured **per glyph**, never over a whole word: the gap
+    between two letters is not a stroke of either, and opening `"II"` as one shape would
+    report the word spacing.
+
+    Returns `inf` for a character with no ink, which is right — a space has no stroke,
+    and `min()` over the word then ignores it.
+    """
+    contours = lettering.glyph_contours(character)
+    if not contours:
+        return math.inf
+    per_em = 1.0 / lettering.units_per_em()
+    section = manifold3d.CrossSection(
+        [np.asarray(contour, dtype=np.float64) * per_em for contour in contours],
+        manifold3d.FillRule.NonZero,
+    )
+    area = section.area()
+    if area <= 0.0:
+        return math.inf
+    low, high = 0.0, 0.5  # no stroke of a glyph is half an em wide
+    for _ in range(16):
+        mid = (low + high) / 2.0
+        eroded = section.offset(-mid, manifold3d.JoinType.Round, 2.0, CIRCULAR_SEGMENTS)
+        kept = (
+            0.0 if eroded.is_empty()
+            else eroded.offset(mid, manifold3d.JoinType.Round, 2.0, CIRCULAR_SEGMENTS).area()
+        )
+        if kept >= STROKE_COVERAGE * area:
+            low = mid
+        else:
+            high = mid
+    return 2.0 * low
+
+
+def thinnest_stroke_mm(text: str, cap_height_mm: float) -> float:
+    """The narrowest stroke any glyph of `text` has at this cap height, in mm.
+
+    The number the printability floor is enforced against: a raised stroke thinner than
+    one extrusion is a fin the nozzle cannot lay, and a recessed one narrower than a line
+    width is a slot the slicer fills in. Both come out as a part that does not carry the
+    name it was printed for, which is the only thing this feature is for.
+
+    `inf` for text with no ink — a caller that got there has already been refused by
+    `text_outline`.
+    """
+    scale = lettering.scale_for(cap_height_mm) * lettering.units_per_em()
+    strokes = [_stroke_em(c) for c in lettering.distinct_inked_characters(text)]
+    return min(strokes) * scale if strokes else math.inf
+
+
+def letter(
+    solid: "manifold3d.Manifold",
+    section: "manifold3d.CrossSection",
+    frame: FaceFrame,
+    relief_mm: float,
+    mode: str,
+) -> "manifold3d.Manifold":
+    """`solid` with `section` raised on or recessed into the face `frame` describes.
+
+    One function for both modes and all six faces, because the difference between them is
+    three numbers and a sign — and two spellings of "0,6 mm of relief" is how a lid and a
+    divider end up decorated to different depths.
+
+    **Neither boolean is ever coplanar with the face.** A raised slab starts
+    `LETTER_SINK_MM` *below* the surface and a recessing cutter stands
+    `LETTER_OVERSHOOT_MM` proud of it, so in both directions the operands overlap
+    transversely and the kernel has no tangential seam to retriangulate — `base_chamfer`
+    has the measurement of what happens when it does. It is also what makes
+    `expected_components` safe: every glyph intersects the body it decorates, so a raised
+    letter cannot float off as a body of its own.
+
+    Raises:
+        MeasureError: For an unknown mode, a non-positive relief, or a left-handed frame.
+    """
+    if mode not in LETTER_MODES:
+        raise MeasureError(f"an emboss is {' or '.join(LETTER_MODES)}, got {mode!r}")
+    relief = _positive("the emboss relief", relief_mm)
+    matrix = frame.matrix()
+    if mode == "raised":
+        slab = section.extrude(relief + LETTER_SINK_MM).translate([0.0, 0.0, -LETTER_SINK_MM])
+        return solid + slab.transform(matrix)
+    slab = section.extrude(relief + LETTER_OVERSHOOT_MM).translate([0.0, 0.0, -relief])
+    return solid - slab.transform(matrix)
+
+
 # ── plane reading ──────────────────────────────────────────────────────────────
 
 def plane_set(coords: np.ndarray, tol_mm: float = 1e-3) -> list[float]:
@@ -472,12 +767,40 @@ def face_normals(mesh: Any) -> tuple[np.ndarray, np.ndarray]:
     return normals, lengths / 2.0
 
 
+#: A box in mm as `((x_min, x_max), (y_min, y_max), (z_min, z_max))`.
+Box = tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+
+
+def _outside(tri: np.ndarray, exclude_mm: Optional[Box]) -> np.ndarray:
+    """A mask over triangles: True for those whose centroid is **not** in `exclude_mm`.
+
+    What decoration costs the measurers, and the whole of it. A raised glyph's top is a
+    real Z plane and the stems of `I`, `L`, `T` and `E` are real axis-aligned walls, so a
+    lettered part genuinely *has* more planes than its design says — and a measurement
+    that counted them would report a `MeasureError` about geometry that is exactly right.
+    Decoration is not a designed feature (issue #157: "must not break
+    `expected_components=1` or move a measured dimension"), so the region it occupies is
+    excluded and every count below is the count the undecorated part had.
+
+    The centroid is the test rather than any overlap, for `face_planes`' reason: a face
+    is one triangle's worth of plane, and a triangle is in the region or it is not.
+    """
+    if exclude_mm is None:
+        return np.ones(len(tri), dtype=bool)
+    centroids = tri.mean(axis=1)
+    inside = np.ones(len(tri), dtype=bool)
+    for i, (low, high) in enumerate(exclude_mm):
+        inside &= (centroids[:, i] >= float(low)) & (centroids[:, i] <= float(high))
+    return ~inside
+
+
 def face_planes(
     mesh: Any,
     axis: int,
     tol_mm: float = 1e-3,
     *,
     min_area_mm2: float = MIN_PLANE_AREA_MM2,
+    exclude_mm: Optional[Box] = None,
 ) -> list[float]:
     """The distinct planes perpendicular to `axis` that the mesh's **faces** lie in.
 
@@ -493,12 +816,20 @@ def face_planes(
     (see that constant for the seam slivers this excludes), and returned as their
     **area-weighted** mean: a plane is where most of its square millimetres are, not
     where the average of its triangles happens to sit.
+
+    `exclude_mm` drops a region from the read — see `_outside`. It is how a decorated
+    part still measures as the part it was designed to be.
     """
     normals, areas = face_normals(mesh)
     if normals.size == 0:
         return []
-    selected = (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS) & (areas > 0.0)
-    return _cluster_planes(_triangles(mesh), areas, selected, axis, tol_mm, min_area_mm2)
+    tri = _triangles(mesh)
+    selected = (
+        (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS)
+        & (areas > 0.0)
+        & _outside(tri, exclude_mm)
+    )
+    return _cluster_planes(tri, areas, selected, axis, tol_mm, min_area_mm2)
 
 
 def _cluster_planes(
@@ -596,6 +927,7 @@ def face_plane_extent(
     tol_mm: float = 1e-3,
     *,
     min_area_mm2: float = MIN_PLANE_AREA_MM2,
+    exclude_mm: Optional[Box] = None,
 ) -> tuple[float, float]:
     """`(min, max)` along `along` of the faces that lie in the plane `axis = coord`.
 
@@ -615,7 +947,11 @@ def face_plane_extent(
     tri = _triangles(mesh)
     if normals.size == 0:
         raise MeasureError(f"the mesh has no faces to measure on {'XYZ'[axis]}")
-    on_axis = (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS) & (areas > 0.0)
+    on_axis = (
+        (np.abs(normals[:, axis]) >= AXIS_ALIGNED_COS)
+        & (areas > 0.0)
+        & _outside(tri, exclude_mm)
+    )
     in_plane = on_axis & (np.abs(tri[:, :, axis].mean(axis=1) - float(coord)) <= tol_mm)
     if not in_plane.any() or areas[in_plane].sum() < min_area_mm2:
         raise MeasureError(
@@ -633,6 +969,7 @@ def tilted_face_extent(
     low: float = 0.05,
     high: float = 0.99,
     min_area_mm2: float = MIN_PLANE_AREA_MM2,
+    exclude_mm: Optional["Box"] = None,
 ) -> tuple[float, float, float]:
     """`(min, max, worst_error_deg)` over the faces that slope against `-axis`.
 
@@ -644,12 +981,25 @@ def tilted_face_extent(
     rather than something it assumed. A body with no such faces has no chamfer and
     returns `(0, 0, 0)` — exactly right for a designed chamfer of 0, and out of
     tolerance for any other.
+
+    `exclude_mm` is not optional politeness here — it is load-bearing for a decorated
+    part. "Points downward without being the bed face" isolates a chamfer on an
+    *undecorated* archetype and stops doing so the moment a glyph is sunk into a vertical
+    wall: the top of the bowl of an `o` or a `C` is a downward-facing face at every angle
+    between 8° and 87°, and it would be read as a chamfer 41° out of true. The decoration
+    is excluded for the reason it is excluded everywhere else — it is not a designed
+    feature and its faces are not the ones being measured.
     """
     normals, areas = face_normals(mesh)
     if normals.size == 0:
         return 0.0, 0.0, 0.0
     component = normals[:, axis]
-    sloped = (component <= -low) & (component >= -high) & (areas > min_area_mm2)
+    sloped = (
+        (component <= -low)
+        & (component >= -high)
+        & (areas > min_area_mm2)
+        & _outside(_triangles(mesh), exclude_mm)
+    )
     if not sloped.any():
         return 0.0, 0.0, 0.0
     tri = _triangles(mesh)[sloped]

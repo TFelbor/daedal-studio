@@ -75,6 +75,7 @@ from pythonsrc.organizer.spec import (  # noqa: E402
     Compartment,
     Constraints,
     Divider,
+    Emboss,
     Lid,
     OrganizerSpec,
     Process,
@@ -439,7 +440,7 @@ def test_the_lid_clears_the_lip_by_exactly_the_clearance():
 
 def test_measure_refuses_a_mesh_that_is_not_a_deck_box():
     with pytest.raises(MeasureError):
-        deck_box.measure(trimesh.creation.box(extents=[10, 10, 10]))
+        deck_box.measure(trimesh.creation.box(extents=[10, 10, 10]), deck())
 
 
 def test_phase_3_hands_the_slicer_the_dimensions_that_were_designed(tmp_path):
@@ -473,6 +474,67 @@ def test_the_gate_does_not_fail_the_deck_box(tmp_path):
     assert by_name["floating_components"].status == "pass"
     assert by_name["watertight"].status == "pass"
     assert report.verdict != "unprintable"
+
+
+def test_a_lettered_deck_box_is_no_less_printable_than_a_plain_one(tmp_path):
+    """Acceptance criterion 4 of #157, and the plan's own Risk 1: **no support material**.
+
+    A recess is the safe shape and the criterion still has to be measured, because the
+    one that would fail is not obvious — a sunken letter's ceiling is a horizontal
+    unsupported face, and enough of them on the lid could push `overhang_area` over its
+    fraction even though each is small. So the lettered box is compared against the
+    plain one rather than against a constant: the question is whether decorating a part
+    made it worse, and only the pair answers that.
+
+    Also the assertion that decoration did not split the part. Text is unioned into, or
+    subtracted out of, one body; a letter that failed to merge would arrive as a second
+    component, and `expected_components` is what catches it.
+    """
+    plain = compile_spec(deck())
+    lettered = compile_spec(deck(emboss=Emboss(
+        text="Lands", face="lid_top", mode="recessed", height_mm=8.0, relief_mm=0.6,
+    )))
+    assert len(lettered.parts) == len(plain.parts)
+
+    reports = {}
+    for name, result in (("plain", plain), ("lettered", lettered)):
+        raw = export_stl(result.mesh, tmp_path / f"{name}.stl")
+        out = Engineer().process(
+            input_path=raw, output_path=tmp_path / f"{name}.obj", target_mm=None
+        )
+        reports[name] = evaluate_printability(
+            trimesh.load(str(out), force="mesh"),
+            ProcessProfile(build_volume_mm=[220.0, 220.0, 250.0]),
+            expected_components=len(result.parts),
+        )
+
+    checks = {name: {c.check: c for c in r.checks} for name, r in reports.items()}
+    assert checks["lettered"]["overhang_area"].status == "pass", (
+        checks["lettered"]["overhang_area"].detail
+    )
+    assert checks["lettered"]["floating_components"].status == "pass"
+    assert checks["lettered"]["watertight"].status == "pass"
+    assert not [c.check for c in reports["lettered"].checks if c.status == "fail"]
+
+    ranking = {"ready": 0, "risky": 1, "unprintable": 2}
+    assert ranking[reports["lettered"].verdict] <= ranking[reports["plain"].verdict], (
+        f"lettering made the box worse: {reports['plain'].verdict} -> "
+        f"{reports['lettered'].verdict}"
+    )
+
+
+def test_the_lettered_box_measures_the_same_as_the_plain_one():
+    """Criterion 2: decoration must not move a designed feature.
+
+    A 0,6 mm recess in the lid changes no external dimension, and that is exactly the
+    kind of claim that is true by construction right up until someone builds the text
+    before the chamfer. Measured rather than reasoned.
+    """
+    plain = compile_spec(deck())
+    lettered = compile_spec(deck(emboss=Emboss(
+        text="Lands", face="lid_top", mode="recessed", height_mm=8.0, relief_mm=0.6,
+    )))
+    assert lettered.mesh.bounds == pytest.approx(plain.mesh.bounds, abs=0.05)
 
 
 # ── the edge treatments (issue #80) ────────────────────────────────────────────

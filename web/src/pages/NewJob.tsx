@@ -62,6 +62,8 @@ import {
 } from '../organizer/spec';
 import {
   DEFAULT_SPEC_FORM,
+  embossDefaults,
+  embossModesFor,
   localProblems,
   mergeProblems,
   specFromForm,
@@ -1056,6 +1058,18 @@ export function NewJob() {
                   value={archetype}
                   onChange={(next) => {
                     setArchetype(next);
+                    // The lettering face is the one form field whose *vocabulary*
+                    // changes with the archetype: a deck box letters `lid_top` and a
+                    // divider letters `tab`, and neither knows the other's. Leaving the
+                    // old one selected would compose a spec that resolves clean here and
+                    // is refused by name in Phase 2 — the failure the archetype strip's
+                    // own binding exists to prevent, one level down. See
+                    // `embossDefaults`.
+                    setSpecForm((form) => {
+                      const defaults = next ? embossDefaults(next) : null;
+                      if (!defaults || embossModesFor(next!, form.embossFace).length) return form;
+                      return { ...form, embossFace: defaults.face, embossMode: defaults.mode };
+                    });
                     reportUi('archetype', next ?? 'cleared');
                   }}
                   disabled={!printerReady}

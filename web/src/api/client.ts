@@ -228,6 +228,28 @@ export interface RawSpec {
     tab_position: string;
   } | null;
   /**
+   * The decorative tier (F13): words raised on, or sunk into, one face of the part.
+   *
+   * Optional like every other section and for the same reason — an absent one is
+   * omitted from the canonical form, so adding it moved no stored `spec_hash`. It is
+   * the first section that is not one archetype's: the deck box and the card divider
+   * both read it, the token tray and the box insert both refuse it.
+   *
+   * `text` is the **same string** the IP screen reads. `POST /jobs` copies it into
+   * `embossing_text` when the request does not carry one and refuses a request whose
+   * two copies disagree, so the field that is screened and the field that is cut into
+   * the part cannot come apart. Send it in the spec only.
+   */
+  emboss?: {
+    text: string;
+    face: string;
+    mode: string;
+    /** Cap height — a capital letter's height, not the line's. */
+    height_mm: number;
+    /** How far the text stands proud of the face, or sinks into it. */
+    relief_mm: number;
+  } | null;
+  /**
    * `fit_margin_mm` is optional here and required in the schema, which is not a
    * contradiction: it is written for every spec composed since issue #70, and rows
    * stored before it exist and are served back verbatim — the row is authoritative,

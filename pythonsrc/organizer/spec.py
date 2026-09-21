@@ -60,6 +60,56 @@ LID_KINDS: tuple[str, ...] = ("lift_off",)
 #: Where a divider's label tab sits along the plate's top edge.
 TAB_POSITIONS: tuple[str, ...] = ("left", "centre", "right")
 
+#: Faces of an organizer an `Emboss` may name. Which of them an archetype actually
+#: honours is that archetype's, declared on its module as `EMBOSS_FACES` — a divider has
+#: no lid and a deck box has no tab — and `archetypes/common.py`'s `lettering_problems`
+#: refuses a face the archetype does not build with the ones it does named.
+EMBOSS_FACES: tuple[str, ...] = ("lid_top", "front", "back", "left", "right", "tab")
+
+#: What an emboss does to the face: stand proud of it, or sink into it. Mirrors
+#: `compiler.LETTER_MODES`; `tests/test_composer_options.py` binds both to the
+#: composer's list.
+EMBOSS_MODES: tuple[str, ...] = ("raised", "recessed")
+
+#: Longest emboss text, in characters. Re-exported from `lettering` so that this
+#: stdlib-only schema, `server/app.py`'s `JobRequest` and the composer all bound the same
+#: box from one number — and so that importing `spec` does not drag fontTools into an
+#: image that has none. Kept as a plain int, not an import, for exactly that reason; the
+#: two are pinned together by `tests/test_lettering.py`.
+EMBOSS_TEXT_MAX_CHARS = 64
+
+#: The least relief an emboss may carry, mm. Two 0,2 mm layers: one layer of raised text
+#: is indistinguishable from a print artefact and one layer of recess is filled by the
+#: next pass. A design default on `Process.base_chamfer_mm`'s footing — the figure is
+#: this project's, and `to_view` says so on the row rather than presenting it as sourced.
+EMBOSS_RELIEF_FLOOR_MM = 0.4
+
+#: How far the ink must stay clear of the edge of the face it sits on, mm. A design
+#: default: it is the room a chamfered, rounded edge takes before the face is flat, plus
+#: enough that the measurer's exclusion region (`compiler.LETTER_REGION_PAD_MM`) never
+#: reaches the face's own boundary.
+EMBOSS_EDGE_MARGIN_MM = 1.0
+
+#: Cap height an emboss is set at when a spec does not say, mm.
+#:
+#: **Not a taste figure.** It is the smallest whole millimetre at which the printable
+#: ASCII characters of the vendored font clear `Process.min_feature_mm`'s 1,0 mm
+#: default, bar two: the binding glyph is `/`, whose thinnest stroke is 0,103 em and
+#: which therefore needs a 7,07 mm cap height, with `a`, `s` and `e` just behind it at
+#: 6,2 mm. A 6 mm default would have refused most lowercase *text* — `a`, `e` and `s`
+#: exactly, which is almost every English word — on the floor rule, and a default that
+#: does not compile is not a default.
+#:
+#: The two it does not clear are `*` (9,5 mm) and `` ` `` (9,0 mm), whose strokes are
+#: thinner than any letter's. They are refused in Phase 2 by name, which is the floor
+#: rule working rather than a gap in it; raising the default to 10 mm to swallow them
+#: would set every ordinary label half again too large for the two characters nobody
+#: engraves.
+#:
+#: `tests/test_lettering.py` recomputes the binding glyph and pins that exception set,
+#: so this number moves when the font does instead of quietly becoming wrong.
+EMBOSS_CAP_HEIGHT_MM = 8.0
+
 #: How much room the contents get, in mm of clearance *total per axis* over the sleeve
 #: envelope, per fit intent. `docs/dimension-kb-research.md` §3's working convention:
 #: "+1,5–2 mm over the sleeve envelope for a snug commercial-style fit; +4–6 mm for
@@ -499,6 +549,90 @@ class GameBox:
 
 
 @dataclass(frozen=True)
+class Emboss:
+    """Words raised on, or sunk into, one face of the part (F13, issue #157).
+
+    The decorative tier's first rung, and the only one that needs no model: extruded
+    text, boolean-unioned onto or subtracted from a chosen face. Deterministic geometry,
+    ~€0, seconds, no GPU — which is what makes it shippable ahead of image relief and the
+    benched sculptural lids, and what keeps it out of the AI Act surface those two carry.
+
+    A section on the spec rather than a field on `Process` or `Lid`, and that is the one
+    structural decision here: **a new optional section is the only additive-safe change
+    this schema has** (see `_OPTIONAL_SECTIONS`). A scalar with a default anywhere else
+    would be written into every canonical form there has ever been and move every stored
+    `spec_hash`; an absent section is omitted by `to_dict`, so every hash in
+    `tests/test_organizer_spec.py`'s fixed vectors is exactly what it was.
+
+    **There is no position field**, for `Insert`'s reason verbatim: given a face and a
+    size there is one sensible place for a label, and a spec that carried `x_mm` could
+    contradict the face it names. The text is centred on the flat part of the face —
+    `lettering.text_contours` returns it already centred so no archetype re-derives it.
+
+    The rules that are about *this shape* rather than about specs — whether the archetype
+    builds that face, whether the text fits it, whether the thinnest stroke clears the
+    nozzle, whether a recess eats the wall behind it — are `lettering_problems` in
+    `archetypes/common.py`, called from `archetypes.compile_spec` beside the wall floor so
+    both arrive in one `SpecError`. What is checked *here* is what is true of any font on
+    any face: a string, bounded, with no control characters in it, at a positive size and
+    a relief at or above the floor.
+    """
+
+    #: What the part says. Stripped on construction, so two specs that differ only by
+    #: trailing whitespace are one spec and hash alike.
+    text: str
+    #: One of `EMBOSS_FACES`. Whether the archetype builds it is the archetype's rule.
+    face: str = "lid_top"
+    #: One of `EMBOSS_MODES`.
+    mode: str = "raised"
+    #: Cap height — the height of a capital letter, not of the line. See
+    #: `EMBOSS_CAP_HEIGHT_MM` for why the default is 8 mm.
+    height_mm: float = EMBOSS_CAP_HEIGHT_MM
+    #: How far the text stands proud of the face, or sinks into it.
+    relief_mm: float = 0.6
+
+    def __post_init__(self) -> None:
+        problems: list[str] = []
+        text = self.text
+        if not isinstance(text, str):
+            problems.append(f"text must be a string, got {type(text).__name__}")
+        else:
+            stripped = text.strip()
+            _set(self, "text", stripped)
+            if not stripped:
+                problems.append(
+                    "text must carry at least one character; an emboss section with "
+                    "nothing in it decorates nothing — remove the section instead"
+                )
+            elif len(stripped) > EMBOSS_TEXT_MAX_CHARS:
+                problems.append(
+                    f"text must be at most {EMBOSS_TEXT_MAX_CHARS} characters, got "
+                    f"{len(stripped)}"
+                )
+            control = sorted({c for c in stripped if c.isprintable() is False})
+            if control:
+                # A newline is the interesting one: there is no line breaking here — see
+                # `lettering._laid_out_units` — so a two-line label would set as one
+                # long line with a gap in it, which is a different part than the one
+                # asked for. Refused rather than silently flattened.
+                named = ", ".join(f"U+{ord(c):04X}" for c in control)
+                problems.append(
+                    f"text must not contain control characters ({named}); this sets one "
+                    "line and does not wrap, so a line break would letter a part nobody "
+                    "asked for"
+                )
+        if self.face not in EMBOSS_FACES:
+            problems.append(f"face must be one of {list(EMBOSS_FACES)}, got {self.face!r}")
+        if self.mode not in EMBOSS_MODES:
+            problems.append(f"mode must be one of {list(EMBOSS_MODES)}, got {self.mode!r}")
+        _set(self, "height_mm", _mm(self.height_mm, "height_mm", problems))
+        _set(self, "relief_mm",
+             _mm(self.relief_mm, "relief_mm", problems, minimum=EMBOSS_RELIEF_FLOOR_MM,
+                 inclusive=True))
+        _raise_if(problems)
+
+
+@dataclass(frozen=True)
 class Constraints:
     """External limits the finished part must fit within: (W, D, H) in mm, or None.
 
@@ -677,6 +811,7 @@ class OrganizerSpec:
     tray: Optional[Tray] = None
     insert: Optional[Insert] = None
     box: Optional[GameBox] = None
+    emboss: Optional[Emboss] = None
     constraints: Constraints = field(default_factory=Constraints)
     process: Process = field(default_factory=Process)
     schema_version: int = SCHEMA_VERSION
@@ -709,6 +844,10 @@ class OrganizerSpec:
             )
         if self.box is not None and not isinstance(self.box, GameBox):
             problems.append(f"box must be a GameBox or null, got {type(self.box).__name__}")
+        if self.emboss is not None and not isinstance(self.emboss, Emboss):
+            problems.append(
+                f"emboss must be an Emboss or null, got {type(self.emboss).__name__}"
+            )
         if not isinstance(self.constraints, Constraints):
             problems.append("constraints must be a Constraints object")
         elif isinstance(self.box, GameBox):
@@ -860,6 +999,7 @@ _NESTED: dict[tuple[type, str], Any] = {
     (OrganizerSpec, "tray"): Tray,
     (OrganizerSpec, "insert"): Insert,
     (OrganizerSpec, "box"): GameBox,
+    (OrganizerSpec, "emboss"): Emboss,
     (OrganizerSpec, "constraints"): Constraints,
     (OrganizerSpec, "process"): Process,
 }
@@ -888,7 +1028,14 @@ _NESTED: dict[tuple[type, str], Any] = {
 #: reason this tuple exists — a scalar there would have been written into the canonical
 #: form of every spec ever stored — and because provenance is per *value* in this project
 #: (`Pocket.source`, `box_kb.Measurement`), which one string cannot carry.
-_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray", "insert", "box")
+#:
+#: `emboss` is the **sixth**, and the second that is not an archetype's: the decorative
+#: tier (issue #157) is read by two archetypes and refused by the other two, so it is the
+#: case that proves the rule is about *optional sections* rather than about archetypes —
+#: `box` above proves it for sizing, this one for decoration.
+#: `test_no_archetypes_example_hash_has_moved` pins every earlier hash to what it was
+#: before it, exactly as `insert` was pinned before that.
+_OPTIONAL_SECTIONS: tuple[str, ...] = ("lid", "divider", "tray", "insert", "box", "emboss")
 _LIST_FIELDS: dict[tuple[type, str], type] = {
     (OrganizerSpec, "compartments"): Compartment,
 }

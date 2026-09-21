@@ -107,6 +107,68 @@ export const FIT_INTENTS = ['snug', 'easy'] as const;
 /** `spec.TAB_POSITIONS`. */
 export const TAB_POSITIONS = ['left', 'centre', 'right'] as const;
 
+/** `spec.EMBOSS_FACES` — every face any archetype can letter. Which of them a given
+ *  archetype honours is `EMBOSS_FACES_BY_ARCHETYPE` below; this is the union. */
+export const EMBOSS_FACES = ['lid_top', 'front', 'back', 'left', 'right', 'tab'] as const;
+
+/** `spec.EMBOSS_MODES`. */
+export const EMBOSS_MODES = ['raised', 'recessed'] as const;
+
+/**
+ * Which faces each archetype actually letters, and the modes each of those takes.
+ *
+ * The archetype's own `EMBOSS_FACES` and `emboss_frame(...).modes`, mirrored here for
+ * the archetype strip's reason verbatim: a form that offered a face the engine refuses
+ * would let a person pick it, submit, and be told by a 422 that the thing they were
+ * shown does not exist. `tests/test_composer_options.py` binds every entry to the
+ * module that builds it.
+ *
+ * **The token tray and the box insert letter nothing**, so the composer shows no
+ * lettering group for them at all: a tray's 1,6 mm wall cannot host a 0,6 mm recess
+ * above the floor, and an insert's outer faces live inside a game box where nobody sees
+ * them. An archetype with no entry is an archetype with no group.
+ *
+ * **Only the divider's tab takes `raised`.** It is the one face of any archetype here
+ * that points up as it prints: a deck box lid is printed open side up, so the face a
+ * person looks at is against the bed, and the box's walls are vertical, where a raised
+ * letter would overhang at 90° along its whole underside.
+ */
+export const EMBOSS_FACES_BY_ARCHETYPE: Record<string, { face: string; modes: string[] }[]> = {
+  deck_box: [
+    { face: 'lid_top', modes: ['recessed'] },
+    { face: 'front', modes: ['recessed'] },
+    { face: 'back', modes: ['recessed'] },
+    { face: 'left', modes: ['recessed'] },
+    { face: 'right', modes: ['recessed'] },
+  ],
+  card_divider: [{ face: 'tab', modes: ['raised', 'recessed'] }],
+};
+
+/** `lettering.EMBOSS_TEXT_MAX_CHARS`, and the bound on `JobRequest.embossing_text`. */
+export const EMBOSS_TEXT_MAX_CHARS = 64;
+
+/** `spec.EMBOSS_CAP_HEIGHT_MM` — the cap height an emboss is set at by default. */
+export const EMBOSS_CAP_HEIGHT_MM = 8.0;
+
+/** `spec.EMBOSS_RELIEF_FLOOR_MM` — two 0,2 mm layers, the least relief that reads. */
+export const EMBOSS_RELIEF_FLOOR_MM = 0.4;
+
+/** What each face is called in the words somebody would use to pick it. */
+export const EMBOSS_FACE_LABELS: Record<string, string> = {
+  lid_top: 'Lid top',
+  front: 'Front',
+  back: 'Back',
+  left: 'Left side',
+  right: 'Right side',
+  tab: 'Tab',
+};
+
+/** What each mode does, said as the thing it does to the part. */
+export const EMBOSS_MODE_LABELS: Record<string, string> = {
+  raised: 'Raised — stands proud of the face',
+  recessed: 'Recessed — sunk into the face',
+};
+
 /** What each fit intent means in the words somebody would use to choose it. */
 export const FIT_INTENT_LABELS: Record<string, string> = {
   snug: 'Snug — a box you close',
@@ -380,6 +442,25 @@ export function specFromJob(job: Partial<JobStatusResponse> | null): OrganizerSp
         `${divider.tab_position}; design default, unsourced`),
       row('tab_height_mm', 'Tab height', divider.tab_height_mm, 'mm', true,
         'how far the tab stands proud of the cards'),
+    );
+  }
+  const emboss = spec.emboss;
+  if (emboss) {
+    // The text, the face and the mode are all *words*, and a row's value is a number,
+    // so they ride as the notes of the two rows they size — `tab_position` and
+    // `fit_intent` before them. The ink's own millimetres are deliberately not here:
+    // they are a function of the vendored font's metrics, and re-deriving them in a
+    // browser is exactly the second drifting copy this table exists to refuse.
+    // `POST /organizer/resolve` returns them, measured by the same code the compiler
+    // sets the glyphs with.
+    const face = EMBOSS_FACE_LABELS[emboss.face] ?? emboss.face;
+    dimensions.push(
+      row('emboss_height_mm', 'Lettering height', emboss.height_mm, 'mm', true,
+        `cap height of “${emboss.text}”, ${emboss.mode} on the ${face.toLowerCase()}`),
+      row('emboss_relief_mm', 'Lettering relief', emboss.relief_mm, 'mm', true,
+        emboss.mode === 'raised'
+          ? 'how far the glyphs stand proud; design default, unsourced'
+          : 'how deep the glyphs are cut; design default, unsourced'),
     );
   }
   const limit = spec.constraints?.max_external_mm;

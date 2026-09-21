@@ -212,7 +212,7 @@ def test_every_designed_feature_is_on_the_compiled_mesh(sleeving, position):
 
 def test_measure_refuses_a_mesh_that_is_not_a_divider():
     with pytest.raises(MeasureError):
-        card_divider.measure(trimesh.creation.box(extents=[10, 10, 10]))
+        card_divider.measure(trimesh.creation.box(extents=[10, 10, 10]), divider())
 
 
 def test_measure_refuses_two_bodies():
@@ -220,7 +220,7 @@ def test_measure_refuses_two_bodies():
     b = trimesh.creation.box(extents=[10, 10, 1])
     b.apply_translation([50, 0, 0])
     with pytest.raises(MeasureError) as exc:
-        card_divider.measure(trimesh.util.concatenate([a, b]))
+        card_divider.measure(trimesh.util.concatenate([a, b]), divider())
     assert "1 body" in str(exc.value)
 
 

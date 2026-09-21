@@ -339,6 +339,44 @@ teaches hand-authored migrations, `codebase-onboarding` writes `CLAUDE.md`,
 personal collections carry no upstream `LICENSE` beside the skills that would be
 copied, and redistribution into an Apache-2.0 repository needs one.
 
+**The lettering font** (`pythonsrc/organizer/fonts/`). The decorative tier (F13, issue
+#157) raises or recesses text on a face of an organizer, and the glyph outlines have to
+come from a font file the repository controls. It is vendored rather than resolved at
+runtime for the reason the whole parametric path exists: *the same spec must compile to
+the same mesh, byte for byte*. A system font is not reproducible across two machines, a
+downloaded one is not reproducible across two days, and a user-uploaded one would be a
+third IP channel beside the prompt and the emboss box. So the file is committed, pinned
+by sha256, and read by nothing but `pythonsrc/organizer/lettering.py`.
+
+| Asset | Upstream | Version | Licence | sha256 |
+|---|---|---|---|---|
+| `DejaVuSans-Bold.ttf` | [DejaVu Fonts](https://dejavu-fonts.github.io/) | 2.35 | Bitstream Vera + public domain (DejaVu changes) + Bitstream Vera (Arev glyphs) | `b184b89e…aef167` |
+
+`LICENSE` beside it is the upstream notice verbatim, carrying all three grants.
+**The file is unmodified and unsubsetted**, which is a licence decision and not laziness:
+the Bitstream Vera licence permits modification only under a renamed font, so a subset —
+which is a Modified Version — could not keep the name this table attributes. The size
+that costs (688 KiB) buys the guarantee that the bytes here are the bytes upstream ships.
+Nothing in the grant reaches a *printed object*: the licence governs the Font Software,
+and a chamfered slab of PLA with a name on it is not font software, so a part this
+project makes carries no font obligation.
+
+**Bold, and DejaVu rather than the app's own Barlow**, because both are printability
+decisions before they are typographic ones. A raised glyph thinner than one extrusion
+does not print, so the stem width at a given cap height is the constraint — DejaVu Sans
+Bold's thinnest stroke is ~0,26 em, which keeps a 6 mm cap height at 1,5 mm of stem, half
+again over `process.min_feature_mm`; a regular weight sits on the floor and a light one
+under it. Barlow SemiBold (OFL-1.1, and what `web/src/global.css` brands the app with)
+was the first choice and remains the better *typographic* one; it is not here because
+fetching it needs the network and this repository's build must not, and switching to it
+later is one file, one row and one sha256. **Not `matplotlib.textpath`**, which would read
+the same outlines out of a plotting library's private data directory: the font would then
+move with a matplotlib upgrade, and so would every lettered STL this project has shipped.
+
+`tests/test_vendored_font.py` binds this row to the tree the way
+`tests/test_vendored_skills.py` binds the skills table — the file, its `LICENSE`, the
+sha256 here, and the sha256 the code pins — so a font swap cannot happen quietly.
+
 Phase 2's model source (TRELLIS.2) is **not** vendored: it is
 cloned at image build time by
 [`infra/docker/trellis2-worker.Dockerfile`](infra/docker/trellis2-worker.Dockerfile),
@@ -521,6 +559,7 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | manifold3d | Apache-2.0 |
 | trimesh | MIT |
 | lxml | BSD-3-Clause |
+| fontTools | MIT |
 | fast-simplification | MIT |
 | xatlas | MIT |
 | moderngl | MIT |
@@ -538,6 +577,19 @@ the distributed artifact. Listed because what they *return* enters the pipeline.
 | pytest-cov (dev only) | MIT |
 | coverage.py (dev only, via pytest-cov) | Apache-2.0 |
 | ruff (dev only) | MIT |
+
+**fontTools is there for the decorative tier, and it is declared rather than
+inherited.** `pythonsrc/organizer/lettering.py` reads glyph contours out of the
+vendored `pythonsrc/organizer/fonts/DejaVuSans-Bold.ttf` and turns them into a
+`manifold3d.CrossSection`; without it an emboss has no outline and F13 does not exist.
+It had been arriving transitively — matplotlib pulls it — which is the shape of arrival
+this file exists to stop, so `requirements-base.txt`, `infra/docker/pipeline.Dockerfile`,
+`infra/docker/phase2.Dockerfile`, `infra/docker/phase3.Dockerfile` and
+`infra/docker/server.Dockerfile` all name it. The api-server needs it too: it answers
+"does this text fit this face" without a kernel. The package is **MIT**, pure Python,
+and it downloads no fonts, weights or data at runtime — the only face this project
+reads is the one committed beside the code, whose own licence is the Bitstream Vera /
+public-domain grant recorded in § 2 above.
 
 **lxml is there for one exporter, and it is declared rather than inherited.**
 trimesh's 3MF writer streams the model XML through `lxml.etree.xmlfile` and imports

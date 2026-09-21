@@ -16,6 +16,13 @@ exceptiongroup==1.3.1
 fast-simplification==0.1.13
 filelock==3.24.2
 flatbuffers==25.12.19
+# A **direct** dependency since the decorative tier landed (issue #157), not
+# matplotlib's transitive one. `pythonsrc/organizer/lettering.py` reads glyph contours
+# out of the vendored `pythonsrc/organizer/fonts/DejaVuSans-Bold.ttf` and turns them
+# into a `manifold3d.CrossSection`, which is where an emboss comes from. Declared for
+# lxml's reason verbatim: it arrived transitively, the geometry path would fail at call
+# time rather than at import if it left, and a version that builds glyphs is pinned.
+# Pure Python, MIT, downloads nothing at runtime — see THIRD-PARTY-NOTICES.md § 2.
 fonttools==4.61.1
 fsspec==2026.2.0
 h11==0.16.0

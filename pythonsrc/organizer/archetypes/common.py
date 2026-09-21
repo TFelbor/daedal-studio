@@ -22,17 +22,29 @@ messages a person reads stay the archetype's own sentences.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
+from .. import lettering
 from ..compiler import (
+    Box,
     CompileResult,
+    FaceFrame,
     MeasureError,
     face_plane_extent,
     face_planes,
+    face_planes_within,
+    thinnest_stroke_mm,
     tilted_face_extent,
 )
-from ..spec import CardStack, OrganizerSpec
+from ..spec import (
+    DEFAULT_NOZZLE_DIAMETER_MM,
+    EMBOSS_MODES,
+    CardStack,
+    OrganizerSpec,
+    SpecError,
+)
 
 #: The order `constraints.max_external_mm` is written in, and the words a remedy uses.
 EXTERNAL_AXES: tuple[str, str, str] = ("width", "depth", "height")
@@ -248,7 +260,243 @@ def stray_section_problem(
     )
 
 
-def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: str) -> list[float]:
+# ── lettering (F13, issue #157) ────────────────────────────────────────────────
+
+#: The archetypes that letter a face. Named in the refusal a tray or an insert gives, so
+#: a person who asked the wrong shape for an emboss is told which shape to ask instead —
+#: which is what every archetype-level rule here already does.
+#: `tests/test_lettering_rules.py` binds this tuple to the modules that declare
+#: `EMBOSS_FACES`, in both directions, so it cannot drift from the truth.
+LETTERING_ARCHETYPES: tuple[str, ...] = ("deck_box", "card_divider")
+
+#: How many extrusion widths a glyph stroke is held to, beside `process.min_feature_mm`.
+#:
+#: **Two**, not the wall's three (`spec.WALL_FLOOR_NOZZLE_MULTIPLE`), and the difference
+#: is the difference between the two questions. A wall carries load and wants three
+#: perimeters; a raised letter carries nothing and only has to *exist* — two extrusion
+#: widths is `printability.min_wall_mm`, what the extruder can physically put down, which
+#: is the same floor the printability gate will judge the finished mesh against. Spelled
+#: here rather than imported from `printability`, which the api-server does not ship and
+#: which would drag trimesh into this module.
+STROKE_NOZZLE_MULTIPLE = 2.0
+
+
+def stroke_floor_mm(
+    spec: OrganizerSpec, nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM
+) -> float:
+    """The thinnest glyph stroke this spec may ask for on this nozzle, in mm.
+
+    The larger of `process.min_feature_mm` — what the *design* calls a feature — and two
+    extrusion widths, what the *machine* can lay. At the defaults the first wins (1,0 mm
+    against 0,8 mm); on a 0,6 mm nozzle the second does (1,0 against 1,2), which is the
+    whole reason it is expressed as a multiple of the nozzle and not as a millimetre.
+    """
+    return max(
+        float(spec.process.min_feature_mm),
+        round(STROKE_NOZZLE_MULTIPLE * float(nozzle_diameter_mm), 3),
+    )
+
+
+def lettering_problems(
+    spec: OrganizerSpec,
+    module: Any,
+    nozzle_diameter_mm: float = DEFAULT_NOZZLE_DIAMETER_MM,
+) -> list[str]:
+    """Every refusal `spec.emboss` earns on this archetype and this nozzle, or [].
+
+    Called from `archetypes.compile_spec`, beside `wall_floor_problems` and for its
+    reasons verbatim: this is the one place that has the spec, the archetype *and* the
+    printer profile's nozzle in one frame, and it runs before Phase 2 has written a mesh,
+    a spec file or a features document into the job directory. A glyph the machine cannot
+    lay must be refused where a person can still change it — **not discovered in Phase 4**
+    as a slicer that quietly omitted the name the box was printed for.
+
+    A list rather than a raise, so the caller reports it beside the archetype's own
+    findings: a spec is refused whole, with every problem named at once.
+
+    Five rules, in the order a reader can act on them:
+
+    1. **The archetype letters this face at all.** A token tray and a box insert letter
+       nothing (their outer faces live inside a game box, and a 1,6 mm wall cannot host a
+       0,6 mm recess above the floor), so they refuse the section naming the two that do.
+    2. **The font can set the text.** A missing glyph is named with its code point; it is
+       never substituted.
+    3. **The face honours this mode.** A face that lies against the bed, or stands
+       vertical, honours `recessed` only — see the archetype's `emboss_frame`.
+    4. **The ink fits the face.** Refused *with the measurement and the cap height that
+       would fit*, never scaled and never wrapped. Shrinking a person's lettering to make
+       it fit is the same fabrication as shrinking the part.
+    5. **The stroke, the relief and the material behind it clear their floors.** Each
+       names the field that moves it and the number it has to clear.
+
+    Args:
+        spec: The spec, already schema-valid.
+        module: The archetype module. Read for `ARCHETYPE`, `ARCHETYPE_VERSION`,
+            `EMBOSS_FACES` and `emboss_frame`.
+        nozzle_diameter_mm: The printer profile's `machine_nozzle_size`.
+    """
+    emboss = spec.emboss
+    if emboss is None:
+        return []
+    subject = f"{getattr(module, 'ARCHETYPE', '?')} v{getattr(module, 'ARCHETYPE_VERSION', '?')}"
+    faces = tuple(getattr(module, "EMBOSS_FACES", ()))
+    if not faces:
+        owners = " and ".join(repr(name) for name in LETTERING_ARCHETYPES)
+        return [
+            f"spec.emboss is not a section {subject} builds; lettering belongs to "
+            f"archetypes {owners} — remove it or change the archetype"
+        ]
+    if emboss.face not in faces:
+        return [
+            f"spec.emboss.face {emboss.face!r} is not a face {subject} letters; it "
+            f"letters {list(faces)}. Choose one of those, or change the archetype"
+        ]
+    problems = lettering.text_problems(emboss.text, "spec.emboss.text")
+    if problems:
+        return problems
+    try:
+        frame = module.emboss_frame(spec)
+    except SpecError:
+        # The spec is unbuildable for reasons that are not about its lettering, and the
+        # archetype's own `validate` is about to name every one of them. Adding "the text
+        # does not fit a face that does not exist" would be noise on top of the finding.
+        return []
+    if emboss.mode not in frame.modes:
+        refused = [m for m in EMBOSS_MODES if m not in frame.modes]
+        problems.append(
+            f"spec.emboss.mode {emboss.mode!r} is not available on the {emboss.face!r} "
+            f"face of {subject}, which takes {list(frame.modes)}. "
+            + _mode_reason(frame, refused)
+        )
+        return problems
+    ink_w, ink_h = lettering.ink_extent_mm(emboss.text, emboss.height_mm)
+    if ink_w > frame.width_mm + 1e-9 or ink_h > frame.height_mm + 1e-9:
+        largest = lettering.largest_cap_height_mm(
+            emboss.text, frame.width_mm, frame.height_mm
+        )
+        # Rounded **down** to 0,1 mm: a remedy that has to be rounded up again is not a
+        # remedy, and the schema keeps millimetres to 1 µm anyway.
+        remedy = math.floor(largest * 10.0) / 10.0
+        problems.append(
+            f"spec.emboss.text {emboss.text!r} at {emboss.height_mm:g} mm sets "
+            f"{ink_w:.1f} × {ink_h:.1f} mm, and the {emboss.face!r} face of {subject} "
+            f"offers {frame.width_mm:.1f} × {frame.height_mm:.1f} mm. Shorten the text, "
+            + (
+                f"or set spec.emboss.height_mm to {remedy:g} mm or less"
+                if remedy > 0.0
+                else "or letter a larger face — nothing this long fits it at any size"
+            )
+        )
+    stroke = thinnest_stroke_mm(emboss.text, emboss.height_mm)
+    floor = stroke_floor_mm(spec, nozzle_diameter_mm)
+    if stroke + 1e-9 < floor:
+        needed = math.ceil(emboss.height_mm * floor / stroke * 10.0) / 10.0
+        problems.append(
+            f"spec.emboss.height_mm {emboss.height_mm:g} mm sets {emboss.text!r} with a "
+            f"{stroke:.2f} mm thinnest stroke, below the {floor:g} mm floor "
+            f"(the larger of process.min_feature_mm {spec.process.min_feature_mm:g} and "
+            f"{STROKE_NOZZLE_MULTIPLE:g} × the {float(nozzle_diameter_mm):g} mm nozzle "
+            "this printer profile declares). A raised stroke thinner than an extrusion "
+            "is a fin the nozzle cannot lay, and a recess narrower than one is filled in "
+            f"by the next pass. Set spec.emboss.height_mm to {needed:g} mm or more, or "
+            "fit a finer nozzle"
+        )
+    elif emboss.mode == "raised" and emboss.relief_mm > stroke + 1e-9:
+        problems.append(
+            f"spec.emboss.relief_mm {emboss.relief_mm:g} mm stands taller than the "
+            f"{stroke:.2f} mm thinnest stroke of {emboss.text!r} at "
+            f"{emboss.height_mm:g} mm, so the narrowest letter would be a fin taller "
+            "than it is wide and would snap off. Reduce the relief, or raise "
+            "spec.emboss.height_mm"
+        )
+    if emboss.mode == "recessed":
+        left = frame.material_mm - emboss.relief_mm
+        if left + 1e-9 < frame.material_floor_mm:
+            problems.append(
+                f"spec.emboss.relief_mm {emboss.relief_mm:g} mm cut into the "
+                f"{emboss.face!r} face leaves {left:.3f} mm of {frame.material_name} "
+                f"({frame.material_mm:g} mm), below the {frame.material_floor_mm:g} mm "
+                f"floor that wall is held to. Reduce the relief, thicken "
+                f"{frame.material_name}, or raise the text instead of sinking it"
+            )
+    return problems
+
+
+def measured_relief(part: Any, region: Box, axis: int, *, subject: str) -> float:
+    """How far the lettering stands off its face, mm, read inside its own region.
+
+    Two planes and only two live in there on the face's own axis: the face, and the glyph
+    tops (raised) or the recess floor (recessed). Their difference is the relief whichever
+    way round it is, which is why one measurement serves both modes and every face — the
+    axis is the frame's, and nothing else about the read changes. Anything other than two
+    planes means the decoration is not the shape the design says, and *that* is the
+    measurement's finding rather than a per-feature error.
+
+    Shared for `measured_chamfer`'s reason: it is the measurement of a spec-level feature
+    rather than of one archetype's shape, and two modules reading it off two spellings is
+    one refactor away from two modules disagreeing about how deep 0,6 mm is.
+
+    Raises:
+        MeasureError: Naming the axis and what was found instead.
+    """
+    planes = face_planes_within(part, axis, region)
+    if len(planes) != 2:
+        raise MeasureError(
+            f"the lettering region has {len(planes)} distinct {'XYZ'[axis]} planes where "
+            f"{subject} puts 2 (the face and the glyphs): {[round(v, 3) for v in planes]}"
+        )
+    return planes[1] - planes[0]
+
+
+def shifted_region(region: Box, measured_min: Any, design_min: Iterable[float]) -> Box:
+    """`region` moved by however far the part has actually travelled since it was built.
+
+    Phase 3 re-centres a plate in X and Y and sets it on Z = 0 before anything measures
+    it, so a region stated in the frame the design was built in is in the wrong place by
+    one vector. The offset is the part's measured minimum corner less the corner the
+    design put it at — a translation the whole body shares, which is the only thing Phase
+    3's assert path does to a compiled plate (`--target-mm` is refused there).
+    """
+    shift = [float(m) - float(dsn) for m, dsn in zip(measured_min, design_min, strict=True)]
+    return tuple(  # type: ignore[return-value]
+        (low + shift[axis], high + shift[axis]) for axis, (low, high) in enumerate(region)
+    )
+
+
+def _mode_reason(frame: FaceFrame, refused: list[str]) -> str:
+    """Why a face honours only some of `EMBOSS_MODES`, in one sentence.
+
+    The sentence is here rather than on the archetype because it is a fact about *how a
+    part is printed* rather than about a shape: a raised feature cannot stand on the face
+    that is against the bed, and one on a vertical wall needs a 45° underside
+    `base_chamfer` cannot build — that primitive wants one convex contour and a glyph is
+    neither.
+    """
+    if "raised" not in refused:
+        return ""
+    if frame.normal[2] < -0.5:
+        return (
+            "This face lies against the build plate — the part is printed with it down —"
+            " so raised text would have to stand through the bed. Sink it instead"
+        )
+    if abs(frame.normal[2]) < 0.5:
+        return (
+            "This face is vertical, so a raised letter would overhang at 90° along its "
+            "whole underside and need support. Sink it instead, or letter a face that "
+            "points up"
+        )
+    return "Sink it instead"
+
+
+def expect_planes(
+    part: Any,
+    axis: int,
+    expected: int,
+    *,
+    what: str,
+    subject: str,
+    exclude_mm: Optional[Box] = None,
+) -> list[float]:
     """The distinct axis-aligned planes of `part` on `axis`, or the finding.
 
     A plane count that does not match the design *is* the measurement's finding, not a
@@ -269,11 +517,14 @@ def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: st
         expected: How many distinct planes the design puts on that axis.
         what: The body being measured, e.g. `"lid"`, for the message.
         subject: The archetype and version, e.g. `"a deck box v2"`.
+        exclude_mm: A region to leave out of the read — the box a decoration occupies.
+            Decoration is not a designed feature, so the planes its glyphs put on the
+            mesh are not planes this count is about; see `compiler._outside`.
 
     Raises:
         MeasureError: Naming the count found, the count designed and every plane.
     """
-    planes = face_planes(part, axis)
+    planes = face_planes(part, axis, exclude_mm=exclude_mm)
     if len(planes) != expected:
         raise MeasureError(
             f"the {what} has {len(planes)} distinct {'XYZ'[axis]} planes where {subject} "
@@ -291,7 +542,9 @@ def expect_planes(part: Any, axis: int, expected: int, *, what: str, subject: st
 CHAMFER_ANGLE_TOL_DEG = 0.1
 
 
-def measured_chamfer(part: Any, *, what: str, subject: str) -> float:
+def measured_chamfer(
+    part: Any, *, what: str, subject: str, exclude_mm: Optional[Box] = None
+) -> float:
     """The height of `part`'s base chamfer, refusing a mesh whose slope is not 45°.
 
     A chamfer is not a difference of two planes, so it is measured off the faces that
@@ -310,11 +563,15 @@ def measured_chamfer(part: Any, *, what: str, subject: str) -> float:
         part: A mesh body with `vertices` and `faces`.
         what: The body being measured, e.g. `"lid"`, for the message.
         subject: How the archetype names itself, e.g. `"a deck box v2"`.
+        exclude_mm: The lettering region, when the body carries one. A glyph sunk into a
+            vertical wall puts downward-facing faces at every angle between 8° and 87°
+            along the top of every bowl, and a chamfer read that counted them would report
+            a body 41° out of true — see `compiler.tilted_face_extent`.
 
     Raises:
         MeasureError: If any sloping face is further than `CHAMFER_ANGLE_TOL_DEG` from 45°.
     """
-    low, high, worst_error_deg = tilted_face_extent(part)
+    low, high, worst_error_deg = tilted_face_extent(part, exclude_mm=exclude_mm)
     if worst_error_deg > CHAMFER_ANGLE_TOL_DEG:
         raise MeasureError(
             f"the {what}'s base chamfer is {45.0 + worst_error_deg:.3f}° at its worst "

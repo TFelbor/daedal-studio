@@ -24,7 +24,7 @@
  */
 
 import type { SpecProblem } from '../api/client';
-import { type ArchetypeId } from './spec';
+import { EMBOSS_FACES_BY_ARCHETYPE, type ArchetypeId } from './spec';
 
 /**
  * One editable field of one of a box insert's compartments.
@@ -63,6 +63,11 @@ export type SpecField =
   | 'boxWidthMm'
   | 'boxDepthMm'
   | 'boxHeightMm'
+  | 'embossText'
+  | 'embossFace'
+  | 'embossMode'
+  | 'embossHeightMm'
+  | 'embossReliefMm'
   | CompartmentField
   | 'form';
 
@@ -136,6 +141,26 @@ export interface SpecFormState {
   boxWidthMm: string;
   boxDepthMm: string;
   boxHeightMm: string;
+  /**
+   * The decorative tier (F13): deck box and card divider only.
+   *
+   * **A blank `embossText` sends no `emboss` section at all**, which is what keeps the
+   * hash of an undecorated spec exactly what it was before this existed. It is the
+   * blank-means-omitted rule the millimetre fields already follow, applied to the
+   * section rather than to a field: an empty `emboss` object would be a section the
+   * schema then refuses for having no text, on a form nobody asked to decorate.
+   *
+   * The text is sent **inside the spec only** — never as a second `embossing_text`
+   * beside it. `POST /jobs` copies it across itself and refuses a request whose two
+   * copies disagree, so one string is screened and cut; sending both from here would
+   * be the browser keeping them in step, which is exactly what the server validator
+   * exists so it does not have to.
+   */
+  embossText: string;
+  embossFace: string;
+  embossMode: string;
+  embossHeightMm: string;
+  embossReliefMm: string;
 }
 
 /**
@@ -228,7 +253,39 @@ export const DEFAULT_SPEC_FORM: SpecFormState = {
   boxWidthMm: '',
   boxDepthMm: '',
   boxHeightMm: '',
+  // Blank, so the composer's first render composes the spec it always composed and the
+  // decoration is something a person opts into by typing a name. The face and mode open
+  // on the first entry the chosen archetype honours (`embossDefaults`), and the two
+  // millimetre fields open blank, which means "take the schema's" like every other
+  // process millimetre here.
+  embossText: '',
+  embossFace: 'lid_top',
+  embossMode: 'recessed',
+  embossHeightMm: '',
+  embossReliefMm: '',
 };
+
+/**
+ * The face and mode an archetype's lettering group opens on, or null when it letters
+ * nothing.
+ *
+ * Read off `EMBOSS_FACES_BY_ARCHETYPE`, which is the engine's own vocabulary, rather
+ * than written out again: the composer switching archetypes must not leave `lid_top`
+ * selected on a card divider, which would resolve clean here and be refused by name in
+ * Phase 2 — the failure the archetype strip's binding exists to prevent, one level down.
+ */
+export function embossDefaults(
+  archetype: ArchetypeId,
+): { face: string; mode: string } | null {
+  const faces = EMBOSS_FACES_BY_ARCHETYPE[archetype];
+  if (!faces?.length) return null;
+  return { face: faces[0].face, mode: faces[0].modes[0] };
+}
+
+/** The modes a given archetype's given face honours, or [] when it letters neither. */
+export function embossModesFor(archetype: string, face: string): string[] {
+  return EMBOSS_FACES_BY_ARCHETYPE[archetype]?.find((f) => f.face === face)?.modes ?? [];
+}
 
 /**
  * An optional millimetre field: omitted when blank, sent as typed otherwise.
@@ -505,8 +562,37 @@ export function specFromForm(state: SpecFormState): Record<string, unknown> {
       tab_height_mm: optionalMm(state.tabHeightMm),
     });
   }
+  const emboss = embossSection(state);
+  if (emboss) spec.emboss = emboss;
 
   return spec;
+}
+
+/**
+ * The `emboss` section, or null when nothing is to be lettered.
+ *
+ * Null for a blank text and for an archetype that letters nothing, and both are the
+ * same rule: **an absent section is omitted, never sent as an empty object**. That is
+ * what keeps an undecorated spec's canonical form — and therefore its `spec_hash` —
+ * exactly what it was before this feature existed, which is the property
+ * `_OPTIONAL_SECTIONS` in `pythonsrc/organizer/spec.py` exists to guarantee and the one
+ * a browser is most able to break.
+ *
+ * The text is sent **trimmed of nothing**: the schema strips it, and stripping here too
+ * would mean two places deciding what the canonical string is. The two millimetres go
+ * through `optionalMm`, so blank means "take the schema's default" exactly as it does
+ * for a wall.
+ */
+function embossSection(state: SpecFormState): Record<string, unknown> | null {
+  if (!state.embossText.trim()) return null;
+  if (!EMBOSS_FACES_BY_ARCHETYPE[state.archetype]?.length) return null;
+  return present({
+    text: state.embossText,
+    face: state.embossFace,
+    mode: state.embossMode,
+    height_mm: optionalMm(state.embossHeightMm),
+    relief_mm: optionalMm(state.embossReliefMm),
+  });
 }
 
 /**
@@ -542,6 +628,11 @@ export const FIELD_BY_PATH: Record<string, SpecField> = {
   'spec.constraints.max_external_mm[0]': 'boxWidthMm',
   'spec.constraints.max_external_mm[1]': 'boxDepthMm',
   'spec.constraints.max_external_mm[2]': 'boxHeightMm',
+  'spec.emboss.text': 'embossText',
+  'spec.emboss.face': 'embossFace',
+  'spec.emboss.mode': 'embossMode',
+  'spec.emboss.height_mm': 'embossHeightMm',
+  'spec.emboss.relief_mm': 'embossReliefMm',
 };
 
 /**

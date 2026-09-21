@@ -25,17 +25,25 @@ Four bindings:
 """
 import copy
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from pythonsrc.organizer.archetypes import REGISTRY, example_spec
 from pythonsrc.organizer.dimensions import CARD_KINDS, SLEEVINGS
 from pythonsrc.organizer.spec import (
     ARCHETYPE_WALL_MM,
     ARCHETYPES,
+    EMBOSS_CAP_HEIGHT_MM,
+    EMBOSS_FACES,
+    EMBOSS_MODES,
+    EMBOSS_RELIEF_FLOOR_MM,
+    EMBOSS_TEXT_MAX_CHARS,
     FIT_INTENTS,
     LID_KINDS,
     TAB_POSITIONS,
+    Emboss,
     OrganizerSpec,
     SpecError,
     problems_with_paths,
@@ -79,9 +87,108 @@ def spec_ts() -> str:
     ("LID_KINDS", list(LID_KINDS)),
     ("FIT_INTENTS", list(FIT_INTENTS)),
     ("TAB_POSITIONS", list(TAB_POSITIONS)),
+    ("EMBOSS_FACES", list(EMBOSS_FACES)),
+    ("EMBOSS_MODES", list(EMBOSS_MODES)),
 ])
 def test_the_composer_offers_exactly_what_the_schema_accepts(spec_ts, name, expected):
     assert string_list(spec_ts, name) == expected
+
+
+@pytest.mark.parametrize("name, expected", [
+    ("EMBOSS_TEXT_MAX_CHARS", EMBOSS_TEXT_MAX_CHARS),
+    ("EMBOSS_CAP_HEIGHT_MM", EMBOSS_CAP_HEIGHT_MM),
+    ("EMBOSS_RELIEF_FLOOR_MM", EMBOSS_RELIEF_FLOOR_MM),
+])
+def test_the_composers_emboss_numbers_are_the_schemas(spec_ts, name, expected):
+    """The three emboss bounds the form enforces before it posts anything.
+
+    Restated in TypeScript because the browser cannot import Python, which makes them
+    the same hazard as the vocabularies above: a field the composer lets through and
+    the schema then refuses is a round trip the person pays for, and a field the
+    composer stops short of is a part they cannot ask for. `EMBOSS_CAP_HEIGHT_MM` is
+    the one that matters most — it is the height an undecorated form posts, so a drift
+    there changes the default part rather than the error message.
+    """
+    literal = re.search(rf"export const {name} = ([0-9.]+);", spec_ts)
+    assert literal, f"could not find the {name} literal"
+    assert float(literal.group(1)) == float(expected)
+
+
+def emboss_faces_by_archetype(text: str) -> dict[str, list[tuple[str, list[str]]]]:
+    """`EMBOSS_FACES_BY_ARCHETYPE` as `{archetype: [(face, [mode, ...]), ...]}`."""
+    block = re.search(
+        r"export const EMBOSS_FACES_BY_ARCHETYPE[^=]*= \{(.*?)\n\};", text, re.S
+    )
+    assert block, "could not find the EMBOSS_FACES_BY_ARCHETYPE literal"
+    out: dict[str, list[tuple[str, list[str]]]] = {}
+    # Trailing newline restored: the block pattern consumes the last entry's own.
+    literal = block.group(1) + "\n"
+    for name, body in re.findall(r"(\w+): \[(.*?)\],?\n", literal, re.S):
+        out[name] = [
+            (face, re.findall(r"'([^']+)'", modes))
+            for face, modes in re.findall(
+                r"\{ face: '([^']+)', modes: \[([^\]]*)\] \}", body
+            )
+        ]
+    return out
+
+
+def test_the_composers_lettering_table_is_the_engines_own(spec_ts):
+    """`EMBOSS_FACES_BY_ARCHETYPE` is hand-mirrored from the archetype modules, so bind it.
+
+    It is the composer's whole model of where lettering may go: which group it shows,
+    which faces that group offers, and which modes each face offers. Every one of those
+    numbers exists twice — once in the module that builds the face, once in TypeScript —
+    and nothing was checking that the two agreed. This is exactly the drift the
+    archetype strip's own binding exists to prevent, one level down: add a face on the
+    Python side and the composer hides a part people can ask for; remove one and the
+    composer offers a part Phase 2 refuses by name, which the person discovers after
+    paying for the round trip.
+
+    The source of truth is two things per archetype, and both are read here rather than
+    restated: the module's `EMBOSS_FACES`, and `emboss_frame(...).modes` for a spec
+    naming each of them. An archetype with no `EMBOSS_FACES` must have no entry at all —
+    an empty entry would render a group with nothing in it.
+    """
+    table = emboss_faces_by_archetype(spec_ts)
+
+    lettering = {
+        name: module
+        for name, module in REGISTRY.items()
+        if getattr(module, "EMBOSS_FACES", ())
+    }
+    assert sorted(table) == sorted(lettering), (
+        "the composer's lettering table and the modules that declare EMBOSS_FACES "
+        "name different archetypes"
+    )
+
+    for name, module in lettering.items():
+        entries = table[name]
+        assert [face for face, _ in entries] == list(module.EMBOSS_FACES), (
+            f"{name}: the composer's faces are not the module's EMBOSS_FACES"
+        )
+        for face, modes in entries:
+            spec = replace(example_spec(name), emboss=Emboss(text="Ab", face=face))
+            assert modes == list(module.emboss_frame(spec).modes), (
+                f"{name}.{face}: the composer offers {modes}, the frame honours "
+                f"{list(module.emboss_frame(spec).modes)}"
+            )
+
+
+def test_an_archetype_that_letters_nothing_has_no_group(spec_ts):
+    """The other direction, and the one a missing entry hides.
+
+    A token tray and a box insert build no lettered face — the tray's walls are thin
+    and an insert's outer faces sit inside a game box where nobody sees them — so they
+    must be absent from the table rather than present and empty.
+    """
+    table = emboss_faces_by_archetype(spec_ts)
+    for name, module in REGISTRY.items():
+        if not getattr(module, "EMBOSS_FACES", ()):
+            assert name not in table, (
+                f"{name} declares no EMBOSS_FACES but the composer offers it a "
+                "lettering group"
+            )
 
 
 def test_every_sleeving_reads_as_words_on_both_sides(spec_ts):
@@ -113,6 +220,12 @@ BASE = {
     "divider": {"thickness_mm": 1.4, "tab_width_mm": 20.0, "tab_height_mm": 10.0,
                 "tab_position": "centre"},
     "process": {"fit_intent": "snug", "wall_mm": 2.4},
+    # The decorative tier (issue #157). On the deck box's base rather than a fourth,
+    # because `emboss` is the first optional section that is **not** one archetype's —
+    # the deck box and the divider both read it — so it sits beside the `divider` section
+    # this base already carries for exactly that purpose.
+    "emboss": {"text": "Commander", "face": "lid_top", "mode": "recessed",
+               "height_mm": 8.0, "relief_mm": 0.6},
     "schema_version": 1,
 }
 

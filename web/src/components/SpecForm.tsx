@@ -2,6 +2,10 @@ import { AlertTriangle, Ruler } from 'lucide-react';
 import { Blueprint } from './Blueprint';
 import {
   CARD_KINDS,
+  EMBOSS_FACES_BY_ARCHETYPE,
+  EMBOSS_FACE_LABELS,
+  EMBOSS_MODE_LABELS,
+  EMBOSS_TEXT_MAX_CHARS,
   FIT_INTENTS,
   FIT_INTENT_LABELS,
   LID_KINDS,
@@ -11,6 +15,7 @@ import {
 } from '../organizer/spec';
 import {
   blankCompartment,
+  embossModesFor,
   problemsByField,
   type CompartmentFormState,
   type SpecField,
@@ -577,6 +582,8 @@ export function SpecForm({
         onChange={set}
       />
 
+      <Lettering state={state} byField={byField} disabled={disabled} set={set} />
+
       <FieldProblems messages={byField.archetype} />
 
       <StackReadout
@@ -745,6 +752,156 @@ function BoxPicker({
             <FieldProblems messages={byField.boxHeightMm} />
           </label>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The decorative tier (F13): a name raised on, or sunk into, one face of the part.
+ *
+ * **Shown only for the archetypes that letter something**, which is
+ * `EMBOSS_FACES_BY_ARCHETYPE` and not a list written out again here: a token tray and a
+ * box insert build no lettered face, so they get no group at all rather than a group
+ * whose every option is refused. Same rule as the archetype strip, one level down.
+ *
+ * **The face select drives the mode select**, for the same reason: only the card
+ * divider's tab takes `raised` — every deck box face is either against the build plate
+ * or vertical — so changing the face re-picks the mode when the one that was chosen is
+ * not available on the new one. Leaving a stale `raised` selected would resolve clean
+ * and be refused by name in Phase 2, which is precisely the failure this whole file is
+ * built to avoid.
+ *
+ * Module level for `FieldProblems`' reason — a component declared during render remounts
+ * on every keystroke and the input loses focus.
+ *
+ * **No millimetre of the lettering is computed here.** How wide `"Commander"` sets at a
+ * 6 mm cap height is a function of the vendored font's metrics, and the answer comes
+ * back from `POST /organizer/resolve`, measured by the same code that cuts the glyphs.
+ * What this group does is collect five fields and send them.
+ */
+function Lettering({
+  state,
+  byField,
+  disabled,
+  set,
+}: {
+  state: SpecFormState;
+  byField: Partial<Record<SpecField, string[]>>;
+  disabled: boolean;
+  set: (patch: Partial<SpecFormState>) => void;
+}) {
+  const faces = EMBOSS_FACES_BY_ARCHETYPE[state.archetype];
+  if (!faces?.length) return null;
+  const modes = embossModesFor(state.archetype, state.embossFace);
+
+  const pickFace = (face: string) => {
+    const available = embossModesFor(state.archetype, face);
+    set({
+      embossFace: face,
+      embossMode: available.includes(state.embossMode) ? state.embossMode : available[0],
+    });
+  };
+
+  return (
+    <div className={styles.grid}>
+      <label className={styles.field}>
+        <span className="label-tight">Lettering</span>
+        <input
+          className="input"
+          type="text"
+          maxLength={EMBOSS_TEXT_MAX_CHARS}
+          placeholder="leave blank for no lettering"
+          value={state.embossText}
+          disabled={disabled}
+          onChange={(e) => set({ embossText: e.target.value })}
+        />
+        <span className={styles.fieldNote}>
+          cut into the part itself, so it is screened like the prompt; blank composes the
+          spec exactly as it was before
+        </span>
+        <FieldProblems messages={byField.embossText} />
+      </label>
+
+      {state.embossText.trim() ? (
+        <>
+          <label className={styles.field}>
+            <span className="label-tight">Face</span>
+            <select
+              className="input"
+              value={state.embossFace}
+              disabled={disabled}
+              onChange={(e) => pickFace(e.target.value)}
+            >
+              {faces.map(({ face }) => (
+                <option key={face} value={face}>{EMBOSS_FACE_LABELS[face] ?? face}</option>
+              ))}
+            </select>
+            <span className={styles.fieldNote}>
+              the compiler refuses text that does not fit, and names the size that would
+            </span>
+            <FieldProblems messages={byField.embossFace} />
+          </label>
+
+          <label className={styles.field}>
+            <span className="label-tight">Relief</span>
+            <select
+              className="input"
+              value={state.embossMode}
+              disabled={disabled || modes.length < 2}
+              onChange={(e) => set({ embossMode: e.target.value })}
+            >
+              {modes.map((mode) => (
+                <option key={mode} value={mode}>{EMBOSS_MODE_LABELS[mode] ?? mode}</option>
+              ))}
+            </select>
+            <span className={styles.fieldNote}>
+              {modes.length < 2
+                ? 'this face prints face-down or vertical, so the text is sunk into it — raised would need support'
+                : 'the tab is the only face that points up as it prints, so it takes either'}
+            </span>
+            <FieldProblems messages={byField.embossMode} />
+          </label>
+
+          <label className={styles.field}>
+            <span className="label-tight">Letter height</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="mm — blank for the default"
+              value={state.embossHeightMm}
+              disabled={disabled}
+              onChange={(e) => set({ embossHeightMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>
+              cap height; smaller letters have thinner strokes, and the compiler refuses a
+              stroke the nozzle cannot lay
+            </span>
+            <FieldProblems messages={byField.embossHeightMm} />
+          </label>
+
+          <label className={styles.field}>
+            <span className="label-tight">Relief depth</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="mm — blank for the default"
+              value={state.embossReliefMm}
+              disabled={disabled}
+              onChange={(e) => set({ embossReliefMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>
+              design default, unsourced — three 0,2 mm layers
+            </span>
+            <FieldProblems messages={byField.embossReliefMm} />
+          </label>
+        </>
       ) : null}
     </div>
   );

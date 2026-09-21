@@ -51,13 +51,34 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import manifold3d
+import numpy as np
 
-from ..compiler import CompileResult, FitsResult, MeasureError, manifold_to_trimesh, plane_set
+from .. import lettering
+from ..compiler import (
+    Box,
+    CompileResult,
+    FaceFrame,
+    FitsResult,
+    MeasureError,
+    letter,
+    manifold_to_trimesh,
+    plane_set,
+    text_outline,
+)
 from ..dimensions import ResolvedStack, resolve_stack
-from ..spec import CardStack, Compartment, Divider, OrganizerSpec, SpecError, spec_hash
+from ..spec import (
+    EMBOSS_EDGE_MARGIN_MM,
+    CardStack,
+    Compartment,
+    Divider,
+    Emboss,
+    OrganizerSpec,
+    SpecError,
+    spec_hash,
+)
 from .common import (
     CALLOUT_TIER_EXTERNAL,
     SweepCase,
@@ -65,6 +86,8 @@ from .common import (
     card_contents_problem,
     expect_planes,
     external_overshoots,
+    measured_relief,
+    shifted_region,
     single_compartment_problem,
     stray_section_problem,
     view_frame,
@@ -80,6 +103,22 @@ ARCHETYPE_VERSION = "1"
 #: otherwise refuse a perfectly good divider on a 0,6 mm nozzle over a number that
 #: builds nothing.
 USES_PROCESS_WALL_MM = False
+#: The faces this archetype letters (F13, issue #157): the tab, and only the tab.
+#:
+#: The tab is the one part of a divider anybody looks at — it is what stands proud of the
+#: cards so a thumb can find it, and the whole reason the archetype has one. It is also
+#: the only face of any archetype here that **points up as it prints**: the plate lies
+#: flat on Z = 0, so the tab's own top face at `Z = thickness` is the last surface the
+#: nozzle lays, with nothing above it. That is what lets this face take `raised` text
+#: when every deck box face takes only `recessed`, and it is why a lettered divider is
+#: the acceptance criterion's `expected_components = 1` case.
+#:
+#: The plate's face is deliberately not offered: a divider stands *between* cards, so
+#: what is written on the plate is inside the stack where nobody can read it.
+EMBOSS_FACES: tuple[str, ...] = ("tab",)
+#: `measure()` needs the spec, to know where the lettering it must skip is (issue #157).
+#: The box insert's precedent — see `archetypes.measure_spec_mesh`.
+MEASURE_NEEDS_SPEC = True
 #: How this archetype names itself in a refusal or a measurement finding.
 _SUBJECT = f"a card divider v{ARCHETYPE_VERSION}"
 
@@ -102,6 +141,11 @@ class DividerDimensions:
 
         Every one of them is on the mesh, so `MEASURED_FEATURES` is this whole set —
         unlike the deck box, which designs a stack height no geometry carries.
+
+        A decorated divider designs one more, `emboss_relief_mm`. Decoration is not a
+        designed *dimension* — issue #157: it must not move one — but its own relief is,
+        and the sweep measures it back like everything else here: a 0,6 mm emboss that
+        came out 0,3 mm deep is a part that does not say what it was asked to say.
         """
         raw = {
             "plate_width_mm": self.plate_w,
@@ -112,6 +156,8 @@ class DividerDimensions:
             "tab_offset_mm": self.tab_offset,
             "total_height_mm": self.total_h,
         }
+        if spec.emboss is not None:
+            raw["emboss_relief_mm"] = spec.emboss.relief_mm
         return {k: round(float(v), 3) for k, v in raw.items()}
 
 
@@ -232,11 +278,91 @@ def outline(d: DividerDimensions) -> list[tuple[float, float]]:
     return unique
 
 
+def emboss_frame(spec: OrganizerSpec) -> FaceFrame:
+    """Where lettering goes on a divider: centred on the tab's upward face.
+
+    The usable rectangle is the tab itself, inset by `EMBOSS_EDGE_MARGIN_MM` on every
+    side. The tab has no corner round and no chamfer — it is an extruded outline, see the
+    module docstring — so the margin is the whole of the inset, and it is what keeps the
+    measurer's exclusion region (`FaceFrame.region_mm`) inside the face rather than
+    reaching the tab's own edge and taking that plane out of the count.
+
+    `u` is +X and `v` is +Y, which reads left to right looking down at the plate as it
+    prints — the way a divider is looked at in the box it stands in, since a tab is read
+    from above. `n` is +Z, and the frame is right-handed: `u × v = n`.
+
+    Both modes are honoured, and this is the only face of any archetype here that honours
+    `raised` — see `EMBOSS_FACES`.
+
+    The material behind the face is the plate itself, so a recess is held to
+    `process.min_feature_mm`: at the 1,4 mm default thickness a 0,6 mm recess leaves
+    0,8 mm and is refused, which is right — that is a divider you could see daylight
+    through.
+
+    Raises:
+        SpecError: If the spec is not one this archetype can derive at all.
+    """
+    problems = _structural_problems(spec)
+    if problems:
+        raise SpecError(problems)
+    d = derive(spec)
+    margin = EMBOSS_EDGE_MARGIN_MM
+    return FaceFrame(
+        face="tab",
+        part="divider",
+        origin=(
+            d.tab_offset + d.tab_w / 2.0,
+            d.plate_h + d.tab_h / 2.0,
+            d.thickness,
+        ),
+        u=(1.0, 0.0, 0.0),
+        v=(0.0, 1.0, 0.0),
+        normal=(0.0, 0.0, 1.0),
+        width_mm=max(d.tab_w - 2.0 * margin, 0.0),
+        height_mm=max(d.tab_h - 2.0 * margin, 0.0),
+        modes=("raised", "recessed"),
+        material_mm=d.thickness,
+        material_name="divider.thickness_mm",
+        material_floor_mm=spec.process.min_feature_mm,
+    )
+
+
+def _emboss_region(spec: OrganizerSpec, origin_mm: Any) -> Optional[Box]:
+    """The box the lettering occupies on a built plate, or None for an undecorated one.
+
+    `origin_mm` is where the part's minimum corner actually sits, which is not where the
+    design put it: Phase 3 re-centres a plate in X and Y and sets it on Z = 0 before
+    anything measures it. The design's minimum corner is the origin, so the offset *is*
+    the measured corner, and every region here follows the part rather than assuming it
+    stayed where it was compiled.
+    """
+    emboss = spec.emboss
+    if emboss is None:
+        return None
+    frame = emboss_frame(spec)
+    ink_w, ink_h = lettering.ink_extent_mm(emboss.text, emboss.height_mm)
+    box = frame.region_mm(ink_w, ink_h, emboss.relief_mm, emboss.mode)
+    return shifted_region(box, origin_mm, (0.0, 0.0, 0.0))
+
+
 def build(spec: OrganizerSpec) -> tuple[dict[str, "manifold3d.Manifold"], DividerDimensions]:
-    """Validate, derive, and build the one solid in plate position."""
+    """Validate, derive, and build the one solid in plate position.
+
+    The lettering is applied **last**, to the finished plate. It has to be: a raised slab
+    sunk `LETTER_SINK_MM` into a face is a transverse boolean against a solid that already
+    exists, and there is nothing after it to cut the decoration in half.
+    """
     validate(spec)
     d = derive(spec)
     prism = manifold3d.CrossSection([outline(d)]).extrude(d.thickness)
+    if spec.emboss is not None:
+        prism = letter(
+            prism,
+            text_outline(spec.emboss.text, spec.emboss.height_mm),
+            emboss_frame(spec),
+            spec.emboss.relief_mm,
+            spec.emboss.mode,
+        )
     return {"divider": prism}, d
 
 
@@ -270,6 +396,20 @@ MEASURED_FEATURES: tuple[str, ...] = (
 )
 
 
+def measured_features(spec: OrganizerSpec) -> tuple[str, ...]:
+    """`MEASURED_FEATURES`, plus the relief when the spec carries an emboss.
+
+    A function of the spec rather than a constant, on the token tray's precedent: the
+    feature exists only when the section does, and a fixed tuple could only either
+    promise a relief on every plain divider — which would report `not measured` on every
+    one of them — or promise it on none, which would leave the one thing a decorated
+    divider adds unchecked while the report still said *within tolerance*.
+    """
+    if spec.emboss is None:
+        return MEASURED_FEATURES
+    return MEASURED_FEATURES + ("emboss_relief_mm",)
+
+
 def _region_planes(part: Any, selector: Any, what: str) -> list[float]:
     """The two X planes bounding one region of the plate, or the finding.
 
@@ -285,7 +425,24 @@ def _region_planes(part: Any, selector: Any, what: str) -> list[float]:
     return planes
 
 
-def measure(mesh: Any) -> dict[str, float]:
+def _outside_region(vertices: Any, region: Optional[Box]) -> Any:
+    """A mask over `vertices`: True for those outside the lettering region.
+
+    The tab's X planes are read off **vertices** rather than faces — see `measure` — and
+    a raised `T` puts a vertex column at the end of its crossbar that no design plane
+    accounts for. So the vertex read gets the same exclusion the face reads get, for the
+    same reason: the decoration is not one of the planes being counted.
+    """
+    keep = np.ones(len(vertices), dtype=bool)
+    if region is None:
+        return keep
+    inside = np.ones(len(vertices), dtype=bool)
+    for axis, (low, high) in enumerate(region):
+        inside &= (vertices[:, axis] >= low) & (vertices[:, axis] <= high)
+    return ~inside
+
+
+def measure(mesh: Any, spec: OrganizerSpec) -> dict[str, float]:
     """Read the designed features back off a divider mesh — compiled or post-Phase-3.
 
     One body. Y carries three planes (the plate's bottom edge, the plate's top edge
@@ -305,6 +462,21 @@ def measure(mesh: Any) -> dict[str, float]:
     left plane rather than to 0, because `orient_for_print` re-centres the part in X and
     Y before the slicer ever sees it.
 
+    **Lettering is excluded from every read here and measured on its own.** A raised
+    glyph's top is a real Z plane and the stems of `I`, `L` and `T` are real X and Y
+    walls, so a decorated plate genuinely has more planes than a divider has — and the
+    count is what says "this is a divider", so it has to be the count of the part the
+    design describes. The region comes from the spec (`_emboss_region`) and the numbers
+    still come from the mesh, exactly as `box_insert` reads a ragged row: what the design
+    supplies is *where to look*. The relief itself is then read inside that region with
+    `face_planes_within`, as a difference of the face's own plane and the glyph's.
+
+    Args:
+        mesh: The compiled or post-Phase-3 mesh.
+        spec: The spec it was compiled from — needed only to know where the decoration
+            is. `MEASURE_NEEDS_SPEC` declares that on the module, so a reader sees the
+            claim in the diff rather than inferring it from an argument count.
+
     Raises:
         MeasureError: If the mesh is not one body with the divider's plane structure.
     """
@@ -312,10 +484,12 @@ def measure(mesh: Any) -> dict[str, float]:
     if len(parts) != 1:
         raise MeasureError(f"expected 1 body (the divider plate), found {len(parts)}")
     part = parts[0]
-    y = expect_planes(part, 1, 3, what="divider", subject=_SUBJECT)
-    z = expect_planes(part, 2, 2, what="divider", subject=_SUBJECT)
-    plate_x = _region_planes(part, part.vertices[:, 1] < y[0] + 1e-3, "plate")
-    tab_x = _region_planes(part, part.vertices[:, 1] > y[1] + 1e-3, "tab")
+    region = _emboss_region(spec, part.bounds[0])
+    y = expect_planes(part, 1, 3, what="divider", subject=_SUBJECT, exclude_mm=region)
+    z = expect_planes(part, 2, 2, what="divider", subject=_SUBJECT, exclude_mm=region)
+    keep = _outside_region(part.vertices, region)
+    plate_x = _region_planes(part, keep & (part.vertices[:, 1] < y[0] + 1e-3), "plate")
+    tab_x = _region_planes(part, keep & (part.vertices[:, 1] > y[1] + 1e-3), "tab")
     measured = {
         "plate_width_mm": plate_x[1] - plate_x[0],
         "plate_height_mm": y[1] - y[0],
@@ -325,6 +499,8 @@ def measure(mesh: Any) -> dict[str, float]:
         "tab_offset_mm": tab_x[0] - plate_x[0],
         "total_height_mm": y[2] - y[0],
     }
+    if region is not None:
+        measured["emboss_relief_mm"] = measured_relief(part, region, 2, subject=_SUBJECT)
     return {k: float(v) for k, v in measured.items()}
 
 
@@ -448,6 +624,17 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
         row("min_feature_mm", "Minimum feature", spec.process.min_feature_mm, "mm", True,
             "the archetype refuses anything thinner"),
     ]
+    if spec.emboss is not None:
+        # The text itself is a *word*, and `SpecDimension.value` is a number, so it rides
+        # as the note of the row it sizes — `tab_position` and `fit_intent` before it.
+        ink_w, ink_h = lettering.ink_extent_mm(spec.emboss.text, spec.emboss.height_mm)
+        dimensions.extend([
+            row("emboss_height_mm", "Lettering height", spec.emboss.height_mm, "mm", True,
+                f"cap height of {spec.emboss.text!r}, {spec.emboss.mode} on the "
+                f"{spec.emboss.face}; sets {ink_w:.1f} × {ink_h:.1f} mm"),
+            row("emboss_relief_mm", "Lettering relief", spec.emboss.relief_mm, "mm", True,
+                "design default, unsourced — three 0,2 mm layers"),
+        ])
     return {
         "archetype": ARCHETYPE,
         "archetypeVersion": f"v{ARCHETYPE_VERSION}",
@@ -486,8 +673,70 @@ SWEEP_PHASE_3_TABS: tuple[tuple[float, float, float], ...] = (
 )
 
 
+# ── The lettering envelope (issue #157) ───────────────────────────────────────
+#
+# Its own prefix (`letter-`) and its own axes, rather than multiplying the 324 above by
+# them. Decoration is orthogonal to the tab geometry — it neither moves a designed
+# dimension nor is moved by one, which is the property the sweep is there to prove — so
+# crossing the two would buy repetition and 2 000 booleans.
+#
+# The tab these are set on is deliberately generous (44 × 16 mm): the *default* 20 × 10 mm
+# tab does not take an 8 mm cap height and is refused with a remedy, which is a rule
+# `tests/test_card_divider.py` asserts rather than an envelope case. An envelope asks only
+# for parts the archetype would accept.
+
+#: The tab every lettering case is set on, mm. Wide enough for the longest string below
+#: and no wider: 64 mm leaves 62 mm of usable face inside `EMBOSS_EDGE_MARGIN_MM`, and
+#: `"COMMANDER"` at a 6 mm cap sets 60,9 mm. It stays under the 67 mm plate width a
+#: double-sleeved standard card gives, which `validate` requires of any tab.
+SWEEP_LETTER_TAB: tuple[float, float] = (64.0, 16.0)
+#: The four strings the issue asks for, by name: the longest that fits, the shortest, a
+#: mixed-case one whose ascenders and descenders make the ink taller than the cap height,
+#: and a glyph set at the stroke floor. "Empty" is a *refusal*, not a sweep case — the
+#: schema will not build an `Emboss` with no text — and is asserted as one in the tests.
+SWEEP_LETTER_TEXTS: tuple[tuple[str, str, float], ...] = (
+    ("longest", "COMMANDER", 6.0),
+    ("shortest", "A", 12.0),
+    ("mixed", "Lands", 8.0),
+    # 6,3 mm is a whisker over the 6,21 mm at which `a`'s 0,117 em stroke reaches
+    # `process.min_feature_mm`, so this case sets a glyph **at** the floor and is the one
+    # that fails first if the stroke measurement ever drifts.
+    ("floor", "a", 6.3),
+)
+SWEEP_LETTER_MODES: tuple[str, ...] = ("raised", "recessed")
+#: 2,0 mm of plate, so a 0,6 mm recess still leaves 1,4 mm over `min_feature_mm`.
+SWEEP_LETTER_THICKNESS = 2.0
+SWEEP_LETTER_RELIEFS: tuple[float, ...] = (0.4, 0.6, 1.0)
+
+
+def _lettering_cases() -> list[SweepCase]:
+    """The decorated specs, one per (text, mode, relief) — 24 of them."""
+    tab_w, tab_h = SWEEP_LETTER_TAB
+    cases: list[SweepCase] = []
+    for (name, text, height), mode, relief in itertools.product(
+        SWEEP_LETTER_TEXTS, SWEEP_LETTER_MODES, SWEEP_LETTER_RELIEFS,
+    ):
+        cases.append(SweepCase(
+            id=f"letter-{name}-{mode}-h{height:g}-r{relief:g}",
+            spec=OrganizerSpec(
+                archetype=ARCHETYPE,
+                compartments=(Compartment(CardStack(count=SWEEP_COUNT)),),
+                divider=Divider(thickness_mm=SWEEP_LETTER_THICKNESS,
+                                tab_width_mm=tab_w, tab_height_mm=tab_h),
+                emboss=Emboss(text=text, face="tab", mode=mode,
+                              height_mm=height, relief_mm=relief),
+            ),
+            # One corner through Phase 3, on the sweep's own rule: the repair round is
+            # orthogonal to these axes and costs a mesh repair per case. `raised` rather
+            # than `recessed`, because a raised glyph is the one that could come back as
+            # a separate body.
+            phase_3=(name == "mixed" and mode == "raised" and relief == 0.6),
+        ))
+    return cases
+
+
 def envelope() -> tuple[SweepCase, ...]:
-    """Every spec the dimensional sweep drives this archetype over — 324 of them."""
+    """Every spec the dimensional sweep drives this archetype over — 348 of them."""
     cases: list[SweepCase] = []
     for sleeving, position, thickness, tab_width, tab_height in itertools.product(
         SWEEP_SLEEVINGS, SWEEP_POSITIONS, SWEEP_THICKNESSES, SWEEP_TAB_WIDTHS,
@@ -506,4 +755,4 @@ def envelope() -> tuple[SweepCase, ...]:
             ),
             phase_3=(thickness, tab_width, tab_height) in SWEEP_PHASE_3_TABS,
         ))
-    return tuple(cases)
+    return tuple(cases + _lettering_cases())

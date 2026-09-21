@@ -45,6 +45,17 @@ from pythonsrc.operators.printer_state import canonical_firmware
 # The organizer *schema* only. `pythonsrc.organizer` exports nothing that needs trimesh
 # or manifold3d, which is what lets the api-server image validate a spec without the
 # kernel; the compiler stays behind `pythonsrc.organizer.archetypes`, never imported here.
+#
+# The font half of the decorative tier (F13, issue #157) comes in under the same rule and
+# is the case that proves it holds: `lettering` imports fontTools and the standard
+# library and nothing else, which is the whole reason this process can tell somebody the
+# font cannot set their name while they are still typing it. It is aliased rather than
+# imported as `lettering` because `resolve_organizer_spec` has a local list of the same
+# noun, and the shadowing would be silent.
+#
+# The seed dimensions come in for the same reason: `resolve_stack` is arithmetic over a
+# table of sourced millimetres and imports nothing. It is what `POST /organizer/resolve`
+# answers with, and the only figures the composer may show.
 from pythonsrc.organizer import (
     CardStack,
     OrganizerSpec,
@@ -54,6 +65,7 @@ from pythonsrc.organizer import (
     problems_with_paths,
     spec_hash,
 )
+from pythonsrc.organizer import lettering as organizer_lettering
 
 # The curated box interiors, under the same rule again: `box_kb` reads one committed JSON
 # file and imports nothing outside the stdlib. It reaches no network — BoardGameGeek has
@@ -1263,15 +1275,18 @@ def spec_label(spec: Dict[str, Any]) -> str:
     compartments = spec.get("compartments") or []
     contents = (compartments[0] or {}).get("contents") if compartments else None
     if not isinstance(contents, dict):
-        return archetype
+        return archetype + _lettering_phrase(spec)
     if spec.get("insert") is not None:
         shapes = [_contents_phrase((c or {}).get("contents")) for c in compartments]
         shapes = [s for s in shapes if s]
         if not shapes:
-            return archetype
-        return f"{archetype} · {len(shapes)} compartments: " + ", ".join(shapes)
+            return archetype + _lettering_phrase(spec)
+        return (
+            f"{archetype} · {len(shapes)} compartments: " + ", ".join(shapes)
+            + _lettering_phrase(spec)
+        )
     if "count" in contents:
-        return f"{archetype} · {_contents_phrase(contents)}"
+        return f"{archetype} · {_contents_phrase(contents)}" + _lettering_phrase(spec)
     # A pocket. `tray.columns` is the only layout field and the rows follow from the
     # compartment count — the same derivation `token_tray.derive` does, and the only
     # arithmetic in this function, because a label that said "6 pockets" for a 2 × 3
@@ -1279,7 +1294,33 @@ def spec_label(spec: Dict[str, Any]) -> str:
     total = len(compartments)
     columns = (spec.get("tray") or {}).get("columns")
     grid = f"{total // columns} × {columns}" if isinstance(columns, int) and columns > 0 and not total % columns else str(total)
-    return f"{archetype} · {grid} pockets {_pocket_size(contents)} mm"
+    return (
+        f"{archetype} · {grid} pockets {_pocket_size(contents)} mm"
+        + _lettering_phrase(spec)
+    )
+
+
+def _lettering_phrase(spec: Dict[str, Any]) -> str:
+    """What a decorated spec adds to its own title, or "" for an undecorated one.
+
+    Two boxes for the same deck, one of them with a name cut into the lid, are two
+    different parts and eight hours of printing apart — and until this, the job list
+    called them the same thing. The words are the *spec's* own (issue #157), like every
+    other part of this label, so a title cannot say something the geometry does not.
+
+    Reads defensively: this runs on the canonical spec from `POST /jobs`, but
+    `POST /organizer/resolve` labels while somebody is still editing.
+    """
+    emboss = spec.get("emboss")
+    if not isinstance(emboss, dict):
+        return ""
+    text = emboss.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    face = str(emboss.get("face") or "").replace("_", " ").strip()
+    mode = str(emboss.get("mode") or "").strip()
+    where = f" on the {face}" if face else ""
+    return f" · {mode or 'lettered'} “{text.strip()}”{where}".rstrip()
 
 
 def _pocket_size(contents: Dict[str, Any]) -> str:
@@ -1436,6 +1477,45 @@ class JobRequest(BaseModel):
                     f"a spec decides every dimension; {', '.join(named)} cannot be "
                     "combined with spec"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _the_screened_text_is_the_compiled_text(self) -> "JobRequest":
+        """A spec's emboss text **is** `embossing_text`, so the screen reads what is cut.
+
+        Issue #156 built `embossing_text` as the third screened prompt channel and left
+        it compiling to nothing, because the geometry was #157 and PRD F13 says do not
+        ship the decorative layer before the screen exists. This is the join, and it is
+        one line of consequence: the string the IP screen reads and the string the
+        compiler cuts into the part have to be the same string, or the screen watches a
+        field nobody sent while a blocked name goes onto a lid.
+
+        So a spec's `emboss.text` is **copied into** `embossing_text` when the request
+        does not carry one, and a request carrying both with different values is refused
+        naming both — there is no rule that could pick the right one, and picking either
+        would either screen a string that is not cut or cut a string that was not
+        screened. Identical values are fine and are what a client that fills both sends.
+
+        Runs after `_spec_is_valid`, so `self.spec` is the canonical form: the text here
+        is the stripped, schema-validated one the compiler will read. And it runs on the
+        *model*, so it is done before `job_id` exists and before anything is written —
+        `screen_prompt` in `POST /jobs` then refuses a blocked emboss with no row, no
+        directory and no file, which is the acceptance criterion "a spec whose emboss
+        text is blocked creates no job".
+        """
+        emboss = (self.spec or {}).get("emboss") if self.spec is not None else None
+        text = emboss.get("text") if isinstance(emboss, dict) else None
+        if not isinstance(text, str) or not text:
+            return self
+        if self.embossing_text is None:
+            self.embossing_text = text
+        elif self.embossing_text != text:
+            raise ValueError(
+                f"embossing_text {self.embossing_text!r} and spec.emboss.text {text!r} "
+                "are two different strings for one piece of lettering; the field that "
+                "is screened and the field that is cut into the part must be the same. "
+                "Send the text in the spec only, or send the same string in both"
+            )
         return self
 
     @model_validator(mode="after")
@@ -4309,7 +4389,21 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
       its millimetres were typed, so there is nothing to resolve and no source to
       name, and the list is empty for a tray rather than carrying a fabricated row;
     - **every problem, with the dotted path it names** — `problems_with_paths`, the
-      same shape `POST /jobs`'s 422 carries, so one mapping in the client routes both.
+      same shape `POST /jobs`'s 422 carries, so one mapping in the client routes both;
+    - **the lettering the spec asks for, measured in millimetres** — the ink the
+      vendored font actually sets for `emboss.text` at `emboss.height_mm`, plus a problem
+      for any character the font has no glyph for. `pythonsrc/organizer/lettering.py` is
+      fontTools and the standard library and nothing else, precisely so this process can
+      answer it: a person typing a name into the composer should be told the font cannot
+      set it while they are still typing, not after Phase 2 refused the job.
+
+    **What this cannot answer about lettering is whether it fits the face**, and the
+    boundary is the same one the fit verdict already sits on: the usable rectangle of a
+    lid top or a divider tab is `emboss_frame` on the archetype module, and every
+    archetype module imports `manifold3d`. So the width is here and the comparison is
+    Phase 2's, with `compile_spec`'s refusal naming the measurement and the cap height
+    that would fit. Lifting the face rectangles into a kernel-free table beside the
+    metrics is the named follow-up; inventing them here in a second place is not.
 
     **There is no fit verdict**, and that is not an omission. `deck_box.fits_check`
     imports `manifold3d`, which the api-server image does not install, so this
@@ -4333,12 +4427,12 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
 
     Returns:
         `{"schema_valid", "problems", "spec", "spec_hash", "label", "stacks",
-        "game_box"}`. When `schema_valid` is false every field but `problems` is None or
-        empty. `game_box` is the curated interior the spec named and its per-axis
-        provenance, or **None for a box nobody has measured** — the degraded mode, where
-        the millimetres are the ones somebody typed and `constraints.fit_margin_mm` comes
-        off them just the same. The composer says which of the two it used, and this
-        field is how it knows.
+        "game_box", "lettering"}`. When `schema_valid` is false every field but
+        `problems` is None or empty. `game_box` is the curated interior the spec named
+        and its per-axis provenance, or **None for a box nobody has measured** — the
+        degraded mode, where the millimetres are the ones somebody typed and
+        `constraints.fit_margin_mm` comes off them just the same. The composer says
+        which of the two it used, and this field is how it knows.
     """
     try:
         spec = OrganizerSpec.from_dict(request.spec)
@@ -4351,6 +4445,7 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
             "label": None,
             "stacks": [],
             "game_box": None,
+            "lettering": None,
         }
 
     canonical = spec.to_dict()
@@ -4376,9 +4471,32 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
             "basis": stack.basis,
         })
 
+    lettering_problems = []
+    lettering_info = None
+    if spec.emboss is not None:
+        lettering_problems = organizer_lettering.text_problems(
+            spec.emboss.text, "spec.emboss.text"
+        )
+        if not lettering_problems:
+            ink_w, ink_h = organizer_lettering.ink_extent_mm(
+                spec.emboss.text, spec.emboss.height_mm
+            )
+            lettering_info = {
+                "text": spec.emboss.text,
+                "face": spec.emboss.face,
+                "mode": spec.emboss.mode,
+                "height_mm": spec.emboss.height_mm,
+                "ink_width_mm": round(ink_w, 3),
+                "ink_height_mm": round(ink_h, 3),
+                "font": f"{organizer_lettering.FONT_FAMILY} {organizer_lettering.FONT_SUBFAMILY}",
+            }
+
     return {
+        # Still true: the schema accepted the spec. A missing glyph is a *lettering*
+        # problem, reported beside the schema's own in the one list the client routes,
+        # and it is not the schema's finding to claim.
         "schema_valid": True,
-        "problems": [],
+        "problems": problems_with_paths(lettering_problems),
         "spec": canonical,
         "spec_hash": spec_hash(spec),
         # What the job would be called if nobody types a line. See `spec_label`.
@@ -4390,6 +4508,7 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
         # row on `generation_params`, so the screen and the database cannot describe one
         # box two different ways.
         "game_box": game_box_record(spec),
+        "lettering": lettering_info,
     }
 
 

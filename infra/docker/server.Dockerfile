@@ -21,7 +21,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # `pywebpush` is the web push sender (server/push.py); it is pinned in
 # requirements-base.txt for the reason given there, and pinned here too because this
 # image installs a list rather than that file.
-RUN pip install --no-cache-dir fastapi uvicorn aiohttp websockets "python-socketio[asyncio]" "psycopg[binary,pool]>=3.2,<4" httpx paho-mqtt cryptography docker PyYAML "pywebpush==2.5.0"
+#
+# `fonttools` is the only geometry-adjacent thing this image installs, and it is here
+# because it is **not** geometry: `pythonsrc/organizer/lettering.py` reads the vendored
+# font's glyph metrics with it so `POST /organizer/resolve` can tell somebody the font
+# cannot set their name while they are still typing it. Pure Python, no kernel, downloads
+# nothing at runtime — which is exactly why that module was split off from `compiler.py`.
+# MIT; see THIRD-PARTY-NOTICES.md § 2.
+RUN pip install --no-cache-dir fastapi uvicorn aiohttp websockets "python-socketio[asyncio]" "psycopg[binary,pool]>=3.2,<4" httpx paho-mqtt cryptography docker PyYAML "pywebpush==2.5.0" "fonttools>=4.50"
 
 COPY pythonsrc/ ./pythonsrc/
 COPY server/ ./server/

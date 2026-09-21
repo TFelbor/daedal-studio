@@ -749,6 +749,147 @@ def test_a_blocked_embossing_value_creates_no_job_and_is_not_written_to_disk(
     mock_run.assert_not_called()
 
 
+def lettered_spec(text, **extra):
+    """A minimal deck-box spec carrying an emboss section, as the composer posts it."""
+    body = {
+        "archetype": "deck_box",
+        "compartments": [
+            {"contents": {"count": 100, "card": "standard", "sleeving": "double"}},
+        ],
+        "emboss": {"text": text, "face": "lid_top", "mode": "recessed"},
+        "schema_version": 1,
+    }
+    body.update(extra)
+    return body
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_blocked_name_in_the_spec_alone_creates_no_job(mock_run, printer_configured):
+    """**Acceptance criterion 6, on the path the composer actually uses.**
+
+    The test above sends `embossing_text` directly, which is #156's channel. The
+    composer does not: `specForm.ts` puts the string in `spec.emboss.text` and sends no
+    `embossing_text` at all, deliberately — "the browser keeping them in step is exactly
+    what the server validator exists so it does not have to". So the screened field and
+    the sent field were different fields, and nothing exercised the join between them.
+
+    If `_the_screened_text_is_the_compiled_text` ever stops copying, this is the test
+    that fails; without it, a blocked name typed into the composer reaches a lid while
+    the screen watches a field nobody sent.
+    """
+    from pathlib import Path
+
+    import server.app as app_module
+
+    inputs = Path(app_module.__file__).parent.parent / "data" / "inputs"
+    inputs.mkdir(parents=True, exist_ok=True)
+    before = set(inputs.iterdir())
+
+    db = TelemetryDB()
+    rows_before = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
+    db.close()
+
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box",
+        "printer_id": "default",
+        "spec": lettered_spec("Pokémon"),
+    })
+
+    assert resp.status_code == 400, resp.text
+    assert "pokemon" in resp.json()["detail"].lower()
+
+    db = TelemetryDB()
+    rows_after = db.query_one("SELECT COUNT(*) AS n FROM print_job")["n"]
+    db.close()
+
+    assert rows_after == rows_before
+    assert set(inputs.iterdir()) == before, "a refused submission wrote a spec to disk"
+    mock_run.assert_not_called()
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_the_spec_text_is_screened_as_the_embossing_channel(mock_run, printer_configured):
+    """And it is refused *as lettering*, not as a prompt.
+
+    The channel is what the activity record names and what the operator reads. A spec's
+    emboss text refused under `prompt` would send someone looking for a term in a
+    prompt that never carried it — the same failure the #156 test guards on its own
+    channel.
+    """
+    import server.app as app_module
+
+    recorded = []
+    with patch.object(
+        app_module.activity, "action",
+        side_effect=lambda title, rows=None, **kw: recorded.append((title, list(rows or ()))),
+    ):
+        resp = client.post("/jobs", json={
+            "prompt": "a deck box",
+            "printer_id": "default",
+            "spec": lettered_spec("Pikachu"),
+        })
+
+    assert resp.status_code == 400
+    refusals = [rows for title, rows in recorded if title == "job refused"]
+    assert refusals, f"no refusal was recorded; got {[t for t, _ in recorded]}"
+    assert ("channel", "embossing") in refusals[0]
+    assert ("term", "pikachu") in refusals[0]
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_two_different_strings_for_one_piece_of_lettering_are_refused(
+    mock_run, printer_configured,
+):
+    """Neither could be picked without either screening a string that is not cut or
+    cutting one that was not screened, so the request is refused naming both fields.
+
+    422 rather than 400: it is the model validator, so it fails before the route body
+    runs and before the screen is consulted at all.
+    """
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box",
+        "printer_id": "default",
+        "spec": lettered_spec("Lands"),
+        "embossing_text": "Forests",
+    })
+
+    assert resp.status_code == 422, resp.text
+    detail = resp.text
+    assert "embossing_text" in detail and "emboss.text" in detail
+    assert "Lands" in detail and "Forests" in detail
+    mock_run.assert_not_called()
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_the_same_string_in_both_carriers_is_accepted(mock_run, printer_configured):
+    """What a client that fills both sends. There is nothing to disambiguate, so there
+    is nothing to refuse — and a 422 here would break any caller that is explicit."""
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box",
+        "printer_id": "default",
+        "spec": lettered_spec("Lands"),
+        "embossing_text": "Lands",
+    })
+
+    assert resp.status_code == 202, resp.text
+
+
+@patch("server.app._run_pipeline", new_callable=AsyncMock)
+def test_a_clean_lettered_spec_is_accepted_and_carries_its_text(
+    mock_run, printer_configured,
+):
+    """The permissive half, without which every assertion above is satisfied by a route
+    that refuses everything."""
+    resp = client.post("/jobs", json={
+        "prompt": "a deck box",
+        "printer_id": "default",
+        "spec": lettered_spec("Lands"),
+    })
+
+    assert resp.status_code == 202, resp.text
+    mock_run.assert_called_once()
+
+
 @patch("server.app._run_pipeline", new_callable=AsyncMock)
 def test_the_refusal_record_says_which_field_carried_the_name(mock_run, printer_configured):
     """A block cannot be a job event — there is no row to hang it on — so the activity

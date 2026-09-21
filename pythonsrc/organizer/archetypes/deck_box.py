@@ -76,22 +76,29 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import manifold3d
 
+from .. import lettering
 from ..compiler import (
+    Box,
     CompileResult,
+    FaceFrame,
     FitsResult,
     MeasureError,
+    letter,
     manifold_to_trimesh,
     rounded_rect_prism,
+    text_outline,
 )
 from ..dimensions import ResolvedStack, resolve_stack
 from ..spec import (
     ARCHETYPE_WALL_MM,
+    EMBOSS_EDGE_MARGIN_MM,
     CardStack,
     Compartment,
+    Emboss,
     Lid,
     OrganizerSpec,
     Process,
@@ -107,6 +114,8 @@ from .common import (
     external_overshoots,
     measured_chamfer,
     measured_corner_radius,
+    measured_relief,
+    shifted_region,
     single_compartment_problem,
     stray_section_problem,
     view_frame,
@@ -127,6 +136,28 @@ ARCHETYPE_VERSION = "2"
 USES_PROCESS_WALL_MM = True
 #: Clear space between the body and the lid on the plate, mm.
 PLATE_GAP_MM = 10.0
+#: The faces this archetype letters (F13, issue #157). Five: the lid's own top, and the
+#: four walls of the body.
+#:
+#: **Every one of them takes `recessed` only**, and neither half of that is a taste rule.
+#:
+#: - The *lid top* is the face that lies **against the build plate**. A lift-off lid is
+#:   printed open side up (see this module's docstring and `build`), so the surface a
+#:   person looks at is the one at `Z = 0`; raised text there would have to stand through
+#:   the bed. Sunk into it, it is laid as the first layer — the crispest detail an FDM
+#:   printer produces — and prints with no support at all.
+#: - The *body walls* are vertical. A raised letter on a vertical wall overhangs at 90°
+#:   along its whole underside, and the 45° treatment that fixes it is `base_chamfer`,
+#:   which wants **one convex contour**; a glyph is neither convex nor one contour. A
+#:   per-glyph chamfer is new geometry, which issue #157 says not to add. Recessed, the
+#:   slot's ceiling is a bridge no wider than one stroke — about a millimetre — which
+#:   every FDM printer spans unsupported.
+#:
+#: The lid's *cavity* and the body's rim are not offered: nobody sees the inside of a
+#: closed box.
+EMBOSS_FACES: tuple[str, ...] = ("lid_top", "front", "back", "left", "right")
+#: `measure()` needs the spec, to know where the lettering it must skip is (issue #157).
+MEASURE_NEEDS_SPEC = True
 #: How this archetype names itself in a refusal or a measurement finding.
 _SUBJECT = f"a deck box v{ARCHETYPE_VERSION}"
 
@@ -193,6 +224,11 @@ class DeckBoxDimensions:
             "lip_corner_radius_mm": self.lip_corner_radius,
             "lid_cavity_corner_radius_mm": self.lid_cavity_corner_radius,
         }
+        if spec.emboss is not None:
+            # Decoration must not move a designed dimension (issue #157) — but its own
+            # relief *is* one, and a 0,6 mm recess that came out 0,3 mm deep is a box
+            # that does not say what it was asked to say.
+            raw["emboss_relief_mm"] = spec.emboss.relief_mm
         return {k: round(float(v), 3) for k, v in raw.items()}
 
 
@@ -403,6 +439,110 @@ def validate(spec: OrganizerSpec) -> None:
         raise SpecError(problems)
 
 
+#: Where each part's minimum corner is in the plate frame, as a function of the design.
+#: `measure` needs it to turn a region stated in the design's frame into one in the
+#: frame the mesh actually arrived in — see `common.shifted_region`.
+def _part_origin(d: DeckBoxDimensions, part: str) -> tuple[float, float, float]:
+    return (d.external_w + PLATE_GAP_MM, 0.0, 0.0) if part == "lid" else (0.0, 0.0, 0.0)
+
+
+def emboss_frame(spec: OrganizerSpec) -> FaceFrame:
+    """Where lettering goes on a deck box: centred on the flat part of the named face.
+
+    "The flat part" is the whole of the work here, and it is the two edge treatments that
+    make it work. On a **body wall** the face runs vertically from the top of the base
+    chamfer (`process.base_chamfer_mm`) to the bottom of the lip step
+    (`body_h − lid.height_mm`), and horizontally between the two corner arcs' tangent
+    points, `process.corner_radius_mm` in from each end. On the **lid top** — the face at
+    `Z = 0`, which is against the bed — the chamfer has already eroded the outline by `c`
+    and left it a corner radius of `r − c`, so the flat rectangle is inset by exactly `r`
+    from the part's own bounds on every side. `EMBOSS_EDGE_MARGIN_MM` comes off all of
+    them again, which is what keeps the measurer's exclusion region inside the face.
+
+    **The lid top's frame is mirrored in X**, and it has to be: that face is printed
+    downward and the lid is turned over to be used, so text cut into it while it lies on
+    the plate reads backwards unless it is set backwards. `u = (−1, 0, 0)` is the whole of
+    it, and `FaceFrame.matrix` refuses a frame whose handedness does not match its normal,
+    so a mirror that got lost in a refactor is a raise rather than a box with a
+    mirror-written name on it.
+
+    The material behind a face is what a recess eats: `process.wall_mm` on a body wall,
+    `lid.top_mm` on the lid. Both are held to `process.min_feature_mm` — what is left
+    after a recess has to still be a feature the design recognises.
+
+    Raises:
+        SpecError: If the spec is not one this archetype can derive at all, or names a
+            face it does not letter.
+    """
+    problems = _structural_problems(spec)
+    if problems:
+        raise SpecError(problems)
+    d = derive(spec)
+    lid = spec.lid
+    assert lid is not None
+    p = spec.process
+    face = spec.emboss.face if spec.emboss is not None else EMBOSS_FACES[0]
+    margin = EMBOSS_EDGE_MARGIN_MM
+    floor = p.min_feature_mm
+    if face == "lid_top":
+        inset = d.corner_radius + margin
+        lx = d.external_w + PLATE_GAP_MM
+        return FaceFrame(
+            face=face, part="lid",
+            origin=(lx + d.external_w / 2.0, d.external_d / 2.0, 0.0),
+            u=(-1.0, 0.0, 0.0), v=(0.0, 1.0, 0.0), normal=(0.0, 0.0, -1.0),
+            width_mm=max(d.external_w - 2.0 * inset, 0.0),
+            height_mm=max(d.external_d - 2.0 * inset, 0.0),
+            modes=("recessed",),
+            material_mm=lid.top_mm, material_name="lid.top_mm", material_floor_mm=floor,
+        )
+    # A body wall. The vertical span is the same on all four; only the plane, the
+    # reading direction and the outward normal change, and each `u` is the direction a
+    # person standing in front of that wall calls "right".
+    z_low, z_high = d.base_chamfer, d.body_h - lid.height_mm
+    walls = {
+        "front": ((d.external_w / 2.0, 0.0), (1.0, 0.0, 0.0), (0.0, -1.0, 0.0), d.external_w),
+        "back": ((d.external_w / 2.0, d.external_d), (-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), d.external_w),
+        "left": ((0.0, d.external_d / 2.0), (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0), d.external_d),
+        "right": ((d.external_w, d.external_d / 2.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0), d.external_d),
+    }
+    if face not in walls:
+        raise SpecError([
+            f"spec.emboss.face {face!r} is not a face {_SUBJECT} letters; it letters "
+            f"{list(EMBOSS_FACES)}"
+        ])
+    (ox, oy), u, normal, span = walls[face]
+    return FaceFrame(
+        face=face, part="body",
+        origin=(ox, oy, (z_low + z_high) / 2.0),
+        u=u, v=(0.0, 0.0, 1.0), normal=normal,
+        width_mm=max(span - 2.0 * (d.corner_radius + margin), 0.0),
+        height_mm=max(z_high - z_low - 2.0 * margin, 0.0),
+        modes=("recessed",),
+        material_mm=p.wall_mm, material_name="process.wall_mm", material_floor_mm=floor,
+    )
+
+
+def _emboss_region(
+    spec: OrganizerSpec, d: DeckBoxDimensions, part_name: str, measured_min: Any
+) -> Optional[Box]:
+    """The box the lettering occupies on one built body, or None when it is elsewhere.
+
+    Returns None for the body when the text is on the lid and the other way round — the
+    undecorated part is measured exactly as an undecorated box always was, which is the
+    point: decoration costs the *other* body nothing.
+    """
+    emboss = spec.emboss
+    if emboss is None:
+        return None
+    frame = emboss_frame(spec)
+    if frame.part != part_name:
+        return None
+    ink_w, ink_h = lettering.ink_extent_mm(emboss.text, emboss.height_mm)
+    box = frame.region_mm(ink_w, ink_h, emboss.relief_mm, emboss.mode)
+    return shifted_region(box, measured_min, _part_origin(d, part_name))
+
+
 def build(spec: OrganizerSpec) -> tuple[dict[str, "manifold3d.Manifold"], DeckBoxDimensions]:
     """Validate, derive, and build the two solids in plate position."""
     validate(spec)
@@ -447,7 +587,20 @@ def build(spec: OrganizerSpec) -> tuple[dict[str, "manifold3d.Manifold"], DeckBo
         d.lid_cavity_w, d.lid_cavity_d, lid.height_mm + 1.0, d.lid_cavity_corner_radius
     ).translate([lid.wall_mm, lid.wall_mm, lid.top_mm])
     lid_part = lid_part.translate([W + PLATE_GAP_MM, 0.0, 0.0])
-    return {"body": body, "lid": lid_part}, d
+    parts = {"body": body, "lid": lid_part}
+    if spec.emboss is not None:
+        # Applied last, to the finished body: a cutter that stands proud of the face is a
+        # transverse boolean against a solid that already exists, and there is nothing
+        # after it to cut the decoration in half.
+        frame = emboss_frame(spec)
+        parts[frame.part] = letter(
+            parts[frame.part],
+            text_outline(spec.emboss.text, spec.emboss.height_mm),
+            frame,
+            spec.emboss.relief_mm,
+            spec.emboss.mode,
+        )
+    return parts, d
 
 
 def compile(spec: OrganizerSpec) -> CompileResult:  # noqa: A001 — the registry's verb
@@ -488,14 +641,33 @@ MEASURED_FEATURES: tuple[str, ...] = (
     "cavity_corner_radius_mm", "lip_corner_radius_mm", "lid_cavity_corner_radius_mm",
 )
 
-def _planes(part: Any, axis: int, expected: int, what: str) -> list[float]:
-    return expect_planes(part, axis, expected, what=what, subject=_SUBJECT)
+
+def measured_features(spec: OrganizerSpec) -> tuple[str, ...]:
+    """`MEASURED_FEATURES`, plus the relief when the spec carries an emboss.
+
+    A function of the spec rather than a constant, on the token tray's precedent: the
+    feature exists only when the section does. A fixed tuple could only promise it on
+    every plain box — reporting `not measured` on all of them — or on none, which would
+    leave the one thing a decorated box adds unchecked while the report still said
+    *within tolerance*.
+    """
+    if spec.emboss is None:
+        return MEASURED_FEATURES
+    return MEASURED_FEATURES + ("emboss_relief_mm",)
 
 
-def _chamfer(part: Any, what: str) -> float:
+def _planes(
+    part: Any, axis: int, expected: int, what: str, exclude_mm: Optional[Box] = None
+) -> list[float]:
+    return expect_planes(
+        part, axis, expected, what=what, subject=_SUBJECT, exclude_mm=exclude_mm
+    )
+
+
+def _chamfer(part: Any, what: str, exclude_mm: Optional[Box] = None) -> float:
     """This archetype's subject, on `common.measured_chamfer`. Both bodies carry the
     treatment, so `what` is the one that says which body a finding is about."""
-    return measured_chamfer(part, what=what, subject=_SUBJECT)
+    return measured_chamfer(part, what=what, subject=_SUBJECT, exclude_mm=exclude_mm)
 
 
 #: `common.measured_corner_radius`, under the name this module's `measure()` calls it by.
@@ -504,7 +676,7 @@ def _chamfer(part: Any, what: str) -> float:
 _corner_radius = measured_corner_radius
 
 
-def measure(mesh: Any) -> dict[str, float]:
+def measure(mesh: Any, spec: OrganizerSpec) -> dict[str, float]:
     """Read the designed features back off a deck-box mesh — compiled or post-Phase-3.
 
     Splits the plate into its two bodies (the body is the larger by volume), takes the
@@ -521,6 +693,21 @@ def measure(mesh: Any) -> dict[str, float]:
     against the lip's, the cavity's against the cavity's, the lid's cavity against the
     lid's inner wall.
 
+    **Lettering is excluded from every count and measured on its own.** A recess sunk
+    into a wall puts a real plane at its own depth and real axis-aligned faces down every
+    stem, so a decorated box genuinely has more planes than a deck box has — and the
+    count is what says "this is a deck box", so it has to be the count of the part the
+    design describes. The region comes from the spec (`_emboss_region`) and every number
+    still comes from the mesh, exactly as `box_insert` reads a ragged row: what the design
+    supplies is *where to look*. Only the decorated body gets a region; the other is
+    measured exactly as an undecorated box always was.
+
+    Args:
+        mesh: The compiled or post-Phase-3 plate.
+        spec: The spec it was compiled from — needed only to know where the decoration
+            is. `MEASURE_NEEDS_SPEC` declares that on the module, so a reader sees the
+            claim in the diff rather than inferring it from an argument count.
+
     Raises:
         MeasureError: If the mesh is not two bodies with the deck box's plane structure,
             or if a face that should be a 45° chamfer is not one.
@@ -529,15 +716,18 @@ def measure(mesh: Any) -> dict[str, float]:
     if len(parts) != 2:
         raise MeasureError(f"expected 2 bodies (body and lid), found {len(parts)}")
     body, lid = sorted(parts, key=lambda p: p.volume, reverse=True)
+    d = derive(spec) if spec.emboss is not None else None
+    body_region = None if d is None else _emboss_region(spec, d, "body", body.bounds[0])
+    lid_region = None if d is None else _emboss_region(spec, d, "lid", lid.bounds[0])
     # Body planes: X and Y each {0, lip_inset, wall, wall + cavity, W − lip_inset, W};
     # Z {0, floor, body_h − lip_height, body_h}.
-    bx = _planes(body, 0, 6, "body")
-    by = _planes(body, 1, 6, "body")
-    bz = _planes(body, 2, 4, "body")
+    bx = _planes(body, 0, 6, "body", body_region)
+    by = _planes(body, 1, 6, "body", body_region)
+    bz = _planes(body, 2, 4, "body", body_region)
     # Lid planes: X and Y each {0, lid_wall, W − lid_wall, W}; Z {0, top, top + height}.
-    lx = _planes(lid, 0, 4, "lid")
-    ly = _planes(lid, 1, 4, "lid")
-    lz = _planes(lid, 2, 3, "lid")
+    lx = _planes(lid, 0, 4, "lid", lid_region)
+    ly = _planes(lid, 1, 4, "lid", lid_region)
+    lz = _planes(lid, 2, 3, "lid", lid_region)
     lid_cavity_w = lx[2] - lx[1]
     lip_outer_w = bx[4] - bx[1]
     measured = {
@@ -560,14 +750,20 @@ def measure(mesh: Any) -> dict[str, float]:
         "lid_wall_mm": lx[1] - lx[0],
         "lid_clearance_mm": (lid_cavity_w - lip_outer_w) / 2.0,
         "external_height_mm": (bz[3] - bz[0]) + (lz[1] - lz[0]),
-        "base_chamfer_mm": _chamfer(body, "body"),
-        "lid_base_chamfer_mm": _chamfer(lid, "lid"),
+        "base_chamfer_mm": _chamfer(body, "body", body_region),
+        "lid_base_chamfer_mm": _chamfer(lid, "lid", lid_region),
         "corner_radius_mm": _corner_radius(body, by[0], bx[0]),
         "lip_corner_radius_mm": _corner_radius(body, by[1], bx[1]),
         "cavity_corner_radius_mm": _corner_radius(body, by[2], bx[2]),
         "lid_corner_radius_mm": _corner_radius(lid, ly[0], lx[0]),
         "lid_cavity_corner_radius_mm": _corner_radius(lid, ly[1], lx[1]),
     }
+    region = body_region if body_region is not None else lid_region
+    if region is not None:
+        part = body if body_region is not None else lid
+        measured["emboss_relief_mm"] = measured_relief(
+            part, region, emboss_frame(spec).normal_axis, subject=_SUBJECT
+        )
     return {k: float(v) for k, v in measured.items()}
 
 
@@ -745,6 +941,17 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
             "mm", True,
             "internal vertical corners; 0 — a sleeved deck lifts out whole"),
     ]
+    if spec.emboss is not None:
+        # The text and the face are *words*, and `SpecDimension.value` is a number, so
+        # they ride as the note of the row they size — `fit_intent` before them.
+        ink_w, ink_h = lettering.ink_extent_mm(spec.emboss.text, spec.emboss.height_mm)
+        dimensions.extend([
+            row("emboss_height_mm", "Lettering height", spec.emboss.height_mm, "mm", True,
+                f"cap height of {spec.emboss.text!r}, {spec.emboss.mode} on the "
+                f"{spec.emboss.face}; sets {ink_w:.1f} × {ink_h:.1f} mm"),
+            row("emboss_relief_mm", "Lettering relief", spec.emboss.relief_mm, "mm", True,
+                "depth cut into the face; design default, unsourced — three 0,2 mm layers"),
+        ])
     return {
         "archetype": ARCHETYPE,
         "archetypeVersion": f"v{ARCHETYPE_VERSION}",
@@ -796,8 +1003,58 @@ def _lip_is_buildable(wall: float | None, clearance: float) -> bool:
     return body_wall - (Lid().wall_mm + clearance) >= Process().min_feature_mm - 1e-9
 
 
+# ── The lettering envelope (issue #157) ───────────────────────────────────────
+#
+# Its own prefix (`letter-`) and its own axes, rather than multiplying the 495 below by
+# them — decoration is orthogonal to the closure, which is the property the sweep is there
+# to prove, so crossing the two would buy repetition and several thousand booleans.
+#
+# Every case is a 100-card double-sleeved box at the process defaults, which gives a
+# 69,3 × 71,8 mm lid top and a 69,3 × 77,9 mm front: enough for the longest string here at
+# every height here, on every one of the five faces.
+
+#: The four strings the issue asks for by name: the longest that fits, the shortest, a
+#: mixed-case one whose ascenders and descenders make the ink taller than the cap height,
+#: and a glyph set at the stroke floor. "Empty" is a **refusal** — the schema will not
+#: build an `Emboss` with no text — and is asserted as one in `tests/test_deck_box.py`.
+SWEEP_LETTER_TEXTS: tuple[tuple[str, str, float], ...] = (
+    ("longest", "COMMANDER", 6.0),
+    ("shortest", "M", 20.0),
+    ("mixed", "Ramp deck", 7.0),
+    # 6,3 mm is a whisker over the 6,21 mm at which `a`'s 0,117 em stroke reaches
+    # `process.min_feature_mm`, so this case sets a glyph **at** the floor.
+    ("floor", "a", 6.3),
+)
+SWEEP_LETTER_RELIEFS: tuple[float, ...] = (0.4, 0.6, 1.0)
+
+
+def _lettering_cases() -> list[SweepCase]:
+    """The decorated specs: every face × every string × every relief — 60 of them."""
+    cases: list[SweepCase] = []
+    for face, (name, text, height), relief in itertools.product(
+        EMBOSS_FACES, SWEEP_LETTER_TEXTS, SWEEP_LETTER_RELIEFS,
+    ):
+        cases.append(SweepCase(
+            id=f"letter-{face}-{name}-h{height:g}-r{relief:g}",
+            spec=OrganizerSpec(
+                archetype=ARCHETYPE,
+                compartments=(Compartment(CardStack(count=100, sleeving="double")),),
+                lid=Lid(),
+                emboss=Emboss(text=text, face=face, mode="recessed",
+                              height_mm=height, relief_mm=relief),
+            ),
+            # One corner through Phase 3, on the sweep's own rule: the repair round is
+            # orthogonal to these axes and costs a mesh repair per case. The lid top,
+            # because it is the face whose frame is mirrored and the only one whose
+            # decoration is on the smaller body — the one Phase 3's re-centring moves
+            # furthest from where it was compiled.
+            phase_3=(face == "lid_top" and name == "mixed" and relief == 0.6),
+        ))
+    return cases
+
+
 def envelope() -> tuple[SweepCase, ...]:
-    """Every spec the dimensional sweep drives this archetype over — 495 of them.
+    """Every spec the dimensional sweep drives this archetype over — 555 of them.
 
     Nothing here states a floor, a fit intent or an edge treatment, so every case
     carries `Process`'s own defaults and the sweep measures the geometry a real spec
@@ -827,4 +1084,4 @@ def envelope() -> tuple[SweepCase, ...]:
                 and (wall, clearance, lid_height) in SWEEP_PHASE_3_PROCESSES
             ),
         ))
-    return tuple(cases)
+    return tuple(cases + _lettering_cases())

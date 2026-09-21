@@ -52,7 +52,8 @@ RUN pip install --no-cache-dir \
         "numpy>=1.24.0" \
         "scipy>=1.11.0" \
         "requests>=2.31.0" \
-        "fast-simplification>=0.1.6"
+        "fast-simplification>=0.1.6" \
+        "fonttools>=4.50"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 ENTRYPOINT ["/usr/local/bin/ds-entrypoint", "python", "pythonsrc/sculptor.py"]
