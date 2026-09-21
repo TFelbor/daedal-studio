@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import pytest
@@ -14,6 +15,53 @@ logger = logging.getLogger(__name__)
 
 # Test constants
 TEST_JOB_ID = "job-123"
+
+# Every wait in this file is on work another task must deliver: a websocket
+# connection, a subscription frame, a row in `telemetry_sample`. A fixed sleep is a
+# bet on how fast the machine is, and on a loaded CI runner that bet loses — this
+# file's sample test failed `assert 6 == 10` on a docs-only pull request, because ten
+# inserts had not finished inside a 0,5 s sleep. Waiting on the condition instead
+# costs the real latency and no more, so the cap can be generous without slowing the
+# suite down.
+DEFAULT_TIMEOUT_S = 5.0
+
+
+async def _wait_until(
+    condition: Callable[[], bool],
+    *,
+    what: str,
+    timeout: float = DEFAULT_TIMEOUT_S,
+    interval: float = 0.02,
+) -> None:
+    """Poll `condition` until it holds, failing the test if `timeout` elapses first."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not condition():
+        if loop.time() >= deadline:
+            pytest.fail(f"timed out after {timeout} s waiting for {what}")
+        await asyncio.sleep(interval)
+
+
+async def _wait_for_subscription(server: "FakeMoonrakerServer") -> None:
+    """Wait until the collector has connected and sent its subscription frame."""
+    await _wait_until(
+        lambda: bool(server.received_messages),
+        what="the collector's subscription frame",
+    )
+
+
+async def _wait_for_samples(db, count: int, *, timeout: float = DEFAULT_TIMEOUT_S) -> None:
+    """Wait until at least `count` samples for the test job have reached the database.
+
+    `>=` rather than `==` so the wait ends the moment enough rows exist; each test's
+    own assertion is what pins the exact count, and so still catches an overshoot.
+    """
+    await _wait_until(
+        lambda: len(db.get_samples(TEST_JOB_ID)) >= count,
+        what=f"{count} telemetry sample(s) in the database",
+        timeout=timeout,
+        interval=0.05,
+    )
 
 @pytest.fixture
 def in_memory_db(isolated_db):
@@ -54,7 +102,8 @@ class FakeMoonrakerServer:
             await self._server.wait_closed()
 
     async def disconnect_clients(self):
-        for ws in self.clients:
+        # Over a copy: `handler` removes its own client from the set while this awaits.
+        for ws in list(self.clients):
             await ws.close()
 
     async def handler(self, websocket):
@@ -73,7 +122,7 @@ class FakeMoonrakerServer:
             "method": "notify_status_update",
             "params": [data]
         })
-        for ws in self.clients:
+        for ws in list(self.clients):
             if not ws.closed:
                 await ws.send(msg)
 
@@ -92,9 +141,8 @@ async def test_moonraker_collector_subscription_and_samples(fake_server, in_memo
     await collector.start()
 
     # Wait for the client to connect and send the subscription message
-    await asyncio.sleep(0.5)
+    await _wait_for_subscription(fake_server)
 
-    assert len(fake_server.received_messages) > 0
     sub_msg = fake_server.received_messages[0]
     assert sub_msg["method"] == "printer.objects.subscribe"
 
@@ -109,8 +157,8 @@ async def test_moonraker_collector_subscription_and_samples(fake_server, in_memo
             "gcode_move": {"speed_factor": 1.0, "extrude_factor": 1.0}
         })
 
-    # Wait for messages to be processed
-    await asyncio.sleep(0.5)
+    # Wait for all ten to be processed and written, not for a fixed interval
+    await _wait_for_samples(in_memory_db, 10)
     await collector.stop()
 
     # Verify samples in memory DB
@@ -141,18 +189,28 @@ async def test_moonraker_collector_reconnect(fake_server, in_memory_db, caplog):
         await collector.start()
 
         # Wait for connect
-        await asyncio.sleep(0.5)
-        assert len(fake_server.clients) == 1
+        await _wait_until(
+            lambda: len(fake_server.clients) == 1,
+            what="the collector's first connection",
+        )
 
         # Disconnect server clients to trigger reconnect
         await fake_server.disconnect_clients()
 
-        # Wait for reconnect (exponential backoff starts at 1s)
-        # 1.5 seconds should be enough to see the reconnect
-        await asyncio.sleep(1.5)
+        # `handler` drops its client in its own task, so the set empties after
+        # disconnect_clients() returns. Without waiting for that, the reconnect wait
+        # below would be satisfied by the connection we just closed.
+        await _wait_until(
+            lambda: not fake_server.clients,
+            what="the closed connection to be dropped",
+        )
 
-        # Verify it reconnected
-        assert len(fake_server.clients) == 1
+        # The reconnect waits out a 1 s backoff first, so it gets the longest cap here.
+        await _wait_until(
+            lambda: len(fake_server.clients) == 1,
+            what="the collector to reconnect",
+            timeout=10.0,
+        )
 
         # Verify warning log was generated
         assert any("Moonraker connection error" in record.message for record in caplog.records)
@@ -165,7 +223,7 @@ async def test_moonraker_collector_partial_data(fake_server, in_memory_db):
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
 
     await collector.start()
-    await asyncio.sleep(0.5)
+    await _wait_for_subscription(fake_server)
 
     # Missing fields
     await fake_server.broadcast_status({
@@ -174,7 +232,7 @@ async def test_moonraker_collector_partial_data(fake_server, in_memory_db):
         # missing extruder, heater_bed, etc.
     })
 
-    await asyncio.sleep(0.5)
+    await _wait_for_samples(in_memory_db, 1)
     await collector.stop()
 
     samples = in_memory_db.get_samples(TEST_JOB_ID)
@@ -192,19 +250,26 @@ async def test_moonraker_collector_invalid_json(fake_server, in_memory_db):
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
 
     await collector.start()
-    await asyncio.sleep(0.5)
+    await _wait_for_subscription(fake_server)
 
     # Send invalid JSON
-    for ws in fake_server.clients:
+    for ws in list(fake_server.clients):
         if not ws.closed:
             await ws.send("This is not valid JSON {]")
 
-    await asyncio.sleep(0.5)
+    # "No sample arrived" is not a condition one can wait for, so the bad frame is
+    # followed by a good one. When the sentinel's sample lands, the bad frame has
+    # demonstrably been read and dropped and the receive loop has demonstrably
+    # survived it — which the old `sleep(0.5); assert len(samples) == 0` did not
+    # show, since a collector that died on the bad frame also writes no samples.
+    await fake_server.broadcast_status({"print_stats": {"file_position": 42}})
+    await _wait_for_samples(in_memory_db, 1)
     await collector.stop()
 
-    # Should skip without crashing
+    # Should skip without crashing: only the sentinel is here.
     samples = in_memory_db.get_samples(TEST_JOB_ID)
-    assert len(samples) == 0
+    assert len(samples) == 1
+    assert samples[0].gcode_line == 42
 
 @pytest.mark.asyncio
 async def test_moonraker_collector_stop_cancels_loop(fake_server, in_memory_db):
@@ -212,12 +277,16 @@ async def test_moonraker_collector_stop_cancels_loop(fake_server, in_memory_db):
     collector = MoonrakerCollector(ws_url=ws_url, job_id=TEST_JOB_ID, db=in_memory_db)
 
     await collector.start()
-    await asyncio.sleep(0.5)
+    await _wait_until(
+        lambda: len(fake_server.clients) == 1,
+        what="the collector to connect",
+    )
 
     assert collector._task is not None
     assert not collector._task.done()
 
     await collector.stop()
-    await asyncio.sleep(0.5)
 
+    # stop() awaits the cancelled task before clearing the handle, so there is
+    # nothing left to sleep for.
     assert collector._task is None
