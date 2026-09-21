@@ -1477,6 +1477,24 @@ FastAPI application with:
   it a second time, and the binding is still the load-bearing half: it holds against
   anyone who *does* hold the token, which one shared credential makes a real case.
 - **Config store** (`config_store.py`): Fernet-encrypted key-value store in the telemetry database (`app_config` table); the key stays on the host at `$DS_CONFIG_KEY_PATH`, default `~/.ds-mvp/.config_key`
+- **The protected thing in `config_store.py` is the credential surface, not the file.**
+  CLAUDE.md's *never touch these unless the issue explicitly says so* list named the
+  whole file. #168 added `ALLOW_PROMPT_JOBS` — non-secret, absent from
+  `SUBPROCESS_ENV_KEYS`, unrelated to `DS_API_TOKEN` — and `claude-review` raised it as
+  a blocking credentials finding *after* the merge, because the PR was a draft until
+  the moment it landed. **#175 is the authorisation that change needed**, recorded
+  retroactively for `cd73b5c`, and it settled the rule as well: what may not move
+  without an issue is now named — any `secret: True` entry, `PRINTER_CREDENTIAL_HOSTS`
+  and the `internal` flag `INTERNAL_CONFIG_KEYS` is derived from, `SUBPROCESS_ENV_KEYS`,
+  the Fernet key path, and `DS_API_TOKEN`'s absence from `CONFIG_KEYS` — and
+  `tests/test_config_store_guards.py` asserts each one, so the contract's claim fails as
+  a test rather than as a paragraph nobody re-read. The narrowing is **not** "a
+  non-secret key is free". What made `ALLOW_PROMPT_JOBS` worth an issue is that it
+  re-opens the path that bills EUR 0,32 a generation, which is the *money* rule; a
+  `secret:` flag was never going to say so, and the contract now points that key at the
+  bullet that does. The **inventory** is the piece that was missing everywhere else: the
+  host binding, the subprocess allowlist and the token's absence each had a test, and
+  nothing at all failed when a new secret appeared or an existing one lost its flag.
 - **A printer credential is bound to the host it was saved for.** `POST /config` had
   no authentication, and it writes *both halves* of an authenticated outbound request:
   the address and the key. So one request repointing `OCTOPRINT_URL` at

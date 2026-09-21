@@ -103,10 +103,19 @@ covers what you are touching.
   reasons are in `THIRD-PARTY-NOTICES.md` § 2 so they do not get rediscovered. See
   `docs/PIPELINE.md` § Skills are vendored, not installed.
 - Never touch these unless the issue explicitly says so:
-  - **Credentials and secrets** — `server/config_store.py` (the Fernet-encrypted store),
-    `server/auth.py` and `pythonsrc/api_token.py` (the API's one shared secret,
-    `DS_API_TOKEN`), `.env.template`, `pythonsrc/operators/` (printer API keys),
-    `supabase/README.md`'s security posture. Authentication here is that one shared
+  - **Credentials and secrets** — `server/auth.py` and `pythonsrc/api_token.py` (the
+    API's one shared secret, `DS_API_TOKEN`), `.env.template`, `pythonsrc/operators/`
+    (printer API keys), `supabase/README.md`'s security posture, and in
+    `server/config_store.py` the **credential surface rather than the file**: any
+    `secret: True` entry, `PRINTER_CREDENTIAL_HOSTS` and the `internal` flag
+    `INTERNAL_CONFIG_KEYS` is derived from, `SUBPROCESS_ENV_KEYS`, the Fernet key path,
+    and `DS_API_TOKEN`'s absence from `CONFIG_KEYS`.
+    `tests/test_config_store_guards.py` asserts each of those, so weakening one is a
+    failing test rather than a paragraph nobody re-read. Adding a **non-secret** key to
+    that file is ordinary work — but judged by what the key *does*, not by its `secret:`
+    flag: `ALLOW_PROMPT_JOBS` is non-secret and re-opens the path that bills, so it
+    belonged to the bullet below and needed the issue it eventually got (#175).
+    Authentication here is that one shared
     token, checked on every route but `GET /health` and the SPA; there is no per-user
     model. **A new route is authenticated by writing nothing** — `@public` is what
     exempts one, and `tests/test_api_auth.py` asserts the exempt set from the router,
@@ -119,8 +128,10 @@ covers what you are touching.
     `docs/PIPELINE.md` § Secrets.
   - **Anything that spends money** — `pythonsrc/sculptors/pixazo.py` is the only code
     that incurs a charge (EUR 0,32 per generation) and `generation_cost_eur` is where
-    it is booked. There is no payments or billing code in this repository yet; when
-    there is, list it here.
+    it is booked. `ALLOW_PROMPT_JOBS` is the switch that re-opens the path reaching it,
+    and `resolve_backend_name`'s `auto` fallthrough is why the path leads there at all;
+    both belong to this bullet wherever they are declared. There is no payments or
+    billing code in this repository yet; when there is, list it here.
   - **Migrations** — `supabase/migrations/` and `pythonsrc/telemetry/db.py`. The
     migration file is generated from the code, and `tests/test_supabase_migration.py`
     fails when they disagree; never hand-edit the SQL.
