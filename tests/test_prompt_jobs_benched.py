@@ -25,6 +25,8 @@ drifting:
   subprocess.
 """
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -87,6 +89,56 @@ def test_the_refusal_arrives_as_a_400_before_any_row_exists(store, printer_confi
     # reverses it. A refusal that says only "no" sends both of them to the source.
     assert "configurator" in detail
     assert "ALLOW_PROMPT_JOBS" in detail
+    # And the method the router actually serves, derived rather than remembered: this
+    # sentence has been wrong twice — once vague ("the settings UI", which does not
+    # list the key) and once specific and wrong ("PUT /config", which 405s). A string
+    # a reviewer has to recall is exactly what drifted.
+    assert f"{config_write_method()} /config" in detail
+
+
+def config_write_method() -> str:
+    """The HTTP method the `/config` write route is registered with.
+
+    Read off the router so the refusal text cannot drift from it. `PUT /config` is an
+    informal name used throughout this repository — CLAUDE.md, `server/auth.py`, the
+    token docs — but the route is `POST`, and a message that names a method has to
+    name the one the router serves or it sends an operator into a 405.
+    """
+    writes = {
+        method
+        for route in app.routes
+        if getattr(route, "path", None) == "/config"
+        for method in (getattr(route, "methods", None) or set())
+        if method not in {"GET", "HEAD", "OPTIONS"}
+    }
+    assert len(writes) == 1, f"expected one write method on /config, found {writes}"
+    return writes.pop()
+
+
+def test_the_key_is_not_a_toggle_on_the_settings_screen():
+    """The absence the docstring above calls deliberate, made into something that has
+    to be consciously deleted.
+
+    `PrinterSetup.tsx` hand-lists its dev toggles, and the two it carries —
+    `SKIP_VISUALIZER` and `SKIP_SCULPTOR` — skip work. This one re-opens a path that
+    constructs a sculptor and bills EUR 0,32 a generation under terms whose ownership
+    clause is unresolved. Prose saying "deliberately not in the UI" does not survive
+    the next person adding a toggle row; this does. Same pattern as
+    `tests/test_layout_ladder.py` and `tests/test_vendored_skills.py`, which read the
+    file rather than trusting a comment about it.
+    """
+    setup = (
+        Path(__file__).resolve().parents[1] / "web" / "src" / "pages" / "PrinterSetup.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "SKIP_SCULPTOR" in setup, (
+        "the toggle list moved; this test is reading the wrong file"
+    )
+    assert "ALLOW_PROMPT_JOBS" not in setup, (
+        "ALLOW_PROMPT_JOBS is now offered on the settings screen. That is a product "
+        "decision about a switch that spends money — if it was taken deliberately, "
+        "update the refusal text and this test together"
+    )
 
 
 def test_the_bench_is_checked_before_the_ip_screen(store, printer_configured):
@@ -154,7 +206,15 @@ def test_only_the_exact_string_true_reopens_it(store, value):
 
 
 def test_the_key_is_settable_and_is_not_a_secret():
-    """It has to be reachable from the settings UI, and it is not a credential."""
+    """It has to be settable without a deploy, and it is not a credential.
+
+    `CONFIG_KEYS` membership is what makes it reachable through `POST /config`. It is
+    **not** in `web/src/pages/PrinterSetup.tsx`'s hand-written toggle list, which
+    carries `SKIP_VISUALIZER` and `SKIP_SCULPTOR` only, and that absence is deliberate:
+    those two skip work, while this one re-opens a path that constructs a sculptor and
+    bills EUR 0,32 a generation under terms whose ownership clause is unresolved. A
+    switch that spends money does not belong one click away from two that do not.
+    """
     assert "ALLOW_PROMPT_JOBS" in CONFIG_KEYS
     assert CONFIG_KEYS["ALLOW_PROMPT_JOBS"]["secret"] is False
     assert CONFIG_KEYS["ALLOW_PROMPT_JOBS"]["required"] is False

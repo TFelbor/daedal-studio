@@ -2778,7 +2778,9 @@ async def create_job(request: JobRequest):
             detail=(
                 "Free-text jobs are not available. This build compiles an organizer "
                 "spec into geometry; describe the part with the configurator instead. "
-                "(An operator can re-enable the generative path with ALLOW_PROMPT_JOBS.)"
+                "(An operator can re-enable the generative path by setting "
+                "ALLOW_PROMPT_JOBS=true through POST /config; it is deliberately "
+                "not one of the toggles the settings screen lists.)"
             ),
         )
 
