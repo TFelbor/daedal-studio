@@ -23,6 +23,29 @@ thirty-nine already accepted. Starting from "compare against `docs/audits/`" tur
 same routine into "what changed since the last run", which is the only question with a
 short answer.
 
+## The external watch, which is not generated
+
+`YYYY-MM-DD-external-licence.md` is a second, **entirely hand-written** series, and it
+has no generated block at all. It covers what `licence-data.yml` and
+`licence_report.py` structurally cannot reach: vendor terms of service, upstream
+relicensing, and whether the previous run's blockers are still alive. Its filename is
+deliberately outside `_AUDIT_NAME_RE`
+([`infra/scripts/licence_report.py`](../../infra/scripts/licence_report.py)), so the
+generated writer never diffs against it and never writes into it.
+
+Findings carry an **E-number**, and *those numbers are permanent*: a later run keeps the
+number an item was first given and takes fresh numbers for genuinely new items. This is
+the one rule the series has and it has already been broken once — 2026-09-21 renumbered
+from scratch over 2026-09-19's set, so "E1" named two different findings in consecutive
+reports and a cross-reference in `docs/deferred-legal-tasks.md` resolved to the wrong
+one. That report carries the correction and the mapping at its head. **Before numbering
+anything, read the previous external watch's § 6.**
+
+`vendor-terms/<vendor>-<date>.md` holds the summarised text of a third party's terms as
+read on that date, with retrieval dates against each clause. One file per reading, never
+edited in place: the whole value is being able to say what a vendor's terms said on a
+day, which is also why a later reading gets a new file rather than an update.
+
 ## The shape of a file
 
 Each file has two halves and they belong to different authors.

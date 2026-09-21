@@ -298,51 +298,54 @@ usage-based API key falls under, the terms do not say". Re-reading the same term
 neither clause describes how we buy. The finding below supersedes the open question
 above rather than repeating it.
 
-**§ 5.3 of the Standard Terms of Use splits ownership by plan:**
+**The one new fact: this project is neither plan.** The split in § 5.3 is set out in
+the 09-19 block above and is not restated here. What 09-19 could not resolve, and what
+this run resolves, is which side of it a wallet-funded API caller falls on: Pixazo's
+Trellis 2 API page sells **pay-per-use credits against a wallet balance** — USD 0,35 per
+generation, a `402` on insufficient funds — and offers **no subscription** for API
+access. A wallet-funded caller therefore has no "active subscription period", so § 5.3.2
+cannot describe how we buy, and § 5.3.1 — output owned by Appy Pie LLP — is the clause
+written for everyone who is not a subscriber. Nothing in the document says whether
+topping up a wallet makes a "Paid User" for § 5.3 purposes.
 
-- **§ 5.3.1** — content generated on the **free plan is owned by Appy Pie LLP** (Pixazo's
-  parent, an SEZ unit at 165 NSEZ, Noida). The user gets a limited, revocable,
-  non-transferable licence with attribution.
-- **§ 5.3.2** — **paid subscribers** receive full ownership of content "created during
-  their active subscription period".
+**Why that is the revenue gate and not a technicality.** Task L4's three questions
+assume the generated mesh is ours to sell. If § 5.3.1 governs, the mesh the `pixazo`
+backend produces is owned by Appy Pie LLP and licensed back to us revocably, for
+"personal and limited commercial" use, with attribution. This product prints that mesh
+and hands over a physical object for money. That is the business, and it would be
+running on a revocable licence from a third party under a term neither side has ever
+discussed.
 
-**The problem is that this project is neither.** Pixazo's Trellis 2 API page sells
-**pay-per-use credits against a wallet balance** — USD 0,35 per generation, a `402` on
-insufficient funds — and offers **no subscription** for API access. A wallet-funded caller
-has no "active subscription period", so § 5.3.2 does not describe how we buy; § 5.3.1 is
-the clause written for everyone who is not a subscriber. Nothing in the document says
-whether topping up a wallet makes a "Paid User" for § 5.3 purposes.
+**Three clause numbers that differ from the 09-19 reading**, and are recorded because a
+letter to counsel has to cite the right subclause. The points are the same points made
+above; only the citations moved, and both readings are from the same document:
 
-**Why this is the revenue gate and not a technicality.** Task L4's three questions assume
-the generated mesh is ours to sell. If § 5.3.1 governs, the mesh produced by the `pixazo`
-backend is **owned by Appy Pie LLP** and licensed back to us revocably, for "personal and
-limited commercial" use, with attribution. This product prints that mesh and hands over a
-physical object for money. That is the business, and it would be running on a revocable
-licence from a third party, under a term neither side has ever discussed.
+- **§ 11.1** disclaims all warranties including non-infringement. The 09-19 block cites
+  **§ 11.2** for the same disclaimer, quoting "UNIQUE, ORIGINAL, OR NON-INFRINGING".
+- **§ 5.6** assigns third-party model licences to the customer and names Flux, DALL-E,
+  Stable Diffusion and Ideogram — **not** TRELLIS.2, and no background-removal or
+  conditioning component. 09-19 cites **§ 5.6.2** for the conflict rule beneath it.
+- **§ 15.1** — Indian law, New Delhi. 09-19 cites **§ 15.1.1** and **§ 15.2.1**.
 
-**The supporting facts counsel will want, all verified 2026-09-21:**
-
-- **§ 11.1** disclaims all warranties including **non-infringement** — the exact warranty
-  Task L4 above asks Pixazo to give.
-- **§ 13.1** has the **user indemnify Pixazo** for third-party IP claims. Nothing runs the
-  other way.
-- **§ 5.6** states third-party models are "governed by their own licences" and names Flux,
-  DALL-E, Stable Diffusion, Ideogram — **not TRELLIS.2**, and no background-removal or
-  conditioning component anywhere. So the matte-weight question above is not merely
-  unanswered by them, it is **expressly assigned to us**.
-- **§ 15.1** — Indian law, exclusive jurisdiction New Delhi. The pilot is in Trento.
-
-**What to ask for, in one letter, alongside the matte-weight question above:** written
+**What to ask for, in the same letter as the matte-weight question above:** written
 confirmation that a wallet-funded API caller owns generated output under § 5.3.2.
 
-**The cheap resolution exists and should be weighed first.** `create_sculptor()` already
-makes the backend swappable and `pixazo` is the last resort in `resolve_backend_name`.
-Keeping it development-only costs a config change and moots every item in this section.
-That is the same conclusion the matte-weight residual reached, now reached twice
-independently — which is itself the argument.
+**The cheap resolution, reached twice independently.** `create_sculptor()` makes the
+backend swappable and `pixazo` is the last resort in `resolve_backend_name`, so keeping
+it development-only costs a config change and moots this whole section. The 09-19
+residual reached the same conclusion from the matte weights; that two readings of
+different clauses arrive at one answer is itself the argument. #168 has since done it
+in code — `ALLOW_PROMPT_JOBS` is off by default.
 
 Archived terms and the full reading: `docs/audits/vendor-terms/pixazo-2026-09-21.md`.
-Tracked as **E1**, **E2** and **E9** in `docs/audits/2026-09-21-external-licence.md`.
+Tracked as **E5** (ownership), **E6** (warranty and indemnity direction) and **E11**
+(governing law) in `docs/audits/2026-09-21-external-licence.md`.
+
+> Those were **E1**, **E2** and **E9** when that report was merged. It had renumbered
+> from scratch over 2026-09-19's set, which is declared permanent, so "E1" named two
+> different findings in two consecutive reports — and the older one, `easydict`, is the
+> live LGPL-3.0 exposure a reader following this line would have landed on. The report
+> carries the correction and the full mapping at its head.
 
 ### Why the deny-list entries must stay
 
