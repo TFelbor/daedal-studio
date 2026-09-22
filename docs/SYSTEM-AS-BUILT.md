@@ -1775,6 +1775,20 @@ section, each of them otherwise a support conversation.
   `slice_duration_s`, `estimated_print_time_s`, `filament_used_mm`/`_mm3`/`_g`,
   `support_filament_mm3`, `layer_count`, `slice_stats`. Recorded on failure too — a dataset of
   only successful slices cannot predict which meshes fail. See `gcode_stats.py` below.
+  **Every filament figure moves across the `material_diameter` fix, and none of them is
+  comparable over it.** `filament_used_mm`, `filament_used_mm3`, `filament_used_g` and
+  `support_filament_mm3` all step by roughly (2,85/1,75)² for the same part, because the
+  E axis itself changed. The distinction worth keeping is narrower than comparability:
+  `filament_used_mm` was always an honest reading of the G-code it was handed, while the
+  volume and mass figures were additionally wrong *about the part* — they described the
+  under-extruded print a 1,75 mm machine would have made, at about 38 % of the plastic
+  the part needs. **Do not correct a historical row by multiplying by 2,6522.** That is
+  the ratio on the extruded moves; the recorded total also carries retraction primes,
+  which are a fixed E length (`retraction_amount`) that does not scale with diameter, so
+  the true factor is a little under it and depends on the profile and the geometry. A row
+  can only be corrected exactly by re-reading its G-code. A row whose `process_params`
+  carries `material_diameter` was written after the fix; one with no `process_params` —
+  an unresolved profile — cannot be told apart at all. See **Slicer — Phase 4** for why.
 - **Target process and material**: `material_type`, `material_brand`, `material_colour`,
   `nozzle_diameter_mm`, `process_params`. `process_params` is a snapshot of the resolved printer
   profile frozen at job creation, and `GET /jobs/{id}` reads `layer_height_mm` from it. Reading
@@ -2385,7 +2399,7 @@ until then this is settled.
 
 ### Slicer — Phase 4 (pythonsrc/slicer.py)
 
-Subprocess wrapper around the CuraEngine CLI (AGPL — see Licensing). Four things about
+Subprocess wrapper around the CuraEngine CLI (AGPL — see Licensing). Five things about
 the command line it builds are load-bearing, and each of them was once wrong:
 
 - **A printer profile is translated into `-s` overrides.** `pythonsrc/profiles/*.json`
@@ -2417,6 +2431,54 @@ the command line it builds are load-bearing, and each of them was once wrong:
 - Booleans are rendered `true`/`false` (`format_setting_value`): `str(True)` is
   `"True"`, which CuraEngine parses as neither, so `retraction_enable` would have
   arrived disabled.
+- **`material_diameter` is resolved from the extruder train, so a global `-s` never
+  reaches it.** CuraEngine keeps a per-extruder settings container inheriting from
+  `fdmextruder.def.json`, and a key declared there is read from *that* container; a
+  global `-s` writes the one nothing consults. It is the silence above one level deeper
+  — the argument is a known setting, it is accepted, and it does nothing. Both bundled
+  definitions default the diameter to 2,85 mm, `ender3_base.def.json` does not override
+  it, and no printer profile named it, so every slice this pipeline has produced
+  computed the E axis for 2,85 mm filament while all four profiles describe 1,75 mm
+  machines: a printer executing that G-code deposits (1,75/2,85)² ≈ 38 % of the intended
+  volume. Measured on CuraEngine 4.13 in the pipeline image, 40 x 30 x 20 mm cube,
+  largest E value — 1567,83 with no override, 1567,83 with `-s material_diameter=1.75`
+  (identical; it never arrived), 4158,26 with `-e0 -s material_diameter=1.75`, a ratio
+  of 2,6522, which is (2,85/1,75)² to four decimals. Nothing in the loop could show it:
+  the OctoPrint simulator extrudes no plastic, and the Bambu route hands over a 3MF that
+  Bambu Studio re-slices against its own material profile. The OctoPrint/Klipper
+  dispatch path would have shown it the first time real hardware ran our G-code.
+  **A machine-definition override is a dead end.** Patching
+  `"material_diameter": {"default_value": 1.75}` into `ender3_base.def.json`'s
+  `overrides` is the obvious fix and it is not one — the E axis stayed at 1567,83.
+  `creality_base.def.json` already carries exactly that override and it is inert for the
+  same reason, so that is not the file to correct either. Only `-e0 -s` reaches the
+  container, and **that block is emitted last, after every global `-s` and after
+  `extra_args`, because `-e0` is sticky**: every `-s` following it lands in extruder
+  scope and stops applying globally. Measured: `-s layer_height=0.4` behind an `-e0`
+  produced 100 layers — the 0,2 mm default, the override lost — where the same argument
+  in global scope produces 50. That is the trap in this fix: emit `-e0` any earlier and
+  it silently disables the profile translation the bullets above are about, which is a
+  larger bug than the one being fixed.
+  **The block has a floor, and it needs one.** Seeding it from the profile alone would
+  have left the bug live on the path most likely to take it: `_profile_settings` returns
+  nothing for `profile=None` *and* for a `.def.json`, `--profile` defaults to None, and
+  `DEFAULT_PROFILE` is a `required: False` config key with no default — so a fresh
+  install with nothing configured would have gone on slicing at 2,85 mm while the fix sat
+  in the file. `material_diameter` is therefore stated on every slice, defaulting to
+  `gcode_stats.DEFAULT_FILAMENT_DIAMETER_MM`. It is that constant and not a literal
+  because `pipeline._filament_diameter` books the telemetry row at the same one: the
+  failure here was never a wrong number, it was the diameter the G-code was built for and
+  the diameter the row was converted at disagreeing in silence. Measured on both paths:
+  1567,83 before the floor, 4158,26 after.
+  The telemetry consequence outlives the code. `pipeline._filament_diameter` falls back
+  to 1,75 mm when a profile is silent, which every profile was, so every historical
+  `filament_used_g` converted an E axis built for 2,85 mm filament at 1,75 mm. Those rows
+  describe the under-extruded print a 1,75 mm machine would actually have made, not the
+  part that was modelled — see **Telemetry** above for why they cannot be corrected by a
+  single multiplication. The number is also user-visible, not merely analytic:
+  `DispatchGate` renders `filament_used_g` on the screen a person reads before committing
+  a print, and `NewJob` and `JobDetail` render it too, so the same part now reads about
+  2,6 times heavier than it did before this change.
 
 ### Printer readiness (`printer_status`)
 

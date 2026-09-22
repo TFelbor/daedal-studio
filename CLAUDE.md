@@ -202,7 +202,7 @@ each entry below names the file it is about.
     `generation_params.fit_profile` records that decision (b) does not get for free.
   - **Orientation and adhesion (Phase 3 → Phase 4)** — why nothing is rotated, and why
     the brim knob is `brim_line_count`.
-  - **Slicer — Phase 4 (`pythonsrc/slicer.py`)** — the four load-bearing facts about the
+  - **Slicer — Phase 4 (`pythonsrc/slicer.py`)** — the five load-bearing facts about the
     CuraEngine command line, each of which was once wrong.
   - **Printer readiness (`printer_status`)** — `configured` versus `running`, and what
     `localhost` means on each side of the container boundary.

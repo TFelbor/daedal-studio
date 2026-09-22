@@ -32,6 +32,18 @@ try:
 except ImportError:  # pragma: no cover - depends on how the caller set sys.path
     from pythonsrc import fit_offsets  # type: ignore[no-redef]
 
+#: The diameter every slice states when nothing else does. Imported rather than spelled
+#: as a literal because `pipeline._filament_diameter` converts the resulting E axis into
+#: `filament_used_g` at this same constant: the bug this module now guards against was
+#: the slice and the telemetry row disagreeing about the filament in silence, and two
+#: copies of the number are how that comes back.
+try:
+    from gcode_stats import DEFAULT_FILAMENT_DIAMETER_MM
+except ImportError:  # pragma: no cover - depends on how the caller set sys.path
+    from pythonsrc.gcode_stats import (  # type: ignore[no-redef]
+        DEFAULT_FILAMENT_DIAMETER_MM,
+    )
+
 logger = logging.getLogger("ds.slicer")
 
 #: Profile keys that say how to *reach* a printer, not how to slice for it. Skipped
@@ -68,6 +80,56 @@ FIT_PROFILE_KEYS = frozenset(fit_offsets.PROFILE_KEYS) | {fit_offsets.CLASS_KEY}
 
 
 @lru_cache(maxsize=4)
+def extruder_scoped_settings(definitions_dir: Path) -> frozenset[str]:
+    """Setting names CuraEngine resolves from the extruder train, not the global stack.
+
+    A profile key in this set is one a plain ``-s`` **cannot reach**. CuraEngine keeps a
+    per-extruder settings container that inherits from ``fdmextruder.def.json``, and a
+    value declared there is read from that container; a global ``-s`` writes the global
+    one, where nothing looks. The engine accepts the argument and ignores it, exactly
+    like the unknown-key failure mode ``known_cura_settings`` exists for — the same
+    silence, one level deeper.
+
+    ``material_diameter`` is what that cost. Both bundled definitions default it to
+    2,85 mm, ``ender3_base.def.json`` does not override it, and no printer profile named
+    it, so every Phase 4 slice computed the E axis for 2,85 mm filament while all four
+    profiles describe 1,75 mm machines. A printer executing that G-code deposits
+    (1,75/2,85)² ≈ 38 % of the intended volume. Measured on CuraEngine 4.13 inside
+    ``ds-mvp-pipeline:latest``, slicing a 40 x 30 x 20 mm cube and reading the largest E
+    value: 1567,82651 with no override, 1567,82651 with ``-s material_diameter=1.75``
+    (global — unchanged, it never arrived), 4158,25986 with ``-e0 -s
+    material_diameter=1.75``. The ratio 4158,25986 / 1567,82651 = 2,6522 is (2,85/1,75)²
+    to four decimals.
+
+    A machine-definition override is *not* the fix: adding ``material_diameter`` to
+    ``ender3_base.def.json``'s ``overrides`` left the E axis at 1567,82651.
+    ``creality_base.def.json`` already carries such an override and it is
+    inert for the same reason. Only ``-e0 -s`` reaches the container.
+
+    Derived from the definition rather than listed here for the reason
+    ``known_cura_settings`` gives: the engine is the authority on its own vocabulary, and
+    a hard-coded list is a second copy that diverges. Today the set also holds
+    ``machine_nozzle_size``, which every profile declares — changing it produced
+    byte-identical extrusion in both scopes on this engine, so it is not an observable
+    bug, but it is the same hazard and it now goes to the same place.
+
+    Args:
+        definitions_dir: Directory holding ``fdmextruder.def.json``.
+
+    The three category nodes the file groups those settings under — ``machine_settings``,
+    ``material`` and ``platform_adhesion`` — are excluded: this set decides the scope a
+    key is emitted in, and a category is not a key anyone can set. Eighteen settings
+    remain.
+
+    Returns:
+        The set of extruder-scoped setting keys; empty if the definition cannot be read.
+    """
+    return _definition_setting_names(
+        definitions_dir / "fdmextruder.def.json", settings_only=True
+    )
+
+
+@lru_cache(maxsize=4)
 def known_cura_settings(definitions_dir: Path) -> frozenset[str]:
     """Every setting name CuraEngine accepts, read out of the bundled definitions.
 
@@ -89,22 +151,45 @@ def known_cura_settings(definitions_dir: Path) -> frozenset[str]:
         The set of valid setting keys; empty if the definitions cannot be read.
     """
     keys: set[str] = set()
+    for name in ("fdmprinter.def.json", "fdmextruder.def.json"):
+        keys |= _definition_setting_names(definitions_dir / name)
+    return frozenset(keys)
+
+
+def _definition_setting_names(path: Path, *, settings_only: bool = False) -> frozenset[str]:
+    """Every setting name declared in one CuraEngine definition file.
+
+    Args:
+        path: A ``.def.json`` holding a ``settings`` tree.
+        settings_only: Drop the category nodes — ``machine_settings``, ``material`` and
+            ``platform_adhesion`` in ``fdmextruder.def.json`` — which CuraEngine marks
+            ``"type": "category"``. The default is False because
+            ``known_cura_settings`` has always counted categories and it is only
+            checking spelling, where a false accept costs a warning nobody needed.
+            ``extruder_scoped_settings`` asks for True: that set decides which scope a
+            key is *emitted* in, and a category is not something to make that decision
+            about.
+
+    Returns:
+        The names in it; empty if it cannot be read.
+    """
+    keys: set[str] = set()
 
     def walk(node: dict) -> None:
         for key, value in node.items():
-            keys.add(key)
+            declares = isinstance(value, dict) and value.get("type") != "category"
+            if declares or not settings_only:
+                keys.add(key)
             if isinstance(value, dict) and isinstance(value.get("children"), dict):
                 walk(value["children"])
 
-    for name in ("fdmprinter.def.json", "fdmextruder.def.json"):
-        path = definitions_dir / name
-        if not path.exists():
-            continue
-        try:
-            with open(path) as handle:
-                walk(json.load(handle).get("settings", {}))
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Could not read setting names from %s: %s", path, exc)
+    if not path.exists():
+        return frozenset()
+    try:
+        with open(path) as handle:
+            walk(json.load(handle).get("settings", {}))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Could not read setting names from %s: %s", path, exc)
     return frozenset(keys)
 
 
@@ -267,6 +352,90 @@ class CuraSlicer:
             args += ["-s", f"{key}={value}"]
         return args
 
+    @staticmethod
+    def _named_in_extra_args(extra_args: list[str] | None) -> dict[str, str]:
+        """The ``key=value`` pairs a caller's raw arguments name, the last one winning.
+
+        Read wherever they appear, including after an ``-e0`` of the caller's own: what
+        matters here is only which keys the caller has spoken for and with what value.
+
+        Args:
+            extra_args: Raw CuraEngine arguments, or None.
+
+        Returns:
+            Setting name to the value the caller gave it.
+        """
+        named: dict[str, str] = {}
+        for index, arg in enumerate(extra_args or []):
+            if arg != "-s" or index + 1 >= len(extra_args):
+                continue
+            key, separator, value = extra_args[index + 1].partition("=")
+            if separator:
+                named[key] = value
+        return named
+
+    def _extruder_setting_args(self, extra_args: list[str] | None = None) -> list[str]:
+        """Return the trailing ``-e0 -s …`` block, or nothing if there is none to emit.
+
+        Every extruder-scoped key is emitted **again** here, having already gone out
+        globally: the global copy is what `process_params` and any future reader of the
+        global stack have always seen, and setting a key in both scopes was measured to
+        behave identically to setting it in the extruder scope alone, so repeating is
+        additive and dropping the global copy would be a regression for no gain.
+
+        An ``extra_args`` value wins, as the ``slice`` docstring promises — but it is
+        *promoted* into this block rather than merely suppressing ours, because
+        ``extra_args`` are emitted before our ``-e0`` and therefore land in global scope,
+        where an extruder-scoped key does not arrive either. Suppressing ours would
+        honour the promise by making both sides lose; promoting theirs is the only
+        reading under which ``-s material_diameter=3.0`` from a caller actually slices
+        for 3,0 mm filament — and it does. Same cube, `ender3.json`, through this
+        wrapper: 1567,63713 before this block existed, 4157,75759 with it, and
+        1414,79251 when the caller passes ``-s material_diameter=3.0``, which is
+        4157,75759 x (1,75/3,0)².
+
+        The block is never empty. ``material_diameter`` is stated on every slice,
+        defaulting to ``gcode_stats.DEFAULT_FILAMENT_DIAMETER_MM`` — see the comment in
+        the body for why seeding from the profile alone left the original bug reachable.
+
+        Args:
+            extra_args: The caller's raw arguments, inspected for keys they claim.
+
+        Returns:
+            ``["-e0", "-s", "key=value", …]``; always at least the filament diameter.
+        """
+        scoped = extruder_scoped_settings(self.DEFINITIONS_DIR)
+
+        # The floor, and the reason this method never returns empty. Seeding only from
+        # the profile would have left the bug live exactly where it is most likely to
+        # bite: `profile_settings` is `{}` both for `profile=None` and for a
+        # `.def.json`, `--profile` defaults to None, and `DEFAULT_PROFILE` is a
+        # `required: False` config key with no default — so a fresh install with nothing
+        # configured slices through the path that emits no block at all. A definition
+        # cannot cover for it either; `material_diameter` in a machine's `overrides` was
+        # measured not to reach the container. So the diameter is always stated, and it
+        # is bound to the constant `pipeline._filament_diameter` books the telemetry row
+        # at, because the failure this fixes was those two numbers disagreeing in
+        # silence.
+        emitted: dict[str, str] = {
+            "material_diameter": format_setting_value(DEFAULT_FILAMENT_DIAMETER_MM)
+        }
+        emitted.update({k: v for k, v in self.profile_settings.items() if k in scoped})
+        for key, value in self._named_in_extra_args(extra_args).items():
+            if key in scoped or key == "material_diameter":
+                emitted[key] = value
+
+        # `-e0` and not `-e{n}`: single-extruder by construction. Every bundled machine
+        # is one train and `ender3_base.def.json` defines one, so this is a choice rather
+        # than syntax — a profile declaring `machine_extruder_count: 2` would need a
+        # block per train, and extruder 1 would otherwise inherit the 2,85 mm default
+        # this method exists to displace.
+        args: list[str] = ["-e0"]
+        for key, value in emitted.items():
+            args += ["-s", f"{key}={value}"]
+        logger.debug("Extruder-scoped settings: %s", emitted)
+        return args
+
     def _check_cura_available(self) -> None:
         if shutil.which(self.cura_engine) is None and not Path(self.cura_engine).exists():
             raise SlicerError(
@@ -316,7 +485,9 @@ class CuraSlicer:
             Desired path for the output ``.gcode`` file.
         extra_args:
             Raw CLI arguments forwarded to CuraEngine, after the profile's own
-            settings so that they win on any key both name.
+            settings so that they win on any key both name. A key they name that is
+            extruder-scoped is carried into the trailing ``-e0`` block below, which
+            is the only place it can win from.
 
         Returns
         -------
@@ -333,6 +504,24 @@ class CuraSlicer:
         placed after ``-l`` left all 906 adhesion moves in the G-code, and the same
         argument before ``-l`` removed every one of them. The adhesion override
         Phase 4 has been passing since it was written sat in that dead position.
+
+        **An extruder-scoped setting is emitted a second time, and that block goes
+        last.** Global scope is not the only scope a ``-s`` can miss: the keys declared
+        in ``fdmextruder.def.json`` are resolved from the per-extruder container, which
+        only ``-e0 -s`` writes — see ``extruder_scoped_settings`` for what that cost on
+        ``material_diameter`` and the numbers behind it.
+
+        The position is forced, not stylistic. ``-e0`` is **sticky**: every ``-s`` after
+        it lands in extruder scope and stops applying globally. Measured on CuraEngine
+        4.13, same cube, same definitions: ``-e0 -s material_diameter=1.75 -s
+        layer_height=0.4`` produced 100 layers — the 0,2 mm default, the override lost —
+        where a global ``-s layer_height=0.4`` produces 50; ``-e0 -s
+        material_diameter=1.75 -s adhesion_type=none`` left the skirt in place, and the
+        same two arguments with the ``-e0`` moved after ``adhesion_type`` removed it. So
+        the block is built after every global ``-s`` **and** after ``extra_args``, with
+        one ``-e0`` in front of it. Emit ``-e0`` any earlier and it silently disables the
+        profile translation standing beside it, which is a larger bug than the one this
+        fixes.
         """
         input_path = Path(input_path).resolve()
         output_path = Path(output_path).resolve()
@@ -354,6 +543,7 @@ class CuraSlicer:
         cmd += self._profile_setting_args()
         if extra_args:
             cmd.extend(extra_args)
+        cmd += self._extruder_setting_args(extra_args)
         cmd += ["-o", str(output_path), "-l", str(input_path)]
 
         logger.info("Slicing '%s' → '%s'…", input_path.name, output_path.name)

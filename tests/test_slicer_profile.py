@@ -17,6 +17,17 @@ after it silently applies to nothing that slicing reads. Measured:
 `-s adhesion_type=none` after `-l` left all 906 adhesion moves in place; before
 `-l` it removed every one.
 
+Global scope is not the only scope a `-s` can miss, and the second one cost more
+than the first. The settings declared in `fdmextruder.def.json` are resolved from
+the per-extruder container, which only `-e0 -s` writes; `material_diameter` is
+one of them, both bundled definitions default it to 2,85 mm, and no profile named
+it — so every Phase 4 slice computed the E axis for 2,85 mm filament while all
+four bundled profiles describe 1,75 mm machines, and a printer executing that
+G-code would deposit (1,75/2,85)² ≈ 38 % of the intended volume (#186). Measured
+on CuraEngine 4.13 in the pipeline image, a 40 x 30 x 20 mm cube, largest E
+value: 1567,82651 untouched, 1567,82651 with a global `-s material_diameter=1.75`
+— unchanged, it never arrived — and 4158,25986 with `-e0 -s`.
+
 No CuraEngine binary is needed here — `subprocess.run` is stubbed, so what is
 asserted is the command line the engine would receive.
 """
@@ -28,7 +39,12 @@ from pathlib import Path
 
 import pytest
 
-from pythonsrc.slicer import CuraSlicer, SlicerError, format_setting_value
+from pythonsrc.slicer import (
+    CuraSlicer,
+    SlicerError,
+    extruder_scoped_settings,
+    format_setting_value,
+)
 
 PROFILES = Path(__file__).resolve().parents[1] / "pythonsrc" / "profiles"
 
@@ -69,6 +85,36 @@ def _settings(cmd: list[str]) -> list[tuple[str, str]]:
         for i, arg in enumerate(cmd)
         if arg == "-s"
     ]
+
+
+def _settings_in_scope(cmd: list[str]) -> dict[str, list[tuple[str, str]]]:
+    """Every `-s key=value` again, split by the scope CuraEngine files it under.
+
+    `_settings` is scope-blind and stays that way: every assertion written before
+    `material_diameter` reads it, and they are about which settings are sent at all, not
+    about where they land. This is a second reading of the same argv rather than a change
+    to the first.
+
+    The split is `-e0`, which selects the extruder container and is *sticky* — from there
+    to the end of the command line a `-s` writes that container and stops writing the
+    global one. Matched as `-e<n>` rather than the literal `-e0`, so a second extruder
+    would be read here rather than silently counted as global.
+
+    Args:
+        cmd: The argv `CuraSlicer.slice` handed to `subprocess.run`.
+
+    Returns:
+        `{"global": [...], "extruder": [...]}`, each a list of `(key, value)` in order.
+    """
+    by_scope: dict[str, list[tuple[str, str]]] = {"global": [], "extruder": []}
+    scope = "global"
+    for index, arg in enumerate(cmd):
+        if arg.startswith("-e") and arg[2:].isdigit():
+            scope = "extruder"
+        elif arg == "-s" and index + 1 < len(cmd):
+            key, _, value = cmd[index + 1].partition("=")
+            by_scope[scope].append((key, value))
+    return by_scope
 
 
 # ── Translation ───────────────────────────────────────────────────────────────
@@ -128,11 +174,17 @@ def test_a_def_json_is_still_passed_as_a_definition(stub_engine, mesh, tmp_path)
 
 
 def test_a_null_value_is_omitted_rather_than_sent(stub_engine, mesh, tmp_path):
-    """`api_key: null` is the common case, but any key may be nulled out."""
+    """`api_key: null` is the common case, but any key may be nulled out.
+
+    Asserted against global scope, which is where a profile's translation lands. The
+    trailing extruder block always states `material_diameter` whatever the profile says
+    (#186), and that floor is not what this test is about — reading the whole argv here
+    would make it fail for the one reason it does not care about.
+    """
     profile = tmp_path / "nulled.json"
     profile.write_text(json.dumps({"layer_height": None, "wall_line_count": 3}))
     _, cmd = _slice(profile, stub_engine, mesh, tmp_path)
-    assert dict(_settings(cmd)) == {"wall_line_count": "3"}
+    assert dict(_settings_in_scope(cmd)["global"]) == {"wall_line_count": "3"}
 
 
 def test_a_profile_that_is_not_json_fails_loudly(stub_engine, mesh, tmp_path):
@@ -163,13 +215,22 @@ def test_profile_booleans_survive_translation(stub_engine, mesh, tmp_path):
 
 
 def test_every_setting_precedes_the_model(stub_engine, mesh, tmp_path):
-    """A `-s` after `-l` applies to the mesh, where slicing does not read it."""
+    """A `-s` after `-l` applies to the mesh, where slicing does not read it.
+
+    The trailing `-e0` block added for #186 is the newest thing standing between the
+    settings and the model, and it is the thing most likely to be appended *past* `-l`
+    by someone who reads the command as "arguments, then files". An extruder-scoped `-s`
+    placed after `-l` did still take effect on CuraEngine 4.13, unlike a bare one — but
+    that is an accident of one engine version, not a rule this repository relies on, so
+    the block is held to the same position as everything else.
+    """
     _, cmd = _slice(
         PROFILES / "ender3.json", stub_engine, mesh, tmp_path,
         extra_args=["-s", "adhesion_type=brim"],
     )
     last_setting = max(i for i, arg in enumerate(cmd) if arg == "-s")
     assert last_setting < cmd.index("-l")
+    assert cmd.index("-e0") < cmd.index("-o") < cmd.index("-l")
 
 
 def test_extra_args_override_the_profile(stub_engine, mesh, tmp_path):
@@ -186,6 +247,220 @@ def test_extra_args_override_the_profile(stub_engine, mesh, tmp_path):
     assert len(adhesion) == 2
     assert _settings(cmd)[adhesion[0]][1] == "skirt"
     assert _settings(cmd)[adhesion[-1]][1] == "brim"
+
+
+# ── Extruder scope ────────────────────────────────────────────────────────────
+
+
+def test_the_filament_diameter_reaches_the_extruder_container(stub_engine, mesh, tmp_path):
+    """Under-extrusion to 38 % of the intended volume, and nothing said so (#186).
+
+    `material_diameter` is declared in `fdmextruder.def.json`, so it is resolved from the
+    per-extruder container and a global `-s` writes a copy nothing reads. The engine
+    accepts that argument in silence — the same failure mode as an unknown setting name,
+    one level deeper, and invisible to the OctoPrint simulator the runbook uses. It
+    surfaces the first time real hardware executes our G-code.
+
+    The value has to arrive *after* an `-e0`, so this asserts the scope and not merely
+    the presence: `_settings` would have been green throughout the bug.
+    """
+    slicer, cmd = _slice(PROFILES / "ender3.json", stub_engine, mesh, tmp_path)
+    scoped = _settings_in_scope(cmd)
+
+    assert "-e0" in cmd, "no extruder block — material_diameter cannot reach the container"
+    assert dict(scoped["extruder"])["material_diameter"] == "1.75"
+    assert slicer.profile_settings["material_diameter"] == "1.75"
+
+
+def test_every_global_setting_precedes_the_extruder_block(stub_engine, mesh, tmp_path):
+    """`-e0` is sticky: everything left behind it stops being a global setting.
+
+    This is the ordering invariant the whole fix turns on, and the failure it guards is
+    tidiness — a future reader grouping `-e0` with the other machine arguments near the
+    front, where it reads as harmless. It is not. Measured on CuraEngine 4.13, same cube,
+    same definitions: `-e0 -s material_diameter=1.75 -s layer_height=0.4` produced 100
+    layers, the 0,2 mm default, the override lost, where a global `-s layer_height=0.4`
+    produces 50; and `-e0 -s material_diameter=1.75 -s adhesion_type=none` left the skirt
+    in place, where moving the `-e0` after `adhesion_type` removed it. An `-e0` emitted
+    early silently disables the profile translation standing beside it — a larger bug
+    than the under-extrusion it was added to fix.
+
+    Asserted as an exact list rather than an ordering predicate: that pins both that
+    nothing was moved into the extruder block at global scope's expense, and that
+    `extra_args` still land globally, in profile-then-caller order.
+    """
+    slicer, cmd = _slice(
+        PROFILES / "ender3.json", stub_engine, mesh, tmp_path,
+        extra_args=["-s", "adhesion_type=brim"],
+    )
+
+    assert cmd.count("-e0") == 1, "a second -e0 would strand the settings behind the first"
+    assert _settings_in_scope(cmd)["global"] == [
+        *slicer.profile_settings.items(),
+        ("adhesion_type", "brim"),
+    ]
+
+
+def test_an_extruder_scoped_extra_arg_is_promoted_into_the_block(stub_engine, mesh, tmp_path):
+    """A caller's `-s` is emitted before our `-e0`, so on an extruder-scoped key it lands
+    in the scope that does not decide anything — and suppressing the profile's copy in
+    deference to it would make both sides lose.
+
+    So the block is seeded from the profile and then overwritten by any key the caller
+    named: the caller wins where winning is possible. Verified against the real engine,
+    same cube, `ender3.json` through this wrapper: largest E 4157,75759 normally,
+    1414,79251 with `-s material_diameter=3.0`, which is 4157,75759 x (1,75/3,0)².
+
+    The caller's global copy stays where they put it. It is inert for this key, but
+    removing it would mean rewriting an argument list the caller handed us.
+    """
+    _, cmd = _slice(
+        PROFILES / "ender3.json", stub_engine, mesh, tmp_path,
+        extra_args=["-s", "material_diameter=3.0"],
+    )
+    scoped = _settings_in_scope(cmd)
+
+    assert dict(scoped["extruder"])["material_diameter"] == "3.0"
+    assert [v for k, v in scoped["global"] if k == "material_diameter"] == ["1.75", "3.0"]
+
+
+def test_a_globally_scoped_extra_arg_stays_out_of_the_extruder_block(stub_engine, mesh, tmp_path):
+    """Promotion is restricted to the keys `fdmextruder.def.json` declares, and that
+    restriction is load-bearing in the other direction.
+
+    `adhesion_type` is a global setting. Carrying it into the extruder container as well
+    would put the printability gate's brim decision in a place the adhesion code does not
+    read from — this bug inverted, and it would be just as quiet.
+    """
+    _, cmd = _slice(
+        PROFILES / "ender3.json", stub_engine, mesh, tmp_path,
+        extra_args=["-s", "adhesion_type=brim"],
+    )
+    scoped = _settings_in_scope(cmd)
+
+    assert "adhesion_type" not in dict(scoped["extruder"])
+    assert [v for k, v in scoped["global"] if k == "adhesion_type"] == ["skirt", "brim"]
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        pytest.param(None, id="no profile at all"),
+        pytest.param(
+            PROFILES / "definitions" / "ender3_base.def.json", id="a .def.json profile"
+        ),
+        pytest.param("a profile naming nothing scoped", id="a profile with no scoped key"),
+    ],
+)
+def test_the_diameter_is_stated_even_when_no_profile_states_it(
+    profile, stub_engine, mesh, tmp_path
+):
+    """The block has a floor, and without one this fix would have missed its own bug.
+
+    `_profile_settings` returns `{}` for `profile=None` and for a `.def.json` — the first
+    is what `--profile` defaults to, and `DEFAULT_PROFILE` is a `required: False` config
+    key with no default, so a fresh install with nothing configured takes that path.
+    Seeding the extruder block only from the profile therefore left the 38 % under-
+    extrusion live exactly where it is likeliest: the run with nothing configured. A
+    definition cannot cover for it either — `material_diameter` in a machine's
+    `overrides` was measured not to reach the container.
+
+    Confirmed against the real engine on both paths: 1567,82651 before the floor existed,
+    4158,25986 after.
+    """
+    if isinstance(profile, str):
+        path = tmp_path / "no_scope.json"
+        path.write_text(json.dumps({"layer_height": 0.3}))
+        profile = path
+
+    _, cmd = _slice(profile, stub_engine, mesh, tmp_path)
+    assert dict(_settings_in_scope(cmd)["extruder"])["material_diameter"] == "1.75"
+
+
+def test_the_stated_default_is_the_one_telemetry_books_the_row_at():
+    """One constant, not two. `pipeline._filament_diameter` converts the E axis into
+    `filament_used_g` at `gcode_stats.DEFAULT_FILAMENT_DIAMETER_MM` when a profile is
+    silent; the slicer now states that same constant to the engine. The failure being
+    guarded is not a wrong number, it is two numbers — the diameter the G-code was built
+    for and the diameter the telemetry row was converted at — drifting apart in silence,
+    which is what #186 was.
+    """
+    from pythonsrc.gcode_stats import DEFAULT_FILAMENT_DIAMETER_MM
+    from pythonsrc.slicer import DEFAULT_FILAMENT_DIAMETER_MM as slicer_default
+
+    assert slicer_default is DEFAULT_FILAMENT_DIAMETER_MM
+    assert DEFAULT_FILAMENT_DIAMETER_MM == 1.75
+
+
+def test_a_caller_who_brings_their_own_extruder_flag_is_not_rescued(
+    stub_engine, mesh, tmp_path
+):
+    """Pinning a latent hazard rather than claiming it is handled.
+
+    `extra_args` are emitted verbatim and before our `-e0`, so a caller who passes their
+    own `-e0` scopes everything they place after it — `layer_height` here — to the
+    extruder container, where slicing does not read it. That is the sticky-`-e0` failure
+    this whole change is built around, arriving from the one direction the slicer does
+    not control. No caller does it today: `pipeline._adhesion_args` emits only
+    `adhesion_type` and `brim_line_count`, both global.
+
+    Our own block still lands after theirs and still states the diameter, so the fix
+    survives a caller doing this. What does not survive is their own global setting, and
+    this test exists so that a future caller introducing that cannot do it against a
+    green suite.
+    """
+    _, cmd = _slice(
+        PROFILES / "ender3.json", stub_engine, mesh, tmp_path,
+        extra_args=["-e0", "-s", "layer_height=0.4"],
+    )
+    scoped = _settings_in_scope(cmd)
+
+    assert dict(scoped["extruder"])["material_diameter"] == "1.75"
+    assert ("layer_height", "0.4") in scoped["extruder"], (
+        "the caller's own -e0 scoped their layer_height to the extruder; if this ever "
+        "reads global, the promotion logic changed and the docstring above is stale"
+    )
+    assert dict(scoped["global"])["layer_height"] == "0.2", (
+        "the profile's global layer_height must still be the one slicing reads"
+    )
+
+
+def test_every_extruder_scoped_profile_key_reaches_extruder_scope(stub_engine, mesh, tmp_path):
+    """The guard that makes this fix about the class of bug rather than one setting.
+
+    `material_diameter` was the one that cost something; it was not the only key exposed.
+    `fdmextruder.def.json` declares eighteen settings under three category nodes, and two
+    of them appear in every bundled profile. The second is `machine_nozzle_size`, which is *not* an observable bug
+    — changing it between 0,4 and 0,8 mm produced byte-identical extrusion in both scopes
+    on CuraEngine 4.13 — but it is the same hazard, resolved from the same container, and
+    a future engine version or a future profile key has no reason to stay benign.
+
+    So the assertion is over the whole cross-product of bundled profiles and
+    extruder-scoped names, not over a list of keys someone has to remember to extend.
+    """
+    profiles = sorted(PROFILES.glob("*.json"))
+    assert profiles, "no bundled profiles — this test would pass vacuously"
+
+    scoped_names = extruder_scoped_settings(CuraSlicer.DEFINITIONS_DIR)
+    assert "material_diameter" in scoped_names, (
+        "the scoped set is derived from fdmextruder.def.json and came back without the "
+        "key this fix is about — the cross-product below would be vacuous"
+    )
+
+    unreached: list[str] = []
+    for profile in profiles:
+        slicer, cmd = _slice(profile, stub_engine, mesh, tmp_path)
+        emitted = dict(_settings_in_scope(cmd)["extruder"])
+        unreached += [
+            f"{profile.name}:{key}={value} (extruder scope got {emitted.get(key)!r})"
+            for key, value in slicer.profile_settings.items()
+            if key in scoped_names and emitted.get(key) != value
+        ]
+
+    assert unreached == [], (
+        "profile settings CuraEngine resolves from the extruder train that never reach "
+        "it: " + "; ".join(unreached)
+    )
 
 
 # ── The bundled definition ────────────────────────────────────────────────────
@@ -257,6 +532,37 @@ def test_the_fit_keys_are_dropped_silently_and_never_reach_the_engine(caplog):
         assert key in json.loads(profile.read_text()), f"{key} is not in the profile"
         assert key not in settings, f"{key} reached CuraEngine as a setting"
         assert key not in caplog.text, f"{key} warned rather than being dropped in silence"
+
+
+def test_every_bundled_profile_declares_the_filament_diameter():
+    """A profile that omits `material_diameter` inherits 2,85 mm and says nothing.
+
+    Both `fdmprinter.def.json` and `fdmextruder.def.json` default it to 2,85 mm, and
+    `ender3_base.def.json` — the definition `_resolve_definitions` pairs with every
+    printer-profile JSON — does not override it. A machine-definition override would not
+    help even if it were added: it was measured to leave the E axis unchanged, and
+    `creality_base.def.json` already carries one at line 147 that is inert for that
+    reason. The profile is therefore the only place the number can be stated.
+
+    Every machine this project supports is a 1,75 mm machine, so the value is asserted
+    and not merely the key: 2,85 mm in a bundled profile would be a machine nobody here
+    has, and it would slice for it silently. `pythonsrc/pipeline.py` reads the same key to
+    convert extruded length into `filament_used_g`, so an omission is wrong twice — in the
+    G-code and in the telemetry row that describes it.
+    """
+    profiles = sorted(PROFILES.glob("*.json"))
+    assert profiles, "no bundled profiles — this test would pass vacuously"
+
+    wrong = []
+    for profile in profiles:
+        data = json.loads(profile.read_text())
+        if data.get("material_diameter") != 1.75:
+            wrong.append(f"{profile.name}: {data.get('material_diameter')!r}")
+
+    assert wrong == [], (
+        "bundled profiles that do not declare a 1,75 mm filament diameter, and so slice "
+        "on fdmextruder.def.json's 2,85 mm default: " + "; ".join(wrong)
+    )
 
 
 def test_no_bundled_profile_carries_a_connection_secret():
