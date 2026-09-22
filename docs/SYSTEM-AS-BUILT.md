@@ -2203,8 +2203,8 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
 
 - **`ProcessProfile`**: every threshold (nozzle, min wall, overhang angle, bed contact, build
   volume) lives here, so supporting resin is a new profile rather than new check code.
-  `ProcessProfile.from_printer_profile()` derives limits from `pythonsrc/profiles/*.json`;
-  nozzle diameter is absent from the bundled profiles and defaults to 0.4mm.
+  `ProcessProfile.from_printer_profile()` derives limits from `pythonsrc/profiles/*.json`.
+  `fit_offsets` is the one field on it **no check reads** — see the section below.
 - **`evaluate_printability(mesh, profile, job_id, was_hollowed)`** returns a `PrintabilityReport`
   with 11 `CheckResult`s, a weighted 0–100 score, a verdict (`ready` / `risky` / `unprintable`)
   and a `features` snapshot. Checks: watertight, winding, non-manifold edges, degenerate faces,
@@ -2238,6 +2238,124 @@ Deterministic, pre-print geometry scoring — the quality gate the Engineer neve
   It is written only when no report exists, so a failure *after* a good score cannot overwrite it.
   `GET /jobs/{id}/printability` passes the envelope through; the UI distinguishes it from a report
   by the absence of `checks` (`isPrintabilityReport`).
+
+### Fit offsets (`pythonsrc/fit_offsets.py`) — a profile suggests, a spec decides
+
+Issue #89 asked a person to decide where per-printer fit tolerances live, and the owner
+decided on 2026-09-17: **(b), they stay in the spec.** A printer profile is the source
+the composer pre-fills a form from, never an input to the compiler. Everything here
+follows from that one sentence.
+
+**Why (b) and not (a).** Under (a) — offsets applied at compile time — a mesh becomes a
+function of a machine, so `spec_hash` has to hash the profile too, the same spec exports
+different bytes on two printers, and a spec handed to somebody else stops being a design
+and becomes a build log. It also needs the printer profile *before* Phase 2, which the
+pipeline does not read until after it, so a user with no printer configured could not
+compile at all. The case for (a) was the Phase 4 coupon → calibration loop wanting to
+update offsets per printer and material; it dissolves, because applying a new offset to
+an existing design under (b) **is a spec-diff**, which is already a Phase 3 roadmap box —
+and a re-fitted box is a different object that should say so rather than changing under
+its owner.
+
+**The three fields, and why one of them is shaped differently.** A profile offers
+`fit_lid_clearance_mm`, `fit_cavity_clearance_offset_mm` and `fit_stack_slack_mm`. Two are
+absolute; the cavity one is an *offset added to whatever `process.fit_intent` resolves
+to*, because the intent is the word a person actually chooses — "a box I close" versus "a
+tray I lift cards out of" — and a profile stating the clearance outright would silently
+overrule it and leave the composer with a control that changes nothing. The machine
+contributes an allowance, the intent keeps deciding the fit, and the names say which is
+which.
+
+**It is a standalone stdlib-only module, and that is load-bearing rather than tidy.** The
+numbers belong to `ProcessProfile`, and `printability` imports numpy, trimesh and scipy —
+none of which the api-server image installs (`infra/docker/server.Dockerfile` is the
+list). So `POST /organizer/resolve`, which is where the pre-fill happens, cannot ask
+`ProcessProfile` what a profile says. Both sides import `fit_offsets` instead, which is
+what stops the composer and the printability scorer growing two opinions about what four
+keys in a profile file mean — `_profile_build_volume`'s single-implementation rule again,
+and for the same reason.
+
+**The compiler cannot reach an offset, and that is asserted rather than agreed.** Nothing
+under `pythonsrc/organizer/` mentions the module, checked by grep over the package in
+`tests/test_fit_offsets.py`. An import is all it would take for a well-meant change to
+start applying a machine's millimetres inside `compile_spec`, at which point (b) quietly
+becomes (a) and nothing else in the suite notices.
+
+**Two classes, and the honest part is which half of each number is sourced.**
+`FIT_OFFSET_CLASSES` has `tuned` (the Bambu P1S: ±0,1 mm typical, shrink-compensated —
+`dimension-kb-research.md` §6, Bambu forum) and `desktop` (Ender 3, Anycubic Mega S,
+Klipper test: ±0,5 % with a ±0,5 mm floor, Hubs). The *bands* are sourced — §5's
+0,2–0,4 mm friction lip, §3's 1,5–2 and 4–6 mm clearances — and the *class accuracies*
+are sourced, but **the placement of each number inside its band is this project's
+reasoning, not a measurement**, and the module says that in those words the way
+`Process.base_chamfer_mm` labels itself an unsourced design default. A JSON file cannot
+carry a comment, so each profile names its class in `fit_offsets_class` and
+`tests/test_fit_offsets.py` binds the name to the row: the numbers cannot drift from the
+sources without a test going red.
+
+The one figure with two independent sources behind it is the desktop cavity allowance:
++0,5 mm is §6's accuracy floor, and added to the intents it lands `snug` at 2,0 mm and
+`easy` at 4,5 mm — **both inside §3's own bands**, which were gathered from commercial
+deck boxes and have nothing to do with §6. Two sections agreeing is what a sourced number
+looks like; one section and a round figure is not.
+
+**The finding that matters is a negative one.** No figure in a 0,2–0,4 mm friction band
+survives a ±0,5 mm machine: on a desktop printer at the bottom of its sourced accuracy, a
+lid designed to any clearance in that band can print interference-fit. That gap is not
+closable by choosing a better default, and pretending otherwise is the
+"printer-accuracy assumption" §6 ends by naming. This table is the prior the Phase 4
+test-fit coupon and the calibration loop start from, not the answer they replace.
+
+**`stack_slack_mm` is the same on every bundled profile, deliberately.** Nothing sources
+a per-machine figure for it and nothing should: what it absorbs is the *stack's* error —
+sleeve thickness varies by brand and by wear, and §2 keeps a 120-vs-130 µm disagreement on
+one line of Dragon Shield alone — not the printer's. It is a field rather than an omission
+so the calibration loop has somewhere to put a measured figure if one ever turns up, and
+the docstring says it carries none today.
+
+**Where the pre-fill happens, and what the person sees.** `POST /organizer/resolve`
+answers `fit_defaults`: the three millimetres resolved against the profile *and* against
+this spec's own fit intent, the profile and printer they came from, a `declared` flag, and
+a `basis` sentence. It is **never null and is answered on the refusal branch too** — a
+spec is invalid for most of the time somebody is composing one, so a default that arrived
+only once it parsed would arrive after the fields it fills had been filled by hand; "no
+printer configured" resolves to the schema's own numbers with `declared: false` saying
+nobody was asked, which is the same millimetres and a different fact. The cavity figure
+arrives **already summed**, and the offset is beside it to be shown rather than applied: a
+client adding the two would be a second copy of `FIT_INTENT_CLEARANCE_MM`, which is the
+drift that endpoint exists to refuse.
+
+In the composer the three are a ruled-off group, and they are **the only fields in that
+form where blank does not mean "the archetype's own default"** — blank means the
+printer's, `specFromForm` writes that figure into the spec, and anything typed wins. They
+open blank rather than seeded, which is the whole mechanism: a seeded value is one the
+person has to notice and delete, and it would need re-seeding every time the fit intent
+moved the cavity figure underneath it. Blank needs no has-this-been-touched flag anywhere,
+so there is none to go wrong. With neither a typed value nor an offer the field is
+*omitted* and the schema resolves its own default exactly as before — a browser inventing
+0,2 mm to fill that hole would be the one number in the form with nothing behind it.
+
+**What the row records, and why it has to.** Under (b) the mesh is not a function of a
+printer, so nothing else in a finished job says which machine's figures were on screen
+when a person accepted them — and "this box does not close" is a complaint about a
+printer. `generation_params.fit_profile` carries the profile, `FIT_OFFSETS_VERSION` and
+what the profile *offered*, with `declared` separating "this machine suggested the
+schema's own numbers" from "nothing was asked". It never records what the spec chose: the
+spec is that record, in millimetres, written beside it. It is a **sibling** of
+`features_document()` rather than part of it, assembled in `pipeline._profile_fit_record`,
+because `CompileResult` is what the compiler produced and the compiler is not allowed to
+see a fit offset.
+
+The four `fit_*` keys are dropped silently by `CuraSlicer._profile_settings`
+(`FIT_PROFILE_KEYS`), for `DOCUMENTATION_KEYS`' reason — four "not a CuraEngine setting"
+lines on every slice is the noise that trains a reader to skip the line that would have
+told them about a mistyped setting name — and because by the time a profile reaches the
+slicer, the millimetres it pre-filled are already in the spec the geometry was built from.
+
+**The tripwire that reopens this**: closed-beta evidence that users routinely print one
+design across several printers and expect each to fit. That would make (b) force them to
+maintain N variants of one design, and (a) would become right. Watch for it in cohort 1;
+until then this is settled.
 
 ### Orientation and adhesion (Phase 3 → Phase 4)
 

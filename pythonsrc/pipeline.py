@@ -534,6 +534,49 @@ def _compile_spec_phase(args, outputs_dir: Path):
     return mesh_path, result
 
 
+def _profile_fit_record(args) -> dict:
+    """What the job's printer profile offered the composer for fit, for the record.
+
+    Issue #89's fourth acceptance criterion, and the one thing option (b) does not get
+    for free. Under (b) the mesh is **not** a function of a printer — that is the
+    property being bought — so nothing else in a finished row says which machine's
+    figures were on screen when a person accepted them. "This box does not close" is a
+    complaint about a printer, and without this column cohort 1's fit reports join to
+    nothing and the Phase 4 calibration loop has no input.
+
+    It records what the profile *offered*, never what the spec ended up with. The spec
+    is its own record of that, in millimetres, and it is written beside this one
+    (`spec.json`); a second copy here could disagree with it, which is the failure
+    `game_box_record` avoids by being the one function the screen and the database
+    both call.
+
+    **A sibling key on `generation_params`, not part of `features_document()`**, and
+    deliberately: `CompileResult` is what the compiler produced, the compiler is not
+    allowed to see a fit offset under (b), and handing it one so it could pass it
+    through would make (a) a one-line change away rather than unreachable. It is
+    assembled here, from `args`, after the mesh exists.
+    """
+    try:
+        from fit_offsets import fit_offsets_record
+    except ImportError:
+        from pythonsrc.fit_offsets import fit_offsets_record
+
+    profile_path = args.profile or "pythonsrc/profiles/ender3.json"
+    try:
+        with open(profile_path, "r") as handle:
+            profile = json.load(handle)
+    except Exception as exc:  # noqa: BLE001
+        # The same posture as the nozzle read above: an unreadable profile is not a
+        # reason to fail a phase that has already built the mesh. The record then says
+        # the profile declared nothing, which is true of what this run could see.
+        logger.warning(
+            "Could not read %s for the fit offsets it offered (%s) — recording none.",
+            profile_path, exc,
+        )
+        profile = None
+    return fit_offsets_record(Path(profile_path).name, profile)
+
+
 def _record_spec_generation(args, result, duration_s: float) -> None:
     """Record the compiler as this job's generation model.
 
@@ -541,13 +584,21 @@ def _record_spec_generation(args, result, duration_s: float) -> None:
     the archetype — no weights, no cost, `local` backend. The spec hash rides in
     `generation_params` so the row can be joined back to the exact spec without a new
     column; `blueprint_*` stay NULL, which is correct, because no image ever existed.
+
+    `fit_profile` rides there too, for the reason `_profile_fit_record` gives: under
+    issue #89's decision the geometry is not a function of a printer, so the printer
+    behind the millimetres has to be recorded deliberately or it is not recorded at all.
     """
     _record_generation(
         args,
         model=f"organizer/{result.archetype}",
         model_version=result.archetype_version,
         backend="local",
-        params={"schema_version": 1, **result.features_document()},
+        params={
+            "schema_version": 1,
+            **result.features_document(),
+            "fit_profile": _profile_fit_record(args),
+        },
         cost_eur=None,
         duration_s=round(duration_s, 3),
     )

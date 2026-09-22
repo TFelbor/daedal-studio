@@ -196,6 +196,73 @@ def test_the_generation_record_names_the_compiler(tmp_path, monkeypatch):
     assert recorded["cost_eur"] is None
 
 
+def test_the_generation_record_names_the_printer_behind_the_fit_offers(tmp_path, monkeypatch):
+    """Issue #89's fourth acceptance criterion, and the one thing decision (b) does not
+    get for free.
+
+    Under (b) the mesh is **not** a function of a printer — that is the property being
+    bought — so nothing else in a finished row says which machine's fit figures were on
+    screen when a person accepted them. "This box does not close" is a complaint about a
+    printer, and without this column cohort 1's fit reports join to nothing and the
+    Phase 4 calibration loop has no input at all.
+    """
+    import pythonsrc.pipeline as pipeline
+    from pythonsrc.fit_offsets import FIT_OFFSET_CLASSES, FIT_OFFSETS_VERSION
+
+    recorded = {}
+    monkeypatch.setattr(pipeline, "_record_generation",
+                        lambda args, **kw: recorded.update(kw))
+    spec_path = dump_spec(example_spec("deck_box"), tmp_path / "deck.json")
+    profile = "pythonsrc/profiles/bambu_p1s.json"
+    args = _ns(spec=str(spec_path), profile=profile)
+    _, result = _compile_spec_phase(args, tmp_path / "out")
+    pipeline._record_spec_generation(args, result, duration_s=0.01)
+
+    fit = recorded["params"]["fit_profile"]
+    assert fit["profile"] == "bambu_p1s.json"
+    assert fit["fit_offsets_version"] == FIT_OFFSETS_VERSION
+    assert fit["declared"] is True
+    assert fit["offsets"] == FIT_OFFSET_CLASSES["tuned"].to_dict()
+
+
+def test_the_fit_record_is_a_sibling_of_the_features_document(tmp_path, monkeypatch):
+    """It rides on `generation_params` beside `features_document()`, never inside it.
+
+    `CompileResult` is what the compiler produced, and under (b) the compiler is not
+    allowed to see a fit offset. Handing it one so it could pass it through would make
+    (a) a one-line change away rather than unreachable, which is what
+    `tests/test_fit_offsets.py::test_the_compiler_cannot_reach_a_fit_offset` is for. So
+    `compile_features.json` — the compiler's own document — carries no fit key.
+    """
+    import pythonsrc.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "_record_generation", lambda args, **kw: None)
+    spec_path = dump_spec(example_spec("deck_box"), tmp_path / "deck.json")
+    out = tmp_path / "out"
+    _, result = _compile_spec_phase(_ns(spec=str(spec_path)), out)
+    assert "fit_profile" not in result.features_document()
+    assert "fit_profile" not in json.loads((out / "compile_features.json").read_text())
+
+
+def test_an_unreadable_profile_records_no_offer_rather_than_failing_the_phase(
+    tmp_path, monkeypatch
+):
+    """The nozzle read's posture verbatim: no profile has never meant "fail" here, and
+    by the time this runs the mesh already exists. The record then says the profile
+    declared nothing, which is true of what this run could see.
+    """
+    import pythonsrc.pipeline as pipeline
+
+    recorded = {}
+    monkeypatch.setattr(pipeline, "_record_generation",
+                        lambda args, **kw: recorded.update(kw))
+    spec_path = dump_spec(example_spec("deck_box"), tmp_path / "deck.json")
+    args = _ns(spec=str(spec_path), profile=str(tmp_path / "no_such_printer.json"))
+    _, result = _compile_spec_phase(args, tmp_path / "out")
+    pipeline._record_spec_generation(args, result, duration_s=0.01)
+    assert recorded["params"]["fit_profile"]["declared"] is False
+
+
 # ── The assert half: Phase 3 checks a compiled mesh rather than repairing it ──────
 #
 # The scaling half of N1 is `--no-scale`. This is the other half: a spec run's Phase 3

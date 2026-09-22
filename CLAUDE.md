@@ -196,6 +196,10 @@ each entry below names the file it is about.
     three exported files.
   - **Printability (`pythonsrc/printability.py`)** — the eleven checks, the process
     profile, how wall thickness is measured, and the error envelope a crash writes.
+  - **Fit offsets (`pythonsrc/fit_offsets.py`)** — why a printer profile suggests
+    millimetres and never compiles them, the two sourced machine classes and which half
+    of each number is a citation, why the compiler cannot reach one, and what
+    `generation_params.fit_profile` records that decision (b) does not get for free.
   - **Orientation and adhesion (Phase 3 → Phase 4)** — why nothing is rotated, and why
     the brim knob is `brim_line_count`.
   - **Slicer — Phase 4 (`pythonsrc/slicer.py`)** — the four load-bearing facts about the

@@ -27,6 +27,11 @@ try:
 except ImportError:  # pragma: no cover - depends on how the caller set sys.path
     from pythonsrc.config import CURA_ENGINE_PATH  # type: ignore[no-redef]
 
+try:
+    import fit_offsets
+except ImportError:  # pragma: no cover - depends on how the caller set sys.path
+    from pythonsrc import fit_offsets  # type: ignore[no-redef]
+
 logger = logging.getLogger("ds.slicer")
 
 #: Profile keys that say how to *reach* a printer, not how to slice for it. Skipped
@@ -46,6 +51,20 @@ CONNECTION_KEYS = frozenset({"firmware", "base_url", "api_key"})
 #: one someone has to guess at. Underscore-prefixed so the distinction from a real
 #: setting is visible in the file, not only here.
 DOCUMENTATION_KEYS = frozenset({"_comment", "_sources"})
+
+#: Profile keys that configure *this* product rather than the engine. Dropped in silence
+#: for the third time and the same reason: CuraEngine has no setting by any of these
+#: names, so the validator below is right that they are not settings and wrong that they
+#: are mistakes, and "not a CuraEngine setting — ignoring it" on four lines of every
+#: slice is exactly the noise the note above says defeats the check.
+#:
+#: They are the fit offsets a printer profile suggests to the composer (issue #89).
+#: **Nothing downstream of here reads them** — the decision of 2026-09-17 is (b), so the
+#: mesh reaching this slicer is not a function of any of them, and by the time a profile
+#: arrives at Phase 4 the millimetres they pre-filled are already in the spec that built
+#: the geometry. Imported from `fit_offsets` rather than spelled out, so a fourth field
+#: cannot be added there and forgotten here.
+FIT_PROFILE_KEYS = frozenset(fit_offsets.PROFILE_KEYS) | {fit_offsets.CLASS_KEY}
 
 
 @lru_cache(maxsize=4)
@@ -217,7 +236,11 @@ class CuraSlicer:
         known = known_cura_settings(cls.DEFINITIONS_DIR)
         settings: dict[str, str] = {}
         for key, raw in profile.items():
-            if key in CONNECTION_KEYS or key in DOCUMENTATION_KEYS:
+            if (
+                key in CONNECTION_KEYS
+                or key in DOCUMENTATION_KEYS
+                or key in FIT_PROFILE_KEYS
+            ):
                 continue
             if key not in known:
                 logger.warning(

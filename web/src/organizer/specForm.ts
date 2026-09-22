@@ -23,7 +23,7 @@
  * silently discarded is worse than an ugly one: the submit button just stops working.
  */
 
-import type { SpecProblem } from '../api/client';
+import type { FitDefaults, SpecProblem } from '../api/client';
 import { EMBOSS_FACES_BY_ARCHETYPE, type ArchetypeId } from './spec';
 
 /**
@@ -48,6 +48,9 @@ export type SpecField =
   | 'sleeving'
   | 'fitIntent'
   | 'wallMm'
+  | 'lidClearanceMm'
+  | 'cavityClearanceMm'
+  | 'stackSlackMm'
   | 'lidHeightMm'
   | 'thicknessMm'
   | 'tabWidthMm'
@@ -108,6 +111,28 @@ export interface SpecFormState {
   /** Deck box only: the divider reads neither `fit_intent` nor `process.wall_mm`. */
   fitIntent: string;
   wallMm: string;
+  /**
+   * The three fit fields, and **the only ones here where blank does not mean "the
+   * schema's default"** — it means *the configured printer's suggestion* (issue #89).
+   *
+   * `POST /organizer/resolve` answers with what the profile offers, `specFromForm` puts
+   * that figure in the spec when the field is blank, and anything typed here wins. So a
+   * person who never opens the group gets their machine's numbers, a person who types
+   * one gets theirs, and either way the spec is posted carrying explicit millimetres —
+   * which is what keeps the mesh from being a function of a printer under decision (b).
+   *
+   * Blank rather than seeded into this state on arrival, deliberately: seeding would
+   * make the suggestion a value the person then has to notice and delete, and it would
+   * have to be re-seeded every time `fitIntent` changed the cavity figure underneath it.
+   * Blank has neither problem and needs no "has the user touched this" flag to work.
+   *
+   * `lidClearanceMm` is the deck box's alone; the other two are read by the deck box and
+   * the box insert — a card well is what they are about, and the tray and the divider
+   * have none. `SpecForm` shows each only where it is read.
+   */
+  lidClearanceMm: string;
+  cavityClearanceMm: string;
+  stackSlackMm: string;
   lidHeightMm: string;
   /** Card divider only. */
   thicknessMm: string;
@@ -237,6 +262,9 @@ export const DEFAULT_SPEC_FORM: SpecFormState = {
   sleeving: 'double',
   fitIntent: 'snug',
   wallMm: '',
+  lidClearanceMm: '',
+  cavityClearanceMm: '',
+  stackSlackMm: '',
   lidHeightMm: '',
   thicknessMm: '',
   tabWidthMm: '',
@@ -496,7 +524,10 @@ function boxFromForm(state: SpecFormState): Record<string, unknown> {
  * A grid that is not two positive whole numbers produces **no compartments at all**,
  * and `localProblems` is what says so on the control that caused it. See `gridCells`.
  */
-export function specFromForm(state: SpecFormState): Record<string, unknown> {
+export function specFromForm(
+  state: SpecFormState,
+  fit: FitDefaults | null = null,
+): Record<string, unknown> {
   const spec: Record<string, unknown> = { archetype: state.archetype, schema_version: 1 };
   Object.assign(spec, boxFromForm(state));
 
@@ -521,7 +552,11 @@ export function specFromForm(state: SpecFormState): Record<string, unknown> {
           },
     }));
     spec.insert = { rows: parseRows(state.insertRows) };
-    spec.process = present({ fit_intent: state.fitIntent, wall_mm: optionalMm(state.wallMm) });
+    spec.process = present({
+      fit_intent: state.fitIntent,
+      wall_mm: optionalMm(state.wallMm),
+      ...cardWellFit(state, fit),
+    });
     return spec;
   }
 
@@ -552,8 +587,16 @@ export function specFromForm(state: SpecFormState): Record<string, unknown> {
   ];
 
   if (state.archetype === 'deck_box') {
-    spec.lid = present({ kind: 'lift_off', height_mm: optionalMm(state.lidHeightMm) });
-    spec.process = present({ fit_intent: state.fitIntent, wall_mm: optionalMm(state.wallMm) });
+    spec.lid = present({
+      kind: 'lift_off',
+      height_mm: optionalMm(state.lidHeightMm),
+      clearance_mm: offeredMm(state.lidClearanceMm, fit?.lid_clearance_mm),
+    });
+    spec.process = present({
+      fit_intent: state.fitIntent,
+      wall_mm: optionalMm(state.wallMm),
+      ...cardWellFit(state, fit),
+    });
   } else {
     spec.divider = present({
       tab_position: state.tabPosition,
@@ -566,6 +609,43 @@ export function specFromForm(state: SpecFormState): Record<string, unknown> {
   if (emboss) spec.emboss = emboss;
 
   return spec;
+}
+
+/**
+ * The two card-well fit fields, as the archetypes that read one take them.
+ *
+ * The deck box and the box insert both size a well as the sleeve envelope plus
+ * `cavity_clearance_mm` and the stack plus `stack_slack_mm`; the tray and the divider
+ * read neither, so neither is sent for them and no spec hash of theirs moves.
+ */
+function cardWellFit(
+  state: SpecFormState,
+  fit: FitDefaults | null,
+): Record<string, unknown> {
+  return {
+    cavity_clearance_mm: offeredMm(state.cavityClearanceMm, fit?.cavity_clearance_mm),
+    stack_slack_mm: offeredMm(state.stackSlackMm, fit?.stack_slack_mm),
+  };
+}
+
+/**
+ * A fit millimetre: what was typed, else what the printer offered, else omitted.
+ *
+ * `optionalMm`'s rule with one step inserted, and the step is the whole of issue #89 on
+ * this side. Blank means "I have no opinion", and the thing with an opinion is the
+ * printer — `POST /organizer/resolve` resolved its figure against the profile's sourced
+ * class and against this spec's own fit intent, so what arrives here is a number to
+ * send, never two numbers to add up. **No arithmetic happens in this file**, which is
+ * the rule the whole composer is built on.
+ *
+ * Omitted when there is no offer either, and that is the degraded mode working rather
+ * than a gap: a resolve that has not answered yet, or a server that cannot be reached,
+ * leaves the schema to resolve its own defaults exactly as it did before #89. A browser
+ * inventing 0,2 mm to fill the hole would be the one number here with nothing behind it.
+ */
+function offeredMm(raw: string, offered: number | undefined): number | string | undefined {
+  const typed = optionalMm(raw);
+  return typed !== undefined ? typed : offered;
 }
 
 /**
@@ -610,6 +690,9 @@ export const FIELD_BY_PATH: Record<string, SpecField> = {
   'spec.compartments[0].contents.sleeving': 'sleeving',
   'spec.process.fit_intent': 'fitIntent',
   'spec.process.wall_mm': 'wallMm',
+  'spec.lid.clearance_mm': 'lidClearanceMm',
+  'spec.process.cavity_clearance_mm': 'cavityClearanceMm',
+  'spec.process.stack_slack_mm': 'stackSlackMm',
   'spec.lid.height_mm': 'lidHeightMm',
   'spec.divider.thickness_mm': 'thicknessMm',
   'spec.divider.tab_width_mm': 'tabWidthMm',

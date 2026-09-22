@@ -12,5 +12,9 @@
   "infill_sparse_density": 15,
   "material_print_temperature": 200,
   "material_bed_temperature": 55,
-  "retraction_enable": true
+  "retraction_enable": true,
+  "fit_offsets_class": "desktop",
+  "fit_lid_clearance_mm": 0.3,
+  "fit_cavity_clearance_offset_mm": 0.5,
+  "fit_stack_slack_mm": 1.0
 }

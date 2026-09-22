@@ -234,6 +234,31 @@ def test_no_bundled_profile_has_a_key_the_slicer_ignores(caplog):
     assert ignored == [], "profile keys that never reach the engine: " + "; ".join(ignored)
 
 
+def test_the_fit_keys_are_dropped_silently_and_never_reach_the_engine(caplog):
+    """The fit offsets a profile suggests to the composer (issue #89) are this product's
+    keys, not CuraEngine's, and they are dropped for `DOCUMENTATION_KEYS`' reason: four
+    "not a CuraEngine setting" lines on every slice is exactly the noise that trains a
+    reader to skip the line that would have told them about a mistyped setting name.
+
+    The other half is the one that matters more. **Nothing downstream of Phase 2 reads
+    them**, because decision (b) makes the mesh not a function of a printer: by the time
+    a profile reaches the slicer, the millimetres it pre-filled are already in the spec
+    the geometry was built from. A fit key arriving as a `-s` override would be this
+    product trying to apply an offset to a part that already has it.
+    """
+    from pythonsrc.fit_offsets import CLASS_KEY, PROFILE_KEYS
+
+    profile = PROFILES / "ender3.json"
+    with caplog.at_level(logging.WARNING, logger="ds.slicer"):
+        caplog.clear()
+        settings = CuraSlicer._profile_settings(profile)
+
+    for key in (*PROFILE_KEYS, CLASS_KEY):
+        assert key in json.loads(profile.read_text()), f"{key} is not in the profile"
+        assert key not in settings, f"{key} reached CuraEngine as a setting"
+        assert key not in caplog.text, f"{key} warned rather than being dropped in silence"
+
+
 def test_no_bundled_profile_carries_a_connection_secret():
     """#73's design rule: a person connects their own printer through the app, and a
     profile is committed to this repository. `bambu_test.json` shipped an `api_key` of

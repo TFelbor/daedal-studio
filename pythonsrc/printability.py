@@ -30,6 +30,22 @@ import trimesh
 from scipy import ndimage
 from trimesh import grouping
 
+# Standard library only, and imported for that reason as much as for the numbers: the
+# fit offsets have to be readable where this module is not importable. See its docstring.
+#
+# Both spellings, `slicer.py` and `engineer.py`'s pattern verbatim: the phase images put
+# `pythonsrc/` on `sys.path` as the root and `pipeline.py` imports this module flat
+# (`from printability import ProcessProfile`), so a package-qualified sibling import
+# would raise ImportError inside every container that actually runs a job.
+try:
+    from fit_offsets import DEFAULT_FIT_OFFSETS, FitOffsets, fit_offsets_from_profile
+except ImportError:  # pragma: no cover - depends on how the caller set sys.path
+    from pythonsrc.fit_offsets import (  # type: ignore[no-redef]
+        DEFAULT_FIT_OFFSETS,
+        FitOffsets,
+        fit_offsets_from_profile,
+    )
+
 try:  # Apache-2.0; present in every image, but the check degrades if absent.
     import manifold3d
 
@@ -95,6 +111,24 @@ class ProcessProfile:
     """Printer build volume as [width, depth, height], or None if the profile does not
     say. Never a partial answer: `__post_init__` rejects any other length, so the two
     checks that zip it against a three-element extent can do so `strict=True`."""
+
+    fit_offsets: FitOffsets = DEFAULT_FIT_OFFSETS
+    """What this machine's accuracy argues for when somebody composes a design for it.
+
+    Issue #89, and the one field on this dataclass **no check reads**. That is not an
+    oversight to be corrected later: the decision of 2026-09-17 is that fit offsets are
+    a *source the composer pre-fills from*, never a compile-time input, so a design's
+    geometry is not a function of the machine and the printability checks — which score
+    the geometry — have nothing to ask it. It lives here because this is already the
+    dataclass that means "what `pythonsrc/profiles/*.json` says about a printer", and a
+    second home for the same file's fit keys is the divergence `_profile_build_volume`
+    exists to prevent.
+
+    The sourced numbers, the two machine classes and the reasoning are in
+    `pythonsrc/fit_offsets.py`, which imports the standard library and nothing else so
+    that the api-server image — no numpy, no trimesh, no scipy, no manifold3d — can read
+    the same keys through the same reader when it answers `POST /organizer/resolve`.
+    """
 
     def __post_init__(self) -> None:
         """Reject a build volume that is neither absent nor all three axes.
@@ -170,6 +204,12 @@ class ProcessProfile:
             layer_height_mm=layer_height,
             min_wall_mm=round(nozzle * 2, 3),
             build_volume_mm=build_volume,
+            # Read here rather than parsed by each caller, and through the shared reader
+            # rather than a second one: `server/app.py` cannot import this module (it
+            # installs none of numpy, trimesh or scipy) and reaches `fit_offsets_from_
+            # profile` directly, so the two must be the same function or they are two
+            # answers to "what does this profile say about fit".
+            fit_offsets=fit_offsets_from_profile(profile),
         )
 
 
