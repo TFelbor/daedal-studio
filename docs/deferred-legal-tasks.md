@@ -498,7 +498,7 @@ no photo, no printer profile, no identity, no job id. Prompts are user content u
 GDPR, so this is a processor relationship whether or not the request is small.
 
 **What has to be read and recorded before the first external prompt leaves the server
-(issue #182, legal pair):** the Master Customer Agreement, the Data Processing Agreement
+(issue #182, legal pair; parked with the rest of §0.7 until mid-October 2026):** the Master Customer Agreement, the Data Processing Agreement
 and the Privacy Policy at `https://typesafe.ai/legal/…`, archived with the date under
 `docs/audits/vendor-terms/typesafe-<date>.md` exactly as Task L4 did for Pixazo; the
 sub-processor region and the retention window for request text on the standard tier —
