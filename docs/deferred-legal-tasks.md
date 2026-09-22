@@ -487,6 +487,39 @@ pinned by `tests/test_ip_screen.py`, so moving either is one decision in one pla
 
 ---
 
+## Task L7 — TypeSafe (Jev) as a processor of prompt text (not blocking; owed before #181)
+
+**What it is.** Roadmap §0.7 (2026-09-22) admits a second hosted, paid model into the
+words → spec path, gated behind issue #181: TypeSafe's Jev, which returns typed judgments
+(a choice among options code supplies, a yes-probability, an ordered level) and never
+text or a number. If #181 ships, the server will send to `api.typesafe.ai` **the person's
+prompt and the number-candidates code found in it — nothing else**: no spec millimetres,
+no photo, no printer profile, no identity, no job id. Prompts are user content under
+GDPR, so this is a processor relationship whether or not the request is small.
+
+**What has to be read and recorded before the first external prompt leaves the server
+(issue #182, legal pair):** the Master Customer Agreement, the Data Processing Agreement
+and the Privacy Policy at `https://typesafe.ai/legal/…`, archived with the date under
+`docs/audits/vendor-terms/typesafe-<date>.md` exactly as Task L4 did for Pixazo; the
+sub-processor region and the retention window for request text on the standard tier —
+TypeSafe's own docs say zero-data-retention is **enterprise-only**; the rate-limit terms
+("adjusting dynamically … can change without notice"), which are why #181 fails open and
+never refuses a job; Art. 28 processor terms and the line in the privacy policy naming
+TypeSafe (Task L5's list); the note in Task L1's retention item that prompt text may now
+reach a second processor. Output ownership does not arise — Jev returns judgments, not
+content — but say so in the § 0 audit row rather than leave it implied.
+
+**What it does not change.** The deterministic prompt screen (Task L6) runs before any
+prompt leaves the server and is never overruled by the model; the functional-article line
+stays pinned in code. The key is environment-only, like `PIXAZO_API_KEY`, and is
+deliberately not a `CONFIG_KEYS` entry, so the credential protecting `PUT /config` cannot
+be used to rotate it.
+
+**Nothing to do until #178 says the Jev arm is worth having.** This task exists so the
+context is not rediscovered; it is triggered by #182, not by the calendar.
+
+---
+
 ## Open question for counsel (not blocking)
 
 EU AI Act Art. 50 imposes transparency duties around AI systems and artificially
