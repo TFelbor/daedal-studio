@@ -19,9 +19,14 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from pythonsrc.fit_offsets import (
+    DEFAULT_FIT_OFFSETS,
+    FIT_OFFSET_CLASSES,
+    FIT_OFFSETS_VERSION,
+)
 from pythonsrc.organizer.box_kb import kb
 from pythonsrc.organizer.dimensions import PITCH_MM_PER_CARD, resolve_stack
-from pythonsrc.organizer.spec import OrganizerSpec, spec_hash
+from pythonsrc.organizer.spec import FIT_INTENT_CLEARANCE_MM, OrganizerSpec, spec_hash
 from server import app as app_module
 from server.app import app
 
@@ -313,6 +318,148 @@ def test_a_box_nobody_has_curated_is_refused_on_its_own_path():
     assert body["schema_valid"] is False
     assert any(p["path"] == "spec.box.id" for p in body["problems"]), body["problems"]
     assert body["game_box"] is None
+
+
+# ── the fit offsets the configured printer suggests (issue #89) ───────────────
+
+
+def _with_profile(monkeypatch, profile):
+    """Point `DEFAULT_PROFILE` at one profile, or at nothing.
+
+    The composer asks this endpoint what its printer suggests, and the printer it means
+    is the one a job submitted right now would slice against — `printer_status`'s
+    `_ceiling` rule verbatim. There is no second one to mean, so there is no parameter.
+    """
+    monkeypatch.setattr(
+        app_module.config_store, "get",
+        lambda key, *a, **k: (profile if key == "DEFAULT_PROFILE" else None),
+    )
+
+
+def test_the_answer_carries_what_the_configured_printer_suggests(monkeypatch):
+    """Issue #89's pre-fill, and the whole of where decision (b) happens.
+
+    The profile is the *source the form is filled from*, so the offer has to arrive
+    somewhere a browser can put it in a field — and this endpoint is the only place it
+    can come from, for `resolve_stack`'s reason: a second copy of the sourced table in
+    TypeScript would drift from the one the profile carries.
+    """
+    _with_profile(monkeypatch, "pythonsrc/profiles/ender3.json")
+    fit = resolve(SPEC)["fit_defaults"]
+    assert fit["profile"] == "pythonsrc/profiles/ender3.json"
+    assert fit["printer"] == "Ender 3"
+    assert fit["declared"] is True
+    assert fit["fit_offsets_version"] == FIT_OFFSETS_VERSION
+    assert fit["lid_clearance_mm"] == FIT_OFFSET_CLASSES["desktop"].lid_clearance_mm
+    assert fit["stack_slack_mm"] == FIT_OFFSET_CLASSES["desktop"].stack_slack_mm
+    assert fit["basis"]
+
+
+def test_the_cavity_figure_is_already_summed_so_no_browser_adds_it_up(monkeypatch):
+    """The endpoint's founding rule reaching a second table.
+
+    A cavity clearance is the fit intent's own figure plus the machine's allowance. A
+    client adding those two would be holding a copy of `FIT_INTENT_CLEARANCE_MM`, which
+    is the drift this endpoint exists to refuse — so the sum is done here and the offset
+    is beside it to be *shown*, not applied.
+    """
+    _with_profile(monkeypatch, "pythonsrc/profiles/ender3.json")
+    offset = FIT_OFFSET_CLASSES["desktop"].cavity_clearance_offset_mm
+
+    snug = resolve({**SPEC, "process": {"fit_intent": "snug"}})["fit_defaults"]
+    assert snug["cavity_clearance_offset_mm"] == offset
+    assert snug["cavity_clearance_mm"] == FIT_INTENT_CLEARANCE_MM["snug"] + offset
+
+    easy = resolve({**SPEC, "process": {"fit_intent": "easy"}})["fit_defaults"]
+    assert easy["cavity_clearance_mm"] == FIT_INTENT_CLEARANCE_MM["easy"] + offset
+
+
+def test_the_offer_follows_the_fit_intent_rather_than_overruling_it(monkeypatch):
+    """Why the profile carries an *offset* and not a whole cavity clearance.
+
+    `fit_intent` is the word a person chooses between "a box I close" and "a tray I lift
+    cards out of". A profile stating the clearance outright would silently overrule that
+    word and leave the composer with a control that changes nothing.
+    """
+    _with_profile(monkeypatch, "pythonsrc/profiles/ender3.json")
+    snug = resolve({**SPEC, "process": {"fit_intent": "snug"}})["fit_defaults"]
+    easy = resolve({**SPEC, "process": {"fit_intent": "easy"}})["fit_defaults"]
+    assert easy["cavity_clearance_mm"] > snug["cavity_clearance_mm"]
+
+
+def test_a_tuned_profile_offers_the_schemas_own_numbers(monkeypatch):
+    """The Bambu P1S is the one bundled profile in the `tuned` class, and it moves
+    nothing for anybody already printing on one: its lid clearance is the low end of the
+    sourced band, which is also the schema's default, and it asks no cavity allowance."""
+    _with_profile(monkeypatch, "pythonsrc/profiles/bambu_p1s.json")
+    fit = resolve(SPEC)["fit_defaults"]
+    assert fit["lid_clearance_mm"] == FIT_OFFSET_CLASSES["tuned"].lid_clearance_mm
+    assert fit["cavity_clearance_mm"] == FIT_INTENT_CLEARANCE_MM["snug"]
+
+
+def test_no_printer_configured_is_answered_rather_than_left_null(monkeypatch):
+    """The decision's explicit fourth point, and the reason this is never None.
+
+    A composer that got null would have to know the fallback itself, in a browser, which
+    is the one thing this endpoint exists to stop. The answer is the schema's own
+    defaults with `declared: false` saying nobody was asked — the same millimetres a
+    `tuned` profile offers, and a different fact.
+    """
+    _with_profile(monkeypatch, None)
+    fit = resolve(SPEC)["fit_defaults"]
+    assert fit["profile"] is None
+    assert fit["declared"] is False
+    assert fit["lid_clearance_mm"] == DEFAULT_FIT_OFFSETS.lid_clearance_mm
+    assert fit["cavity_clearance_mm"] == FIT_INTENT_CLEARANCE_MM["snug"]
+    assert "No printer is configured" in fit["basis"]
+
+
+def test_a_profile_that_cannot_be_read_degrades_to_the_defaults(monkeypatch):
+    """A missing profile is an ordinary tolerated condition here, as it is everywhere
+    else that reads one: `POST /jobs` answers 202 for a `profile` naming nothing."""
+    _with_profile(monkeypatch, "pythonsrc/profiles/no_such_printer.json")
+    fit = resolve(SPEC)["fit_defaults"]
+    assert fit["declared"] is False
+    assert fit["lid_clearance_mm"] == DEFAULT_FIT_OFFSETS.lid_clearance_mm
+
+
+def test_an_escaping_profile_path_offers_nothing_rather_than_being_honoured(monkeypatch):
+    """`_ceiling`'s posture, and for its reason: `DEFAULT_PROFILE` is set through
+    `PUT /config`, so a path leaving `pythonsrc/profiles` is a boundary this endpoint
+    holds rather than an unauthenticated read of arbitrary JSON."""
+    _with_profile(monkeypatch, "../../../etc/passwd")
+    fit = resolve(SPEC)["fit_defaults"]
+    assert fit["declared"] is False
+
+
+def test_the_offer_is_answered_for_a_spec_the_schema_refuses(monkeypatch):
+    """A spec is invalid for most of the time somebody is composing one, so a pre-fill
+    that arrived only once it parsed would arrive after the fields it fills had been
+    filled by hand. Everything else on the refusal branch is None or empty; this is not.
+    """
+    _with_profile(monkeypatch, "pythonsrc/profiles/ender3.json")
+    body = resolve({**SPEC, "archetype": "no_such_archetype"})
+    assert body["schema_valid"] is False
+    assert body["spec"] is None
+    assert body["fit_defaults"]["lid_clearance_mm"] == (
+        FIT_OFFSET_CLASSES["desktop"].lid_clearance_mm
+    )
+
+
+def test_the_offer_is_never_the_specs_own_values(monkeypatch):
+    """It records what the printer offers, never what the spec ended up with — the spec
+    is its own record of that, in `spec` above, and a second copy here could disagree.
+
+    A spec that overrules the offer still gets the offer back, unchanged: the composer
+    needs to keep showing what a blank field would mean.
+    """
+    _with_profile(monkeypatch, "pythonsrc/profiles/ender3.json")
+    spec = {**SPEC, "lid": {**SPEC["lid"], "clearance_mm": 0.9}}
+    body = resolve(spec)
+    assert body["spec"]["lid"]["clearance_mm"] == 0.9
+    assert body["fit_defaults"]["lid_clearance_mm"] == (
+        FIT_OFFSET_CLASSES["desktop"].lid_clearance_mm
+    )
 
 
 # ── the import rule this endpoint exists under ────────────────────────────────

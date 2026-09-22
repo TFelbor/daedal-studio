@@ -22,5 +22,9 @@
   "retraction_amount": 6,
   "retraction_speed": 45,
   "support_enable": false,
-  "adhesion_type": "skirt"
+  "adhesion_type": "skirt",
+  "fit_offsets_class": "desktop",
+  "fit_lid_clearance_mm": 0.3,
+  "fit_cavity_clearance_offset_mm": 0.5,
+  "fit_stack_slack_mm": 1.0
 }

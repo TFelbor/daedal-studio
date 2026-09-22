@@ -216,10 +216,16 @@ def field_by_path() -> dict[str, str]:
 BASE = {
     "archetype": "deck_box",
     "compartments": [{"contents": {"count": 100, "card": "standard", "sleeving": "double"}}],
-    "lid": {"kind": "lift_off", "height_mm": 15.0},
+    # `clearance_mm` and the two `process` fit fields below are stated rather than
+    # left to resolve because the form routes a refusal at each of them since issue
+    # #89: they are the three the printer profile pre-fills, and `poke` can only
+    # reach a key the base already carries. Stated at the schema's own defaults, so
+    # nothing else in this file moves.
+    "lid": {"kind": "lift_off", "height_mm": 15.0, "clearance_mm": 0.2},
     "divider": {"thickness_mm": 1.4, "tab_width_mm": 20.0, "tab_height_mm": 10.0,
                 "tab_position": "centre"},
-    "process": {"fit_intent": "snug", "wall_mm": 2.4},
+    "process": {"fit_intent": "snug", "wall_mm": 2.4,
+                "cavity_clearance_mm": 1.5, "stack_slack_mm": 1.0},
     # The decorative tier (issue #157). On the deck box's base rather than a fourth,
     # because `emboss` is the first optional section that is **not** one archetype's —
     # the deck box and the divider both read it — so it sits beside the `divider` section
@@ -253,7 +259,8 @@ INSERT_BASE = {
         {"contents": {"width_mm": 40.0, "depth_mm": 40.0, "height_mm": 15.0}},
     ],
     "insert": {"rows": [1, 1]},
-    "process": {"fit_intent": "snug", "wall_mm": 1.6},
+    "process": {"fit_intent": "snug", "wall_mm": 1.6,
+                "cavity_clearance_mm": 1.5, "stack_slack_mm": 1.0},
     "schema_version": 1,
 }
 
@@ -825,6 +832,60 @@ def test_every_archetype_gets_the_section_its_compiler_requires():
     assert "spec.divider =" in divider
     assert "spec.lid =" not in divider
     assert "spec.tray =" not in deck and "spec.tray =" not in divider
+
+
+def test_the_fit_fields_open_blank_so_the_printer_fills_them():
+    """Issue #89's pre-fill, as the browser half of it.
+
+    The three fit fields are **the only ones in this form where blank does not mean "the
+    archetype's own default"** — it means the configured printer's suggestion, which
+    `POST /organizer/resolve` answers with and `specFromForm` writes into the spec.
+
+    They open blank rather than seeded with the offer, and that is the whole mechanism
+    rather than a cosmetic choice: a seeded value is one the person has to notice and
+    delete to get back to their machine's, and it would have to be re-seeded every time
+    the fit intent moved the cavity figure underneath it. Blank needs no "has this been
+    touched" flag anywhere to behave correctly, and there is none to go wrong.
+    """
+    source = WEB_FORM.read_text(encoding="utf-8")
+    block = re.search(r"export const DEFAULT_SPEC_FORM[^=]*= \{(.*?)\n\};", source, re.S)
+    assert block, "could not find the DEFAULT_SPEC_FORM literal"
+    # Read straight out of the literal rather than through `object_map`, whose pattern
+    # wants a non-empty value: a blank field is exactly what it cannot see, and it is
+    # exactly what this test is about.
+    for field in ("lidClearanceMm", "cavityClearanceMm", "stackSlackMm"):
+        assert re.search(rf"^\s*{field}: '',$", block.group(1), re.M), (
+            f"{field} does not open blank, so no printer fills it"
+        )
+
+
+def test_a_blank_fit_field_sends_the_printers_figure_and_a_typed_one_wins():
+    """`offeredMm`, read off the source, because it is the rule the whole decision rests
+    on: the spec must leave the browser carrying **explicit millimetres** whichever of
+    the two supplied them.
+
+    That is what keeps `spec_hash` meaning what it says. If a blank field were posted as
+    absent and the profile applied later, the same spec would compile differently on two
+    printers — which is option (a), the one that was rejected.
+
+    And the third branch is asserted too: with neither a typed value nor an offer the
+    field is *omitted*, so the schema resolves its own default exactly as it did before
+    #89. A browser inventing 0,2 mm to fill that hole would be the one number in this
+    form with nothing behind it.
+    """
+    source = WEB_FORM.read_text(encoding="utf-8")
+    body = source.split("function offeredMm(", 1)[1].split("\n}", 1)[0]
+    assert "optionalMm(raw)" in body, "the typed value is not read through the mm parser"
+    assert "typed !== undefined ? typed : offered" in body, (
+        "offeredMm no longer prefers what was typed over what the printer offered"
+    )
+
+    # No arithmetic on the offer anywhere in the form: the cavity figure arrives already
+    # summed, and a client adding the intent's clearance to the machine's allowance would
+    # be a second copy of FIT_INTENT_CLEARANCE_MM — the drift the resolve endpoint exists
+    # to refuse.
+    assert "cavity_clearance_offset_mm +" not in source
+    assert "+ fit.cavity_clearance_offset_mm" not in source
 
 
 def test_the_forms_opening_spec_compiles_for_every_archetype():

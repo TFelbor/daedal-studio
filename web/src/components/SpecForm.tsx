@@ -21,7 +21,7 @@ import {
   type SpecField,
   type SpecFormState,
 } from '../organizer/specForm';
-import type { GameBoxEntry, ResolvedStack, SpecProblem } from '../api/client';
+import type { FitDefaults, GameBoxEntry, ResolvedStack, SpecProblem } from '../api/client';
 import styles from './SpecForm.module.css';
 
 interface SpecFormProps {
@@ -40,6 +40,15 @@ interface SpecFormProps {
    * it makes, as it does for the resolve.
    */
   boxes?: GameBoxEntry[];
+  /**
+   * What the configured printer suggests for the three fit fields, or none yet.
+   *
+   * Null until the first resolve answers, and null for good if the server cannot be
+   * reached — which is a real state and not a hole to fill: the group then says the
+   * schema's own defaults are in force, which is true, because `specFromForm` sends
+   * nothing for a field with neither a typed value nor an offer.
+   */
+  fit?: FitDefaults | null;
   /** True between a change and the server's answer, so the readout can say it is stale. */
   resolving?: boolean;
   /**
@@ -104,6 +113,7 @@ export function SpecForm({
   problems,
   stacks,
   boxes = [],
+  fit = null,
   resolving = false,
   unreachable = false,
   disabled = false,
@@ -584,6 +594,14 @@ export function SpecForm({
 
       <Lettering state={state} byField={byField} disabled={disabled} set={set} />
 
+      <FitOffsets
+        state={state}
+        fit={fit}
+        byField={byField}
+        disabled={disabled}
+        set={set}
+      />
+
       <FieldProblems messages={byField.archetype} />
 
       <StackReadout
@@ -594,6 +612,142 @@ export function SpecForm({
           isInsert ? state.compartments.some((c) => c.kind === 'cards') : !isTray
         }
       />
+    </div>
+  );
+}
+
+/**
+ * The three fit millimetres, pre-filled from the printer and overridable by hand.
+ *
+ * Issue #89, decided (b) by the owner on 2026-09-17: **fit offsets stay in the spec**,
+ * and a printer profile is the source this form is filled from rather than an input to
+ * the compiler. The alternative — offsets applied at compile time — would have made a
+ * mesh a function of a machine, and with it `spec_hash`, so the same spec would have
+ * exported different bytes on two printers and a spec handed to somebody else would have
+ * been a build log rather than a design.
+ *
+ * Which is why this is a *form control* and not a setting somewhere. Three properties,
+ * and each is the decision showing through:
+ *
+ * **The offer is visible and it is attributed.** The placeholder carries the millimetre
+ * and the note carries the sentence the server built, naming the printer and saying which
+ * half of each figure is sourced and which is this project's reasoning. A default nobody
+ * can see is indistinguishable from a number somebody invented, which is the thing the
+ * whole parametric pitch refuses.
+ *
+ * **Blank means the printer's, not the schema's** — the only place in this form where
+ * blank does not mean "the archetype's own default". Typing wins, clearing goes back to
+ * the offer, and no flag anywhere tracks whether a field was touched: the value posted is
+ * read off the box, and the offer is read off the last resolve.
+ *
+ * **Nothing here is added up.** `cavity_clearance_mm` arrives already summed — the fit
+ * intent's own clearance plus the machine's allowance — and the offset is printed beside
+ * it so the sum can be checked by hand, not so a browser can perform it. A second copy of
+ * `FIT_INTENT_CLEARANCE_MM` in TypeScript is exactly the drift `POST /organizer/resolve`
+ * exists to prevent.
+ *
+ * Shown only where a field is read. The lid clearance is the deck box's alone; the cavity
+ * clearance and the stack slack belong to a card well, which the tray and the divider do
+ * not have — and a control that sends something the archetype ignores is worse than an
+ * absent one, because it looks like it did something.
+ */
+function FitOffsets({
+  state,
+  fit,
+  byField,
+  disabled,
+  set,
+}: {
+  state: SpecFormState;
+  fit: FitDefaults | null;
+  byField: Partial<Record<SpecField, string[]>>;
+  disabled: boolean;
+  set: (patch: Partial<SpecFormState>) => void;
+}) {
+  const hasLid = state.archetype === 'deck_box';
+  const hasWell = state.archetype === 'deck_box' || state.archetype === 'box_insert';
+  if (!hasWell) return null;
+
+  // `mm` is the offer as a placeholder, and the em dash sentence is what every other
+  // millimetre field here says for the schema's default. Which of the two a blank field
+  // means is the whole of what changed, so it is said in the placeholder rather than
+  // left for someone to infer from the note.
+  const offer = (value: number | undefined) =>
+    value === undefined ? 'mm — blank for the default' : `mm — blank for ${value}`;
+
+  return (
+    <div className={styles.fit}>
+      <p className={styles.fitBasis}>
+        <Ruler size={14} strokeWidth={1.5} aria-hidden="true" />
+        <span>{fit ? fit.basis : 'The printer has not answered yet, so these are the schema’s own defaults.'}</span>
+      </p>
+
+      <div className={styles.grid}>
+        {hasLid ? (
+          <label className={styles.field}>
+            <span className="label-tight">Lid clearance</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder={offer(fit?.lid_clearance_mm)}
+              value={state.lidClearanceMm}
+              disabled={disabled}
+              onChange={(e) => set({ lidClearanceMm: e.target.value })}
+            />
+            <span className={styles.fieldNote}>
+              the gap between the lid’s skirt and the body’s lip — the one surface on this
+              archetype where a tenth of a millimetre decides whether it closes
+            </span>
+            <FieldProblems messages={byField.lidClearanceMm} />
+          </label>
+        ) : null}
+
+        <label className={styles.field}>
+          <span className="label-tight">Cavity clearance</span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            placeholder={offer(fit?.cavity_clearance_mm)}
+            value={state.cavityClearanceMm}
+            disabled={disabled}
+            onChange={(e) => set({ cavityClearanceMm: e.target.value })}
+          />
+          <span className={styles.fieldNote}>
+            room around the cards, total per axis. The fit buttons above choose it; this
+            overrules them
+            {fit && fit.cavity_clearance_offset_mm
+              ? `, and ${fit.cavity_clearance_offset_mm} mm of the offer is the machine’s share`
+              : ''}
+          </span>
+          <FieldProblems messages={byField.cavityClearanceMm} />
+        </label>
+
+        <label className={styles.field}>
+          <span className="label-tight">Stack slack</span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            placeholder={offer(fit?.stack_slack_mm)}
+            value={state.stackSlackMm}
+            disabled={disabled}
+            onChange={(e) => set({ stackSlackMm: e.target.value })}
+          />
+          <span className={styles.fieldNote}>
+            headroom over the resolved stack. The same on every printer we ship, because
+            what it absorbs is sleeve variation rather than the machine
+          </span>
+          <FieldProblems messages={byField.stackSlackMm} />
+        </label>
+      </div>
     </div>
   );
 }

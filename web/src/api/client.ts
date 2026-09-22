@@ -711,6 +711,56 @@ export interface SpecResolveResponse {
    * one. The composer says which of the two it used, and this field is how it knows.
    */
   game_box: ResolvedGameBox | null;
+  /**
+   * What the configured printer suggests for the three fit fields (issue #89).
+   *
+   * **Never null**, including on the refusal branch: a spec is invalid for most of the
+   * time somebody is composing one, and a pre-fill that arrived only once it parsed
+   * would arrive after the fields it fills had been filled by hand. "No printer
+   * configured" resolves to the schema's own defaults with `declared: false` saying so,
+   * rather than to null — the fallback is the server's to know, not a browser's.
+   */
+  fit_defaults: FitDefaults;
+}
+
+/**
+ * The fit millimetres a printer profile offers the composer — an offer, not a decision.
+ *
+ * Issue #89, decided (b) on 2026-09-17: fit offsets stay in the spec, and a printer
+ * profile is the **source a form is pre-filled from**, never a compile-time input. So
+ * these arrive here, the person may overrule any of them, and whatever survives is
+ * posted as explicit millimetres. The spec remains the whole truth and the same spec
+ * still exports the same bytes on every machine.
+ *
+ * **Nothing here is added up in this browser.** `cavity_clearance_mm` is already the fit
+ * intent's own clearance plus the machine's allowance; the offset is beside it to be
+ * *shown*, not to be applied. A client that added the two would be a second copy of
+ * `FIT_INTENT_CLEARANCE_MM`, which is the drift `POST /organizer/resolve` exists to
+ * refuse.
+ */
+export interface FitDefaults {
+  /** The profile these came from, e.g. `ender3.json`, or null when none is configured. */
+  profile: string | null;
+  /** Its `machine_name`, for the sentence under the fields. Null if it declares none. */
+  printer: string | null;
+  /**
+   * Whether that profile actually declares fit keys.
+   *
+   * False means these are the schema's own defaults — the millimetres every design here
+   * has been built from. Same numbers a `tuned` profile would offer, different fact, and
+   * the readout says which, because "my printer suggested this" and "nobody asked a
+   * printer" are not the same claim to make on somebody's screen.
+   */
+  declared: boolean;
+  fit_offsets_version: number;
+  lid_clearance_mm: number;
+  /** The intent's clearance **plus** the machine's allowance. Already summed. */
+  cavity_clearance_mm: number;
+  /** The machine's share of the number above, shown so the sum can be read by hand. */
+  cavity_clearance_offset_mm: number;
+  stack_slack_mm: number;
+  /** Where every figure above came from, in the sentence the readout prints. */
+  basis: string;
 }
 
 /**

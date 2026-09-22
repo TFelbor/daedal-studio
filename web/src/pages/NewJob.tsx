@@ -40,6 +40,7 @@ import {
   resolveSpec,
 } from '../api/client';
 import type {
+  FitDefaults,
   GameBoxEntry,
   JobStatusResponse,
   SizeHint,
@@ -246,6 +247,18 @@ export function NewJob() {
   const [gameBoxes, setGameBoxes] = useState<GameBoxEntry[]>([]);
   /** The server's answer for the spec as it stands. Null until it has answered. */
   const [resolved, setResolved] = useState<SpecResolveResponse | null>(null);
+  /**
+   * What the configured printer suggests for the three fit fields (issue #89), and the
+   * one piece of a resolve that is **kept when the next one fails**.
+   *
+   * Everything else on `resolved` is a function of the fields, so showing the last good
+   * answer under changed fields would describe a spec nobody is composing — which is why
+   * `resolved` is cleared on a failure. This is a function of the *printer profile*, and
+   * that has not changed because a request timed out. Dropping it would quietly take the
+   * machine's millimetres back out of the spec the person is about to submit, leaving the
+   * schema's defaults with nothing on screen saying so.
+   */
+  const [fitDefaults, setFitDefaults] = useState<FitDefaults | null>(null);
   const [resolving, setResolving] = useState(false);
   /**
    * The last resolve did not come back at all.
@@ -340,7 +353,9 @@ export function NewJob() {
     && resolvedHeightMm < requestedHeightMm;
 
   /** The spec the configurator currently describes, or null in free-prompt mode. */
-  const composedSpec = archetype ? specFromForm({ ...specForm, archetype }) : null;
+  const composedSpec = archetype
+    ? specFromForm({ ...specForm, archetype }, fitDefaults)
+    : null;
   /**
    * What the browser itself refuses — today only a tray's grid, whose row count is the
    * one control the schema has no path for. A spec carrying one is neither resolved
@@ -970,7 +985,12 @@ export function NewJob() {
       setSubmitProblems([]);
       try {
         const answer = await resolveSpec(JSON.parse(composedSpecJson));
-        if (live) setResolved(answer);
+        if (live) {
+          setResolved(answer);
+          // Answered on the refusal branch too, so this lands while the spec is still
+          // half-typed — which is when the fields it fills are being filled.
+          setFitDefaults(answer.fit_defaults ?? null);
+        }
       } catch {
         // The notice under the submit button is the user-facing answer; showing the
         // last good resolve under changed fields would be worse than showing none.
@@ -1085,6 +1105,7 @@ export function NewJob() {
                     problems={specProblems}
                     stacks={resolved?.stacks ?? []}
                     boxes={gameBoxes}
+                    fit={fitDefaults}
                     resolving={resolving}
                     unreachable={resolveFailed}
                     disabled={!printerReady}

@@ -249,3 +249,32 @@
   line-height: 1.6;
   color: var(--ink-ghost);
 }
+
+/* The fit-offset group (issue #89). Ruled off like `.box` because it is the same kind
+   of block: a set of fields whose numbers come from somewhere nameable, with the
+   sentence naming it above them. */
+.fit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--rule);
+  padding-top: 14px;
+}
+
+/* `.boxInterior`'s treatment, and deliberately the same one: both are a provenance
+   sentence under a ruler, and two ways of drawing "here is where this millimetre came
+   from" would read as two different kinds of claim. */
+.fitBasis {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-body);
+}
+
+.fitBasis svg {
+  flex: none;
+  margin-top: 2px;
+}

@@ -35,6 +35,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import httpx
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
+# The fit offsets a printer profile suggests to the composer (issue #89). Under the same
+# rule again, and this module is the reason the rule had to be written down: the figures
+# belong to `printability.ProcessProfile`, and `printability` imports numpy, trimesh and
+# scipy — none of which this image installs. `pythonsrc/fit_offsets.py` is the standard
+# library and nothing else precisely so both readers are the same reader, rather than
+# this process growing a second opinion about what four keys in a profile file mean.
+from pythonsrc import fit_offsets
 from pythonsrc.api_token import default_api_token_path, resolve_api_token
 from pythonsrc.ip_screen import screen_prompt
 from pythonsrc.operators import PrinterFactory
@@ -57,6 +64,7 @@ from pythonsrc.operators.printer_state import canonical_firmware
 # table of sourced millimetres and imports nothing. It is what `POST /organizer/resolve`
 # answers with, and the only figures the composer may show.
 from pythonsrc.organizer import (
+    FIT_INTENT_CLEARANCE_MM,
     CardStack,
     OrganizerSpec,
     SpecError,
@@ -4352,6 +4360,107 @@ async def list_game_boxes():
     }
 
 
+def _active_fit_defaults(fit_intent: str) -> Dict[str, Any]:
+    """The fit millimetres the configured printer suggests, for one fit intent.
+
+    Issue #89's pre-fill, and the whole of where option (b) happens. The decision of
+    2026-09-17 is that a printer profile is a *source the composer fills a form from*,
+    never a compile-time input, so this is the only place a machine's figures and a
+    design meet — one layer outside the schema, before a spec exists, where a person can
+    still overrule them. Downstream of here a spec carries explicit millimetres and
+    nothing can tell which printer suggested them, which is the property being bought:
+    `spec_hash` does not change meaning, and the same spec still exports the same bytes
+    on every machine.
+
+    **The arithmetic is here for the reason all of this endpoint's arithmetic is here.**
+    A cavity clearance is the intent's figure plus the machine's allowance
+    (`FIT_INTENT_CLEARANCE_MM` + `cavity_clearance_offset_mm`), and a browser adding
+    those two numbers would be a second copy of the first table — the failure
+    `resolve_stack` is on this endpoint to avoid. The client renders `cavity_clearance_mm`
+    and adds nothing to it.
+
+    The profile is `DEFAULT_PROFILE`: the one a job submitted right now would slice
+    against, which is `printer_status`'s `_ceiling` rule verbatim and for the same reason
+    — a composer asking "what does my printer suggest" means the printer it is about to
+    print on, and there is no second one to mean.
+
+    Args:
+        fit_intent: `spec.process.fit_intent`, already resolved by the schema.
+
+    Returns:
+        `{"profile", "printer", "declared", "fit_offsets_version", "lid_clearance_mm",
+        "cavity_clearance_mm", "cavity_clearance_offset_mm", "stack_slack_mm", "basis"}`.
+
+        **Never None.** "No printer is configured" is the explicit fourth point of the
+        decision and it resolves to `DEFAULT_FIT_OFFSETS` — the schema's own numbers,
+        which is what every spec this project has compiled was built from — with
+        `profile: null` and `declared: false` saying so. A composer that got None would
+        have to invent the fallback itself, in a browser, which is the one thing this
+        endpoint exists to stop.
+    """
+    profile_ref = config_store.get("DEFAULT_PROFILE")
+    profile: Optional[dict] = None
+    try:
+        candidate = resolve_profile_path(profile_ref)
+    except ProfileOutsideProfilesDir:
+        # Same posture as `_ceiling`: an escaping path is not honoured and is not an
+        # error the composer can act on either. The schema's defaults are the answer.
+        logger.debug("Ignoring fit offsets from outside %s: %s", PROFILES_DIR, profile_ref)
+        candidate = None
+    if candidate is not None:
+        try:
+            with open(candidate, "r") as handle:
+                profile = json.load(handle)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not read fit offsets from %s: %s", profile_ref, exc)
+    offsets = fit_offsets.fit_offsets_from_profile(profile or {})
+    declared = any(key in (profile or {}) for key in fit_offsets.PROFILE_KEYS)
+
+    # The schema resolved the intent already, but a spec that named an invalid one is a
+    # 200 carrying problems on this endpoint, so fall back rather than raise KeyError on
+    # a keystroke.
+    intent_mm = FIT_INTENT_CLEARANCE_MM.get(
+        fit_intent, FIT_INTENT_CLEARANCE_MM["snug"]
+    )
+    # 3 decimals is `organizer.spec.MM_DECIMALS` — the schema keeps every millimetre to
+    # 1 µm, and a pre-fill that came back as 2.0000000000000004 would be posted back as
+    # a spec the canonical form then rounded, so the figure on screen and the figure in
+    # the hash would differ by a float artefact.
+    cavity_mm = round(intent_mm + offsets.cavity_clearance_offset_mm, 3)
+
+    machine = (profile or {}).get("machine_name")
+    if declared:
+        basis = (
+            f"{machine or profile_ref} suggests these: a {offsets.lid_clearance_mm:g} mm "
+            f"lid clearance, and {intent_mm:g} mm of {fit_intent} cavity clearance plus "
+            f"{offsets.cavity_clearance_offset_mm:g} mm for the machine. The bands are "
+            "sourced (dimension-kb-research §3, §5); which end of each one a printer "
+            "class sits at is this project's reasoning, not a measurement"
+        )
+    elif profile_ref:
+        basis = (
+            f"{machine or profile_ref} says nothing about fit, so these are the schema's "
+            "own defaults — the millimetres every design here has been built from"
+        )
+    else:
+        basis = (
+            "No printer is configured, so these are the schema's own defaults — the "
+            "millimetres every design here has been built from"
+        )
+
+    return {
+        "profile": profile_ref or None,
+        "printer": machine,
+        "declared": declared,
+        "fit_offsets_version": fit_offsets.FIT_OFFSETS_VERSION,
+        "lid_clearance_mm": offsets.lid_clearance_mm,
+        "cavity_clearance_mm": cavity_mm,
+        "cavity_clearance_offset_mm": offsets.cavity_clearance_offset_mm,
+        "stack_slack_mm": offsets.stack_slack_mm,
+        "basis": basis,
+    }
+
+
 class SpecResolveRequest(BaseModel):
     """A spec, as the composer has it so far. Deliberately unvalidated by pydantic —
     the schema is the validator, and its refusal is this endpoint's answer.
@@ -4390,6 +4499,14 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
       name, and the list is empty for a tray rather than carrying a fabricated row;
     - **every problem, with the dotted path it names** — `problems_with_paths`, the
       same shape `POST /jobs`'s 422 carries, so one mapping in the client routes both;
+    - **what the configured printer suggests for the three fit fields** — issue #89's
+      pre-fill, and the same rule reaching a different table. A lid clearance is a
+      function of a machine's dimensional accuracy, that accuracy is sourced per printer
+      class in `pythonsrc/fit_offsets.py`, and a browser holding a second copy of it
+      would drift from the one the profile carries. It is an **offer, not a decision**:
+      the composer fills the fields with it, the person may overrule any of them, and
+      whatever survives is posted as explicit millimetres — so the spec remains the
+      whole truth and the mesh is not a function of a printer. See `_active_fit_defaults`;
     - **the lettering the spec asks for, measured in millimetres** — the ink the
       vendored font actually sets for `emboss.text` at `emboss.height_mm`, plus a problem
       for any character the font has no glyph for. `pythonsrc/organizer/lettering.py` is
@@ -4427,8 +4544,11 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
 
     Returns:
         `{"schema_valid", "problems", "spec", "spec_hash", "label", "stacks",
-        "game_box", "lettering"}`. When `schema_valid` is false every field but
-        `problems` is None or empty. `game_box` is the curated interior the spec named
+        "game_box", "lettering", "fit_defaults"}`. When `schema_valid` is false every
+        field but `problems` and `fit_defaults` is None or empty — the pre-fill is
+        answered on that branch too, because a spec is invalid for most of the time
+        somebody is composing one and a default that arrives only at the end arrives
+        after the fields it fills. `game_box` is the curated interior the spec named
         and its per-axis provenance, or **None for a box nobody has measured** — the
         degraded mode, where the millimetres are the ones somebody typed and
         `constraints.fit_margin_mm` comes off them just the same. The composer says
@@ -4446,6 +4566,13 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
             "stacks": [],
             "game_box": None,
             "lettering": None,
+            # Answered on the refusal branch too, and that is the point of it being
+            # here. The composer pre-fills from these figures, and a spec is refused
+            # for half the time somebody is typing one — a pre-fill that arrived only
+            # once the spec was already valid would arrive after the fields it fills
+            # had been filled by hand. The intent is not readable off a spec that did
+            # not parse, so `snug` answers, which is the schema's own default.
+            "fit_defaults": _active_fit_defaults("snug"),
         }
 
     canonical = spec.to_dict()
@@ -4509,6 +4636,11 @@ async def resolve_organizer_spec(request: SpecResolveRequest):
         # box two different ways.
         "game_box": game_box_record(spec),
         "lettering": lettering_info,
+        # What the configured printer suggests for the three fit fields, resolved
+        # against *this* spec's fit intent. Never the spec's own values: those are in
+        # `spec` above, in millimetres, and a second copy of them here could disagree.
+        # This is the offer; the spec is the record of what was accepted.
+        "fit_defaults": _active_fit_defaults(spec.process.fit_intent),
     }
 
 
