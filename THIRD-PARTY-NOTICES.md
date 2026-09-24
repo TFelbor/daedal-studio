@@ -636,6 +636,15 @@ second nested copy rather than deduplicating. That is a bundle-size cost, not a
 licence one — both copies are MIT — and it is deliberate: deduplicating would run the
 previewer against a three.js eleven minors newer than the one it was tested on.
 
+**The funding marks (`web/src/assets/funded_by_eu-*.png`, `eit_dgtl_banner-*.png`) are not
+under this project's licence**, and they are not dependencies. The first pair is the
+European Union's emblem; the second is 28DIGITAL's lock-up, carrying 28DIGITAL's logo and
+the EU flag. Both are shown on the app's About page because the Prize Agreement for
+28DIGITAL's Venture Incubation Program requires funding visibility (Annex I, MGA Art. 17.2).
+The Apache-2.0 grant in `LICENSE` does not extend to them: they may not be altered,
+recoloured, cropped or reused outside that funding credit. See `docs/SYSTEM-AS-BUILT.md`
+§ Frontend.
+
 **`@playwright/test` (Apache-2.0), a devDependency, added 2026-09-17 with issue #87.**
 It runs the viewport smoke in `web/e2e/` and ships in nothing: it is not imported by any
 module under `web/src/`, so it is absent from `web/dist/` and therefore from the server

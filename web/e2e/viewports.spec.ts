@@ -40,6 +40,7 @@ const PAGES: { name: string; path: string; ready: string; attach?: Attach }[] = 
   { name: 'job-detail', path: `/dashboard/${JOB_ID}`, ready: 'text=Record' },
   { name: 'dashboard', path: '/dashboard', ready: 'text=Jobs' },
   { name: 'printer-setup', path: '/setup', ready: 'text=Spec engine' },
+  { name: 'about', path: '/about', ready: 'text=Funding' },
 ]
 
 const SHOTS = '../docs/screenshots/issue-87'

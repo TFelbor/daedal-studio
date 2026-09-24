@@ -5,6 +5,7 @@ import { JobList } from './pages/JobList';
 import { JobDetail } from './pages/JobDetail';
 import { PrinterSetup } from './pages/PrinterSetup';
 import { PrintMonitor } from './pages/PrintMonitor';
+import { About } from './pages/About';
 import { OutcomeFeedback } from './components/OutcomeFeedback';
 import { GridTrail } from './components/GridTrail';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -61,7 +62,8 @@ function Navigation() {
   );
 }
 
-/** The four claims, and the machine credits that are not claims but obligations. */
+/** The four claims, the machine credits that are not claims but obligations, and the
+ * way to the funding credit, which is also an obligation. */
 function Attribution() {
   return (
     <footer className={styles.attribution}>
@@ -94,7 +96,17 @@ function Attribution() {
           <span>Blueprints by FLUX.2-klein</span>
         </div>
       </div>
-      <span className={styles.plate}>DAEDAL_STUDIO</span>
+      <div className={styles.attributionEnd}>
+        {/* The way to the funding credit. The app is a result the EU funds and must
+            carry its emblem; the link puts that one click from every page, because the
+            footer is on every page and the nav has no room left at 375px. The
+            link names the page rather than the funder: "Funded by the European
+            Union" belongs beside the emblem, not in a footer without it. */}
+        <Link to="/about" className={styles.footerLink}>
+          About and credits
+        </Link>
+        <span className={styles.plate}>DAEDAL_STUDIO</span>
+      </div>
     </footer>
   );
 }
@@ -149,6 +161,7 @@ function App() {
           <Route path="/dashboard/:id" element={<JobDetail />} />
           <Route path="/monitor" element={<PrintMonitor />} />
           <Route path="/setup" element={<PrinterSetup />} />
+          <Route path="/about" element={<About />} />
           {/* A mistyped URL used to render an empty page. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

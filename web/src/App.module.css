@@ -130,6 +130,29 @@
   color: var(--rule-strong);
 }
 
+.attributionEnd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+
+/* On `--ink-soft` rather than the accent: `--accent-ink` is solved for 4.5:1 against
+   the page ground, and the footer sits on the darker `--void`. The underline is what
+   says "link" once the colour no longer does. */
+.footerLink {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  transition: color var(--motion-quick) ease;
+}
+
+.footerLink:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
 .plate {
   font-family: var(--font-mono);
   letter-spacing: 0.1em;

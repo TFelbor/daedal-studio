@@ -1,0 +1,112 @@
+/* About and credits — one reading column on the drawn surface.
+ *
+ * The funding block is the only thing on this page with rules attached to it
+ * (docs/eu-visibility-rules.md in the landing-page repository): the EU emblem and
+ * 28DIGITAL's lock-up are shown whole, in their own colours, and the emblem is at least
+ * as large as any logo near it. Nothing below may put a filter, an opacity, a blend mode
+ * or a clipping box on `.emblem` or `.lockup` — `tests/test_eu_funding_credit.py` reads
+ * this file for exactly those, and holds the two heights against each other.
+ */
+
+.page {
+  max-width: 720px;
+}
+
+.head {
+  margin-bottom: 36px;
+}
+
+.kicker {
+  margin-bottom: 10px;
+}
+
+.lede {
+  margin-top: 16px;
+  max-width: 60ch;
+  font-size: 16px;
+  color: var(--ink-body);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.credit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 28px;
+  background: var(--panel);
+}
+
+/* 28DIGITAL's lock-up, then the EU emblem — the landing page's order. One row with a
+   hairline between them, the two artworks centred on each other. */
+.marks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 100%;
+}
+
+.markDivider {
+  flex: none;
+  width: 1px;
+  height: 48px;
+  background: var(--rule-strong);
+}
+
+/* 52px tall, not 64: the 28DGTL square fills 97 % of the artwork's height, so at 52px
+   it is ~51px — below the emblem's flag (~55px on the light file, ~62px on the dark).
+   A narrow column shrinks it further, never grows it. */
+.lockup {
+  height: 52px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  min-width: 0;
+}
+
+/* 64px tall: well above the nav's 26px wordmark, the only Daedal mark on screen.
+   `object-fit: contain` is the guard for a narrow column — if `max-width` ever has to
+   shrink the box, the artwork is letterboxed inside it rather than squeezed or cut. */
+.emblem {
+  height: 64px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.body {
+  max-width: 60ch;
+  color: var(--ink-body);
+}
+
+/* Prose, so it sits on `--ink-mute` and no lower: the bottom two ladder steps are for
+   labels, and a disclaimer someone cannot read is not one that has been displayed. */
+.disclaimer {
+  max-width: 60ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-mute);
+}
+
+@media (max-width: 720px) {
+  .credit {
+    padding: 20px;
+  }
+
+  /* 309px of lock-up and 212px of emblem do not share a phone's row. Stacked, the
+     hairline between them has nothing to divide. */
+  .marks {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .markDivider {
+    display: none;
+  }
+}

@@ -3119,6 +3119,46 @@ banner. One consequence is worth knowing before it is reported as a bug: **an iO
 standalone window has its own `localStorage`, so the API token is entered once more there**
 than in Safari.
 
+**The app carries the EU funding credit on `/about`, and the footer is the way to it**
+(`pages/About.tsx`, 2026-09-24). Daedal Studio is funded by the European Union through
+28DIGITAL's Venture Incubation Program, and the founders settled that this MVP is a *major
+result funded* by it, so the Prize Agreement (Annex I, MGA Art. 17.2; Rules & Regulations
+§7.10) requires **element B**, the EU emblem with "Funded by the European Union", in the
+product. The page names the program, so it carries **disclaimer C** verbatim beside it, and
+**element A** — 28DIGITAL's lock-up — stands before the emblem, in the landing page's order.
+A is required on the website rather than in the product; it is here by choice, so the page
+credits the program the way the site does. The rules are the landing-page repository's
+`docs/eu-visibility-rules.md`, and five of them decided the shape:
+
+- **A page, not a footer badge.** Product UI carries no marks by default; the obligation is
+  one credit on an About/Credits page. The footer carries the *link* ("About and credits"),
+  because the footer is on every page and the nav has no room left at 375 px — and the link
+  names the page rather than the funder, since "Funded by the European Union" belongs next
+  to the emblem, not in a footer without it.
+- **The artwork is the landing page's, byte for byte** (`funded_by_eu-*` and
+  `eit_dgtl_banner-*`), imported from `src/assets/` so it
+  ships under `/assets/*` and the service worker caches it without a new `ROOT_FILES`
+  entry. The 28DIGITAL Intranet could not be logged into, so these are the files the
+  founders settled on; `tests/test_eu_funding_credit.py` pins their digests.
+- **Two files per mark, one per ground, swapped by `useTheme`.** Each `-dark` file has
+  white lettering, which vanishes on the light ground. A filter would make one file serve both, and that is
+  recolouring the emblem; so is an opacity. The stylesheet may not put either on `.emblem`
+  or `.lockup`.
+- **The emblem is never smaller than a logo beside it — including 28DIGITAL's.** Equal
+  CSS heights would get this wrong: the 28DGTL square fills 97 % of the lock-up's height,
+  while the EU flag fills 87 % (light file) to 96 % (dark) of the emblem's. So the emblem
+  is 64 px and the lock-up 52 px, which draws the square at ~51 px beside a flag of ~55
+  or ~62 px. The test holds those measured fractions against the two CSS heights, per
+  theme. The only Daedal mark on screen is the nav's 26 px wordmark.
+- **"Funded by", never "Co-funded by", and the EIT is not credited under our name.**
+  "Initiated by the EIT" describes 28DIGITAL and may appear only inside 28DIGITAL's own
+  lock-up. In the app that means the artwork and `LOCKUP_ALT`, its text alternative, which
+  the test pins, counts and requires to be the `alt` of the lock-up image — the phrase
+  appears nowhere else in anything the app renders.
+
+The page sits behind the token gate like every other route. A visitor without a token sees
+only the gate; the credit is reached by the people who use the product.
+
 ## Configuration
 
 System config (`.env` template at `.env.template`) is loaded by Docker Compose; `DS_DATABASE_URL` in it is the one required value. Runtime config (accessible via `/config` API) is stored encrypted in the telemetry database (`app_config` table, PostgreSQL on Supabase). The Fernet key file lives at `~/.ds-mvp/.config_key` (`$DS_CONFIG_KEY_PATH`), is gitignored and auto-generated on first use.
