@@ -101,7 +101,7 @@ resolved number in a spec can be traced:
 
 | Constant | Value | Basis |
 |---|---|---|
-| `CARD_KINDS["standard"]` | 63,5 × 88,9 mm | MTG spec; four target games within ±0,5 mm |
+| `CARD_KINDS["standard"]` | 63,5 × 88,9 mm | MTG spec; the other target games the same size or up to ~1 mm smaller (corrected 2026-09-24; this row said "within ±0,5 mm") |
 | sleeved footprint `none` | card footprint | — |
 | sleeved footprint `single` | 66 × 91 mm | DS / UP / Gamegenic outer |
 | sleeved footprint `double` | 67 × 92 mm | measured double-sleeved width; outer height |

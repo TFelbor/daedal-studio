@@ -68,7 +68,7 @@ from ..compiler import (
     plane_set,
     text_outline,
 )
-from ..dimensions import ResolvedStack, resolve_stack
+from ..dimensions import SLEEVING_WORDS, ResolvedStack, resolve_stack
 from ..spec import (
     EMBOSS_EDGE_MARGIN_MM,
     CardStack,
@@ -238,7 +238,7 @@ def validate(spec: OrganizerSpec) -> None:
     if d.tab_w >= d.plate_w:
         problems.append(
             f"divider.tab_width_mm {d.tab_w:g} must be less than the plate width "
-            f"{d.plate_w:g} mm ({d.stack.sleeving}-sleeved envelope); a tab as wide as "
+            f"{d.plate_w:g} mm ({SLEEVING_WORDS[d.stack.sleeving]} envelope); a tab as wide as "
             "the plate is a taller plate, not a tab — narrow the tab"
         )
     for name, value in (
@@ -530,7 +530,7 @@ def fits_check(spec: OrganizerSpec) -> FitsResult:
     s = d.stack
     envelope = (
         f"{s.footprint_w_mm:g} × {s.footprint_h_mm:g} mm "
-        + ("bare card" if s.sleeving == "none" else f"{s.sleeving}-sleeved")
+        + ("bare card" if s.sleeving == "none" else SLEEVING_WORDS[s.sleeving])
         + " envelope"
     )
     div = spec.divider
@@ -659,6 +659,8 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
 #: One count, not an axis: the plate's footprint comes from the sleeve envelope, and
 #: `SWEEP_SLEEVINGS` already moves it. A second count would move nothing else.
 SWEEP_COUNT: int = 100
+#: ``double_thick`` is left out on purpose: its envelope is ``double``'s (the same outer
+#: sleeve), and the plate is the envelope, so sweeping it would build every plate twice.
 SWEEP_SLEEVINGS: tuple[str, ...] = ("none", "single", "double")
 SWEEP_POSITIONS: tuple[str, ...] = ("left", "centre", "right")
 #: The audited 1,2–1,6 mm insert band, plus one over it.

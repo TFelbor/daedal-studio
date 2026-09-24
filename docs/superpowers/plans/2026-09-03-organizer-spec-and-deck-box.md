@@ -153,18 +153,22 @@ class CardSize:
     source: str
 
 
-#: Card kinds a spec may name. ``standard`` is the footprint the four target games share
-#: (MTG 63,5 × 88,9 spec; Pokémon, Lorcana, Flesh and Blood and One Piece within
-#: ±0,5 mm — Draftsim, folio.fyi, Card Fit Lab, CardShellz). The Japanese size
-#: (59 × 86, Yu-Gi-Oh) is in the research but has **no sourced sleeve envelope**, and a
-#: footprint invented to fill that gap is exactly the fabricated number this module
-#: exists to refuse. It arrives with the KB.
+#: Card kinds a spec may name. ``standard`` is the MTG spec, 63,5 × 88,9 (Draftsim).
+#: Pokémon, Lorcana, Flesh and Blood and One Piece cards are the same size or up to
+#: about 1 mm smaller: 63 × 88, per folio.fyi, Card Fit Lab and CardShellz. Sizing for
+#: MTG is deliberate, because a box that fits the largest card fits the rest. The
+#: Japanese size (59 × 86, Yu-Gi-Oh) is in the research but has **no sourced sleeve
+#: envelope**, and a footprint invented to fill that gap is exactly the fabricated number
+#: this module exists to refuse. It arrives with the KB.
 CARD_KINDS: dict[str, CardSize] = {
     "standard": CardSize(
         width_mm=63.5,
         height_mm=88.9,
         thickness_mm=0.305,
-        source="MTG spec (Draftsim); Pokémon / Lorcana / FaB / One Piece within ±0,5 mm",
+        source=(
+            "MTG spec (Draftsim); Pokémon / Lorcana / FaB / One Piece the same size "
+            "or up to ~1 mm smaller"
+        ),
     ),
 }
 

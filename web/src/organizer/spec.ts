@@ -94,7 +94,7 @@ export type ArchetypeId = (typeof ARCHETYPES)[number]['id'];
 export const CARD_KINDS = ['standard'] as const;
 
 /** `dimensions.SLEEVINGS`. */
-export const SLEEVINGS = ['none', 'single', 'double'] as const;
+export const SLEEVINGS = ['none', 'single', 'double', 'double_thick'] as const;
 
 /** `spec.LID_KINDS`. Slide, hinged and magnetic lids are later archetype variants. */
 export const LID_KINDS = ['lift_off'] as const;
@@ -220,6 +220,7 @@ export const SLEEVING_NOTE: Record<string, string> = {
   none: 'unsleeved',
   single: 'single sleeved',
   double: 'double sleeved',
+  double_thick: 'double sleeved, thick inners',
 };
 
 function row(

@@ -25,26 +25,67 @@ double-sleeved** (measured stack + air margin); footprint envelope **67 × 92 mm
 | Lorcana / FaB / One Piece | 63 × 88 (standard TCG footprint) | spec | [Card Fit Lab](https://cardfitlab.com/guides/lorcana-card-size), [CardShellz](https://www.cardshellz.com/blogs/the-bunker/sleeve-size-guide) |
 | Yu-Gi-Oh (Japanese size) | 59 × 86 | spec | [CardShellz](https://www.cardshellz.com/blogs/the-bunker/sleeve-size-guide) |
 
-Design against **63,5 × 88,9** raw; the four target games share one footprint within
-±0,5 mm. Pokémon single-card thickness is not independently documented — treat as
-≈0,30 like MTG.
+Design against **63,5 × 88,9** raw. Pokémon, Lorcana, FaB and One Piece cards are the
+same size or up to about 1 mm smaller: the rows above give 63 × 88, which is 0,5 mm
+narrower and 0,9 mm shorter than MTG. A box sized for MTG therefore fits them too, and
+that is the design choice: size for the largest card, not an average. (Corrected
+2026-09-24: this line used to say the games share one footprint "within ±0,5 mm", which
+the 88 vs 88,9 mm heights in the same table contradict.) Pokémon single-card thickness
+is not independently documented, so treat it as ≈0,30 like MTG.
 
 ## 2. Sleeves (per layer, µm)
 
 | Brand / line | Type | µm | Source |
 |---|---|---|---|
 | Dragon Shield Classic | outer | 120 | [vintageisthenewold](https://www.vintageisthenewold.com/faq/what-thickness-are-dragon-shield-sleeves), [SleeveYourGames](https://www.sleeveyourgames.com/guide) |
-| Dragon Shield Matte | outer | **130 measured vs 120 in aggregate DBs** ⚠ | [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/dragon-shield-dual-matte-sleeves) vs [SleeveYourGames](https://www.sleeveyourgames.com/guide) |
-| Dragon Shield Perfect Fit | inner | 50 (Clear), 60 (Smoke sealable), 100 (Thick) | [Card Kingdom](https://www.cardkingdom.com/mtg-supplies/dragon-shield-perfect-fit-sealable-100-standard-size), [dragonshield.com](https://www.dragonshield.com/products/perfect-fit-thick-inner-sleeves-clear) |
-| KMC Perfect Fit | inner | **50 retail spec vs 40 caliper** ⚠ → store 45 ±5 | [Walmart/KMC](https://www.walmart.com/ip/KMC-Sleeves-USA-Pack-Clear-Perfect-Fit-100-Count/599549526), [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/kmc-perfect-size-sleeves) |
-| KMC Perfect Hard | inner | 100 | [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/kmc-perfect-hard-inner-sleeve) |
+| Dragon Shield Matte | outer | **120 maker spec vs 130 per Double Sleeved** ⚠ | [dragonshield.com](https://www.dragonshield.com/products/clear-matte-sleeves) (Clear Matte, AT-11001) vs [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/dragon-shield-dual-matte-sleeves) (review of 2023-05-19) |
+| Dragon Shield Perfect Fit, toploading (Clear, Smoke) and Clear sideloading | inner | 60 | dragonshield.com: [Clear toploading](https://www.dragonshield.com/products/clear-toploading-perfect-fit-sleeves) AT-13001, [Smoke toploading](https://www.dragonshield.com/products/smoke-toploading-perfect-fit-sleeves) AT-13023, [Clear sideloading](https://www.dragonshield.com/products/clear-sideloading-perfect-fit-sleeves) AT-13101 |
+| Dragon Shield Perfect Fit, sealable (Clear, Smoke) and Smoke sideloading | inner | **50 maker spec** ⚠ a retailer lists Smoke sealable as 60 | dragonshield.com: [Clear sealable](https://www.dragonshield.com/products/clear-sealable-perfect-fit-sleeves) AT-13201, [Smoke sealable](https://www.dragonshield.com/products/smoke-sealable-perfect-fit-sleeves) AT-13223, [Smoke sideloading](https://www.dragonshield.com/products/smoke-sideloading-perfect-fit-sleeves-standard-size) AT-13123; vs [Card Kingdom](https://www.cardkingdom.com/mtg-supplies/dragon-shield-perfect-fit-sealable-100-standard-size) |
+| Dragon Shield Perfect Fit Thick (Clear, Black) | inner | 100 | dragonshield.com: [Clear](https://www.dragonshield.com/products/perfect-fit-thick-inner-sleeves-clear) AT-13004, [Black](https://www.dragonshield.com/products/perfect-fit-thick-inner-sleeves-black) AT-13005 |
+| KMC Perfect Fit | inner | **50 maker spec vs 40 per Double Sleeved** ⚠ → store 45 ±5 | [kmcsleeves.com](https://www.kmcsleeves.com/products/perfect-fit), [Walmart/KMC](https://www.walmart.com/ip/KMC-Sleeves-USA-Pack-Clear-Perfect-Fit-100-Count/599549526) vs [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/kmc-perfect-size-sleeves) |
+| KMC Perfect Hard | inner | 100 | [kmcsleeves.com](https://www.kmcsleeves.com/products/perfect-hard), [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/kmc-perfect-hard-inner-sleeve) |
 | KMC Hyper Mat | outer | 120 | [kmcsleeves.com](https://www.kmcsleeves.com/products/hyper-mat-100ct-clear) |
 | Ultra Pro Eclipse / Pro-Matte | outer | 90 front / 120 back (asymmetric) | [Ultra Pro support](https://support.ultrapro.com/en-US/how-thick-are-the-materials-used-to-make-sleeves-380650) |
 | Ultra Pro Pro-Fit | inner | 50 | same |
-| Gamegenic Prime / Matte Prime | outer | 100 (66×91) | [gamegenic.com](https://www.gamegenic.com/product/matte-prime-sleeves/) |
+| Gamegenic Prime Board Game Sleeves, Gray (66×91) | outer | 100 | [gamegenic.com](https://www.gamegenic.com/product/prime-board-game-sleeves/) |
+| Gamegenic Prime / Matte Prime | outer | **unsourced** | [Prime](https://www.gamegenic.com/product/prime-sleeves/) and [Matte Prime](https://www.gamegenic.com/product/matte-prime-sleeves/) state no thickness |
 | Gamegenic inner | inner | 50 | [Double Sleeved](https://www.doublesleeved.co.uk/blogs/reviews/gamegenic-inner-sleeves) |
 | Sleeve Kings | outer | 60 standard / 100 premium | [sleevekings.com](https://sleevekings.com/pages/the-sleeve-kings-difference) |
 | Ultimate Guard Supreme / Premium | outer | 115 / 50 | [SleeveYourGames](https://www.sleeveyourgames.com/guide) |
+
+**Re-checked against the live pages on 2026-09-24**, when the landing page's deck box
+calculator was re-sourced to the makers' own spec pages. What changed, and why:
+
+- **Dragon Shield** states thickness in the "Quality" row of each product page's
+  specifications. The earlier Perfect Fit row (50 Clear, 60 Smoke sealable, 100 Thick)
+  matched none of them. It had come from Card Kingdom's listing, which still gives the
+  sealable line as 60 µm Smoke and 50 µm Clear. Dragon Shield gives 50 µm for both
+  sealable colours and 60 µm for the regular Clear toploader. Smoke is 60 µm as a
+  toploader but 50 µm as a sideloader, so colour alone does not tell you the thickness.
+- **Dragon Shield Matte.** The 130 µm is Double Sleeved's figure. Its review says the
+  Matte sleeves measure 130 µm front and back, but does not say what they were measured
+  with. The "120 in aggregate DBs" this row used to cite was SleeveYourGames, whose guide
+  lists 120 µm for AT-10001, not for the Matte line (AT-11001). The disagreement is
+  therefore Dragon Shield's own 120 µm against Double Sleeved's 130 µm.
+- **Gamegenic.** The only page that states 100 µm is Prime *Board Game* Sleeves, which
+  gives a reinforced thickness of 100 microns and whose Gray size is the 66 × 91
+  standard card-game sleeve. The Prime and Matte Prime pages, which this row used to
+  cite, give the size (66 × 91, for cards up to 64 × 89), the pack count (100) and the
+  material (polypropylene), but no thickness. The board-game figure is not assumed to
+  apply to them.
+- **KMC Perfect Fit.** The kmcsleeves.com product page gives the thickness as 0,05 mm.
+  The 40 µm is Double Sleeved's figure, from their review (2023-08-17) of KMC's
+  *Perfect Size* inner, which they say is made from 40-micron plastic. The review does
+  not say what it was measured with. Perfect Size is very likely the same sleeve under
+  another name, for three reasons:
+  - KMC's US store sells no product called Perfect Size.
+  - Both are 64 × 89 mm.
+  - The review says the sleeve's packaging variants are the same product.
+
+  The review never names Perfect Fit, though, so this stays "very likely", not
+  confirmed. Either way the disagreement is small. 10 µm per film is 0,02 mm per card,
+  or 2 mm per 100 cards, and both 0,625 and 0,645 mm/card are under the 0,70 design
+  pitch.
 
 **Per-card pitch** (nominal = card + 2×inner + 2×outer):
 
@@ -52,11 +93,38 @@ Design against **63,5 × 88,9** raw; the four target games share one footprint w
 |---|---|---|
 | Unsleeved | 0,305 | card only |
 | Single-sleeved, thin (UP Premium) | 0,41 | derived |
-| Single-sleeved, DS Matte | 0,55–0,57 | derived |
-| Double-sleeved, KMC PF + Hyper Mat | 0,63 | derived |
-| Double-sleeved, DS PF + DS Matte | 0,67 | derived |
+| Single-sleeved, DS Matte | 0,55–0,57 | derived (120 maker spec to 130 Double Sleeved) |
+| Double-sleeved, KMC PF + Hyper Mat | 0,645 at maker spec (50 + 120); 0,625 at Double Sleeved's 40; 0,635 at the stored 45 | derived |
+| Double-sleeved, DS PF + DS Matte | 0,645–0,665 at maker spec (50 sealable or 60 toploading + 120); 0,665–0,685 at Double Sleeved's 130 | derived |
 | **Design rule, double-sleeved** | **0,70** | measured stacks + air margin |
 | **Design rule, single-sleeved** | **0,60** | derived + air margin |
+| **Design rule, double-sleeved, thick (100 µm) inners** | **0,80** | derived + air margin; no measured stack |
+
+**What the makers' own figures give.** Using maker spec pages only, inner sleeves are
+50–60 µm (Dragon Shield Perfect Fit 50 or 60, KMC Perfect Fit 50, Ultra Pro Pro-Fit 50)
+and premium outer sleeves are 90–120 µm (Ultra Pro Eclipse / Pro-Matte 90 front and 120
+back, Dragon Shield Matte 120, KMC Hyper Mat 120). A same-brand pair comes to
+0,645 mm/card for KMC and 0,645–0,665 mm/card for Dragon Shield. That is about
+0,65–0,67 mm per card, or 64,5–66,5 mm for 100 cards. The two measured 100-card stacks
+(66 and 66,7 mm) sit at the top of that range and just above it. These are the figures
+the landing page's deck box calculator quotes (`ds-landing-page`,
+`src/calculator/DeckBoxCalculator.tsx`, "Where the numbers come from").
+
+Two pairs fall outside that range. They are kept here, not dropped:
+
+- An Ultra Pro pair (Pro-Fit inside Eclipse) works out to 0,615 mm/card, because
+  Eclipse's front film is 90 µm.
+- Dragon Shield's Thick Perfect Fit (100 µm) inside Matte works out to 0,745 mm/card,
+  and KMC Perfect Hard (100 µm) inside Hyper Mat gives the same. That is **above the
+  0,70 design pitch**: 100 such cards come to 74,5 mm nominal, against the 70 mm that
+  `double` allows. A separate sleeving, **`double_thick`, covers these (0,80 mm/card,
+  added 2026-09-24)**. Its worst nominal is 0,765 mm/card, with Double Sleeved's
+  130 µm Matte. 0,80 keeps the same 3,3 mm per 100 cards of air margin over that
+  figure that `double` keeps over its measured stack. It is a separate option, and
+  `double` is not raised, because at 0,80 a regular 100-card double-sleeved deck
+  (66,7 mm measured) would sit in an 81 mm cavity with about 13 mm of play. No
+  thick-inner stack has been measured. The first measured one should replace this
+  derivation.
 
 **The air margin is load-bearing — do not tune it out.** Practitioner accounts of insert
 design report that freshly sleeved cards trap air, and that the displacement is enough to

@@ -84,7 +84,7 @@ from pythonsrc.organizer.box_kb import kb as game_box_kb
 # The seed dimensions, for the same reason and under the same rule: `resolve_stack` is
 # arithmetic over a table of sourced millimetres and imports nothing. It is what
 # `POST /organizer/resolve` answers with, and the only figures the composer may show.
-from pythonsrc.organizer.dimensions import resolve_stack
+from pythonsrc.organizer.dimensions import SLEEVING_WORDS, resolve_stack
 from pythonsrc.platform_utils import get_execution_strategy
 from pythonsrc.size_hint import parse_size_hint
 from pythonsrc.telemetry.db import TelemetryDB
@@ -1232,20 +1232,17 @@ def get_resolved_strategy() -> str:
         return override
     return get_execution_strategy()
 
-#: How a spec's sleeving reads inside the label a spec job is given.
-#:
-#: The same three *keys* as `SLEEVING_NOTE` in `web/src/organizer/spec.ts`, which
-#: captions the same field — `test_composer_options.py` binds the two key sets, and
-#: has to, because a sleeving one side knows and the other does not is a caption that
-#: silently falls back. The wording differs on purpose and only here: this one goes
-#: inside a noun phrase ("100 double-sleeved standard cards"), where the compound
-#: adjective takes a hyphen, and the panel's caption stands alone after a comma
-#: ("standard, double sleeved"), where it does not.
-SLEEVING_WORDS: Dict[str, str] = {
-    "none": "unsleeved",
-    "single": "single-sleeved",
-    "double": "double-sleeved",
-}
+# How a spec's sleeving reads inside the label a spec job is given:
+# `dimensions.SLEEVING_WORDS`, imported above, the one Python copy (the archetypes'
+# captions need the same words).
+#
+# The same *keys* as `SLEEVING_NOTE` in `web/src/organizer/spec.ts`, which
+# captions the same field — `test_composer_options.py` binds the two key sets, and
+# has to, because a sleeving one side knows and the other does not is a caption that
+# silently falls back. The wording differs on purpose and only here: this one goes
+# inside a noun phrase ("100 double-sleeved standard cards"), where the compound
+# adjective takes a hyphen, and the panel's caption stands alone after a comma
+# ("standard, double sleeved"), where it does not.
 
 
 def spec_label(spec: Dict[str, Any]) -> str:

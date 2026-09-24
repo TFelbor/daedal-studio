@@ -314,6 +314,14 @@ def test_the_fits_line_shows_the_arithmetic_and_how_far_the_tab_stands_proud():
     assert fits.remedy is None
 
 
+def test_a_thick_inner_divider_names_its_envelope_in_words():
+    """The divider's plate is the sleeve envelope, which thick inners do not change. The
+    caption must say so in words and not print the ``double_thick`` key."""
+    fits = fits_for(divider(sleeving="double_thick"))
+    assert "67 × 92 mm thick-inner double-sleeved envelope" in fits.line
+    assert "double_thick" not in fits.line
+
+
 def test_the_card_count_is_named_as_not_geometric():
     """It is required by the schema and does not enter the geometry — a divider labels
     a group of any size — so the line says so rather than the archetype refusing it."""

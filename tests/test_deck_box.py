@@ -118,6 +118,16 @@ def test_a_hundred_double_sleeved_cards_derive_the_expected_box():
     assert d.external_h == pytest.approx(d.body_h + 2.0)
 
 
+def test_thick_inners_deepen_the_cavity_and_leave_its_footprint_alone():
+    """100 cards in 100 µm inners are 74,5–76,5 mm nominal (`docs/dimension-kb-research.md`
+    §2). That is past a `double` cavity's 71 mm and inside a `double_thick` one's 81 mm.
+    The outer sleeve is the same, so the cavity's footprint is the same too."""
+    regular, thick = deck_box.derive(deck()), deck_box.derive(deck(sleeving="double_thick"))
+    assert thick.cavity_d == pytest.approx(100 * 0.80 + 1.0)
+    assert regular.cavity_d < 76.5 < thick.cavity_d
+    assert (thick.cavity_w, thick.cavity_h) == (regular.cavity_w, regular.cavity_h)
+
+
 def test_an_easy_fit_widens_the_cavity_by_the_sourced_figure_on_both_axes():
     """`docs/dimension-kb-research.md` §3's easy-in/out convention, applied where a
     clearance applies: the cavity's width and height, not its depth (the stack has its

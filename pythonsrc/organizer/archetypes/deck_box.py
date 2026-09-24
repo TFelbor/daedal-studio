@@ -978,7 +978,9 @@ def to_view(spec: OrganizerSpec, result: CompileResult) -> dict[str, Any]:
 
 #: Card counts, from a starter pile to a double-sleeved Commander deck.
 SWEEP_COUNTS: tuple[int, ...] = (15, 40, 60, 100, 160)
-SWEEP_SLEEVINGS: tuple[str, ...] = ("none", "single", "double")
+#: ``double_thick`` is swept although it is ``double``'s footprint: its 0,80 mm pitch
+#: makes 160 cards a 128 mm stack, taller than any other sleeving reaches (112 mm).
+SWEEP_SLEEVINGS: tuple[str, ...] = ("none", "single", "double", "double_thick")
 #: `None` is "no wall stated" — `ARCHETYPE_WALL_MM["deck_box"]`, 2,4 mm. 2.6 − 1.2 lid
 #: wall − 0.35 clearance = 1.05 mm of lip, above `min_feature_mm`; at the 2,4 mm default
 #: that same clearance leaves 0.85 mm and `validate` refuses it, so `_lip_is_buildable`

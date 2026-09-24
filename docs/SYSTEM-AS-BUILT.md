@@ -707,8 +707,14 @@ the same STL byte for byte (`tests/test_deck_box.py`, `tests/test_card_divider.p
   `compiler.py` (the kernel bridge and the measurers) or `archetypes/__init__.py` (which
   imports the archetype modules, so a helper there is a circular import).
 - **`dimensions.py` is a seed, not the KB.** The standard card footprint, the single and
-  double sleeved envelopes and the three design pitches (0.305 / 0.60 / 0.70 mm per
-  card), each with its source from `docs/dimension-kb-research.md`. Only `standard` is
+  double sleeved envelopes and the four design pitches (0.305 / 0.60 / 0.70 / 0.80 mm
+  per card), each with its source from `docs/dimension-kb-research.md`. The fourth,
+  `double_thick` (2026-09-24), is for 100 µm "thick" inner sleeves (Dragon Shield Perfect
+  Fit Thick, KMC Perfect Hard). Those derive to 0,745–0,765 mm/card, which is past
+  `double`'s 0,70. It is a separate option, and `double` is not raised: at 0,80, a
+  regular double-sleeved deck would sit in a box about 13 mm too deep. It has `double`'s
+  envelope and no measured stack. `SLEEVING_WORDS` is the one Python copy of how each
+  sleeving reads in a sentence, and `server.app` imports it from here. Only `standard` is
   offered: the Japanese size has no sourced sleeve envelope and an invented one is
   exactly the fabricated number the schema exists to refuse. The M2 KB replaces this
   file; `resolve_stack`'s `basis` string is what the UI's fits line shows.

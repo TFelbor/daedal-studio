@@ -309,7 +309,7 @@ def test_the_deck_box_envelope_is_wide_enough_to_mean_something():
     cases = envelope_for("deck_box")
     assert len(cases) >= 400
     assert min(COUNTS) < 20 and max(COUNTS) >= 150
-    assert set(SLEEVINGS) == {"none", "single", "double"}
+    assert set(SLEEVINGS) == {"none", "single", "double", "double_thick"}
     assert None in deck_box.SWEEP_WALLS
     # The default is not also in the tuple as a number, so counting specs that carry it
     # counts the ones that stated no wall at all.
