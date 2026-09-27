@@ -1035,11 +1035,14 @@ export function NewJob() {
           <div className={`${styles.splitCell} ${styles.composeCell}`}>
             {/* Whoever is reading this already chose to be here — they do not need
                 selling, they need to know what to type and that it is safe to try. */}
-            {/* The state of the product, not the name of the page: the nav already
-                says where you are, and what a first-time user needs from this line is
-                that the thing they are about to trust with a printer is pre-beta. */}
+            {/* What the product does, not what stage it is at. A development-status
+                label is true for a few weeks and wrong afterwards, and this line is on
+                screen in material nobody can edit once it is posted (issue #189). The
+                replacement is the approved public sentence for this product — see
+                docs/WHERE-WE-ARE.md, 22 Sep: never "AI", always "calculated from your
+                sleeves" — and it stays true after the beta opens. */}
             <div className={`eyebrow ${styles.heroEyebrow}`}>
-              <span className="label-accent">Pre-beta · parametric engine</span>
+              <span className="label-accent">Calculated from your sleeves</span>
             </div>
             <h1 className={`display-lg ${styles.hero}`}>
               What are we<br />making today?
