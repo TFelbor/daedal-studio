@@ -39,7 +39,7 @@ const PAGES: { name: string; path: string; ready: string; attach?: Attach }[] = 
   { name: 'running', path: '/', ready: 'text=Elapsed', attach: 'running' },
   { name: 'job-detail', path: `/dashboard/${JOB_ID}`, ready: 'text=Record' },
   { name: 'dashboard', path: '/dashboard', ready: 'text=Jobs' },
-  { name: 'printer-setup', path: '/setup', ready: 'text=Spec engine' },
+  { name: 'printer-setup', path: '/setup', ready: 'text=Sizing' },
   { name: 'about', path: '/about', ready: 'text=Funding' },
 ]
 
@@ -274,3 +274,100 @@ test.describe('1280px', () => {
     await expect(details.locator('summary')).toHaveAttribute('tabindex', '-1')
   })
 })
+
+/**
+ * The two screens the beta videos record (issue #189).
+ *
+ * The app recording is filmed on 3 Oct 2026 and cannot be edited after it is posted,
+ * so a development-status label on screen is wrong in that material forever. Three
+ * were, and two had stopped being true of `main`.
+ *
+ * This needs a browser rather than a grep over `web/src`, for two reasons a source
+ * test cannot reach. "Not available" is still in the source — it is the Moonraker
+ * simulator's status, and what changed is that the card is behind a closed
+ * disclosure; only a rendered page can tell "absent" from "not on the default view".
+ * And the second half of the issue is that nothing was *deleted* to get there, which
+ * is a claim about controls working after a click.
+ *
+ * `tests/test_ui_product_copy.py` holds the cheap half that runs in `pytest tests/`.
+ */
+const DEV_STATUS = [
+  'pre-beta',
+  'not yet wired',
+  'benched',
+  'llm',
+  'spec engine',
+  'not available',
+]
+
+/**
+ * `AI` is on the issue's list and is deliberately not in the array above.
+ *
+ * The composer's default view carries the EU AI Act Art. 50(1) disclosure — "Your
+ * prompt is read by an AI system…" — which Art. 50(1) puts on the *interface*, whose
+ * wording was approved by the owner on 2026-09-09 (#78) and is used verbatim, and
+ * which `tests/test_ip_notice.py` fails without. So the word is checked where it is a
+ * product claim rather than a regulated one: nowhere on `/setup`, and on `/` only
+ * outside that one sentence.
+ */
+const AI_WORD = /(?<![A-Za-z])AI(?![A-Za-z])/
+const ART_50_DISCLOSURE = 'Your prompt is read by an AI system'
+
+for (const width of [375, 1280]) {
+  test.describe(`${width}px`, () => {
+    test.use({ viewport: { width, height: 900 } })
+
+    for (const target of [
+      { name: 'composer', path: '/', ready: 'text=What are we' },
+      { name: 'settings', path: '/setup', ready: 'text=Sizing' },
+    ]) {
+      test(`the ${target.name} shows no development status`, async ({ page }) => {
+        await mockApi(page)
+        await page.goto(target.path)
+        await page.locator(target.ready).first().waitFor({ timeout: 15_000 })
+
+        const shown = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
+        for (const word of DEV_STATUS) {
+          expect(
+            shown.toLowerCase(),
+            `the ${target.name} at ${width}px still says "${word}" on its default view`,
+          ).not.toContain(word)
+        }
+
+        // Everything but the one sentence the law requires.
+        const withoutDisclosure = shown.split(ART_50_DISCLOSURE).join('')
+        if (target.path === '/') {
+          expect(
+            shown,
+            'the Art. 50(1) disclosure has left the composer; see tests/test_ip_notice.py',
+          ).toContain(ART_50_DISCLOSURE)
+        }
+        expect(
+          AI_WORD.test(withoutDisclosure),
+          `the ${target.name} at ${width}px says "AI" outside the Art. 50(1) disclosure`,
+        ).toBe(false)
+      })
+    }
+
+    test(`the developer disclosure keeps its controls, ${width}px`, async ({ page }) => {
+      await mockApi(page)
+      await page.goto('/setup')
+      await page.locator('text=Sizing').first().waitFor({ timeout: 15_000 })
+
+      const dev = page.locator('#settings-developer details')
+      // Closed at both ends of the ladder: "developer configuration" is not a
+      // property of the width it is being read on.
+      await expect(dev).not.toHaveAttribute('open', /.*/)
+
+      await dev.locator('summary').click()
+      await expect(dev).toHaveAttribute('open', /.*/)
+
+      // Nothing was removed to clear the first screen. One control from each of the
+      // three groups the disclosure holds.
+      await expect(page.locator('#hf-token')).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Start' })).toBeVisible()
+      await expect(page.locator('#log-level')).toBeVisible()
+      await expect(page.locator('text=Skip sculptor')).toBeVisible()
+    })
+  })
+}

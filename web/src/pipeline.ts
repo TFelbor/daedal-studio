@@ -48,7 +48,12 @@ export const PIPELINE: readonly PipelinePhaseSpec[] = [
     phase: 1,
     name: 'Composer',
     blurb: 'Your words become a structured spec — counts, sleeves, millimetres',
-    tag: 'LLM · SPEC',
+    // Was `LLM · SPEC`. The tag names the artifact the phase produces, like the four
+    // below it, and naming the machinery instead put "LLM" on the composer's default
+    // view — a word this product does not use in front of people (issue #189;
+    // docs/WHERE-WE-ARE.md, 22 Sep). What the phase *is* has not changed, and the
+    // Art. 50(1) disclosure under the prompt field is where that is disclosed.
+    tag: 'WORDS · SPEC',
   },
   {
     phase: 2,

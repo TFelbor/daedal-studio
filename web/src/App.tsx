@@ -69,11 +69,18 @@ function Attribution() {
     <footer className={styles.attribution}>
       <div className={styles.attributionInner}>
         {/* The trust line. Every one of these is a promise this audience has been
-            burned on before — AI art in tabletop, black-box meshes, untested files
-            flooding the marketplaces — so each is phrased as something checkable
-            rather than as a slogan, and each has to stay true of the code. */}
+            burned on before — generated art in tabletop, black-box meshes, untested
+            files flooding the marketplaces — so each is phrased as something
+            checkable rather than as a slogan, and each has to stay true of the code.
+
+            The first one said "no AI art, ever" until issue #189. The promise is
+            unchanged and the word is not: this product does not say "AI" in its own
+            copy (docs/WHERE-WE-ARE.md, 22 Sep), and the footer is on every page
+            including the two the 3 Oct recording films. The one place "AI" is still
+            written is the Art. 50(1) disclosure in `PromptNotice.tsx`, which is a
+            legal duty on the interface and is worded verbatim. */}
         <div className={styles.attributionCredits}>
-          <span>Functional geometry only — no AI art, ever</span>
+          <span>Functional geometry only — never generated art</span>
           <span className={styles.sep} aria-hidden="true">·</span>
           <span>Editable parameters, not a black box</span>
           <span className={styles.sep} aria-hidden="true">·</span>

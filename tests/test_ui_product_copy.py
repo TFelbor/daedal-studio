@@ -79,9 +79,9 @@ STAGE_STATE_HOSTS = [
 FIGURINE_WORDS = ["figurine", "statue", "sculpt", "low poly"]
 
 #: The one visible string allowed to keep a banned word, with the reason. "Skip
-#: sculptor" is the label on the `SKIP_SCULPTOR` toggle, inside the section headed
-#: "Generative branch · benched" — it names the phase that actually runs on that
-#: path, which is exactly what must stay true.
+#: sculptor" is the label on the `SKIP_SCULPTOR` toggle, which since issue #189 sits
+#: under "Generative path" inside the collapsed Developer disclosure — it names the
+#: phase that actually runs on that path, which is exactly what must stay true.
 FIGURINE_WORD_ALLOWED = {
     ("web/src/pages/PrinterSetup.tsx", "sculpt"): "Skip sculptor",
 }
@@ -418,3 +418,115 @@ def test_the_unavailable_spec_reasons_stay():
     spec = (REPO_ROOT / "web/src/organizer/spec.ts").read_text()
     for name in ("NO_SPEC_REASON", "UNCOMPOSED_SPEC_REASON", "UNMEASURED_FIT_REASON"):
         assert f"export const {name} =" in spec
+
+
+# ── The two screens the beta videos record (issue #189) ───────────────────────
+#
+# The composer and the settings page are filmed on 3 Oct 2026 and the recording
+# cannot be edited after it is posted, so a label that is true for a few weeks is a
+# label that is wrong in the material forever. Three of them were on screen and two
+# had stopped being true of `main`: "Spec engine · not yet wired" claimed no LLM call
+# and no dimension KB existed in this build, and `pythonsrc/organizer/dimensions.py`
+# and `pythonsrc/organizer/box_kb.py` both ship; "Generative branch · benched" claimed
+# the generative path was "still what phases 01 and 02 actually run", which stopped
+# being true when the spec submit path landed (#76).
+#
+# This is the same weak-on-purpose text guard as everything else in this file: it
+# catches the words coming back, not a new way of saying them.
+
+#: Development-status vocabulary, and the two words this product does not say in front
+#: of people (docs/WHERE-WE-ARE.md, 22 Sep 2026: never "AI"; the line is "calculated
+#: from your sleeves"). Matched case-insensitively, on a word boundary that counts an
+#: underscore as a letter: a bare `in` fires on "available" for "AI", and a boundary
+#: that stops at `_` fires on the identifier `AI_SYSTEM_NOTICE_SHORT`, which is how
+#: `NewJob.tsx` renders the exempted disclosure below rather than a second copy of it.
+DEV_STATUS_WORDS = [
+    "pre-beta",
+    "not yet wired",
+    "benched",
+    "LLM",
+    "AI",
+    "spec engine",
+]
+
+#: The one exemption, and it is a legal one rather than an editorial one.
+#:
+#: EU AI Act Art. 50(1) applies from 2026-08-02, the Commission's May 2026 guidelines
+#: put the duty on the **interface**, and `PromptNotice.tsx` is where this product
+#: discharges it — wording approved by the owner on 2026-09-09 (#78) and used verbatim.
+#: `tests/test_ip_notice.py` fails if that sentence leaves. Rewording a regulated
+#: disclosure to keep a word off a screen recording is a legal decision, not a code
+#: one; see `docs/deferred-legal-tasks.md`.
+#:
+#: Keyed by file **and** word, like FIGURINE_WORD_ALLOWED, so this buys nothing
+#: anywhere else: "AI" in any other source, or any other banned word in this one, is
+#: still a failure.
+DEV_STATUS_ALLOWED = {
+    ("web/src/components/PromptNotice.tsx", "AI"): "EU AI Act Art. 50(1) disclosure",
+}
+
+
+@pytest.mark.parametrize("word", DEV_STATUS_WORDS)
+def test_no_visible_string_carries_the_development_status_vocabulary(word):
+    pattern = re.compile(
+        rf"(?<![A-Za-z_]){re.escape(word)}(?![A-Za-z_])", re.IGNORECASE
+    )
+    offenders = []
+    for path in _sources():
+        rel = str(path.relative_to(REPO_ROOT))
+        if DEV_STATUS_ALLOWED.get((rel, word)):
+            continue
+        for match in pattern.finditer(_visible_text(path)):
+            context = match.string[max(0, match.start() - 30) : match.start() + 40]
+            offenders.append(f"{rel}: …{' '.join(context.split())}…")
+    assert offenders == [], (
+        f"{word!r} is in user-visible copy: {offenders}. The composer and the settings "
+        "page are filmed for the beta videos and the recording cannot be edited "
+        "afterwards — see issue #189. If a statement about what is or is not wired is "
+        "genuinely needed, say it narrowly and cite the file that makes it true."
+    )
+
+
+def test_the_settings_page_states_only_what_a_file_on_main_makes_true():
+    """Section 01's copy, bound to the modules it is a claim about.
+
+    The block it replaced said "Neither exists in this build". Both do, so the
+    replacement is a positive statement — card footprints, sleeve envelopes and
+    curated box interiors ship — and these are the three modules that have to exist
+    for it to be one. A weak test, deliberately: it cannot read the sentence, but it
+    fails the day the sentence is a claim about deleted code.
+    """
+    for module in (
+        "pythonsrc/organizer/dimensions.py",
+        "pythonsrc/organizer/box_kb.py",
+        "pythonsrc/data/game_boxes.v1.json",
+    ):
+        assert (REPO_ROOT / module).exists(), (
+            f"{module} is gone, and `web/src/pages/PrinterSetup.tsx` section 01 tells "
+            "people it ships. Either the copy or the module is wrong."
+        )
+
+    setup = (REPO_ROOT / "web/src/pages/PrinterSetup.tsx").read_text()
+    assert "Measurements ship with the app" in setup
+
+
+def test_the_developer_disclosure_is_closed_and_keeps_everything_reachable():
+    """Nothing was deleted to clear the screen — it was collapsed.
+
+    The HuggingFace token, the two phase-skip switches, both simulator cards, the log
+    level and the API token all still render; they are behind a `<details>` with no
+    `open`, at every width. `web/e2e/viewports.spec.ts` opens it in a browser and
+    checks the controls work; this is the cheap half that runs in `pytest tests/`.
+    """
+    setup = (REPO_ROOT / "web/src/pages/PrinterSetup.tsx").read_text()
+
+    assert "<details className={styles.dev}>" in setup, (
+        "The Developer section is no longer a closed disclosure. It holds developer "
+        "configuration that reads as an unfinished product on a first-run screen."
+    )
+    for control in ("hf-token", "SKIP_VISUALIZER", "SKIP_SCULPTOR", "LOG_LEVEL",
+                    "ApiTokenField", "settings-simulators", "handleSimAction"):
+        assert control in setup, (
+            f"{control} is gone from the settings page. Issue #189 moved these behind "
+            "a disclosure; it did not remove any of them."
+        )
