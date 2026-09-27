@@ -358,7 +358,64 @@
   color: var(--ink-faint);
 }
 
-/* ── Developer ────────────────────────────────────────────────────────────── */
+/* ── Developer ──────────────────────────────────────────────────────────────
+   A disclosure, closed at every width (issue #189). Everything a person needs on a
+   first run is above it; what is inside is configuration for the people building
+   this, and on the screen the beta videos record it read as an unfinished product.
+   Closed is the resting state at 1280px as much as at 375px, so nothing here is in
+   a media query. */
+
+.dev {
+  /* `display: flex` on a `<details>` is the one property browsers still disagree
+     about, and getting it wrong means the element never collapses — which is the
+     whole point of it here. Same note as `.explain` in NewJob.module.css. */
+  display: block;
+}
+
+/* The section head *is* the summary, so it carries that rule and that spacing. The
+   marker is the app's own: a `+`/`−` in the mono face, because the platform caret
+   is the one glyph on this page nothing else matches. */
+.devSummary {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.devSummary::-webkit-details-marker {
+  display: none;
+}
+
+.devSummary::after {
+  content: '+';
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--ink-faint);
+}
+
+.dev[open] .devSummary::after {
+  content: '−';
+}
+
+.devSummary:hover::after,
+.devSummary:focus-visible::after {
+  color: var(--accent-ink);
+}
+
+.devBody {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  margin-top: 22px;
+}
+
+.devGroup {
+  display: flex;
+  flex-direction: column;
+}
 
 .devGrid {
   display: grid;
@@ -460,6 +517,22 @@
     text-align: left;
   }
 
+  /* The disclosure's summary is a section head and wraps like one: its note is a
+     sentence and takes the second line. The marker stays on the first line beside the
+     name, because it is the control — `order` rather than a different DOM, so the
+     note still follows the heading for anything reading the page aloud. */
+  .devSummary {
+    flex-wrap: wrap;
+  }
+
+  .devSummary .sectionNote {
+    order: 1;
+  }
+
+  .devSummary::after {
+    margin-left: auto;
+  }
+
   .toggleBox {
     flex-direction: column;
   }
@@ -470,10 +543,10 @@
   }
 }
 
-/* A block that describes a capability rather than configuring one: the spec
-   engine before it exists, and the benched generative branch. Dashed, like every
-   other "nothing here yet" box in the app, so it cannot be mistaken for a
-   control. */
+/* A block that describes something rather than configuring it — section 01 says
+   where the millimetres come from and offers no control, because there is none to
+   offer. Dashed, like every other non-control box in the app, so it cannot be
+   mistaken for one. */
 .pendingBlock {
   display: flex;
   flex-direction: column;
