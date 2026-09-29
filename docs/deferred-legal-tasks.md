@@ -347,6 +347,39 @@ Tracked as **E5** (ownership), **E6** (warranty and indemnity direction) and **E
 > live LGPL-3.0 exposure a reader following this line would have landed on. The report
 > carries the correction and the full mapping at its head.
 
+#### Added 2026-09-28 by the external licence watch: **the API has its own contract**
+
+The two blocks above read the consumer Terms of Use. Pixazo also publishes **Pixazo API
+Services — Supplemental Terms & Conditions** at <https://www.pixazo.ai/api-terms-of-use>.
+That document was last updated 9 April 2026, so it predates both earlier readings. Its
+introduction says "these API Terms shall prevail with respect to API Services", and
+every call this code makes goes through `gateway.pixazo.ai`. The dated archive is
+[`docs/audits/vendor-terms/pixazo-2026-09-28.md`](audits/vendor-terms/pixazo-2026-09-28.md).
+
+- **Ownership (E5), downgraded.** § 6.4 says "Pixazo does not claim ownership of Output
+  Content generated through the API Services". That undercuts the 2026-09-21 reading,
+  which ran from "no subscription" to § 5.3.1. The question left for counsel is
+  confirmatory: does "Output Content" ("images, videos, audio, or other media") reach a
+  mesh, and does a disclaimer of ownership leave the mesh with us? It is not an
+  assignment.
+- **Warranty and indemnity (E6), same position under new citations.** § 6.2 disclaims
+  "originality, legality, non-infringement". The indemnity in § 6.4 and § 10.1 runs from
+  the Client to Pixazo. § 10.2 caps Pixazo's liability at 12 months' fees.
+- **New — deletion on termination (E12).** § 9.4: "Client must immediately cease all use
+  of the API Services and delete any cached API responses". `PixazoSculptor._cache_glb`
+  stores every purchased GLB. Counsel should settle whether a stored mesh, or a
+  delivered one, is a "cached API response".
+- **New — flow-down to our own terms (E13).** § 8.1 requires End User agreements "no
+  less protective of Pixazo than those contained in these API Terms". Add this to
+  Task L1's brief. It binds before any End User reaches the `pixazo` backend, and no
+  End User does while `ALLOW_PROMPT_JOBS` is off by default.
+- **Not re-checked this run:** Appy Pie's *Generative AI Additional Terms* (5 June 2025).
+  It now sits below two Pixazo-specific documents, one of which carries a precedence
+  clause.
+
+Tracked as **E5**, **E6**, **E12** and **E13** in
+`docs/audits/2026-09-28-external-licence.md`.
+
 ### Why the deny-list entries must stay
 
 Two entries in this codebase name things this project does **not** use:
