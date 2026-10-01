@@ -269,6 +269,14 @@
   "publisher": "Boshen and oxc contributors",
   "repository": "https://github.com/oxc-project/oxc"
  },
+ "@playwright/test@1.63.0": {
+  "licenseFile": "node_modules/@playwright/test/LICENSE",
+  "licenses": "Apache-2.0",
+  "noticeFile": "node_modules/@playwright/test/NOTICE",
+  "path": "web/node_modules/@playwright/test",
+  "publisher": "Microsoft Corporation",
+  "repository": "https://github.com/microsoft/playwright"
+ },
  "@reduxjs/toolkit@2.12.0": {
   "email": "mark@isquaredsoftware.com",
   "licenseFile": "node_modules/@reduxjs/toolkit/LICENSE",
@@ -1238,6 +1246,22 @@
   "publisher": "Jon Schlinkert",
   "repository": "https://github.com/micromatch/picomatch",
   "url": "https://github.com/jonschlinkert"
+ },
+ "playwright-core@1.63.0": {
+  "licenseFile": "node_modules/playwright-core/LICENSE",
+  "licenses": "Apache-2.0",
+  "noticeFile": "node_modules/playwright-core/NOTICE",
+  "path": "web/node_modules/playwright-core",
+  "publisher": "Microsoft Corporation",
+  "repository": "https://github.com/microsoft/playwright"
+ },
+ "playwright@1.63.0": {
+  "licenseFile": "node_modules/playwright/LICENSE",
+  "licenses": "Apache-2.0",
+  "noticeFile": "node_modules/playwright/NOTICE",
+  "path": "web/node_modules/playwright",
+  "publisher": "Microsoft Corporation",
+  "repository": "https://github.com/microsoft/playwright"
  },
  "postcss@8.5.15": {
   "email": "andrey@sitnik.es",
