@@ -1,8 +1,13 @@
 # ────────────────────────────────────────────────────────────────────────────
-# phase4.Dockerfile — Slicer (CuraEngine 5.x, .obj → .gcode)
+# phase4.Dockerfile — Slicer (CuraEngine 4.13, .obj → .gcode)
 #
 # Inherits the base layer and adds:
-#   - CuraEngine installed via apt (Ubuntu 22.04 repos)
+#   - CuraEngine installed via apt (Ubuntu 22.04 repos). The `cura-engine`
+#     package is unpinned, and 22.04's universe carries 1:4.13.0-1 — CuraEngine
+#     4.13, not 5.x (the version docs/audits/2026-10-01-licence.md records off
+#     the pipeline image's SBOM). The definitions bundled in
+#     pythonsrc/profiles/definitions/ are 4.13-era to match
+#     (fdmprinter.def.json, setting_version 19).
 #   - The Python slicer wrapper (slicer.py) needs only stdlib + already-base libs
 #
 # IMPORTANT: We install CuraEngine from apt — do NOT copy a macOS app bundle.
