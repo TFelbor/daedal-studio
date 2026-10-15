@@ -34722,6 +34722,7 @@
      "lua-rock-cataloger",
      "nix-cataloger",
      "pe-binary-package-cataloger",
+     "perl-cpan-installed-cataloger",
      "php-composer-installed-cataloger",
      "php-interpreter-cataloger",
      "php-pear-serialized-cataloger",
@@ -34906,7 +34907,7 @@
    }
   },
   "name": "syft",
-  "version": "1.52.0"
+  "version": "1.54.1"
  },
  "distro": {
   "bugReportURL": "https://bugs.debian.org/",
@@ -34920,8 +34921,8 @@
   "versionID": "11.11"
  },
  "schema": {
-  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.10.json",
-  "version": "16.1.10"
+  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.11.json",
+  "version": "16.1.11"
  },
  "source": {
   "id": "392bcadf7e5719fe9cbeae607c917a3ebd8915579d593ee9e91809defc15dd6a",

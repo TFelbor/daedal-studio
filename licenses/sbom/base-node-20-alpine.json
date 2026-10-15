@@ -5595,6 +5595,7 @@
      "lua-rock-cataloger",
      "nix-cataloger",
      "pe-binary-package-cataloger",
+     "perl-cpan-installed-cataloger",
      "php-composer-installed-cataloger",
      "php-interpreter-cataloger",
      "php-pear-serialized-cataloger",
@@ -5779,7 +5780,7 @@
    }
   },
   "name": "syft",
-  "version": "1.52.0"
+  "version": "1.54.1"
  },
  "distro": {
   "bugReportURL": "https://gitlab.alpinelinux.org/alpine/aports/-/issues",
@@ -5790,8 +5791,8 @@
   "versionID": "3.23.4"
  },
  "schema": {
-  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.10.json",
-  "version": "16.1.10"
+  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.11.json",
+  "version": "16.1.11"
  },
  "source": {
   "id": "afdf98210b07b586eb71fa22ba2e432e058e4cd1304d31ed60888755b8c865fb",

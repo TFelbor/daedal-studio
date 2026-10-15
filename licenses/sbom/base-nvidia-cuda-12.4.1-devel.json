@@ -13328,6 +13328,7 @@
      "lua-rock-cataloger",
      "nix-cataloger",
      "pe-binary-package-cataloger",
+     "perl-cpan-installed-cataloger",
      "php-composer-installed-cataloger",
      "php-interpreter-cataloger",
      "php-pear-serialized-cataloger",
@@ -13512,7 +13513,7 @@
    }
   },
   "name": "syft",
-  "version": "1.52.0"
+  "version": "1.54.1"
  },
  "distro": {
   "bugReportURL": "https://bugs.launchpad.net/ubuntu/",
@@ -13530,8 +13531,8 @@
   "versionID": "22.04"
  },
  "schema": {
-  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.10.json",
-  "version": "16.1.10"
+  "url": "https://raw.githubusercontent.com/anchore/syft/main/schema/json/schema-16.1.11.json",
+  "version": "16.1.11"
  },
  "source": {
   "id": "5645fec64549cc35930eee9d85aafd2b0006c0c3f22632be5a1d85e2604e9749",
