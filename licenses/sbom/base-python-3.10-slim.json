@@ -9847,7 +9847,7 @@
    }
   },
   "name": "syft",
-  "version": "1.54.1"
+  "version": "1.55.0"
  },
  "distro": {
   "bugReportURL": "https://bugs.debian.org/",
