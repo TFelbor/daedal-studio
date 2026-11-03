@@ -15,8 +15,8 @@ section at a time.
 
 **Direction (committed 2026-08-31): Daedal Studio builds custom-fit tabletop/TCG organizers
 from a prompt — parametric geometry compiled from a structured spec, not generative mesh
-reconstruction.** The product PRD is `docs/PRD_daedal_tcg_organizers.md`; the plan in force is
-`docs/ds-mvp-roadmap.md` §§0.1–7A; the reasoning is `docs/pivot-brief-tcg-organizers.md`. The
+reconstruction.** The product PRD, the roadmap (§§0.1–7A) and the pivot brief were internal planning
+documents and are not published with this archive. The
 governing rule: *the LLM interprets words; it never produces geometry.* Phases 1–2 below
 (FLUX → TRELLIS.2) are **benched, not deleted** — they leave the critical path and become the
 branch behind decorative personalization (PRD F13/F14). Everything from Phase 3 onward (repair,

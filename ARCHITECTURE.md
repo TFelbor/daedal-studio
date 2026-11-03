@@ -5,8 +5,8 @@ what runs each phase, which version is pinned and where, which Hugging Face repo
 weights come from, which hardware it can run on, and what it has been measured to cost.
 
 **Direction (committed 2026-08-31):** the product is parametric — prompt → structured
-spec → compiled geometry → Phases 3–5 (see `docs/PRD_daedal_tcg_organizers.md` and
-`docs/ds-mvp-roadmap.md` §0.1+). Phases 1–2 below are the **generative branch**: fully
+spec → compiled geometry → Phases 3–5 (the PRD and roadmap §0.1+, internal planning documents not published
+with this archive). Phases 1–2 below are the **generative branch**: fully
 built, benched off the critical path, returning as the engine behind decorative
 personalization (PRD F13/F14). Phases 3–5 are shared by both paths, unchanged.
 
@@ -99,8 +99,8 @@ is Apache-2.0 but wraps **OCCT**
 required): adopting it requires recording OCCT in
 `licence_policy.REVIEWED_WEAK_COPYLEFT`, adding a "Built with Open CASCADE Technology"
 notice alongside the DINOv3 one, and letting the licence workflow sweep its wheel's
-dependency tree. Full reasoning: `docs/pivot-brief-tcg-organizers.md` §6,
-`docs/ds-mvp-roadmap.md` §7A.
+dependency tree. Full reasoning lived in the pivot brief §6 and roadmap §7A, internal planning
+documents not published with this archive.
 
 ---
 
@@ -173,7 +173,7 @@ resolution quality: **not measured**.
 
 ## Phase 2 — Compiler: spec → geometry (parametric path)
 
-The pivot's engine (`docs/PRD_daedal_tcg_organizers.md` F5; roadmap §0.3 Phase 1). Runs
+The pivot's engine (PRD F5; roadmap §0.3 Phase 1 — internal, not published). Runs
 under the same phase number and banners as the sculptor; `pipeline.py --spec` selects it
 and Phases 1–2 above are then not run at all.
 

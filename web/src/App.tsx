@@ -75,7 +75,7 @@ function Attribution() {
 
             The first one said "no AI art, ever" until issue #189. The promise is
             unchanged and the word is not: this product does not say "AI" in its own
-            copy (docs/WHERE-WE-ARE.md, 22 Sep), and the footer is on every page
+            copy (founders' decision, 22 Sep 2026), and the footer is on every page
             including the two the 3 Oct recording films. The one place "AI" is still
             written is the Art. 50(1) disclosure in `PromptNotice.tsx`, which is a
             legal duty on the interface and is worded verbatim. */}

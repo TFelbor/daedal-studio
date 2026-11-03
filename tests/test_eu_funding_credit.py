@@ -251,5 +251,5 @@ def test_the_app_misstates_nothing_about_the_funding(phrase):
 
 def test_the_page_does_not_say_ai():
     """Public copy says what the product does — "calculated from your sleeves" — and
-    never "AI" (founders' decision, 22 September 2026, docs/WHERE-WE-ARE.md)."""
+    never "AI" (founders' decision, 22 September 2026)."""
     assert not re.search(r"\bAI\b", _visible_text(ABOUT))

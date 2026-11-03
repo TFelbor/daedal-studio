@@ -27,7 +27,7 @@ geometry.** No dimension is ever guessed by a generative model.
    telemetry streams back with failure detection.
 
 The Extract and Compile stages are being built now — see the roadmap
-(`docs/ds-mvp-roadmap.md` in the repository). Phases 3–5 are the mature half of the
+(the internal roadmap, not published). Phases 3–5 are the mature half of the
 system and carry over unchanged.
 
 ## The generative branch (benched)

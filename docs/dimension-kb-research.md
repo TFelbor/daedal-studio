@@ -1,7 +1,7 @@
 # Dimension KB — research base for PRD F4 (sleeves, cards, dice, magnets, fits)
 
 **Researched:** 2026-08-31 · **Feeds:** the M2 "Sleeve / card / dice / game-box KB v1"
-task in `docs/ds-mvp-roadmap.md` §4A. Every number names its source; disagreements are
+task in the roadmap §4A (internal, not published). Every number names its source; disagreements are
 kept, not averaged away. Confidence vocabulary: **spec** (manufacturer), **measured**
 (community caliper), **derived** (computed from spec), **folk** (rule of thumb).
 

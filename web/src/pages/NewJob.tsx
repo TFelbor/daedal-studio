@@ -1039,7 +1039,7 @@ export function NewJob() {
                 label is true for a few weeks and wrong afterwards, and this line is on
                 screen in material nobody can edit once it is posted (issue #189). The
                 replacement is the approved public sentence for this product — see
-                docs/WHERE-WE-ARE.md, 22 Sep: never "AI", always "calculated from your
+                founders' decision, 22 Sep 2026: never "AI", always "calculated from your
                 sleeves" — and it stays true after the beta opens. */}
             <div className={`eyebrow ${styles.heroEyebrow}`}>
               <span className="label-accent">Calculated from your sleeves</span>

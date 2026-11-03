@@ -435,7 +435,7 @@ def test_the_unavailable_spec_reasons_stay():
 # catches the words coming back, not a new way of saying them.
 
 #: Development-status vocabulary, and the two words this product does not say in front
-#: of people (docs/WHERE-WE-ARE.md, 22 Sep 2026: never "AI"; the line is "calculated
+#: of people (founders' decision, 22 Sep 2026: never "AI"; the line is "calculated
 #: from your sleeves"). Matched case-insensitively, on a word boundary that counts an
 #: underscore as a letter: a bare `in` fires on "available" for "AI", and a boundary
 #: that stops at `_` fires on the identifier `AI_SYSTEM_NOTICE_SHORT`, which is how

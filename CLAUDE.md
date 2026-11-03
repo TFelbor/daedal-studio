@@ -58,9 +58,8 @@ covers what you are touching.
 - `supabase/migrations/` — the telemetry DDL, **generated** from
   `python -m pythonsrc.telemetry.db --ddl`. `infra/` — Dockerfiles, compose, CI helpers.
 - `tests/` — the suite; `pytest tests/ --collect-only` is the only honest count.
-  `docs/` — `WHERE-WE-ARE.md` (the founders' one-page status; read it before any
-  strategy, pricing or experiment work), `SYSTEM-AS-BUILT.md` (the section index is at the foot of this file), PRD,
-  roadmap, `PIPELINE.md`, `deferred-legal-tasks.md`,
+  `docs/` — `SYSTEM-AS-BUILT.md` (the section index is at the foot of this file),
+  `PIPELINE.md`, `deferred-legal-tasks.md`,
   `RUNBOOK-spec-job.md` (one spec job by hand, from
   `POST /jobs` to the telemetry row — the steps the default selection cannot reach
   because they need a real slicer, a printer and a database).

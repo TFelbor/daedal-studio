@@ -9,8 +9,8 @@
  * is what makes this file the single source rather than a second opinion.
  *
  * ── A note the next person needs ──────────────────────────────────────────────
- * These names describe the parametric pipeline (`docs/PRD_daedal_tcg_organizers.md`,
- * roadmap §§0.1–7A). As of 2026-09-10 the engine exists for two archetypes:
+ * These names describe the parametric pipeline (the product PRD and
+ * roadmap, internal and not published). As of 2026-09-10 the engine exists for two archetypes:
  * `pythonsrc/organizer/` compiles a deck-box or card-divider spec and
  * `pipeline.py --spec` runs that compile as phase 2, so "Compiler" is literal on that
  * path — and `ARCHETYPES` in `organizer/spec.ts` is that pair, no more. On the generative path
@@ -51,7 +51,7 @@ export const PIPELINE: readonly PipelinePhaseSpec[] = [
     // Was `LLM · SPEC`. The tag names the artifact the phase produces, like the four
     // below it, and naming the machinery instead put "LLM" on the composer's default
     // view — a word this product does not use in front of people (issue #189;
-    // docs/WHERE-WE-ARE.md, 22 Sep). What the phase *is* has not changed, and the
+    // founders' decision, 22 Sep 2026). What the phase *is* has not changed, and the
     // Art. 50(1) disclosure under the prompt field is where that is disclosed.
     tag: 'WORDS · SPEC',
   },

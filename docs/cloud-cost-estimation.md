@@ -6,9 +6,9 @@
 > Last updated: July 2026
 
 > ⚠️ **Superseded for the critical path as of 2026-08-31.** The product is now parametric
-> (see `docs/PRD_daedal_tcg_organizers.md` and `docs/ds-mvp-roadmap.md` §0.1): geometry is
+> (see the PRD and roadmap §0.1, internal, not published): geometry is
 > compiled from a spec on CPU in milliseconds, and the only per-job cloud cost is one LLM
-> extraction call (~€0,002 — see `docs/pivot-brief-tcg-organizers.md` §7). Every GPU figure
+> extraction call (~€0,002 — see the pivot brief §7, internal). Every GPU figure
 > below now prices the **benched generative branch only** (decorative personalization,
 > PRD F13/F14) — a premium feature's cost model, not the product's.
 
