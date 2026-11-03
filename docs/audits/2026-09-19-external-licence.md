@@ -112,7 +112,7 @@ repository. Its findings are re-checked in § 5 against the tree as it stands.
 
 ### 3.1 Pixazo — `https://gateway.pixazo.ai`, slug `trellis-2-image-to-3d`
 
-Archived: [`vendor-terms/pixazo-2026-09-19.md`](vendor-terms/pixazo-2026-09-19.md).
+Archived copy: not published (it quoted the vendor's terms; read the primary source).
 Called from `pythonsrc/sculptors/pixazo.py`. The only code in this repository that
 incurs a charge.
 

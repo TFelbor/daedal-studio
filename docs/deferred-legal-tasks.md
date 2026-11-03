@@ -251,7 +251,7 @@ contract question, not a code question**, and it is the one genuinely open expos
 Until this date the Pixazo position above was reasoned from the *shape* of a standard
 hosted-API agreement rather than from the document. The terms have now been read and
 archived at
-[`docs/audits/vendor-terms/pixazo-2026-09-19.md`](audits/vendor-terms/pixazo-2026-09-19.md);
+the archived terms summary (not published);
 the Terms of Use are dated effective 16 September 2025, **last updated 14 September
 2026**. Three things they say are sharper than "get a warranty", and all three are for
 counsel.
@@ -337,7 +337,7 @@ residual reached the same conclusion from the matte weights; that two readings o
 different clauses arrive at one answer is itself the argument. #168 has since done it
 in code — `ALLOW_PROMPT_JOBS` is off by default.
 
-Archived terms and the full reading: `docs/audits/vendor-terms/pixazo-2026-09-21.md`.
+Archived terms and the full reading: the archived terms summary (not published).
 Tracked as **E5** (ownership), **E6** (warranty and indemnity direction) and **E11**
 (governing law) in `docs/audits/2026-09-21-external-licence.md`.
 
@@ -354,7 +354,7 @@ Services — Supplemental Terms & Conditions** at <https://www.pixazo.ai/api-ter
 That document was last updated 9 April 2026, so it predates both earlier readings. Its
 introduction says "these API Terms shall prevail with respect to API Services", and
 every call this code makes goes through `gateway.pixazo.ai`. The dated archive is
-[`docs/audits/vendor-terms/pixazo-2026-09-28.md`](audits/vendor-terms/pixazo-2026-09-28.md).
+the archived terms summary (not published).
 
 - **Ownership (E5), downgraded.** § 6.4 says "Pixazo does not claim ownership of Output
   Content generated through the API Services". That undercuts the 2026-09-21 reading,

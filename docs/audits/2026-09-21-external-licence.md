@@ -138,7 +138,7 @@ endpoint remains unchosen, so there is no second vendor to review. One line, as 
 
 ### 3.1 Pixazo (Appy Pie LLP) — archived
 
-**Archived copy: [`docs/audits/vendor-terms/pixazo-2026-09-21.md`](vendor-terms/pixazo-2026-09-21.md)**
+**Archived copy:** not published (it quoted the vendor's terms; read the primary source).
 Primary sources: <https://www.pixazo.ai/terms-of-use> and
 <https://www.pixazo.ai/models/trellis3d>, both retrieved 2026-09-21.
 

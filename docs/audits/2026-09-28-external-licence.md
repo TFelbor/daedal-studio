@@ -107,7 +107,7 @@ since 2026-09-21:
 
 ### 3.1 Pixazo (Appy Pie LLP)
 
-**Archived copy: [`vendor-terms/pixazo-2026-09-28.md`](vendor-terms/pixazo-2026-09-28.md).**
+**Archived copy:** not published (it quoted the vendor's terms; read the primary source).
 Sources: `/api-terms-of-use` (last updated 9 April 2026), `/terms-of-use` (last updated
 24 September 2026), `/models/trellis3d` and `/api/free`, all retrieved 2026-09-28.
 Quotations were checked against the raw HTML.

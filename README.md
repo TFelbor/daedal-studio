@@ -1,8 +1,78 @@
-# Daedal Studio: MVP Engine (ds-mvp)
+# Daedal Studio — archived
 
-![Status](https://img.shields.io/badge/Status-Building_the_parametric_engine-orange)
-![Platform](https://img.shields.io/badge/Platform-macOS_Silicon|Fedora|Windows-gray)
+![Status](https://img.shields.io/badge/Status-Archived_(Nov_2026)-lightgrey)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
+
+**Daedal Studio closed in November 2026. This repository is its complete, working
+codebase, published as an archive under the Apache License 2.0.** It is not
+maintained: issues and pull requests are closed, and nothing here is a service you can
+sign up for.
+
+Daedal designed custom-fit 3D-printed organizers for trading card and board games —
+deck boxes sized to *your* sleeves and card count, token trays, card dividers and
+board-game box inserts — and drove them through printability checks, slicing and a
+human-confirmed printer dispatch. It was built by **Tytus Felbor**, **Alberto García
+de la Torre** and **Brandon Perrone** between February and October 2026, starting life
+as *Prompt2Print*, a text-to-3D tool, and pivoting on 31 August 2026 to parametric
+organizers under one rule:
+
+> **The language model interprets words. It never produces geometry.**
+
+Why it closed, what we decided and avoided, and what we would do differently is
+written up in a five-part series: **{{SUBSTACK_URL}}**.
+
+## What is worth taking from here
+
+| If you want… | Look at |
+|---|---|
+| A parametric CSG engine with per-feature dimensional assertions | `pythonsrc/organizer/` — spec → `manifold3d` geometry for four archetypes, every designed feature measured back to ±0,05 mm in CI (405 variants) |
+| Sourced card, sleeve and game-box dimensions | `pythonsrc/organizer/dimensions.py`, `pythonsrc/data/game_boxes.v1.json` (provenance on every value), `docs/dimension-kb-research.md` |
+| Driving CuraEngine from Python without the silent failures | `pythonsrc/slicer.py` and `docs/SYSTEM-AS-BUILT.md` § Slicer — five command-line facts, each once wrong |
+| An AI agent pipeline that turns GitHub issues into reviewed PRs | `docs/PIPELINE.md`, `.github/workflows/claude-*.yml`, `CLAUDE.md` — and the trust boundary that keeps it honest |
+| Licence policy enforced as tests | `pythonsrc/licence_policy.py`, `tests/test_licensing_guards.py`, the committed tree in `licenses/`, `docs/deferred-legal-tasks.md` |
+| Why every design decision is what it is | `docs/SYSTEM-AS-BUILT.md`, indexed at the foot of `CLAUDE.md` |
+
+By the numbers: 469 commits on `main`, 129 merged pull requests (30 of them opened and
+implemented by the Claude agent pipeline, every merge a human decision), ≈ 2 165 test
+functions (≈ 5 000 cases with parametrisation), 76,6 % line coverage, more lines of
+test code than product code.
+
+## Try the engine in two minutes (CPU only)
+
+The organizer engine needs no GPU, database or printer:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-mac.txt   # or requirements-linux.txt
+python -m pythonsrc.organizer example deck_box > deck.json
+python -m pythonsrc.organizer compile deck.json --out deck.stl
+python -m pythonsrc.organizer measure deck.json deck.stl   # 26/26 features within ±0,05 mm
+```
+
+Edit `deck.json` (card count, sleeve, `fit_intent`) and compile again. The full
+pipeline — server, web app, slicer, printer simulator, telemetry — is documented in the
+original README below and needs Docker and PostgreSQL.
+
+## What is not here
+
+- **Model weights.** The benched generative branch (FLUX.2-klein-4B → TRELLIS.2-4B)
+  downloads them at runtime under their own licences; see `THIRD-PARTY-NOTICES.md`.
+- **Internal business documents** — strategy reviews, roadmap, PRD, pricing and partner
+  correspondence. References to them in the code say so.
+- **Credentials.** The Claude workflows need a `CLAUDE_CODE_OAUTH_TOKEN` this repository
+  does not have, and GitHub Actions is disabled on the archive.
+
+## Licence
+
+Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Third-party
+components keep their own licences; [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)
+lists them, including the two AGPL-3.0 tools (CuraEngine, OctoPrint) this code only
+ever calls as a separate process or over HTTP.
+
+---
+
+# Original README (as the project left it, October 2026)
+
 
 **ds-mvp** is the engine for the Daedal Studio platform: **custom-fit tabletop & TCG
 organizers from a prompt** — deck boxes sized to *your* sleeves and card count, token

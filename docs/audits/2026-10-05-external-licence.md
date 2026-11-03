@@ -104,7 +104,7 @@ not been chosen, so there is nothing to read terms for.
 
 ### 3.1 Pixazo (Appy Pie LLP)
 
-**Archived copy: [`vendor-terms/pixazo-2026-10-05.md`](vendor-terms/pixazo-2026-10-05.md).**
+**Archived copy:** not published (it quoted the vendor's terms; read the primary source).
 Sources: `/api-terms-of-use` (9 April 2026), `/terms-of-use` (**5 October 2026**),
 `/models/trellis3d`, `/api/free` and `/pricing`, all retrieved 2026-10-05. Quotations
 were checked against the raw HTML.

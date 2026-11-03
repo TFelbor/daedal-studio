@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Archived (November 2026).** Daedal Studio has closed and this repository is a
+> read-only archive. This file is kept as it was: the working contract the team and the
+> issue-to-PR agent pipeline used, published as an example rather than as live process.
+
 ## ds-mvp — Claude Code guide
 
 The pipeline's contract with this repository. `docs/PIPELINE.md` explains how an issue

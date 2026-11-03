@@ -1,9 +1,7 @@
 # Third-Party Notices
 
-Daedal Studio (ds-mvp) carries the Apache License 2.0 (see [`LICENSE`](LICENSE)).
-The repository is private and the software is **not currently distributed**, so that
-licence is a statement of intent rather than an active grant to anyone — but the
-obligations below are recorded as though it were, because they attach the moment it is.
+Daedal Studio (ds-mvp) is distributed under the Apache License 2.0 (see [`LICENSE`](LICENSE)).
+It was published as an archive in November 2026, when the company closed.
 It bundles, links, or invokes the third-party components listed below, each under its
 own licence.
 
@@ -200,9 +198,10 @@ Both components are distributed **unmodified**. Their complete corresponding
 source is available from the upstream repositories linked above, at the exact
 versions our images install.
 
-For a copy of the corresponding source of either component as distributed in a
-Daedal Studio image, contact **legal@daedal.studio**. We will supply it for no
-more than the cost of distribution, as AGPL-3.0 §6 permits.
+Daedal Studio closed in November 2026 and its mailboxes are no longer monitored.
+The complete corresponding source of either component is the upstream release at
+the exact version pinned in this repository (see the links above and
+`licenses/`); this repository publishes no prebuilt images.
 
 ### Weak copyleft — file-level
 
