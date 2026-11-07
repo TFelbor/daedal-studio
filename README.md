@@ -19,7 +19,7 @@ organizers under one rule:
 > **The language model interprets words. It never produces geometry.**
 
 Why it closed, what we decided and avoided, and what we would do differently is
-written up in a five-part series: **{{SUBSTACK_URL}}**.
+written up in a five-part series: **https://substack.com/@tytusfelbor**.
 
 ## What is worth taking from here
 
